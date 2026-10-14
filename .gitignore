@@ -14,6 +14,10 @@ node_modules/
 **/.npmrc
 **/.pnpmfile.cjs
 **/credentials/
+# These are UI source components; private credential files remain ignored.
+!/web/frontend/src/components/workspace/credentials/
+/web/frontend/src/components/workspace/credentials/*
+!/web/frontend/src/components/workspace/credentials/*.tsx
 **/credentials.json
 **/google-services.json
 **/GoogleService-Info.plist
