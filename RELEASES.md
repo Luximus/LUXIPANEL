@@ -1,6 +1,6 @@
 # Releases and repository migration
 
-`v2.0.1` is the first source release of this public monorepo, succeeding existing 2.0.0 web installations. `release.manifest.json` and `modules.lock.json` bind official module versions, source commits and built file hashes to one delivery. All client package versions are aligned in a release.
+`v2.0.2` is the first source release of this public monorepo, succeeding existing 2.0.0 web installations. `release.manifest.json` and `modules.lock.json` bind official module versions, source commits and built file hashes to one delivery. All client package versions are aligned in a release.
 
 ## Maintainer setup
 

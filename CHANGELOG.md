@@ -1,4 +1,4 @@
-# v2.0.1
+# v2.0.2
 
 First public source release of the current LUXIPANEL monorepo.
 
@@ -9,3 +9,5 @@ First public source release of the current LUXIPANEL monorepo.
 - Official releases include the core and approved module bundle. Existing server state and module availability are preserved, and local edits/custom commits block replacement.
 
 This release provides source archives for all clients. It does not submit signed store applications. See README.md, RELEASES.md and the per-client guides.
+
+The unpublished v2.0.1 tag was an initial import snapshot. v2.0.2 includes the clean-build runtime asset fix and verifies local JavaScript imports before deployment.

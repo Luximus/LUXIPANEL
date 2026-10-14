@@ -2,7 +2,7 @@
   "expo": {
     "name": "LUXIPANEL",
     "slug": "luxipanel-mobile",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "scheme": "luxipanel",
     "orientation": "default",
     "icon": "./assets/icon.png",

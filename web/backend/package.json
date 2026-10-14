@@ -1,6 +1,6 @@
 {
   "name": "luxipanel-backend",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "LUXIPANEL — Modern server administration panel backend (Modular Monolith)",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -15,7 +15,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "pnpm run build:cache-policy && tsc -p tsconfig.json && tsc-alias -p tsconfig.json --resolve-full-paths && cp src/modules/ai-assistant/services/providers/cli/codex-app-server-adapter.mjs dist/modules/ai-assistant/services/providers/cli/ && cp package.json dist/ && cp pnpm-lock.yaml dist/ && cp tsconfig.json dist/",
+    "build": "pnpm run build:cache-policy && tsc -p tsconfig.json && tsc-alias -p tsconfig.json --resolve-full-paths && node scripts/copy-runtime-assets.mjs && node scripts/verify-runtime-imports.mjs && cp package.json dist/ && cp pnpm-lock.yaml dist/ && cp tsconfig.json dist/",
     "build:cache-policy": "tsx scripts/remote/build-policy.ts",
     "redeploy": "pnpm run build && pm2 restart luxipanel-backend --update-env",
     "start": "node dist/server.js",
