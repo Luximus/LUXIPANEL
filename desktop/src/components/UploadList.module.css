@@ -1,0 +1,9 @@
+/* UploadList — CSS Module
+   Solo contiene la regla dinámica de la barra de progreso:
+   el valor `inset-inline-end` se pasa como CSS variable desde el componente
+   (style={{ '--upload-bar-end': insetInlineEnd }}) para evitar el inline style
+   dinámico sin sacrificar la lógica de cálculo en runtime. */
+
+.progressBar {
+  inset-inline-end: var(--upload-bar-end, 0%);
+}

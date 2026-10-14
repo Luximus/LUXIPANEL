@@ -1,0 +1,35 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 LUXISOFT */
+/* Self-hosted brand font faces (LXP Inter / LXP Mono). */
+
+@font-face {
+  font-family: "LXP Inter";
+  src: url("/_luxi/fonts/inter-400.1b08e7fc267a.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LXP Inter";
+  src: url("/_luxi/fonts/inter-700.b37284b5701b.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LXP Mono";
+  src: url("/_luxi/fonts/jetbrains-mono-400.44ce4a84f20d.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LXP Mono";
+  src: url("/_luxi/fonts/jetbrains-mono-600.df54dbfafba6.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}

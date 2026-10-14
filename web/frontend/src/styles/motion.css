@@ -1,0 +1,160 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 LUXISOFT */
+
+/*
+ * motion.css — Estándar ÚNICO de animación de apertura/cierre del panel.
+ *
+ * Referencia: el colapso del sidebar izquierdo (`#sidebar`, PanelLayout.astro)
+ * → `transition: width, opacity, border-color · 200ms · ease-out`. TODO lo que
+ * abra/cierre/colapse (listas laterales, drawers, modales, paneles) usa estos
+ * mismos tokens para que el panel se sienta como un solo sistema.
+ *
+ * Tokens (usar SIEMPRE en vez de literales):
+ *   --lxp-motion-duration : 200ms
+ *   --lxp-motion-ease     : ease-out
+ *
+ * Utilidades (aplicables desde Astro, TS vanilla o React className):
+ *   .lxp-collapse-x            contenedor colapsable horizontal (width+opacity)
+ *   .lxp-collapse-x[data-collapsed="true"]  → width 0 / opacity 0 / sin eventos
+ *   .lxp-slide-x               panel deslizante horizontal (translateX)
+ *   .lxp-slide-x[data-open="false"] (o .is-closed) → fuera de pantalla izq.
+ *   .lxp-slide-x-right         idem hacia la derecha
+ *   .lxp-fade                  opacidad
+ *   .lxp-fade[data-open="false"] → opacity 0 + pointer-events none
+ *
+ * Keyframes de entrada/salida para elementos que se MONTAN/DESMONTAN
+ * (dialog nativo, overlays React): lxpSlideInRight / lxpSlideOutRight,
+ * lxpSlideInLeft / lxpSlideOutLeft, lxpFadeIn / lxpFadeOut.
+ *
+ * `prefers-reduced-motion: reduce` desactiva transiciones y animaciones.
+ */
+
+:root {
+  --lxp-motion-duration: 200ms;
+  --lxp-motion-ease: ease-out;
+}
+
+/* ── Colapso horizontal (misma receta que #sidebar) ──────────────────── */
+.lxp-collapse-x {
+  transition-property: width, min-width, opacity, border-color, transform;
+  transition-duration: var(--lxp-motion-duration);
+  transition-timing-function: var(--lxp-motion-ease);
+  overflow: hidden;
+}
+.lxp-collapse-x[data-collapsed="true"] {
+  /* NO tocar max-width: el estado abierto suele ser `max-width:none` y
+     `none → 0` no es interpolable → el ancho saltaría a 0 sin transición
+     (bug visto 2026-08-25 en la lista de chats). Con width+min-width basta. */
+  width: 0 !important;
+  min-width: 0 !important;
+  border-color: transparent !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Deslizamiento horizontal (paneles fijos / móviles) ──────────────── */
+.lxp-slide-x,
+.lxp-slide-x-right {
+  transition-property: transform, opacity;
+  transition-duration: var(--lxp-motion-duration);
+  transition-timing-function: var(--lxp-motion-ease);
+  will-change: transform;
+}
+.lxp-slide-x[data-open="false"],
+.lxp-slide-x.is-closed {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.lxp-slide-x-right[data-open="false"],
+.lxp-slide-x-right.is-closed {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Fundido (overlays / backdrops) ──────────────────────────────────── */
+.lxp-fade {
+  transition-property: opacity;
+  transition-duration: var(--lxp-motion-duration);
+  transition-timing-function: var(--lxp-motion-ease);
+}
+.lxp-fade[data-open="false"],
+.lxp-fade.is-closed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Keyframes de entrada/salida (montaje/desmontaje) ────────────────── */
+@keyframes lxpSlideInRight  { from { transform: translateX(100%);  opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes lxpSlideOutRight { from { transform: translateX(0);     opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+@keyframes lxpSlideInLeft   { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes lxpSlideOutLeft  { from { transform: translateX(0);     opacity: 1; } to { transform: translateX(-100%); opacity: 0; } }
+@keyframes lxpFadeIn        { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lxpFadeOut       { from { opacity: 1; } to { opacity: 0; } }
+
+.lxp-anim-in-right  { animation: lxpSlideInRight  var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+.lxp-anim-out-right { animation: lxpSlideOutRight var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+.lxp-anim-in-left   { animation: lxpSlideInLeft   var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+.lxp-anim-out-left  { animation: lxpSlideOutLeft  var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+.lxp-anim-fade-in   { animation: lxpFadeIn        var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+.lxp-anim-fade-out  { animation: lxpFadeOut       var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lxp-collapse-x, .lxp-slide-x, .lxp-slide-x-right, .lxp-fade { transition: none; }
+  .lxp-anim-in-right, .lxp-anim-out-right, .lxp-anim-in-left, .lxp-anim-out-left,
+  .lxp-anim-fade-in, .lxp-anim-fade-out { animation: none; }
+}
+
+/* ── Colapso vertical (secciones plegables / paneles desplegables) ───────
+ * Sin animar altura (no hay soporte amplio para interpolar `auto`): fundido +
+ * ligero desplazamiento vertical, mismos tokens. El script (`setCollapsed` en
+ * lib/dom.ts) añade `hidden` SOLO al terminar la transición de cierre, y lo
+ * quita antes de la de apertura, así el flujo del documento sigue correcto. */
+.lxp-collapse-y {
+  transition-property: opacity, transform;
+  transition-duration: var(--lxp-motion-duration);
+  transition-timing-function: var(--lxp-motion-ease);
+}
+.lxp-collapse-y[data-collapsed="true"] {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lxp-collapse-y { transition: none; }
+}
+
+/* ── Cambio de VISTA dentro de un contenedor (tabs / menús / pasos) ─────
+ * Preset único para cuando un drawer, modal o página con tabs sustituye su
+ * contenido: el panel entrante hace fade + desplazamiento sutil (6px) con los
+ * mismos tokens (200ms ease-out). Direccional opcional según el orden del tab
+ * (`-right`: vamos a un tab posterior → entra desde la derecha; `-left`: al
+ * contrario). El panel saliente NO se anima (evita doble layout); basta con
+ * montar/mostrar el entrante con la clase (React: `key={tab}` + clase;
+ * vanilla: `switchView()` en lib/dom.ts).
+ *
+ *   .lxp-view-enter          fade + translateY(6px → 0)
+ *   .lxp-view-enter-right    fade + translateX(12px → 0)
+ *   .lxp-view-enter-left     fade + translateX(-12px → 0)
+ *   .lxp-tab-indicator       subrayado/pastilla del tab activo que se desliza
+ *                            (transition transform/width/left)
+ */
+@keyframes lxpViewIn      { from { opacity: 0; transform: translateY(6px);   } to { opacity: 1; transform: none; } }
+@keyframes lxpViewInRight { from { opacity: 0; transform: translateX(12px);  } to { opacity: 1; transform: none; } }
+@keyframes lxpViewInLeft  { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+
+.lxp-view-enter       { animation: lxpViewIn      var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+.lxp-view-enter-right { animation: lxpViewInRight var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+.lxp-view-enter-left  { animation: lxpViewInLeft  var(--lxp-motion-duration) var(--lxp-motion-ease) both; }
+
+.lxp-tab-indicator {
+  transition-property: transform, width, left, opacity, background-color, color;
+  transition-duration: var(--lxp-motion-duration);
+  transition-timing-function: var(--lxp-motion-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lxp-view-enter, .lxp-view-enter-right, .lxp-view-enter-left { animation: none; }
+  .lxp-tab-indicator { transition: none; }
+}

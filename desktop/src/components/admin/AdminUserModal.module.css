@@ -1,0 +1,12 @@
+.labelCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}

@@ -1,0 +1,367 @@
+/* Server window-mockup carousel (Servidores). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ── Server window-mockup carousel (Servidores) ───────────────────────── */
+.server-carousel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  outline: none;
+}
+.server-carousel__track {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Variante de alto AUTOMÁTICO: para usar el carrusel dentro de un modal (el
+   estándar usa `height:100%` para llenar el panel del dashboard). El track se
+   ajusta al alto del contenido del slide. */
+.server-carousel--auto {
+  height: auto;
+}
+.server-carousel--auto .server-carousel__track {
+  flex: 0 1 auto;
+}
+.server-carousel__track::-webkit-scrollbar { display: none; }
+.server-carousel__slide {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  scroll-snap-align: center;
+  display: flex;
+  align-items: stretch;
+  /* Centra el contenido del slide (p. ej. la grilla de tarjetas de planes, que
+     se encoge a su contenido) dentro del ancho completo del slide. Inocuo para
+     contenidos a `width:100%` como el mockup de window. */
+  justify-content: center;
+  padding: 0;
+}
+/* Grilla de paneles dentro de un slide (1·2·3·4·6 por vista). Columnas vía
+   inline-style según `perSlide`; las filas reparten el alto a partes iguales. */
+.server-carousel__grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 0.6rem;
+  grid-auto-rows: minmax(0, 1fr);
+}
+.server-carousel__grid > .server-window { min-height: 0; }
+/* Celda vacía (placeholder) cuando la página tiene menos paneles que la rejilla:
+   mantiene la estructura 2×2 / 3×2 visible aunque falten paneles. */
+.server-window--ghost {
+  background: color-mix(in srgb, var(--lp-text) 2%, transparent);
+  border-style: dashed;
+  opacity: 0.5;
+}
+@media (max-width: 900px) {
+  .server-carousel__grid { grid-template-columns: 1fr !important; grid-template-rows: none !important; }
+}
+.server-carousel__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--lp-card) 82%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--lp-shadow);
+}
+.server-carousel__nav--prev { inset-inline-start: 0.6rem; }
+.server-carousel__nav--next { inset-inline-end: 0.6rem; }
+.server-carousel__nav:disabled { opacity: 0.3; cursor: default; }
+.server-carousel__indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+.server-carousel__count { font-size: 0.8rem; color: var(--lp-text-muted); }
+.server-carousel__dots { display: flex; align-items: center; gap: 0.3rem; }
+.server-carousel__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border: none;
+  border-radius: 9999px;
+  background: var(--lp-border);
+  cursor: pointer;
+  transition: width 0.2s, background 0.2s;
+}
+.server-carousel__dot.is-active { width: 1.25rem; background: var(--lp-brand); }
+
+.server-window {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--lp-card);
+  border: 1px solid var(--lp-border);
+  border-radius: 0.9rem;
+  overflow: hidden;
+  box-shadow: var(--lp-shadow-xl);
+}
+.server-window__bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  row-gap: 0.4rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--lp-border);
+  background: color-mix(in srgb, var(--lp-text) 4%, transparent);
+}
+/* Tarjetas-botón de acción (favorito/editar/eliminar): mismo chrome de tarjeta
+   (borde, radio, fondo) que las info-stats pero compactas (solo icono centrado)
+   y al alto de la fila. Van junto a la tarjeta de info, no dentro del `join`. */
+.server-window__action-card {
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  align-self: stretch;        /* mismo alto que la tarjeta de info-stats */
+  min-height: 2.6rem;
+  width: 2.7rem;
+  padding: 0;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.7rem;
+  background: var(--lp-card-solid);
+  color: var(--lp-heading);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.server-window__action-card:hover:not(:disabled) { border-color: var(--lp-border-brand); background: color-mix(in srgb, var(--lp-brand) 10%, transparent); color: var(--lp-brand-light); }
+.server-window__action-card.is-active { color: #f59e0b; border-color: #f59e0b; }
+.server-window__action-card--danger { color: #ef4444; }
+.server-window__action-card--danger:hover:not(:disabled) { border-color: #ef4444; background: color-mix(in srgb, #ef4444 12%, transparent); color: #ef4444; }
+.server-window__action-card:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.server-window__heading { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1; }
+.server-window__logo {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.5rem;
+  background: var(--lp-brand-dim);
+  color: var(--lp-brand-light);
+  border: 1px solid var(--lp-border-brand);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.server-window__logo.has-image { background: transparent; border-color: var(--lp-border); }
+.server-window__logo img { width: 100%; height: 100%; object-fit: cover; }
+.server-window__title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--lp-heading);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.server-window__screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem 1rem;
+}
+.server-window__meta { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.server-window__subtitle { font-size: 0.78rem; color: var(--lp-text-muted); }
+.server-window__row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; color: var(--lp-text-sub); }
+.server-window__row-label {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--lp-text-muted);
+}
+/* Footer del window: tags + botones (Entrar a panel / Auditoría) en la MISMA
+   fila — tags a la izquierda (ocupan el sobrante), botones a la derecha. */
+.server-window__footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--lp-border);
+}
+.server-window__tags { display: flex; flex-wrap: wrap; gap: 0.3rem; flex: 1 1 auto; min-width: 0; }
+
+/* Tarjeta única de info del servidor (daisyUI stats): categoría/estado/IP/proveedor
+   en una grilla compacta con icono por dato. Adapta light/dark vía daisyUI. */
+/* daisyUI join: 4 celdas equitativas en una sola tarjeta. Vertical en estrecho,
+   horizontal (equal-width) en ≥640px. */
+/* Botón grande "Consumo" del extremo izquierdo de la barra de saldo: misma
+   estética de tarjeta que `server-info-stats` para alinear en la fila. */
+.lp-consumo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--lp-border);
+  background: var(--lp-card-solid);
+  color: var(--lp-heading);
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.lp-consumo-btn:hover {
+  border-color: var(--lp-border-brand);
+  color: var(--lp-brand-light);
+}
+
+/* Acciones del dashboard (Nueva conexión / Importar / Exportar / Consumo) como
+   tarjeta-fila de celdas con divisores, en la misma fila que las tarjetas de
+   saldo y con el MISMO chrome (borde, radio, fondo de tarjeta). */
+.dashboard-actions-card {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.7rem;
+  overflow: hidden;
+  background: var(--lp-card-solid);
+}
+.dashboard-action-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.95rem;
+  background: transparent;
+  border: none;
+  color: var(--lp-heading);
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.dashboard-action-cell + .dashboard-action-cell { border-top: 1px solid var(--lp-border); }
+.dashboard-action-cell:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lp-brand) 10%, transparent);
+  color: var(--lp-brand-light);
+}
+.dashboard-action-cell:disabled { opacity: 0.5; cursor: not-allowed; }
+@media (min-width: 640px) {
+  .dashboard-actions-card { flex-direction: row; }
+  .dashboard-action-cell + .dashboard-action-cell { border-top: none; border-inline-start: 1px solid var(--lp-border); }
+}
+
+.server-info-stats {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0; /* nunca aplastar la tarjeta de info por el asistente */
+  width: 100%;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.7rem;
+  overflow: hidden;
+  background: var(--lp-card-solid);
+}
+.server-info-stats .stat { padding: 0.5rem 0.8rem; border: none; min-width: 0; }
+.server-info-stats .stat + .stat { border-top: 1px solid var(--lp-border); }
+.server-info-stats .stat-title { font-size: 0.66rem; }
+.server-info-stats .stat-value { font-size: 0.92rem; font-weight: 700; line-height: 1.25; }
+.server-info-stats__v { display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; max-width: 100%; }
+.server-info-stats__v > .font-mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (min-width: 640px) {
+  .server-info-stats { flex-direction: row; }
+  .server-info-stats .stat { flex: 1 1 0; }
+  .server-info-stats .stat + .stat { border-top: none; border-inline-start: 1px solid var(--lp-border); }
+}
+
+/* Info-stats reubicados DENTRO de la barra del window (paridad con la web):
+   ocupan el espacio entre los puntos y las acciones (favorito/editar/eliminar),
+   en fila y repartidos en columnas iguales. */
+.server-window__stats {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 12rem;
+  flex-direction: row;
+}
+.server-window__stats .stat { padding: 0.35rem 0.7rem; flex: 1 1 0; }
+.server-window__stats .stat + .stat { border-top: none; border-inline-start: 1px solid var(--lp-border); }
+/* La figura del campo "Panel" es el logo del panel, no un icono daisyUI suelto. */
+.server-window__stats .server-window__logo { width: 1.5rem; height: 1.5rem; }
+
+/* Texto blanco en botones daisyUI con fondo de color (consistente light/dark). */
+.btn-primary,
+.btn-error,
+.btn-secondary,
+.btn-accent,
+.btn-success,
+.btn-info { color: #ffffff; }
+
+/* Inputs/selects/textarea consistentes en toda la app (radio uniforme; el fondo
+   sólido lo da daisyUI base-100, ya no usamos variantes translúcidas). */
+.input,
+.select,
+.textarea { border-radius: 0.625rem; }
+.server-window__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  margin-inline-start: auto; /* botones a la derecha aunque no haya tags */
+}
+
+.server-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+.server-stats--compact { flex-shrink: 0; } /* las stats de abajo tampoco se aplastan */
+.server-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--lp-text) 3%, transparent);
+}
+.server-stat--muted { opacity: 0.72; }
+.server-stat__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--lp-text-muted);
+}
+.server-stat__value { font-size: 1.25rem; font-weight: 800; line-height: 1.1; color: var(--lp-heading); }
+.server-stat__bar { width: 100%; height: 0.32rem; border-radius: 9999px; background: var(--lp-border); overflow: hidden; }
+.server-stat__bar-fill { display: block; height: 100%; border-radius: 9999px; transition: width 0.4s ease; }
+.server-stat__bar-fill.is-ok { background: #10b981; }
+.server-stat__bar-fill.is-warn { background: #f59e0b; }
+.server-stat__bar-fill.is-crit { background: #ef4444; }
+.server-stat__sub { font-size: 0.68rem; color: var(--lp-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Stats compactas cuando el asistente ocupa el grueso de la pantalla. */
+.server-stats--compact .server-stat { padding: 0.4rem 0.5rem; gap: 0.2rem; }
+.server-stats--compact .server-stat__value { font-size: 0.95rem; }
+.server-stats--compact .server-stat__sub { font-size: 0.62rem; }
+
+

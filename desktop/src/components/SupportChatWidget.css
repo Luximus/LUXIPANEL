@@ -1,0 +1,425 @@
+/* ── Panel del chat ──────────────────────────────────────────────────────
+   El asistente vive dentro de un drawer daisyUI (`AssistantDrawer`,
+   https://daisyui.com/components/drawer/); el panel llena su contenedor (el
+   `aside` del `drawer-side`). Antes era un FAB + panel flotante con
+   `position: fixed`, ya eliminados al consolidar el chrome en el navbar. */
+.support-chat-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--lp-card-solid, #ffffff);
+  overflow: hidden;
+}
+
+.support-chat-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--lp-border);
+  background: color-mix(in srgb, var(--lp-brand) 12%, var(--lp-card-solid));
+}
+
+.support-chat-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--lp-text);
+}
+
+.support-chat-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: none;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+}
+
+.support-chat-panel__close:hover {
+  background: color-mix(in srgb, var(--lp-text) 8%, transparent);
+  color: var(--lp-text);
+}
+
+.support-chat-panel__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Burbujas (patrón `chat` de daisyUI) ───────────────────────────────
+   El markup usa `chat chat-start|chat-end` + `chat-bubble` de daisyUI
+   (https://daisyui.com/components/chat/). Aquí solo afinamos tipografía,
+   wrapping y el avatar para que encaje con el tamaño compacto del panel y
+   las variables `--lp-*` del cliente. Estas reglas van sin `@layer`, así
+   que ganan a la capa `components` de daisyUI en la cascada. */
+.support-chat-bubble {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Avatar circular del asistente (icono o foto dentro del `chat-image avatar`).
+   La foto del asistente activo la entrega el backend (roster rotativo); el
+   icono es solo el respaldo cuando aún no llegó o la imagen falla. */
+.support-chat-avatar {
+  width: 1.85rem;
+  height: 1.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--lp-brand, #6366f1);
+  color: #fff;
+  overflow: hidden;
+}
+
+.support-chat-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Avatar (mini) junto al nombre del asistente en la cabecera del panel. */
+.support-chat-panel__title-avatar {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.support-chat-error {
+  align-self: center;
+  font-size: 0.78rem;
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+}
+
+/* Indicador "escribiendo…" */
+.support-chat-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.support-chat-typing span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--lp-text-muted);
+  animation: support-chat-bounce 1s infinite ease-in-out;
+}
+
+.support-chat-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.support-chat-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes support-chat-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-0.25rem);
+    opacity: 1;
+  }
+}
+
+.support-chat-panel__input {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border-top: 1px solid var(--lp-border);
+  background: var(--lp-card-solid, #ffffff);
+}
+
+.support-chat-panel__input textarea {
+  flex: 1 1 auto;
+  resize: none;
+  max-height: 6rem;
+  min-height: 2.4rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.7rem;
+  background: var(--lp-card-solid, #ffffff);
+  color: var(--lp-text);
+  font: inherit;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.support-chat-panel__input textarea:focus {
+  outline: none;
+  border-color: var(--lp-border-brand);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lp-brand-light) 16%, transparent);
+}
+
+.support-chat-panel__input button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: none;
+  border-radius: 0.7rem;
+  background: var(--lp-brand, #6366f1);
+  color: #fff;
+  cursor: pointer;
+  transition: filter 0.15s, opacity 0.15s;
+}
+
+.support-chat-panel__input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.support-chat-panel__input button:not(:disabled):hover {
+  filter: brightness(1.07);
+}
+
+/* ── Hub: cabecera (botón Mis tickets) + clip de adjuntos del chat ───────── */
+.support-chat-panel__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.support-chat-panel__title > span,
+.support-chat-panel__title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.support-chat-panel__tickets-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--lp-border);
+  background: color-mix(in srgb, var(--lp-text) 5%, transparent);
+  color: var(--lp-text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.support-chat-panel__tickets-btn:hover {
+  color: var(--lp-brand);
+  border-color: var(--lp-border-brand, var(--lp-brand));
+}
+/* El clip va dentro del input pero NO debe heredar el cuadrado de marca del
+   botón de enviar — mayor especificidad que `.support-chat-panel__input button`. */
+.support-chat-panel__input .support-chat-attach-btn {
+  width: 2rem;
+  height: 2.4rem;
+  background: none;
+  border: none;
+  border-radius: 0.6rem;
+  color: var(--lp-text-muted);
+}
+.support-chat-panel__input .support-chat-attach-btn:not(:disabled):hover {
+  color: var(--lp-brand);
+  filter: none;
+}
+.support-chat-panel__input .support-chat-attach-btn:disabled {
+  opacity: 0.4;
+}
+
+/* ── Móvil/ventana estrecha: panel como hoja inferior ──────────────────── */
+@media (max-width: 768px) {
+  .support-chat-fab {
+    inset-inline-start: 1rem;
+    bottom: 1rem;
+    height: 2.9rem;
+    padding: 0 1rem;
+    font-size: 0.88rem;
+  }
+
+  .support-chat-panel {
+    inset-inline: 0.5rem;
+    width: auto;
+    bottom: 4.6rem;
+    height: min(70vh, 32rem);
+  }
+}
+
+/* ── Acciones inline en mensajes del asistente ─────────────────────────
+   El bot puede emitir botones bajo su respuesta (`navigate`, `open_modal`,
+   `confirm_mutation`). Van en el `chat-footer` de daisyUI, en columna bajo
+   la burbuja del asistente. `justify-self: stretch` las saca del colapso a
+   contenido que impone `place-items: start` del `chat-start`. */
+.support-chat-msg__actions {
+  justify-self: stretch;
+  max-width: 92%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.support-chat-msg__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.55rem;
+  border: 1px solid var(--lp-brand, #6366f1);
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--lp-brand, #6366f1);
+  cursor: pointer;
+  transition: background-color 0.12s, transform 0.08s;
+  text-align: start;
+}
+
+.support-chat-msg__action:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.16);
+}
+
+.support-chat-msg__action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.support-chat-msg__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Variante destructiva — `confirm_mutation`. */
+.support-chat-msg__action--confirm {
+  border-color: #dc2626;
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.support-chat-msg__action--confirm:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.16);
+}
+
+/* ── Tarjetas interactivas del asistente (client_action) ───────────────── */
+.support-chat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--lp-brand) 4%, var(--lp-card-solid));
+}
+
+.support-chat-card__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lp-text);
+}
+
+.support-chat-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.support-chat-card__field > span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lp-text-muted);
+}
+
+.support-chat-card__key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.support-chat-card__row {
+  display: flex;
+  gap: 8px;
+}
+
+.support-chat-card__field--port {
+  width: 92px;
+  flex: 0 0 auto;
+}
+
+.support-chat-card__field--grow {
+  flex: 1 1 auto;
+}
+
+.support-chat-card__err {
+  font-size: 12px;
+  color: #dc2626;
+}
+
+.support-chat-card__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--lp-text-muted);
+}
+
+.support-chat-card__notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.support-chat-card__hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--lp-text-muted);
+}
+.support-chat-card__qr {
+  align-self: center;
+  width: 160px;
+  height: 160px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+}
+.support-chat-card__warn {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #b45309;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #f59e0b 35%, transparent);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+.support-chat-card__codes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  padding-left: 18px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--lp-text);
+}

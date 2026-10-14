@@ -1,0 +1,21 @@
+name: Categorize module reports
+on:
+  issues:
+    types: [opened, edited]
+permissions:
+  issues: write
+  contents: read
+jobs:
+  categorize:
+    if: github.repository == 'Luxisoft/LUXIPANEL'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          persist-credentials: false
+      - run: python3 scripts/categorize-report.py
+        working-directory: web
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}

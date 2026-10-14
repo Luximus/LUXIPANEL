@@ -1,0 +1,50 @@
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  label: { fontSize: 13, fontWeight: "800", marginTop: 12, marginBottom: 6 },
+  inputCode: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 22,
+    letterSpacing: 8,
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
+  inputText: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    letterSpacing: 2,
+    textAlign: "center",
+  },
+  methodRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  methodIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorBox: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 10,
+  },
+  selectorMethodContent: { flex: 1 },
+  selectorMethodList: { gap: 10, marginTop: 12 },
+  passkeyView: { alignItems: "center", paddingVertical: 14, gap: 12 },
+});

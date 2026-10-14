@@ -1,0 +1,10 @@
+/* DataTable — CSS Module
+ * Solo contiene lo que no puede expresarse en clases Tailwind/daisyUI:
+ * el posicionado dinámico del menú contextual (portal), que se pasa como
+ * variables CSS para no usar style={} con valores calculados en runtime.
+ */
+
+.rowMenu {
+  top: var(--dt-top);
+  left: var(--dt-left);
+}

@@ -1,0 +1,9 @@
+# LUXIPANEL
+
+> Private server administration panel. Authentication and the account's permissions are required to access administrative content.
+
+## Access
+
+- [Sign in](/login): The public entry point for authorized users.
+
+Administrative pages are excluded from public indexing. This file does not grant access to private content or authorize actions on a server.

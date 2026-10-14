@@ -1,0 +1,8 @@
+import { describe,expect,it } from "vitest";
+import { sourceDigest,validateExpoSource,filesSchema } from "./expo-provider-policy.js";
+const base={"App.tsx":"export default function App(){return null;}","package.json":JSON.stringify({dependencies:{expo:"~57.0.17",react:"19.2.3","react-native":"0.86.3"},scripts:{start:"expo start"}}),"app.json":JSON.stringify({expo:{android:{package:"com.example.mobile"},ios:{bundleIdentifier:"com.example.mobile"}}}),"eas.json":JSON.stringify({build:{production:{autoIncrement:true}}}),"tsconfig.json":JSON.stringify({extends:"expo/tsconfig.base",compilerOptions:{strict:true}})};
+describe("Expo broker source safety",()=>{
+ it("accepts static Expo config and immutable digests",()=>{expect(()=>validateExpoSource(base)).not.toThrow();expect(sourceDigest(base)).toBe(sourceDigest(Object.fromEntries(Object.entries(base).reverse())));});
+ it("rejects paths, customer hooks, native plugins and arbitrary dependencies",()=>{expect(filesSchema.safeParse({...base,"src/../../.env":"secret"}).success).toBe(false);for(const files of [{...base,"package.json":JSON.stringify({scripts:{postinstall:"steal"}})},{...base,"app.json":JSON.stringify({expo:{android:{package:"x"},ios:{bundleIdentifier:"x"},plugins:["./src/plugin.ts"]}})},{...base,"package.json":JSON.stringify({dependencies:{evil:"file:/etc/luxipanel"}})}])expect(()=>validateExpoSource(files)).toThrow();});
+ it("rejects custom workflows executed under the Expo credential",()=>{expect(()=>validateExpoSource({...base,"eas.json":JSON.stringify({build:{production:{config:"steal.yml"}}})})).toThrow("configuration");expect(()=>validateExpoSource({...base,"tsconfig.json":JSON.stringify({extends:"/etc/luxipanel/config"})})).toThrow("tsconfig");});
+});

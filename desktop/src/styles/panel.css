@@ -1,0 +1,279 @@
+/* Panel UI (réplica de las páginas del portal /frontend). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ─────────── Panel UI (mirrors /frontend portal pages) ─────────── */
+/* Defaults — matches light theme. Used as fallback when [data-theme] hasn't
+   cascaded yet (e.g. portaled modals before the html attribute is set). */
+:root {
+  --lp-card: #ffffff;
+  --lp-card-solid: #ffffff;
+  --lp-border: rgba(15, 23, 42, 0.08);
+  --lp-border-strong: rgba(15, 23, 42, 0.14);
+  --lp-ink-1: #ffffff;
+  --lp-ink-2: #f8fafc;
+  --lp-heading: #0f172a;
+  --lp-text: #334155;
+  --lp-text-sub: #475569;
+  --lp-text-muted: #64748b;
+  --lp-brand: #6366f1;
+  --lp-brand-light: #7c3aed;
+  --lp-brand-dim: rgba(99, 102, 241, 0.10);
+  --lp-brand-glow: rgba(99, 102, 241, 0.18);
+  --lp-border-brand: rgba(99, 102, 241, 0.32);
+  --lp-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --lp-shadow-xl: 0 20px 40px -20px rgba(15, 23, 42, 0.18);
+}
+
+[data-theme="light"] {
+  --lp-card: rgba(255, 255, 255, 0.92);
+  --lp-card-solid: #ffffff;
+  --lp-border: rgba(15, 23, 42, 0.08);
+  --lp-border-strong: rgba(15, 23, 42, 0.14);
+  --lp-ink-1: #ffffff;
+  --lp-ink-2: #f8fafc;
+  --lp-heading: #0f172a;
+  --lp-text: #334155;
+  --lp-text-sub: #475569;
+  --lp-text-muted: #64748b;
+  --lp-brand: #6366f1;
+  --lp-brand-light: #7c3aed;
+  --lp-brand-dim: rgba(99, 102, 241, 0.10);
+  --lp-brand-glow: rgba(99, 102, 241, 0.18);
+  --lp-border-brand: rgba(99, 102, 241, 0.32);
+  --lp-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --lp-shadow-xl: 0 20px 40px -20px rgba(15, 23, 42, 0.18);
+  --lp-scroll-thumb: rgba(15, 23, 42, 0.18);
+  --lp-scroll-thumb-hover: rgba(15, 23, 42, 0.32);
+}
+
+[data-theme="dark"] {
+  --lp-card: rgba(76, 76, 76, 0.33);
+  --lp-card-solid: #1a1a1a;
+  --lp-border: rgba(82, 82, 91, 0.55);
+  --lp-border-strong: rgba(82, 82, 91, 0.85);
+  --lp-ink-1: #1a1a1a;
+  --lp-ink-2: #242424;
+  --lp-heading: #f4f4f5;
+  --lp-text: #d4d4d8;
+  --lp-text-sub: #c7c7cc;
+  --lp-text-muted: #a0a0a0;
+  --lp-brand: #a78bfa;
+  --lp-brand-light: #c084fc;
+  --lp-brand-dim: rgba(167, 139, 250, 0.12);
+  --lp-brand-glow: rgba(167, 139, 250, 0.22);
+  --lp-border-brand: rgba(167, 139, 250, 0.35);
+  --lp-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --lp-shadow-xl: 0 24px 60px -24px rgba(0, 0, 0, 0.55);
+  --lp-scroll-thumb: rgba(255, 255, 255, 0.16);
+  --lp-scroll-thumb-hover: rgba(255, 255, 255, 0.30);
+}
+
+.panel-wrapper {
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.panel-wrapper--full {
+  max-width: none;
+}
+
+/* Layout en 3 franjas (anchos de VENTANA aprox.; el viewport CSS va ~16px por
+   debajo del ancho de ventana por el borde):
+   · < 1100px  → una sola columna: el panel de tabs queda DEBAJO del listado.
+                 La ventana tiene minWidth ~1080 (electron/main.cjs), así que
+                 esta franja es mínima (~1064–1100) y casi inalcanzable.
+   · 1100–1600 → dos columnas con el panel de tabs ~30% más angosto (≈520px =
+                 742·0,7) para que el carousel de paneles/servidores gane ese
+                 espacio.
+   · ≥ 1600px  → dos columnas como estaba (panel de tabs a 742px). */
+.dashboard-split {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1100px) {
+  .dashboard-split {
+    grid-template-columns: minmax(0, 1fr) 520px;
+    /* El scroll vive DENTRO de cada columna; sin esto la página scrollea. */
+    height: 100%;
+    min-height: 0;
+  }
+}
+
+@media (min-width: 1600px) {
+  .dashboard-split {
+    grid-template-columns: minmax(0, 1fr) 742px;
+  }
+}
+
+/* Botón de flecha para colapsar el panel lateral (vive arriba del todo dentro
+   del aside, alineado a la derecha sobre la barra de tabs). */
+.dashboard-aside__collapse {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.25rem -0.25rem -0.75rem 0; /* compensa el gap del aside */
+  border-radius: 0.6rem;
+  border: 1px solid var(--lp-border);
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.dashboard-aside__collapse:hover {
+  opacity: 1;
+  background: var(--lp-card);
+}
+
+/* Riel estrecho que reemplaza al aside cuando está colapsado: solo la flecha
+   para re-expandir. Mantiene el mismo "chrome" (tarjeta) que el aside. */
+.dashboard-split__rail {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  background: var(--lp-card);
+  border: 1px solid var(--lp-border);
+  border-radius: 1.25rem;
+  box-shadow: var(--lp-shadow-xl);
+  color: inherit;
+  opacity: 0.85;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.dashboard-split__rail:hover {
+  opacity: 1;
+}
+
+/* Acordeón apilado (<1100px): cuando el layout cae a una columna, el listado de
+   servidores y el panel de tabs se vuelven dos secciones colapsables (una
+   abierta a la vez), al estilo de los colapsables SSH. La sección abierta llena
+   el alto restante y su panel conserva el scroll interno. */
+.dashboard-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.dashboard-stack__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.9rem;
+  background: var(--lp-card);
+  color: var(--lp-heading);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dashboard-stack__head:hover {
+  border-color: var(--lp-border-brand);
+}
+
+.dashboard-stack__head:focus-visible {
+  outline: 2px solid var(--lp-border-brand);
+  outline-offset: 2px;
+}
+
+.dashboard-stack__chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.dashboard-stack__head[aria-expanded="true"] .dashboard-stack__chevron {
+  transform: rotate(180deg);
+}
+
+/* La sección abierta ocupa el alto restante; su hijo (main/aside) lo llena y
+   hace scroll dentro (no scrollea la página). */
+.dashboard-stack__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.dashboard-stack__body > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dashboard-split__main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* Cabecera de la columna izquierda (Consumo + barra de saldo): se apila encima
+   del listado y NO crece, dejando que `dashboard-panel` llene el alto restante.
+   Así el lateral de tabs gana todo el alto de la franja a su derecha. */
+.dashboard-split__main-header {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* Contenedor de tarjetas + filtros: mismo "chrome" que el aside para que ambas
+   columnas se lean como paneles emparejados. Llena su columna; la grilla de
+   tarjetas hace scroll interno y la paginación queda fija abajo-izquierda. */
+.dashboard-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0; /* permite encoger bajo el ancho del contenido (no desbordar el aside) */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--lp-card);
+  border: 1px solid var(--lp-border);
+  border-radius: 1.25rem;
+  padding: 1rem;
+  box-shadow: var(--lp-shadow-xl);
+  backdrop-filter: blur(6px);
+}
+
+.dashboard-panel__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Nunca scroll horizontal: el contenido (timeline, tablas) debe reflowar, no
+     desbordar en X. overflow-y:auto por sí solo deja overflow-x en `auto`. */
+  overflow-x: hidden;
+}
+
+/* CTA de nube del estado vacío ("Nueva conexión"): pulso suave de halo para
+   llamar la atención, igual que en la app. El pulso anima `box-shadow` (no
+   `transform`) para no pelear con el `hover:scale` del botón. Respeta
+   `prefers-reduced-motion`. */
+.lp-cloud-cta {
+  animation: lp-cloud-pulse 1.7s ease-in-out infinite;
+}
+
+@keyframes lp-cloud-pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12); }
+  50% { box-shadow: 0 10px 30px rgba(99, 102, 241, 0.38); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-cloud-cta {
+    animation: none;
+  }
+}
+
+

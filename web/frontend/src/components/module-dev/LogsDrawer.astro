@@ -1,0 +1,25 @@
+---
+import ViewSettingsModal from "@/components/ui/ViewSettingsModal.astro";
+import LogsPanel from "./LogsPanel";
+interface Props { labels: Record<string, string> }
+const { labels: L } = Astro.props;
+---
+<button type="button" id="module-dev-logs-modal-trigger" class="inline-flex min-h-9 shrink-0 items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title={L.title}>
+  <i class="ti ti-report-analytics text-base" aria-hidden="true"></i><span>{L.title}</span>
+</button>
+<ViewSettingsModal id="module-dev-logs-modal" title={L.title} description={L.description} variant="drawer" hideFooter={true} hideTrigger={true}>
+  <button slot="header-actions" type="button" id="md-logs-settings" title={L.settings} aria-label={L.settings} class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"><i class="ti ti-settings text-lg" aria-hidden="true"></i></button>
+  <LogsPanel labels={L} client:load />
+</ViewSettingsModal>
+<style is:global>
+  @media (min-width: 768px) {
+    #module-dev-logs-modal [data-logs-selected="true"] [data-logs-filters] { display: grid; }
+    #module-dev-logs-modal [data-logs-selected="true"] [data-logs-list] { display: block; }
+  }
+  @media (max-width: 639px) {
+    [data-panel-topbar]:has(#module-dev-logs-modal-trigger) > div:has(#panel-topbar-title) { flex: 1; min-width: 0; }
+    [data-panel-topbar]:has(#module-dev-logs-modal-trigger) #panel-topbar-title { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-panel-topbar]:has(#module-dev-logs-modal-trigger) #module-dev-settings-modal-trigger { width: 2.25rem; flex: none; justify-content: center; padding-inline: 0; }
+    [data-panel-topbar]:has(#module-dev-logs-modal-trigger) #module-dev-settings-modal-trigger > span { display: none; }
+  }
+</style>

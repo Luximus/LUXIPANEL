@@ -1,0 +1,23 @@
+import React from "react";
+import { act,create,type ReactTestRenderer } from "react-test-renderer";
+import { afterEach,expect,it,vi } from "vitest";
+const prefs=vi.hoisted(()=>({get:vi.fn(),save:vi.fn()}));
+vi.mock("react-native",()=>({View:"View",Text:"Text",Pressable:"Pressable",ActivityIndicator:"Spinner"}));
+vi.mock("../ui/Select",()=>({Select:"Select"}));
+vi.mock("../../hooks/useTheme",()=>({useTheme:()=>({theme:"dark"})}));
+vi.mock("../../theme/colors",()=>({getThemeTokens:()=>({})}));
+vi.mock("./terminal-preferences",()=>({getTerminalPreferences:prefs.get,patchTerminalPreferences:prefs.save}));
+import { TerminalPreferencesPanel } from "./TerminalPreferencesPanel";
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+let tree:ReactTestRenderer;
+afterEach(async()=>{if(tree)await act(async()=>tree.unmount());});
+it("places font size before the CLI/install region and history, and saves only the selected font",async()=>{
+  const value={fontSize:13,historyOrder:["codex","claude","commands"],historyVisible:["codex","claude","commands"]};
+  prefs.get.mockResolvedValue(value);prefs.save.mockResolvedValue({...value,fontSize:16});
+  const changed=vi.fn();
+  await act(async()=>{tree=create(<TerminalPreferencesPanel panelId="box" token="token" onChange={changed}>{React.createElement("View",{testID:"terminal-cli-settings"})}{React.createElement("View",{testID:"terminal-install-settings"})}</TerminalPreferencesPanel>);});
+  expect(tree.root.findAll(n=>String(n.type)==="View"&&!!n.props.testID).map(n=>n.props.testID)).toEqual(["terminal-font-settings","terminal-cli-settings","terminal-install-settings","terminal-history-settings"]);
+  await act(async()=>tree.root.findByType("Select" as any).props.onChange("16"));
+  expect(prefs.save).toHaveBeenCalledWith("box","token",{fontSize:16});
+  expect(changed).toHaveBeenLastCalledWith({...value,fontSize:16});
+});

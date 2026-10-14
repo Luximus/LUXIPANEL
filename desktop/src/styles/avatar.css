@@ -1,0 +1,114 @@
+/* Avatar (shadcn-style, plain HTML). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ─── Avatar (shadcn-style, plain HTML) ───────────────────────────────── */
+
+.lxp-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--lp-text) 8%, transparent);
+  color: var(--lp-text);
+  border: 1px solid var(--lp-border, rgba(148, 163, 184, 0.3));
+}
+
+.lxp-avatar__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.lxp-avatar__fallback {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--lp-text);
+  user-select: none;
+}
+
+.ticket-message--user .ticket-message__bubble {
+  background: color-mix(in srgb, var(--lp-brand) 18%, var(--lp-card-solid));
+  color: var(--lp-heading);
+  border: 1px solid var(--lp-border-brand);
+}
+
+[data-theme="dark"] .ticket-message--user .ticket-message__bubble {
+  background: color-mix(in srgb, var(--lp-brand) 12%, #1f2330);
+  color: #f4f4f5;
+  border-color: rgba(167, 139, 250, 0.22);
+}
+
+.ticket-message__attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.ticket-message__attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--lp-text) 10%, transparent);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.78rem;
+  border: 1px solid var(--lp-border);
+}
+
+.ticket-message__attachment:hover {
+  background: color-mix(in srgb, var(--lp-text) 16%, transparent);
+}
+
+.ticket-message__attachment-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--lp-brand) 22%, transparent);
+  color: var(--lp-brand-light);
+}
+
+.ticket-message__attachment-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ticket-message__attachment-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14rem;
+}
+
+.ticket-message__attachment-size {
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.ticket-message__attachment-image {
+  max-width: 16rem;
+  max-height: 12rem;
+  border-radius: 0.5rem;
+  display: block;
+  margin-top: 0.3rem;
+  object-fit: cover;
+}
+
+

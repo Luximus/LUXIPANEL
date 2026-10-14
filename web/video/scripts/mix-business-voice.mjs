@@ -1,0 +1,30 @@
+import { readFileSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
+
+const language = process.argv[2];
+if (!["es", "en"].includes(language)) throw new Error("Choose es or en.");
+const manifest = JSON.parse(readFileSync("narration/business-voice.json", "utf8"));
+const original = resolve("out/luxisoft-negocio-gratis.mp4");
+if (createHash("sha256").update(readFileSync(original)).digest("hex") !== manifest.sourceVideoSha256) throw new Error("The approved original video changed. Review before exporting.");
+const picture = language === "es" ? original : resolve("out/luxisoft-negocio-gratis-en-preview.mp4");
+const voice = resolve(`public/audio/narration-business-${language}.wav`);
+if (!existsSync(voice)) throw new Error(`Missing real ElevenLabs narration for ${language}; no substitute voice will be exported.`);
+const cache = resolve(".cache/elevenlabs-business");
+mkdirSync(cache, { recursive: true });
+const raw = resolve(cache, `${language}-mix-raw.wav`);
+const mix = resolve(`public/audio/business-elevenlabs-${language}.wav`);
+const output = resolve(`out/luxisoft-negocio-gratis-${language}-elevenlabs.mp4`);
+const graph = "[0:a]highpass=f=75,lowpass=f=14000,asplit=2[vocal][side];[1:a]volume=0.5[music];[music][side]sidechaincompress=threshold=0.015:ratio=8:attack=12:release=280:makeup=1[ducked];[ducked][vocal]amix=inputs=2:normalize=0:duration=longest,atrim=duration=45,afade=t=out:st=44.8:d=0.2[mix]";
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", voice, "-i", "public/audio/score-business.wav", "-filter_complex", graph, "-map", "[mix]", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", raw]);
+const analysis = spawnSync("ffmpeg", ["-hide_banner", "-i", raw, "-af", "loudnorm=I=-14:TP=-1.8:LRA=7:print_format=json", "-f", "null", "-"], { encoding: "utf8", stdio: ["ignore", "ignore", "pipe"] });
+if (analysis.status !== 0) throw new Error("Mix loudness analysis failed.");
+const stats = JSON.parse(analysis.stderr.match(/\{\s*"input_i"[\s\S]*?\}/)[0]);
+const filter = `loudnorm=I=-14:TP=-1.8:LRA=7:measured_I=${stats.input_i}:measured_TP=${stats.input_tp}:measured_LRA=${stats.input_lra}:measured_thresh=${stats.input_thresh}:offset=${stats.target_offset}:linear=true`;
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-af", filter, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", mix]);
+// Copy the picture bitstream. Spanish is exactly the user-approved MP4;
+// English is the same Remotion composition with localized screen copy.
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", picture, "-i", mix, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-t", "45", "-movflags", "+faststart", output]);
+writeFileSync(resolve(cache, `${language}-export.json`), JSON.stringify({ language, voiceProvider: "ElevenLabs", model: manifest.model, voiceName: manifest.voices[language].name, picture, sourceVideoSha256: manifest.sourceVideoSha256, pictureReencoded: false, output, mix, targetLufs: -14, targetTruePeak: -1.8 }, null, 2));
+console.log(`Exported ${output} with real ElevenLabs voice, original music and picture bitstream copied.`);

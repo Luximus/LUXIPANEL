@@ -1,0 +1,292 @@
+/*
+ * Estilos de la vista "Proveedores" del asistente en modo directo.
+ * Prefijo sap-prov- (Server Assistant Providers). CSS propio (sin Tailwind),
+ * coherente con el resto de tarjetas de agents/ pero independiente de
+ * daisyUI para poder afinar el layout del formulario por proveedor.
+ */
+
+.sap-prov-center {
+  display: flex;
+  min-height: 13rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--sap-prov-muted, rgba(120, 120, 130, 0.8));
+  text-align: center;
+}
+
+.sap-prov-notice {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.sap-prov-spin {
+  animation: sap-prov-spin 0.9s linear infinite;
+}
+
+@keyframes sap-prov-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sap-prov-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+}
+
+.sap-prov-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(120, 120, 130, 0.22);
+  background: rgba(120, 120, 130, 0.04);
+  padding: 0.9rem;
+}
+
+.sap-prov-card.is-active {
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+.sap-prov-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sap-prov-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.6rem;
+  flex: none;
+}
+
+.sap-prov-id {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.sap-prov-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.sap-prov-badge {
+  align-self: flex-start;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  color: #6366f1;
+  background: rgba(99, 102, 241, 0.14);
+}
+
+.sap-prov-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.sap-prov-toggle input {
+  appearance: none;
+  position: relative;
+  width: 2rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  background: rgba(120, 120, 130, 0.35);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  flex: none;
+}
+
+.sap-prov-toggle input::before {
+  content: "";
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.sap-prov-toggle input:checked {
+  background: #6366f1;
+}
+
+.sap-prov-toggle input:checked::before {
+  transform: translateX(0.85rem);
+}
+
+.sap-prov-toggle input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sap-prov-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.sap-prov-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--sap-prov-muted, rgba(120, 120, 130, 0.85));
+}
+
+.sap-prov-hint {
+  font-style: normal;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.sap-prov-segmented {
+  display: inline-flex;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(120, 120, 130, 0.25);
+  overflow: hidden;
+  width: fit-content;
+}
+
+.sap-prov-seg {
+  border: none;
+  background: transparent;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: inherit;
+}
+
+.sap-prov-seg.is-on {
+  background: rgba(99, 102, 241, 0.16);
+  color: #6366f1;
+}
+
+.sap-prov-seg:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.sap-prov-input {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(120, 120, 130, 0.25);
+  background: transparent;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+  color: inherit;
+  width: 100%;
+}
+
+.sap-prov-input--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.sap-prov-key-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sap-prov-key-wrap .sap-prov-input {
+  padding-right: 2rem;
+}
+
+.sap-prov-eye {
+  position: absolute;
+  right: 0.4rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  display: inline-flex;
+}
+
+.sap-prov-eye:hover {
+  opacity: 1;
+}
+
+.sap-prov-cli-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+}
+
+.sap-prov-cli-status p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sap-prov-cli-note {
+  opacity: 0.7;
+  font-size: 0.7rem;
+}
+
+.sap-prov-ok {
+  color: #22c55e;
+}
+
+.sap-prov-warn {
+  color: #f59e0b;
+}
+
+.sap-prov-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.sap-prov-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(120, 120, 130, 0.3);
+  background: transparent;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: inherit;
+}
+
+.sap-prov-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.sap-prov-btn--primary {
+  border-color: rgba(99, 102, 241, 0.5);
+  background: rgba(99, 102, 241, 0.14);
+  color: #6366f1;
+}
+
+.sap-prov-probe {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.sap-prov-probe.is-ok {
+  color: #22c55e;
+}
+
+.sap-prov-probe.is-warn {
+  color: #f59e0b;
+}

@@ -1,0 +1,14 @@
+@keyframes lp-update-indeterminate {
+  0% { transform: translateX(-100%); width: 30%; }
+  50% { transform: translateX(50%); width: 30%; }
+  100% { transform: translateX(180%); width: 30%; }
+}
+
+.progressBar {
+  width: var(--progress-w, 100%);
+}
+
+.progressBarIndeterminate {
+  width: 30%;
+  animation: lp-update-indeterminate 1.4s ease-in-out infinite;
+}

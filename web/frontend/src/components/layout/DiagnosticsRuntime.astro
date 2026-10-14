@@ -1,0 +1,21 @@
+<!-- Early listeners precede islands and resource loads; one singleton per document. -->
+<script is:inline>
+  (() => {
+    if (window.__lxpDiagnosticsEarly) return;
+    window.__lxpDiagnosticsEarly = true;
+    const queue = window.__lxpDiagnosticsQueue ||= [];
+    const record = (event) => { if (queue.length < 100) queue.push(event); };
+    window.addEventListener("error", (event) => {
+      if (event instanceof ErrorEvent) record({ severity: "error", source: "frontend", message: String(event.message || "Script error").slice(0, 3000), stack: event.error?.stack?.slice(0, 6000), url: event.filename?.split("?")[0] });
+      else record({ severity: "error", source: "frontend-resource", message: "Resource failed: " + (event.target?.tagName || "resource"), url: (event.target?.src || event.target?.href || location.pathname).split("?")[0] });
+    }, true);
+    window.addEventListener("unhandledrejection", (event) => {
+      if (event.reason?.name === "AbortError") return;
+      record({ severity: "error", source: "frontend", message: String(event.reason?.message || event.reason || "Unhandled rejection").slice(0, 3000), stack: event.reason?.stack?.slice(0, 6000), url: location.pathname });
+    });
+  })();
+</script>
+<script>
+  import { installBrowserDiagnostics } from "@/lib/diagnostics/browser";
+  installBrowserDiagnostics();
+</script>

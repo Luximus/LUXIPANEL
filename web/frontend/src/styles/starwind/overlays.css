@@ -1,0 +1,47 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 LUXISOFT */
+/* Modal overlay + card chrome and the navbar theme/mobile toggles. */
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+}
+
+.modal-overlay.open,
+.modal-overlay[style*="display: flex"] {
+  display: flex;
+}
+
+.modal-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  box-shadow: var(--modal-shadow, 0 20px 60px rgba(0, 0, 0, 0.3));
+}
+
+.app-navbar__theme,
+.app-navbar__mobile-toggle {
+  border: 1px solid var(--border-brand) !important;
+  background: var(--brand-dim) !important;
+  color: var(--brand-light) !important;
+}
+
+.app-navbar__theme:hover,
+.app-navbar__mobile-toggle:hover {
+  border-color: var(--border-brand) !important;
+  background: var(--brand-glow) !important;
+}
+
+.modal-overlay {
+  background: var(--modal-backdrop, rgba(15, 23, 42, 0.6));
+}

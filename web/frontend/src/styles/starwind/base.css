@@ -1,0 +1,97 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 LUXISOFT */
+/* Reduced-motion fallbacks, base typography, custom scrollbars,
+   view-transition tuning and the assistant task-done keyframe. */
+
+@media (prefers-reduced-motion: reduce) {
+  .text-iridescent,
+  .brand-text,
+  :is(h1, h2, h3, h4, h5, h6)[style*="color:var(--brand-light)"],
+  :is(h1, h2, h3, h4, h5, h6)[style*="color: var(--brand-light)"],
+  :is(h1, h2, h3, h4, h5, h6)[class*="text-purple"],
+  :is(h1, h2, h3, h4, h5, h6)[class*="text-violet"],
+  :is(h1, h2, h3, h4, h5, h6)[class*="text-fuchsia"],
+  :is(h1, h2, h3, h4, h5, h6)[class*="text-indigo"],
+  :is(h1, h2, h3, h4, h5, h6).section-title,
+  :is(h1, h2, h3, h4, h5, h6).panel-hero__title,
+  :is(h1, h2, h3, h4, h5, h6).modal-title,
+  .eyebrow,
+  .snav-group,
+  p[class*="tracking-widest"][style*="color:var(--brand-light)"],
+  p[class*="tracking-widest"][style*="color: var(--brand-light)"] {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    background-size: 100% 100%;
+  }
+
+  :where(
+    .btn,
+    [class*="btn-"]:not(.btn-text),
+    .btn-primary,
+    .btn-renew,
+    .btn-ghost,
+    .btn-brand,
+    .pagination-btn,
+    .app-navbar__brand-btn,
+    .app-navbar__theme,
+    .app-navbar__mobile-toggle,
+    .app-navbar__user-btn
+  ):not(.table-sort-btn):not(.btn-install-style):not(:disabled):not([aria-disabled="true"]) {
+    animation: none !important;
+  }
+}
+
+html {
+  font-family: var(--lxp-font-sans);
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--lxp-font-mono);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+/* Brief fade-in for the subagent "En curso" → "Hecha" transition. Used by
+ * ChatPane to confirm a task really settled (instead of the spinner vanishing
+ * silently). Kept here so it survives Tailwind's purge of arbitrary keyframes
+ * from JSX class strings. */
+@keyframes lxpAssistantTaskDoneIn {
+  0% { opacity: 0; transform: scale(0.7); }
+  60% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-lxp-assistant-task-done {
+  animation: lxpAssistantTaskDoneIn 300ms ease-out;
+}

@@ -1,0 +1,109 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+// Renders one settings control for a single react-bits effect prop, driven by
+// the registry schema. The input id is `s-<scopedStorageKey-dashed>` and every
+// field carries `layout-<scope>-bg-field` so the settings script auto-binds it
+// (load/save) generically — no per-effect code. `scope` selects the persisted
+// key family (login → layout_login_*, panel → layout_panel_*).
+import type { LoginEffectProp } from "@/lib/login-effects/registry";
+import { scopedStorageKey, type BackgroundScope } from "@/lib/login-effects/coerce";
+import { getMessages } from "@/i18n";
+import { localeFromRequest } from "@/i18n/server";
+
+interface Props {
+  prop: LoginEffectProp;
+  scope?: BackgroundScope;
+}
+const { prop, scope = "login" } = Astro.props;
+const locale = localeFromRequest(Astro.request);
+const t = await getMessages(locale, ["settings"]);
+const id = "s-" + scopedStorageKey(prop.storageKey, scope).replace(/_/g, "-");
+const c = prop.control;
+const fieldClass = `layout-${scope}-bg-field`;
+const colorClass =
+  `${fieldClass} h-9 w-full cursor-pointer rounded-lg border border-input bg-background p-1`;
+const textClass =
+  `${fieldClass} w-full h-9 rounded-lg border border-input bg-background px-3 text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20`;
+---
+{(c === "color" || c === "rgb01") && (
+  <div class="space-y-1">
+    <label class="text-xs text-muted-foreground" for={id}>{prop.label}</label>
+    <input id={id} type="color" class={colorClass} />
+  </div>
+)}
+{c === "range" && (
+  <div class="space-y-1">
+    <label class="text-xs text-muted-foreground" for={id}>
+      {prop.label} <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output>
+    </label>
+    <input
+      id={id}
+      type="range"
+      min={prop.min}
+      max={prop.max}
+      step={prop.step}
+      data-range-readout
+      class={`${fieldClass} w-full accent-primary`}
+    />
+  </div>
+)}
+{c === "number" && (
+  <div class="space-y-1">
+    <label class="text-xs text-muted-foreground" for={id}>{prop.label}</label>
+    <input id={id} type="number" step="any" class={textClass} />
+  </div>
+)}
+{c === "checkbox" && (
+  <label class="inline-flex items-center gap-2 text-xs text-muted-foreground sm:col-span-2">
+    <input id={id} type="checkbox" class={`${fieldClass} h-4 w-4 accent-primary`} />
+    {prop.label}
+  </label>
+)}
+{c === "text" && (
+  <div class="space-y-1 sm:col-span-2">
+    <label class="text-xs text-muted-foreground" for={id}>{prop.label}</label>
+    <input id={id} type="text" class={`${textClass} font-mono`} />
+  </div>
+)}
+{c === "select" && (
+  <div class="space-y-1">
+    <label class="text-xs text-muted-foreground" for={id}>{prop.label}</label>
+    <select id={id} class={`${textClass} cursor-pointer`}>
+      {(prop.options ?? []).map((o) => <option value={o.value}>{o.label}</option>)}
+    </select>
+  </div>
+)}
+{c === "json" && (
+  <div class="space-y-1 sm:col-span-2">
+    <label class="text-xs text-muted-foreground" for={id}>
+      {prop.label} <span class="text-[10px] opacity-70">{t.settings.imageList?.labelJson}</span>
+    </label>
+    <textarea
+      id={id}
+      rows="2"
+      class={`${textClass} font-mono py-2 resize-y`}
+      placeholder="[]"
+    ></textarea>
+  </div>
+)}
+{c === "items" && (
+  // Image-URL list: add/remove entries one by one. The canonical value stays a
+  // JSON array string in the hidden input (id=<scoped key>, bound by the
+  // settings script) so coerce/render are unchanged; the row editor is wired
+  // generically in index-script1.ts (initImageListEditors).
+  <div class="space-y-2 sm:col-span-2" data-image-list-field>
+    <label class="text-xs text-muted-foreground" for={id}>
+      {prop.label} <span class="text-[10px] opacity-70">{t.settings.imageList?.labelUrls}</span>
+    </label>
+    <input id={id} type="hidden" class={fieldClass} />
+    <div data-image-list-rows class="space-y-2"></div>
+    <button
+      type="button"
+      data-image-list-add
+      class="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+    >
+      <i class="ti ti-plus text-sm"></i>{t.settings.imageList?.addButton}
+    </button>
+  </div>
+)}

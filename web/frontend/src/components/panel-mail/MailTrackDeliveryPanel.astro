@@ -1,0 +1,105 @@
+---
+const { t } = Astro.props;
+---
+  <section data-mail-main-panel="track-delivery" class="hidden space-y-4">
+    <div class="rounded-xl border border-border bg-background p-4">
+      <h4 class="text-sm font-semibold">{t.mail.trackDelivery.sectionTitle}</h4>
+      <p class="mt-1 text-xs text-muted-foreground">
+        {t.mail.trackDelivery.sectionDesc}
+      </p>
+
+      <div id="mail-track-delivery-error" class="mt-3 hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+
+      <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
+        <div class="space-y-1.5">
+          <label for="mail-track-delivery-recipient" class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.trackDelivery.labelRecipient}</label>
+          <input id="mail-track-delivery-recipient" type="text" placeholder={t.mail.trackDelivery.placeholderRecipient} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+        </div>
+        <div class="flex items-end">
+          <button type="button" id="mail-track-delivery-run" class="h-10 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {t.mail.trackDelivery.btnRun}
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" id="mail-track-delivery-show-all" class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">{t.mail.trackDelivery.btnShowAll}</button>
+        <button type="button" id="mail-track-delivery-show-blocked" class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">{t.mail.trackDelivery.btnShowBlocked}</button>
+      </div>
+
+      <div class="mt-4 rounded-lg border border-border p-3">
+        <h5 class="text-base font-semibold">{t.mail.trackDelivery.deliveryReportTitle}</h5>
+        <p id="mail-track-delivery-matches" class="mt-1 text-xs text-muted-foreground">{t.mail.trackDelivery.matchesText}</p>
+
+        <div class="flex flex-wrap items-center gap-3 text-xs">
+          <label class="inline-flex items-center gap-1.5"><input id="mail-track-delivery-show-success" type="checkbox" checked class="h-4 w-4" /> {t.mail.trackDelivery.showSuccesses}</label>
+          <label class="inline-flex items-center gap-1.5"><input id="mail-track-delivery-show-deferred" type="checkbox" checked class="h-4 w-4" /> {t.mail.trackDelivery.showDeferred}</label>
+          <label class="inline-flex items-center gap-1.5"><input id="mail-track-delivery-show-failures" type="checkbox" checked class="h-4 w-4" /> {t.mail.trackDelivery.showFailures}</label>
+          <label class="inline-flex items-center gap-1.5"><input id="mail-track-delivery-show-inprogress" type="checkbox" checked class="h-4 w-4" /> {t.mail.trackDelivery.showInProgress}</label>
+        </div>
+
+        <div class="mt-3 flex items-center gap-2 text-xs">
+          <label for="mail-track-delivery-max-results" class="text-muted-foreground">{t.mail.trackDelivery.maxResultsLabel}</label>
+          <select id="mail-track-delivery-max-results" class="h-8 rounded-md border border-input bg-background px-2 text-xs">
+            <option value="100">100</option>
+            <option value="250" selected>250</option>
+            <option value="500">500</option>
+          </select>
+          <span id="mail-track-delivery-summary" class="ml-auto text-muted-foreground"></span>
+        </div>
+
+        <div class="relative mt-3 overflow-x-auto rounded-md border border-border">
+          <button
+            type="button"
+            id="mail-track-delivery-columns-toggle"
+            class="absolute right-2 top-2 z-10 rounded border border-border bg-background p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            title={t.mail.trackDelivery.tableOptions}
+          >
+            <i class="ti ti-list-details text-sm"></i>
+          </button>
+
+          <div
+            id="mail-track-delivery-columns-panel"
+            class="absolute right-2 top-10 z-20 hidden w-64 rounded-lg border border-border bg-card p-3 shadow-xl"
+          >
+            <div class="mb-2 flex items-center justify-between">
+              <p class="text-xs font-semibold">{t.mail.trackDelivery.tableOptions}</p>
+              <button type="button" id="mail-track-delivery-columns-close" class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                <i class="ti ti-x text-xs"></i>
+              </button>
+            </div>
+            <p class="mb-2 text-[11px] text-muted-foreground">{t.mail.trackDelivery.selectColumns}</p>
+            <label class="mb-2 inline-flex items-center gap-2 text-xs">
+              <input id="mail-track-delivery-columns-all" type="checkbox" class="h-4 w-4" />
+              {t.mail.trackDelivery.selectAll}
+            </label>
+            <div class="max-h-56 space-y-1 overflow-auto">
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="event" class="h-4 w-4" checked /> {t.mail.trackColumns.event}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="fromAddress" class="h-4 w-4" checked /> {t.mail.trackColumns.fromAddress}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="sentTime" class="h-4 w-4" checked /> {t.mail.trackColumns.sentTime}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="spamScore" class="h-4 w-4" checked /> {t.mail.trackColumns.spamScore}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="recipient" class="h-4 w-4" checked /> {t.mail.trackColumns.recipient}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="domain" class="h-4 w-4" /> {t.mail.trackColumns.domain}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="queueId" class="h-4 w-4" /> {t.mail.trackColumns.queueId}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="result" class="h-4 w-4" checked /> {t.mail.trackColumns.result}</label>
+              <label class="flex items-center gap-2 text-xs"><input type="checkbox" data-track-column="actions" class="h-4 w-4" checked /> {t.mail.trackColumns.actions}</label>
+            </div>
+            <button type="button" id="mail-track-delivery-columns-reset" class="mt-3 rounded border border-border px-2 py-1 text-[11px] hover:bg-accent">
+              {t.mail.trackDelivery.resetDefault}
+            </button>
+          </div>
+
+          <table class="w-full text-xs">
+            <thead id="mail-track-delivery-thead"></thead>
+            <tbody id="mail-track-delivery-tbody">
+              <tr>
+                <td colspan="6" class="px-2 py-6 text-center text-muted-foreground">{t.mail.trackDelivery.noRecords}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="mt-2 text-[11px] text-muted-foreground">{t.mail.trackDelivery.dataRetention}</p>
+      </div>
+    </div>
+  </section>

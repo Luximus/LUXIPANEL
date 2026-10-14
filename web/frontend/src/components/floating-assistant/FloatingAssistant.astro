@@ -1,0 +1,147 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * FloatingAssistant — global FAB + drawer for the AI Assistant.
+ *
+ * Mounted once from PanelLayout so the assistant is reachable from any
+ * panel page. The actual UI lives inside FloatingAssistantDrawer (React
+ * island, client:load). Persistence between SPA navigations is handled
+ * by a transition:persist pocket — the React island survives across
+ * astro:page-load events, so chat state stays put when the user navigates.
+ *
+ * Además monta el BRIDGE de hidratación de solicitudes al Asistente. El
+ * bridge se instala en este archivo (no en PanelLayout) porque vive DENTRO
+ * del pocket persistente: así sobrevive a swaps SPA y nunca se pierde la
+ * cola FIFO de pre-hidratación entre navegaciones. Los productores
+ * (Monitor/Mail/Files/…) hablan con el helper `requestAssistant()`
+ * (lib/assistant-request.ts) y el bus vive en `window.__lxpAssistantRequestBus`.
+ * El bridge expone `window.__lxpAssistantAPI.request` para que la API
+ * global esté disponible ANTES de que el drawer hidrate y para drenar la
+ * cola en cuanto un consumidor válido (FloatingAssistantDrawer o
+ * AssistantView en /panel/assistant) se registre.
+ */
+import FloatingAssistantDrawer from "./FloatingAssistantDrawer";
+
+interface Props {
+  locale: string;
+}
+
+const { locale } = Astro.props;
+---
+
+<FloatingAssistantDrawer client:load locale={locale} />
+
+<!--
+  Bridge de hidratación `lxp:assistant:request v1`.
+  - Se ejecuta una vez (is:inline, vive dentro del pocket persistente).
+  - Mantiene la API global + drena la cola FIFO cuando un consumidor válido
+    se registra. Idempotente: re-entradas posteriores no duplican listeners.
+  - Vacía la cola al cambiar de servidor (luxipanel:target-changed) para no
+    mezclar contexto entre targets.
+  - Dedupe por requestId ya lo hace lib/assistant-request.ts (bus compartido);
+    el bridge solo enruta hacia el consumidor activo.
+-->
+<script is:inline>
+  (function () {
+    if (window.__lxpAssistantBridgeWired) return;
+    window.__lxpAssistantBridgeWired = true;
+
+    // MUST match lib/assistant-request.ts ASSISTANT_REQUEST_EVENT (inline
+    // `is:inline` script — cannot import; keep the literal in lockstep).
+    var ASSISTANT_REQUEST_EVENT = "lxp:assistant:request";
+    var REQUEST_QUEUE_CAP = 20;
+
+    function getBus() {
+      if (!window.__lxpAssistantRequestBus) {
+        window.__lxpAssistantRequestBus = { pending: [], ids: new Set() };
+      }
+      return window.__lxpAssistantRequestBus;
+    }
+
+    function getApi() {
+      return window.__lxpAssistantAPI || null;
+    }
+
+    function getConsumer() {
+      // "Consumidor válido" = un objeto con .request(request) que enqueue +
+      // dispatcha. El propio helper requestAssistant() también cumple la
+      // función: si la cola está vacía, despachar va directo al dispatcher
+      // del Asistente (que vive dentro de FloatingAssistantDrawer o
+      // AssistantView). Si NO hay consumidor, encolamos.
+      var api = getApi();
+      return api && typeof api.request === "function" ? api : null;
+    }
+
+    // API global expuesta a productores. El consumidor real
+    // (FloatingAssistantDrawer / AssistantView) sobreescribe este método
+    // cuando monta; mientras tanto, sólo encolamos + despachamos el
+    // CustomEvent para que el listener registrado dentro del propio
+    // AssistantPanel lo recoja en cuanto hidrate.
+    window.__lxpAssistantAPI = {
+      request: function (input) {
+        var b = getBus();
+        // Si ya hay un consumidor válido (registrado por el drawer o la
+        // view), delegamos: él decide arbitraje (drawer vs /panel/assistant)
+        // y resuelve el submit.
+        var consumer = getConsumer();
+        if (consumer && consumer !== window.__lxpAssistantAPI) {
+          try {
+            return consumer.request(input);
+          } catch (e) {
+            /* cae al enqueue */
+          }
+        }
+        // Sin consumidor → enqueue FIFO cap 20 + dedupe por requestId (lo
+        // rellena el helper, pero defendemos aquí por si un productor
+        // dispara el CustomEvent directamente sin pasar por el helper).
+        var requestId = (input && input.requestId) || ("bridge-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8));
+        if (b.ids.has(requestId)) return requestId;
+        b.ids.add(requestId);
+        var entry = {
+          version: 1,
+          requestId: requestId,
+          request: {
+            kind: input && input.kind,
+            prompt: input && input.prompt,
+            submit: input && input.submit,
+            providerId: input && input.providerId,
+            tab: input && input.tab,
+            origin: input && input.origin,
+            target: { kind: "assistant", agentId: null, projectId: null },
+            conversation: "new",
+          },
+          issuedAt: Date.now(),
+        };
+        b.pending.push(entry);
+        if (b.pending.length > REQUEST_QUEUE_CAP) {
+          var dropped = b.pending.splice(0, b.pending.length - REQUEST_QUEUE_CAP);
+          for (var i = 0; i < dropped.length; i++) b.ids.delete(dropped[i].requestId);
+        }
+        try {
+          window.dispatchEvent(new CustomEvent(ASSISTANT_REQUEST_EVENT, { detail: entry }));
+        } catch (e) {
+          /* no-op */
+        }
+        return requestId;
+      },
+    };
+
+    // Vacía la cola al cambiar de servidor para no mezclar contexto entre
+    // targets. El propio AssistantPanel ya hace su reload en target-changed;
+    // aquí limpiamos el bus (las solicitudes pre-cambio no tienen sentido).
+    function clearBus() {
+      var b = getBus();
+      b.pending = [];
+      b.ids.clear();
+    }
+    document.addEventListener("luxipanel:target-changed", clearBus);
+  })();
+</script>
+
+<div
+  id="lxp-assistant-pocket"
+  transition:persist="lxp-assistant-pocket"
+  style="position:fixed;left:-9999px;top:-9999px;width:0;height:0;overflow:hidden;pointer-events:none;visibility:hidden;"
+  aria-hidden="true"
+></div>

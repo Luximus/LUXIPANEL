@@ -1,0 +1,102 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+import { getMessages } from "@/i18n";
+import { localeFromRequest } from "@/i18n/server";
+import ModalNavbar from "@/components/ui/ModalNavbar.astro";
+const locale = localeFromRequest(Astro.request);
+const t = await getMessages(locale, ["components"]);
+const c = t.components.confirmModal;
+import { DIALOG_CHROME } from "@/lib/ui-classes";
+---
+
+<dialog id="confirm-modal-wrapper" class={`w-full max-w-sm ${DIALOG_CHROME}`}>
+  <ModalNavbar title={c.title} titleId="confirm-modal-title" closeId="confirm-modal-close">
+    <div
+      slot="leading"
+      id="confirm-modal-icon-wrap"
+      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/10"
+    >
+      <i id="confirm-modal-icon" class="ti ti-alert-triangle text-amber-500 text-base"></i>
+    </div>
+  </ModalNavbar>
+  <div class="px-6 py-4">
+    <p id="confirm-modal-message" class="text-sm text-muted-foreground"></p>
+  </div>
+  <div class="flex gap-3 border-t border-border px-6 py-4">
+    <button
+      id="confirm-modal-cancel"
+      type="button"
+      class="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
+    >
+      {c.cancel}
+    </button>
+    <button
+      id="confirm-modal-ok"
+      type="button"
+      class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+    >
+      {c.confirm}
+    </button>
+  </div>
+</dialog>
+
+{/* Alert modal — pretty replacement for native alerts. Single OK button, info by default. */}
+<dialog id="alert-modal-wrapper" class={`w-full max-w-sm ${DIALOG_CHROME}`}>
+  <ModalNavbar title={c.alertTitle} titleId="alert-modal-title" closeId="alert-modal-close">
+    <div
+      slot="leading"
+      id="alert-modal-icon-wrap"
+      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10"
+    >
+      <i id="alert-modal-icon" class="ti ti-info-circle text-primary text-base"></i>
+    </div>
+  </ModalNavbar>
+  <div class="px-6 py-4">
+    <p id="alert-modal-message" class="text-sm text-muted-foreground whitespace-pre-line"></p>
+  </div>
+  <div class="flex gap-3 border-t border-border px-6 py-4">
+    <button
+      id="alert-modal-ok"
+      type="button"
+      class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+    >
+      {c.alertOk}
+    </button>
+  </div>
+</dialog>
+
+{/* Prompt modal — pretty replacement for native text prompts. Returns the typed text or null. */}
+<dialog id="prompt-modal-wrapper" class={`w-full max-w-sm ${DIALOG_CHROME}`}>
+  <form id="prompt-modal-form" method="dialog">
+    <ModalNavbar title={c.promptTitle} titleId="prompt-modal-title" closeId="prompt-modal-close">
+      <div slot="leading" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+        <i id="prompt-modal-icon" class="ti ti-pencil text-primary text-base"></i>
+      </div>
+    </ModalNavbar>
+    <div class="px-6 py-4 space-y-3">
+      <p id="prompt-modal-message" class="text-sm text-muted-foreground whitespace-pre-line"></p>
+      <input
+        id="prompt-modal-input"
+        type="text"
+        class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+      />
+    </div>
+    <div class="flex gap-3 border-t border-border px-6 py-4">
+      <button
+        id="prompt-modal-cancel"
+        type="button"
+        class="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
+      >
+        {c.promptCancel}
+      </button>
+      <button
+        id="prompt-modal-ok"
+        type="submit"
+        class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+      >
+        {c.promptOk}
+      </button>
+    </div>
+  </form>
+</dialog>

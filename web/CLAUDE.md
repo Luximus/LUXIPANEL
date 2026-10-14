@@ -1,0 +1,4 @@
+# LUXIPANEL web application
+Read backend/ARCHITECTURE.md, frontend/ARCHITECTURE.md and MODULE-SDK-SPEC.md before changing code.
+Backend layering: models → repositories → services → controllers → routes → index.ts. Services do not depend on Express. Module effects and target data go through Executor; installation data explicitly uses the local executor. Never import implementation code between modules. Preserve user/target isolation and verify live authorization for privileged actions.
+Build/typecheck one package at a time with NODE_OPTIONS=--max-old-space-size=2560. Test changes before deploying. Public module contributions use web/modules/<id> on the modules branch; core changes target main. Never publish credentials, production configuration, user files, build output or signing material.

@@ -1,0 +1,530 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://luxipanel.com/schemas/module.manifest.schema.json",
+  "title": "LUXIPANEL community module manifest",
+  "description": "Contract validated by the marketplace review pipeline (ROADMAP-DEV-MARKETPLACE.md §4) and converted to a ModuleDefinition by the loader. See MODULE-SDK-SPEC.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "description",
+    "sdk",
+    "category",
+    "icon",
+    "color",
+    "scope",
+    "min_specs",
+    "capabilities",
+    "pricing",
+    "entry",
+    "chat"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique id. Also the agent-tool prefix and the folder name modules/<id>/. Must not collide with a core module (checked by the pipeline, not here).",
+      "pattern": "^[a-z][a-z0-9-]{2,38}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 48
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "version": {
+      "type": "string",
+      "description": "Set by the platform (auto-semver derived from the manifest diff + pipeline results at approval, 2026-06-09). Devs may omit it; any authored value is overwritten.",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "sdk": {
+      "type": "string",
+      "description": "Compatible @luxipanel/module-sdk range (npm style). The loader does the authoritative range check; this only rejects obvious garbage.",
+      "pattern": "^([\\^~]?\\d+(\\.\\d+){0,2}|(>=|>|<=|<)\\d+(\\.\\d+){0,2})$"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "communication",
+        "infrastructure",
+        "security",
+        "developer"
+      ]
+    },
+    "icon": {
+      "type": "string",
+      "description": "Offline icon set only (no CDN): tabler:* or vscode-icons:*.",
+      "pattern": "^(tabler|vscode-icons):[a-z0-9-]+$"
+    },
+    "color": {
+      "type": "string",
+      "description": "Tailwind color token.",
+      "enum": [
+        "slate",
+        "gray",
+        "zinc",
+        "neutral",
+        "stone",
+        "red",
+        "orange",
+        "amber",
+        "yellow",
+        "lime",
+        "green",
+        "emerald",
+        "teal",
+        "cyan",
+        "sky",
+        "blue",
+        "indigo",
+        "violet",
+        "purple",
+        "fuchsia",
+        "pink",
+        "rose"
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "local",
+        "global"
+      ]
+    },
+    "path": {
+      "type": "string",
+      "description": "Set by the platform to modules/<id>. Devs may omit it.",
+      "pattern": "^(?:web/)?modules/[a-z][a-z0-9-]{2,38}$"
+    },
+    "commit": {
+      "type": "string",
+      "description": "Set by the platform (merge commit on the modules branch). Devs may omit it.",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "os_compat": {
+      "type": "array",
+      "description": "Set by the platform (derived by static analysis of the module's commands/deps in the pipeline, 2026-06-09 — see LUXIPANEL/security/os-compat-derive.mjs). Devs may omit it; any authored value is overwritten.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "description": "Distro or distro>=version, e.g. ubuntu>=22.04, debian>=12.",
+        "pattern": "^[a-z][a-z0-9+._-]*([><]=?[0-9][0-9.]*)?$"
+      }
+    },
+    "arch": {
+      "type": "array",
+      "description": "Set by the platform (derived in the pipeline alongside os_compat). Devs may omit it; any authored value is overwritten.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "x86_64",
+          "arm64"
+        ]
+      }
+    },
+    "min_specs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu",
+        "ramMb",
+        "diskMb"
+      ],
+      "properties": {
+        "cpu": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "vCPU cores."
+        },
+        "ramMb": {
+          "type": "integer",
+          "minimum": 64
+        },
+        "diskMb": {
+          "type": "integer",
+          "minimum": 10
+        }
+      }
+    },
+    "runtime_deps": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "description": "Runtime package requirement, e.g. nginx>=1.24.",
+        "pattern": "^[a-z][a-z0-9+._-]*([><]=?[0-9][0-9.]*)?$"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "Closed set of effects the module may perform via the SDK ctx. Least privilege. The static analyzer rejects code that uses anything not listed here.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "server.exec",
+          "server.sudo",
+          "server.fs.read",
+          "server.fs.write",
+          "storage",
+          "http"
+        ]
+      }
+    },
+    "http_allowlist": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "description": "Hostname (optional leading *. wildcard). No scheme, no path.",
+        "pattern": "^(\\*\\.)?([a-z0-9-]+\\.)+[a-z]{2,}$"
+      }
+    },
+    "surface": {
+      "type": "object",
+      "description": "Assignable permission surface (maps to ModuleDefinition.permissions).",
+      "additionalProperties": false,
+      "properties": {
+        "sidebar": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slug"
+          },
+          "uniqueItems": true
+        },
+        "views": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slug"
+          },
+          "uniqueItems": true
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slug"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "tool_permissions": {
+      "type": "object",
+      "description": "Maps a bare tool suffix to the permission slug the calling user must hold (lands in AgentTool.permission).",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/slug"
+      }
+    },
+    "configFields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "type",
+          "required"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "email",
+              "password",
+              "select"
+            ]
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "optionsSource": {
+            "type": "string",
+            "enum": [
+              "dns-domains"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "label",
+                "value"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "description": "Core module ids that must be enabled first.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{2,38}$"
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "tokensPerMonth"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "free",
+            "subscription"
+          ]
+        },
+        "tokensPerMonth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trialDays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 90
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend"
+      ],
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "Backend entry, relative to modules/<id>/. Built JS or TS source.",
+          "pattern": "^backend/(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.(js|mjs|ts)$"
+        },
+        "frontend": {
+          "type": "string",
+          "description": "Frontend root directory, relative to modules/<id>/.",
+          "pattern": "^frontend(?!.*\\.\\.)(/[A-Za-z0-9_./-]*)?$"
+        }
+      }
+    },
+    "chat": {
+      "type": "object",
+      "required": [
+        "version",
+        "operations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "tool",
+              "kind",
+              "permission"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_.-]*$"
+              },
+              "tool": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "kind": {
+                "enum": [
+                  "read",
+                  "action"
+                ]
+              },
+              "permission": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "If the module declares the http capability it must list at least one allowed host.",
+      "if": {
+        "required": [
+          "capabilities"
+        ],
+        "properties": {
+          "capabilities": {
+            "contains": {
+              "const": "http"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "http_allowlist"
+        ],
+        "properties": {
+          "http_allowlist": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "description": "server.sudo requires server.exec or server.fs.write (sudo is meaningless on its own).",
+      "if": {
+        "required": [
+          "capabilities"
+        ],
+        "properties": {
+          "capabilities": {
+            "contains": {
+              "const": "server.sudo"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "capabilities": {
+            "anyOf": [
+              {
+                "contains": {
+                  "const": "server.exec"
+                }
+              },
+              {
+                "contains": {
+                  "const": "server.fs.write"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "A free module charges nothing.",
+      "if": {
+        "required": [
+          "pricing"
+        ],
+        "properties": {
+          "pricing": {
+            "required": [
+              "model"
+            ],
+            "properties": {
+              "model": {
+                "const": "free"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "pricing": {
+            "properties": {
+              "tokensPerMonth": {
+                "const": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A frontend entry requires the http capability is NOT needed, but if surface.sidebar/views are set there should be a frontend entry to back them.",
+      "if": {
+        "required": [
+          "surface"
+        ],
+        "properties": {
+          "surface": {
+            "anyOf": [
+              {
+                "required": [
+                  "sidebar"
+                ]
+              },
+              {
+                "required": [
+                  "views"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "entry"
+        ],
+        "properties": {
+          "entry": {
+            "required": [
+              "frontend"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "description": "Permission/sidebar/view/action slug, e.g. panel.acme-cache-warmer or acme-cache-warmer:warm.",
+      "pattern": "^[a-z][a-z0-9_-]*([.:][a-z0-9_-]+)*$"
+    }
+  }
+}

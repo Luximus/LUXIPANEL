@@ -1,0 +1,17 @@
+name: Bug or warning
+about: Report a reproducible LUXIPANEL problem without private credentials or raw logs.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version and client
+      placeholder: v2.0.1 / web, desktop or mobile
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and reproduction
+      description: Include sanitized details only. Remove credentials, personal data and private server paths.
+    validations:
+      required: true

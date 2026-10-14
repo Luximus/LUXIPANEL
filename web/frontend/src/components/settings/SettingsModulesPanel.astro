@@ -1,0 +1,44 @@
+---
+const { t } = Astro.props;
+---
+      <div id="panel-modules" class="tab-panel hidden space-y-5">
+        <div class="rounded-xl border border-border bg-card overflow-hidden" data-lxp-collapse>
+          <button type="button" data-lxp-collapse-toggle aria-expanded="false"
+            class="group flex w-full cursor-pointer select-none items-center gap-x-4 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30">
+            <span class="flex size-11 flex-none items-center justify-center rounded-lg bg-emerald-500/10">
+              <i class="ti ti-bolt text-lg text-emerald-500"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm font-semibold text-foreground">{t.settings.modules.sectionTitle}</span>
+              <span class="mt-0.5 block text-xs text-muted-foreground">{t.settings.modules.sectionDesc1}</span>
+            </span>
+            <i class="ti ti-chevron-down shrink-0 text-base text-muted-foreground transition-transform duration-200" data-lxp-collapse-chevron></i>
+          </button>
+          <div class="m-4 overflow-hidden rounded-xl bg-muted/30">
+            <div class="px-5 py-4">
+            <p class="text-xs text-muted-foreground mb-3">
+              <strong>{t.settings.modules.sectionDescBold}</strong>{t.settings.modules.managedInPre}<a href="/panel/modules" class="underline">{t.settings.modules.modulesLink}</a>{t.settings.modules.managedInPost}{t.settings.modules.sectionDesc2}
+            </p>
+            <div id="cache-modules-status" class="text-xs text-muted-foreground mb-3">{t.settings.modules.loading}</div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead class="text-muted-foreground">
+                  <tr class="border-b border-border">
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.module}</th>
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.source}</th>
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.active}</th>
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.interval}</th>
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.lastRefresh}</th>
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.duration}</th>
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.size}</th>
+                    <th class="text-left font-medium py-2 pr-3">{t.settings.modules.tableHeaders.hitRatio}</th>
+                    <th class="text-right font-medium py-2"></th>
+                  </tr>
+                </thead>
+                <tbody id="cache-modules-rows" class="divide-y divide-border"></tbody>
+              </table>
+            </div>
+            </div>
+          </div>
+        </div>
+      </div>

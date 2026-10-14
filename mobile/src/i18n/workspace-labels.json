@@ -1,0 +1,2654 @@
+{
+  "es": {
+    "nav": {
+      "monitor": "Monitor",
+      "files": "Archivos",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "Usuarios",
+      "assistant": "Agentes IA",
+      "terminal": "Terminal",
+      "modules": "Módulos",
+      "githubStore": "GitHub",
+      "settings": "Ajustes",
+      "mail": "Correo",
+      "dns": "NGINX",
+      "backups": "Copias de seguridad",
+      "cron": "Cron",
+      "databases": "Bases de datos",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "Notificaciones",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "Hosting",
+      "openclaw": "OpenClaw",
+      "preferences": "Mis preferencias",
+      "moduleDev": "Dev de módulos",
+      "expo": "Expo",
+      "codebaseGraph": "Grafo del Código"
+    },
+    "actions": {
+      "closeSession": "Cerrar sesión",
+      "closingSession": "Cerrando sesión…",
+      "openMenu": "Abrir menú",
+      "openHistory": "Abrir historial",
+      "openCommandPalette": "Abrir paleta de comandos",
+      "search": "Buscar...",
+      "settings": "Configuración",
+      "switchTheme": "Cambiar tema",
+      "notifications": "Notificaciones",
+      "chat": "Mensajes",
+      "navigate": "Navegar",
+      "open": "Abrir",
+      "close": "Cerrar",
+      "toggleFilesEditor": "Editor de archivos",
+      "noResults": "Sin resultados para",
+      "lightMode": "Cambiar a modo claro",
+      "darkMode": "Cambiar a modo oscuro"
+    },
+    "serverSwitcher": {
+      "label": "Cambiar de servidor",
+      "title": "Cambiar de servidor",
+      "currentOption": "{server} (cambiar)",
+      "connectingTitle": "Conectando al servidor...",
+      "connectingStatus": "Preparando nueva sesión de conexión.",
+      "changeServer": "Cambiar de servidor...",
+      "localOption": "Local (esta caja)",
+      "manageServers": "Gestionar servidores...",
+      "viewServers": "Ver servidores...",
+      "noOtherServers": "No hay otros servidores registrados",
+      "sshKeyFallback": "Llave {n}",
+      "chooseSshKey": "Elegir llave SSH",
+      "chooseSshKeyHelp": "Hay más de un usuario configurado para este servidor. Selecciona con cuál conectar.",
+      "cancel": "Cancelar",
+      "openingConnection": "Abriendo conexión segura con el nuevo servidor...",
+      "unknownError": "Error desconocido",
+      "switchFailedStatus": "No se pudo cambiar de servidor ({detail}).",
+      "switchFailedAlert": "No se pudo establecer conexión con el nuevo servidor: {detail}",
+      "connectionErrorTitle": "Error de conexión",
+      "returnButton": "Regresar",
+      "returnTitle": "Volver al servidor local"
+    },
+    "chatPanel": {
+      "newConversation": "Nueva conversación"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "Conversaciones"
+      },
+      "users": {
+        "users": "Usuarios",
+        "roles": "Grupos"
+      },
+      "monitor": {
+        "history": "Historial",
+        "processes": "Procesos"
+      },
+      "files": {
+        "browser": "Explorador",
+        "editor": "Editor"
+      },
+      "firewall": {
+        "audit": "Auditoría",
+        "rules": "Reglas UFW",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "Estado",
+        "components": "Componentes",
+        "logs": "Registro"
+      },
+      "mail": {
+        "emails": "Correos",
+        "spam-filters": "Antispam",
+        "track-delivery": "Entrega",
+        "global-filters": "Filtros"
+      },
+      "dns": {
+        "overview": "Estado",
+        "sites": "Sitios y HTTPS",
+        "proxy": "Tráfico",
+        "perf": "Rendimiento",
+        "logs": "Registros",
+        "status": "Servicio"
+      },
+      "nginx": {
+        "overview": "Estado",
+        "sites": "Sitios y HTTPS",
+        "proxy": "Tráfico",
+        "perf": "Rendimiento",
+        "logs": "Registros",
+        "status": "Servicio"
+      },
+      "backups": {
+        "overview": "Estado",
+        "schedules": "Programaciones",
+        "history": "Historial"
+      },
+      "cron": {
+        "jobs": "Tareas",
+        "agents": "Agentes IA"
+      },
+      "databases": {
+        "databases": "Bases de datos",
+        "tables": "Tablas",
+        "console": "Consola SQL"
+      },
+      "obsidian": {
+        "vaults": "Bóvedas y notas",
+        "editor": "Editor"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "Caché",
+        "security": "Seguridad",
+        "access": "Acceso",
+        "config": "Configuración"
+      },
+      "server-alerts": {
+        "prefs": "Preferencias",
+        "send": "Enviar",
+        "scheduled": "Programadas",
+        "rules": "Reglas",
+        "history": "Historial"
+      },
+      "expo": {
+        "account": "Cuenta",
+        "projects": "Proyectos",
+        "builds": "Compilaciones",
+        "store": "Tiendas",
+        "environment": "Variables"
+      },
+      "module-dev": {
+        "my-modules": "Mis módulos",
+        "project-map": "Mapa proyecto"
+      },
+      "terminal": {
+        "terminal": "Terminal"
+      },
+      "repository-store": {
+        "all": "Explorar",
+        "saved": "Guardados",
+        "cloned": "Clonados",
+        "update": "Actualizaciones"
+      },
+      "webhooks": {
+        "receive": "Recibir",
+        "webhooks": "Webhooks",
+        "keys": "Claves",
+        "discovered": "Detectados"
+      },
+      "openclaw": {
+        "assistant": "Asistente"
+      },
+      "hosting": {
+        "accounts": "Cuentas",
+        "new": "Nueva cuenta"
+      },
+      "codebase-graph": {
+        "graph": "Grafo visual",
+        "symbols": "Símbolos"
+      },
+      "preferences": {
+        "profile": "Perfil",
+        "security": "Seguridad",
+        "audit": "Actividad"
+      },
+      "settings": {
+        "settings": "Configuración"
+      },
+      "modules": {
+        "catalog": "Catálogo"
+      },
+      "chat": {
+        "chat": "Chat"
+      },
+      "_default": {
+        "overview": "Vista general"
+      }
+    },
+    "assistant": {
+      "projectsSection": "Proyectos",
+      "newProject": "Nuevo proyecto"
+    },
+    "groups": {
+      "main": "Principal",
+      "system": "Sistema",
+      "admin": "Administración",
+      "tools": "Herramientas",
+      "modules": "Módulos"
+    }
+  },
+  "en": {
+    "nav": {
+      "monitor": "Monitor",
+      "files": "Files",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "Users",
+      "assistant": "AI Agents",
+      "terminal": "Terminal",
+      "modules": "Modules",
+      "githubStore": "GitHub",
+      "settings": "Settings",
+      "mail": "Mail",
+      "dns": "NGINX",
+      "backups": "Backups",
+      "cron": "Cron",
+      "databases": "Databases",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "Notifications",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "Hosting",
+      "openclaw": "OpenClaw",
+      "preferences": "My preferences",
+      "moduleDev": "Module Dev",
+      "expo": "Expo",
+      "codebaseGraph": "Codebase Graph"
+    },
+    "actions": {
+      "closeSession": "Sign out",
+      "closingSession": "Signing out…",
+      "openMenu": "Open menu",
+      "openHistory": "Open history",
+      "openCommandPalette": "Open command palette",
+      "search": "Search...",
+      "settings": "Settings",
+      "switchTheme": "Switch theme",
+      "notifications": "Notifications",
+      "chat": "Messages",
+      "navigate": "Navigate",
+      "open": "Open",
+      "close": "Close",
+      "toggleFilesEditor": "File editor",
+      "noResults": "No results for",
+      "lightMode": "Switch to light mode",
+      "darkMode": "Switch to dark mode"
+    },
+    "serverSwitcher": {
+      "label": "Switch server",
+      "title": "Switch server",
+      "currentOption": "{server} (switch)",
+      "connectingTitle": "Connecting to server...",
+      "connectingStatus": "Preparing new connection session.",
+      "changeServer": "Change server...",
+      "localOption": "Local (this box)",
+      "manageServers": "Manage servers...",
+      "viewServers": "View servers...",
+      "noOtherServers": "No servers registered",
+      "sshKeyFallback": "Key {n}",
+      "chooseSshKey": "Choose SSH key",
+      "chooseSshKeyHelp": "There is more than one user configured for this server. Select which one to connect with.",
+      "cancel": "Cancel",
+      "openingConnection": "Opening secure connection to the new server...",
+      "unknownError": "Unknown error",
+      "switchFailedStatus": "Could not switch server ({detail}).",
+      "switchFailedAlert": "Could not establish connection with the new server: {detail}",
+      "connectionErrorTitle": "Connection error",
+      "returnButton": "Return",
+      "returnTitle": "Return to the local server"
+    },
+    "chatPanel": {
+      "newConversation": "New conversation"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "Conversations"
+      },
+      "users": {
+        "users": "Users",
+        "roles": "Groups"
+      },
+      "monitor": {
+        "history": "History",
+        "processes": "Processes"
+      },
+      "files": {
+        "browser": "Browser",
+        "editor": "Editor"
+      },
+      "firewall": {
+        "audit": "Audit",
+        "rules": "UFW rules",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "Status",
+        "components": "Components",
+        "logs": "Log"
+      },
+      "mail": {
+        "emails": "Mail",
+        "spam-filters": "Spam filters",
+        "track-delivery": "Delivery",
+        "global-filters": "Filters"
+      },
+      "dns": {
+        "overview": "Overview",
+        "sites": "Sites and HTTPS",
+        "proxy": "Traffic",
+        "perf": "Performance",
+        "logs": "Logs",
+        "status": "Service"
+      },
+      "nginx": {
+        "overview": "Overview",
+        "sites": "Sites and HTTPS",
+        "proxy": "Traffic",
+        "perf": "Performance",
+        "logs": "Logs",
+        "status": "Service"
+      },
+      "backups": {
+        "overview": "Overview",
+        "schedules": "Schedules",
+        "history": "History"
+      },
+      "cron": {
+        "jobs": "Jobs",
+        "agents": "AI agents"
+      },
+      "databases": {
+        "databases": "Databases",
+        "tables": "Tables",
+        "console": "SQL console"
+      },
+      "obsidian": {
+        "vaults": "Vaults and notes",
+        "editor": "Editor"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "Cache",
+        "security": "Security",
+        "access": "Access",
+        "config": "Settings"
+      },
+      "server-alerts": {
+        "prefs": "Preferences",
+        "send": "Send",
+        "scheduled": "Scheduled",
+        "rules": "Rules",
+        "history": "History"
+      },
+      "expo": {
+        "account": "Account",
+        "projects": "Projects",
+        "builds": "Builds",
+        "store": "Stores",
+        "environment": "Environment"
+      },
+      "module-dev": {
+        "my-modules": "My modules",
+        "project-map": "Project map"
+      },
+      "terminal": {
+        "terminal": "Terminal"
+      },
+      "repository-store": {
+        "all": "Explore",
+        "saved": "Saved",
+        "cloned": "Cloned",
+        "update": "Updates"
+      },
+      "webhooks": {
+        "receive": "Receive",
+        "webhooks": "Webhooks",
+        "keys": "Keys",
+        "discovered": "Discovered"
+      },
+      "openclaw": {
+        "assistant": "Assistant"
+      },
+      "hosting": {
+        "accounts": "Accounts",
+        "new": "New account"
+      },
+      "codebase-graph": {
+        "graph": "Visual graph",
+        "symbols": "Symbols"
+      },
+      "preferences": {
+        "profile": "Profile",
+        "security": "Security",
+        "audit": "Activity"
+      },
+      "settings": {
+        "settings": "Settings"
+      },
+      "modules": {
+        "catalog": "Catalog"
+      },
+      "chat": {
+        "chat": "Chat"
+      },
+      "_default": {
+        "overview": "Overview"
+      }
+    },
+    "assistant": {
+      "projectsSection": "Projects",
+      "newProject": "New project"
+    },
+    "groups": {
+      "main": "Main",
+      "system": "System",
+      "admin": "Administration",
+      "tools": "Tools",
+      "modules": "Modules"
+    }
+  },
+  "fr": {
+    "nav": {
+      "monitor": "Moniteur",
+      "files": "Fichiers",
+      "firewall": "Pare-feu",
+      "bitninja": "BitNinja",
+      "users": "Utilisateurs",
+      "assistant": "Agents IA",
+      "terminal": "Terminal",
+      "modules": "Modules",
+      "githubStore": "GitHub",
+      "settings": "Paramètres",
+      "mail": "Messagerie",
+      "dns": "NGINX",
+      "backups": "Sauvegardes",
+      "cron": "Cron",
+      "databases": "Bases de données",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "Notifications",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "Hébergement",
+      "openclaw": "OpenClaw",
+      "preferences": "Mes préférences",
+      "moduleDev": "Dev de modules",
+      "expo": "Expo",
+      "codebaseGraph": "Graphe du Code"
+    },
+    "actions": {
+      "closeSession": "Déconnexion",
+      "closingSession": "Déconnexion en cours…",
+      "openMenu": "Ouvrir le menu",
+      "openHistory": "Ouvrir l’historique",
+      "openCommandPalette": "Ouvrir la palette de commandes",
+      "search": "Rechercher...",
+      "settings": "Configuration",
+      "switchTheme": "Changer de thème",
+      "notifications": "Notifications",
+      "chat": "Messages",
+      "navigate": "Naviguer",
+      "open": "Ouvrir",
+      "close": "Fermer",
+      "toggleFilesEditor": "Éditeur de fichiers",
+      "noResults": "Aucun résultat pour",
+      "lightMode": "Passer au mode clair",
+      "darkMode": "Passer au mode sombre"
+    },
+    "serverSwitcher": {
+      "label": "Changer de serveur",
+      "title": "Changer de serveur",
+      "currentOption": "{server} (changer)",
+      "connectingTitle": "Connexion au serveur...",
+      "connectingStatus": "Préparation d'une nouvelle session de connexion.",
+      "changeServer": "Changer de serveur…",
+      "localOption": "Local (cette machine)",
+      "manageServers": "Gérer les serveurs...",
+      "viewServers": "Afficher les serveurs…",
+      "noOtherServers": "Aucun autre serveur actif",
+      "sshKeyFallback": "Clé {n}",
+      "chooseSshKey": "Choisir la clé SSH",
+      "chooseSshKeyHelp": "Plus d'un utilisateur est configuré pour ce serveur. Sélectionnez celui avec lequel vous connecter.",
+      "cancel": "Annuler",
+      "openingConnection": "Ouverture de la connexion sécurisée avec le nouveau serveur…",
+      "unknownError": "Erreur inconnue",
+      "switchFailedStatus": "Impossible de changer de serveur ({detail}).",
+      "switchFailedAlert": "Impossible d'établir la connexion avec le nouveau serveur : {detail}",
+      "connectionErrorTitle": "Erreur de connexion",
+      "returnButton": "Retour",
+      "returnTitle": "Revenir au serveur local"
+    },
+    "chatPanel": {
+      "newConversation": "Nouvelle conversation"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "Conversations"
+      },
+      "users": {
+        "users": "Utilisateurs",
+        "roles": "Groupes"
+      },
+      "monitor": {
+        "history": "Historique",
+        "processes": "Processus"
+      },
+      "files": {
+        "browser": "Explorateur",
+        "editor": "Éditeur"
+      },
+      "firewall": {
+        "audit": "Audit",
+        "rules": "Règles UFW",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "État",
+        "components": "Composants",
+        "logs": "Enregistrement"
+      },
+      "mail": {
+        "emails": "E-mails",
+        "spam-filters": "Filtres antispam",
+        "track-delivery": "Distribution",
+        "global-filters": "Filtres"
+      },
+      "dns": {
+        "overview": "Vue d’ensemble",
+        "sites": "Sites et HTTPS",
+        "proxy": "Trafic",
+        "perf": "Performances",
+        "logs": "Journaux",
+        "status": "Service"
+      },
+      "nginx": {
+        "overview": "Vue d’ensemble",
+        "sites": "Sites et HTTPS",
+        "proxy": "Trafic",
+        "perf": "Performances",
+        "logs": "Journaux",
+        "status": "Service"
+      },
+      "backups": {
+        "overview": "État",
+        "schedules": "Planifications",
+        "history": "Historique"
+      },
+      "cron": {
+        "jobs": "Tâches",
+        "agents": "Agents IA"
+      },
+      "databases": {
+        "databases": "Bases de données",
+        "tables": "Tables",
+        "console": "Console SQL"
+      },
+      "obsidian": {
+        "vaults": "Coffres et notes",
+        "editor": "Éditeur"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "Cache",
+        "security": "Sécurité",
+        "access": "Accès",
+        "config": "Configuration"
+      },
+      "server-alerts": {
+        "prefs": "Préférences",
+        "send": "Envoyer",
+        "scheduled": "Planifiées",
+        "rules": "Règles",
+        "history": "Historique"
+      },
+      "expo": {
+        "account": "Compte",
+        "projects": "Projets",
+        "builds": "Compilations",
+        "store": "Boutiques",
+        "environment": "Variables"
+      },
+      "module-dev": {
+        "my-modules": "Mes modules",
+        "project-map": "Carte du projet"
+      },
+      "terminal": {
+        "terminal": "Terminal"
+      },
+      "repository-store": {
+        "all": "Parcourir",
+        "saved": "Enregistrés",
+        "cloned": "Clonés",
+        "update": "Mises à jour"
+      },
+      "webhooks": {
+        "receive": "Recevoir",
+        "webhooks": "Webhooks",
+        "keys": "Clés",
+        "discovered": "Détectés"
+      },
+      "openclaw": {
+        "assistant": "Assistant"
+      },
+      "hosting": {
+        "accounts": "Comptes",
+        "new": "Nouveau compte"
+      },
+      "codebase-graph": {
+        "graph": "Graphe visuel",
+        "symbols": "Symboles"
+      },
+      "preferences": {
+        "profile": "Profil",
+        "security": "Sécurité",
+        "audit": "Activité"
+      },
+      "settings": {
+        "settings": "Configuration"
+      },
+      "modules": {
+        "catalog": "Catalogue"
+      },
+      "chat": {
+        "chat": "Chat"
+      },
+      "_default": {
+        "overview": "Vue d’ensemble"
+      }
+    },
+    "assistant": {
+      "projectsSection": "Projets",
+      "newProject": "Nouveau projet"
+    },
+    "groups": {
+      "main": "Principal",
+      "system": "Système",
+      "admin": "Administration",
+      "tools": "Outils",
+      "modules": "Modules"
+    }
+  },
+  "de": {
+    "nav": {
+      "monitor": "Überwachung",
+      "files": "Dateien",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "Benutzer",
+      "assistant": "KI-Agenten",
+      "terminal": "Terminal",
+      "modules": "Module",
+      "githubStore": "GitHub",
+      "settings": "Einstellungen",
+      "mail": "E-Mail",
+      "dns": "NGINX",
+      "backups": "Sicherungen",
+      "cron": "Cron",
+      "databases": "Datenbanken",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "Benachrichtigungen",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "Hosting",
+      "openclaw": "OpenClaw",
+      "preferences": "Meine Einstellungen",
+      "moduleDev": "Modul-Dev",
+      "expo": "Expo",
+      "codebaseGraph": "Codebase-Graph"
+    },
+    "actions": {
+      "closeSession": "Sitzung beenden",
+      "closingSession": "Abmeldung läuft…",
+      "openMenu": "Menü öffnen",
+      "openHistory": "Verlauf öffnen",
+      "openCommandPalette": "Befehlspalette öffnen",
+      "search": "Suchen...",
+      "settings": "Einstellungen",
+      "switchTheme": "Design ändern",
+      "notifications": "Benachrichtigungen",
+      "chat": "Nachrichten",
+      "navigate": "Navigieren",
+      "open": "Öffnen",
+      "close": "Schließen",
+      "toggleFilesEditor": "Dateieditor",
+      "noResults": "Keine Ergebnisse für",
+      "lightMode": "Zum hellen Modus wechseln",
+      "darkMode": "Zum dunklen Modus wechseln"
+    },
+    "serverSwitcher": {
+      "label": "Server wechseln",
+      "title": "Server wechseln",
+      "currentOption": "{server} (wechseln)",
+      "connectingTitle": "Verbindung zum Server wird hergestellt...",
+      "connectingStatus": "Neue Verbindungssitzung wird vorbereitet.",
+      "changeServer": "Server wechseln...",
+      "localOption": "Lokal (diese Box)",
+      "manageServers": "Server verwalten...",
+      "viewServers": "Server anzeigen...",
+      "noOtherServers": "Keine anderen aktiven Server",
+      "sshKeyFallback": "Schlüssel {n}",
+      "chooseSshKey": "SSH-Schlüssel wählen",
+      "chooseSshKeyHelp": "Es sind mehrere Benutzer für diesen Server konfiguriert. Wähle aus, mit welchem du dich verbinden möchtest.",
+      "cancel": "Abbrechen",
+      "openingConnection": "Sichere Verbindung zum neuen Server wird hergestellt...",
+      "unknownError": "Unbekannter Fehler",
+      "switchFailedStatus": "Serverwechsel fehlgeschlagen ({detail}).",
+      "switchFailedAlert": "Verbindung zum neuen Server konnte nicht hergestellt werden: {detail}",
+      "connectionErrorTitle": "Verbindungsfehler",
+      "returnButton": "Zurück",
+      "returnTitle": "Zum lokalen Server zurückkehren"
+    },
+    "chatPanel": {
+      "newConversation": "Neue Unterhaltung"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "Konversationen"
+      },
+      "users": {
+        "users": "Benutzer",
+        "roles": "Gruppen"
+      },
+      "monitor": {
+        "history": "Verlauf",
+        "processes": "Prozesse"
+      },
+      "files": {
+        "browser": "Explorer",
+        "editor": "Editor"
+      },
+      "firewall": {
+        "audit": "Prüfung",
+        "rules": "UFW-Regeln",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "Status",
+        "components": "Komponenten",
+        "logs": "Datensatz"
+      },
+      "mail": {
+        "emails": "E-Mails",
+        "spam-filters": "Spamfilter",
+        "track-delivery": "Zustellung",
+        "global-filters": "Filter"
+      },
+      "dns": {
+        "overview": "Übersicht",
+        "sites": "Sites und HTTPS",
+        "proxy": "Traffic",
+        "perf": "Performance",
+        "logs": "Protokolle",
+        "status": "Service"
+      },
+      "nginx": {
+        "overview": "Übersicht",
+        "sites": "Sites und HTTPS",
+        "proxy": "Traffic",
+        "perf": "Performance",
+        "logs": "Protokolle",
+        "status": "Dienst"
+      },
+      "backups": {
+        "overview": "Status",
+        "schedules": "Zeitpläne",
+        "history": "Verlauf"
+      },
+      "cron": {
+        "jobs": "Jobs",
+        "agents": "KI-Agenten"
+      },
+      "databases": {
+        "databases": "Datenbanken",
+        "tables": "Tabellen",
+        "console": "SQL-Konsole"
+      },
+      "obsidian": {
+        "vaults": "Tresore und Notizen",
+        "editor": "Editor"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "Cache",
+        "security": "Sicherheit",
+        "access": "Zugriff",
+        "config": "Einstellungen"
+      },
+      "server-alerts": {
+        "prefs": "Präferenzen",
+        "send": "Senden",
+        "scheduled": "Geplant",
+        "rules": "Regeln",
+        "history": "Verlauf"
+      },
+      "expo": {
+        "account": "Konto",
+        "projects": "Projekte",
+        "builds": "Builds",
+        "store": "Stores",
+        "environment": "Variablen"
+      },
+      "module-dev": {
+        "my-modules": "Meine Module",
+        "project-map": "Projektübersicht"
+      },
+      "terminal": {
+        "terminal": "Terminal"
+      },
+      "repository-store": {
+        "all": "Durchsuchen",
+        "saved": "Gespeichert",
+        "cloned": "Geklont",
+        "update": "Aktualisierungen"
+      },
+      "webhooks": {
+        "receive": "Empfangen",
+        "webhooks": "Webhooks",
+        "keys": "Schlüssel",
+        "discovered": "Erkannt"
+      },
+      "openclaw": {
+        "assistant": "Assistent"
+      },
+      "hosting": {
+        "accounts": "Konten",
+        "new": "Neues Konto"
+      },
+      "codebase-graph": {
+        "graph": "Visueller Graph",
+        "symbols": "Symbole"
+      },
+      "preferences": {
+        "profile": "Profil",
+        "security": "Sicherheit",
+        "audit": "Aktivität"
+      },
+      "settings": {
+        "settings": "Einstellungen"
+      },
+      "modules": {
+        "catalog": "Katalog"
+      },
+      "chat": {
+        "chat": "Chat"
+      },
+      "_default": {
+        "overview": "Übersicht"
+      }
+    },
+    "assistant": {
+      "projectsSection": "Projekte",
+      "newProject": "Neues Projekt"
+    },
+    "groups": {
+      "main": "Hauptbereich",
+      "system": "System",
+      "admin": "Verwaltung",
+      "tools": "Werkzeuge",
+      "modules": "Module"
+    }
+  },
+  "it": {
+    "nav": {
+      "monitor": "Monitoraggio",
+      "files": "File",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "Utenti",
+      "assistant": "Agenti IA",
+      "terminal": "Terminale",
+      "modules": "Moduli",
+      "githubStore": "GitHub",
+      "settings": "Impostazioni",
+      "mail": "Posta",
+      "dns": "NGINX",
+      "backups": "Backup",
+      "cron": "Cron",
+      "databases": "Database",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "Notifiche",
+      "ssl": "SSL",
+      "webhooks": "Webhook",
+      "hosting": "Hosting",
+      "openclaw": "OpenClaw",
+      "preferences": "Le mie preferenze",
+      "moduleDev": "Dev moduli",
+      "expo": "Expo",
+      "codebaseGraph": "Grafo del Codice"
+    },
+    "actions": {
+      "closeSession": "Esci",
+      "closingSession": "Disconnessione in corso…",
+      "openMenu": "Apri menu",
+      "openHistory": "Apri cronologia",
+      "openCommandPalette": "Apri tavolozza comandi",
+      "search": "Cerca...",
+      "settings": "Configurazione",
+      "switchTheme": "Cambia tema",
+      "notifications": "Notifiche",
+      "chat": "Messaggi",
+      "navigate": "Naviga",
+      "open": "Apri",
+      "close": "Chiudi",
+      "toggleFilesEditor": "Editor file",
+      "noResults": "Nessun risultato per",
+      "lightMode": "Passa alla modalità chiara",
+      "darkMode": "Passa alla modalità scura"
+    },
+    "serverSwitcher": {
+      "label": "Cambia server",
+      "title": "Cambia server",
+      "currentOption": "{server} (cambia)",
+      "connectingTitle": "Connessione al server in corso...",
+      "connectingStatus": "Preparazione nuova sessione di connessione.",
+      "changeServer": "Cambia server...",
+      "localOption": "Locale (questa macchina)",
+      "manageServers": "Gestisci server...",
+      "viewServers": "Visualizza server...",
+      "noOtherServers": "Nessun altro server attivo",
+      "sshKeyFallback": "Chiave {n}",
+      "chooseSshKey": "Scegli chiave SSH",
+      "chooseSshKeyHelp": "Più di un utente è configurato per questo server. Seleziona con quale connettersi.",
+      "cancel": "Annulla",
+      "openingConnection": "Apertura connessione sicura al nuovo server...",
+      "unknownError": "Errore sconosciuto",
+      "switchFailedStatus": "Impossibile cambiare server ({detail}).",
+      "switchFailedAlert": "Impossibile stabilire una connessione al nuovo server: {detail}",
+      "connectionErrorTitle": "Errore di connessione",
+      "returnButton": "Torna indietro",
+      "returnTitle": "Torna al server locale"
+    },
+    "chatPanel": {
+      "newConversation": "Nuova conversazione"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "Conversazioni"
+      },
+      "users": {
+        "users": "Utenti",
+        "roles": "Gruppi"
+      },
+      "monitor": {
+        "history": "Cronologia",
+        "processes": "Processi"
+      },
+      "files": {
+        "browser": "Esploratore",
+        "editor": "Editor"
+      },
+      "firewall": {
+        "audit": "Verifica",
+        "rules": "Regole UFW",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "Stato",
+        "components": "Componenti",
+        "logs": "Record"
+      },
+      "mail": {
+        "emails": "Email",
+        "spam-filters": "Filtri antispam",
+        "track-delivery": "Consegna",
+        "global-filters": "Filtri"
+      },
+      "dns": {
+        "overview": "Panoramica",
+        "sites": "Siti e HTTPS",
+        "proxy": "Traffico",
+        "perf": "Prestazioni",
+        "logs": "Registri",
+        "status": "Servizio"
+      },
+      "nginx": {
+        "overview": "Panoramica",
+        "sites": "Siti e HTTPS",
+        "proxy": "Traffico",
+        "perf": "Prestazioni",
+        "logs": "Registri",
+        "status": "Servizio"
+      },
+      "backups": {
+        "overview": "Stato",
+        "schedules": "Programmi",
+        "history": "Cronologia"
+      },
+      "cron": {
+        "jobs": "Job",
+        "agents": "Agenti IA"
+      },
+      "databases": {
+        "databases": "Database",
+        "tables": "Tabelle",
+        "console": "Console SQL"
+      },
+      "obsidian": {
+        "vaults": "Archivi e note",
+        "editor": "Editor"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "Cache",
+        "security": "Sicurezza",
+        "access": "Accesso",
+        "config": "Configurazione"
+      },
+      "server-alerts": {
+        "prefs": "Preferenze",
+        "send": "Invia",
+        "scheduled": "Programmati",
+        "rules": "Regole",
+        "history": "Cronologia"
+      },
+      "expo": {
+        "account": "Account",
+        "projects": "Progetti",
+        "builds": "Build",
+        "store": "Store",
+        "environment": "Variabili"
+      },
+      "module-dev": {
+        "my-modules": "I miei moduli",
+        "project-map": "Mappa del progetto"
+      },
+      "terminal": {
+        "terminal": "Terminale"
+      },
+      "repository-store": {
+        "all": "Sfoglia",
+        "saved": "Salvati",
+        "cloned": "Clonati",
+        "update": "Aggiornamenti"
+      },
+      "webhooks": {
+        "receive": "Ricevere",
+        "webhooks": "Webhook",
+        "keys": "Chiavi",
+        "discovered": "Rilevati"
+      },
+      "openclaw": {
+        "assistant": "Assistente"
+      },
+      "hosting": {
+        "accounts": "Account",
+        "new": "Nuovo account"
+      },
+      "codebase-graph": {
+        "graph": "Grafo visuale",
+        "symbols": "Simboli"
+      },
+      "preferences": {
+        "profile": "Profilo",
+        "security": "Sicurezza",
+        "audit": "Attività"
+      },
+      "settings": {
+        "settings": "Configurazione"
+      },
+      "modules": {
+        "catalog": "Catalogo"
+      },
+      "chat": {
+        "chat": "Chat"
+      },
+      "_default": {
+        "overview": "Panoramica"
+      }
+    },
+    "assistant": {
+      "projectsSection": "Progetti",
+      "newProject": "Nuovo progetto"
+    },
+    "groups": {
+      "main": "Principale",
+      "system": "Sistema",
+      "admin": "Amministrazione",
+      "tools": "Strumenti",
+      "modules": "Moduli"
+    }
+  },
+  "pt": {
+    "nav": {
+      "monitor": "Monitoramento",
+      "files": "Arquivos",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "Usuários",
+      "assistant": "Agentes IA",
+      "terminal": "Terminal",
+      "modules": "Módulos",
+      "githubStore": "GitHub",
+      "settings": "Configurações",
+      "mail": "Correio",
+      "dns": "NGINX",
+      "backups": "Cópias de Segurança",
+      "cron": "Cron",
+      "databases": "Bancos de dados",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "Notificações",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "Alojamento",
+      "openclaw": "OpenClaw",
+      "preferences": "Minhas preferências",
+      "moduleDev": "Dev de módulos",
+      "expo": "Expo",
+      "codebaseGraph": "Grafo do Código"
+    },
+    "actions": {
+      "closeSession": "Encerrar sessão",
+      "closingSession": "Encerrando sessão…",
+      "openMenu": "Abrir menu",
+      "openHistory": "Abrir histórico",
+      "openCommandPalette": "Abrir paleta de comandos",
+      "search": "Pesquisar...",
+      "settings": "Configuração",
+      "switchTheme": "Mudar tema",
+      "notifications": "Notificações",
+      "chat": "Mensagens",
+      "navigate": "Navegar",
+      "open": "Abrir",
+      "close": "Fechar",
+      "toggleFilesEditor": "Editor de arquivos",
+      "noResults": "Sem resultados para",
+      "lightMode": "Mudar para o modo claro",
+      "darkMode": "Mudar para o modo escuro"
+    },
+    "serverSwitcher": {
+      "label": "Trocar de servidor",
+      "title": "Trocar de servidor",
+      "currentOption": "{server} (trocar)",
+      "connectingTitle": "Conectando ao servidor...",
+      "connectingStatus": "Preparando nova sessão de conexão.",
+      "changeServer": "Mudar para servidor...",
+      "localOption": "Local (esta máquina)",
+      "manageServers": "Gerenciar servidores...",
+      "viewServers": "Ver servidores...",
+      "noOtherServers": "Nenhum outro servidor ativo",
+      "sshKeyFallback": "Chave {n}",
+      "chooseSshKey": "Escolher chave SSH",
+      "chooseSshKeyHelp": "Há mais de um usuário configurado para este servidor. Selecione com qual conectar.",
+      "cancel": "Cancelar",
+      "openingConnection": "Abrindo conexão segura com o novo servidor...",
+      "unknownError": "Erro desconhecido",
+      "switchFailedStatus": "Não foi possível mudar para o servidor ({detail}).",
+      "switchFailedAlert": "Não foi possível estabelecer conexão com o novo servidor: {detail}",
+      "connectionErrorTitle": "Erro de conexão",
+      "returnButton": "Voltar",
+      "returnTitle": "Voltar ao servidor local"
+    },
+    "chatPanel": {
+      "newConversation": "Nova conversa"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "Conversas"
+      },
+      "users": {
+        "users": "Usuários",
+        "roles": "Grupos"
+      },
+      "monitor": {
+        "history": "Histórico",
+        "processes": "Processos"
+      },
+      "files": {
+        "browser": "Explorador",
+        "editor": "Editor"
+      },
+      "firewall": {
+        "audit": "Auditoria",
+        "rules": "Regras UFW",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "Status",
+        "components": "Componentes",
+        "logs": "Registo"
+      },
+      "mail": {
+        "emails": "E-mails",
+        "spam-filters": "Filtros antispam",
+        "track-delivery": "Entrega",
+        "global-filters": "Filtros"
+      },
+      "dns": {
+        "overview": "Resumo",
+        "sites": "Sites e HTTPS",
+        "proxy": "Tráfego",
+        "perf": "Desempenho",
+        "logs": "Registros",
+        "status": "Serviço"
+      },
+      "nginx": {
+        "overview": "Resumo",
+        "sites": "Sites e HTTPS",
+        "proxy": "Tráfego",
+        "perf": "Desempenho",
+        "logs": "Registros",
+        "status": "Serviço"
+      },
+      "backups": {
+        "overview": "Status",
+        "schedules": "Programações",
+        "history": "Histórico"
+      },
+      "cron": {
+        "jobs": "Trabalhos",
+        "agents": "Agentes IA"
+      },
+      "databases": {
+        "databases": "Bases de dados",
+        "tables": "Tabelas",
+        "console": "Console SQL"
+      },
+      "obsidian": {
+        "vaults": "Cofres e notas",
+        "editor": "Editor"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "Cache",
+        "security": "Segurança",
+        "access": "Acesso",
+        "config": "Configurações"
+      },
+      "server-alerts": {
+        "prefs": "Preferências",
+        "send": "Enviar",
+        "scheduled": "Agendados",
+        "rules": "Regras",
+        "history": "Histórico"
+      },
+      "expo": {
+        "account": "Conta",
+        "projects": "Projetos",
+        "builds": "Compilações",
+        "store": "Lojas",
+        "environment": "Variáveis"
+      },
+      "module-dev": {
+        "my-modules": "Meus módulos",
+        "project-map": "Mapa do projeto"
+      },
+      "terminal": {
+        "terminal": "Terminal"
+      },
+      "repository-store": {
+        "all": "Procurar",
+        "saved": "Salvos",
+        "cloned": "Clonados",
+        "update": "Atualizações"
+      },
+      "webhooks": {
+        "receive": "Receber",
+        "webhooks": "Webhooks",
+        "keys": "Chaves",
+        "discovered": "Detectados"
+      },
+      "openclaw": {
+        "assistant": "Assistente"
+      },
+      "hosting": {
+        "accounts": "Contas",
+        "new": "Nova conta"
+      },
+      "codebase-graph": {
+        "graph": "Grafo visual",
+        "symbols": "Símbolos"
+      },
+      "preferences": {
+        "profile": "Perfil",
+        "security": "Segurança",
+        "audit": "Atividade"
+      },
+      "settings": {
+        "settings": "Configuração"
+      },
+      "modules": {
+        "catalog": "Catálogo"
+      },
+      "chat": {
+        "chat": "Chat"
+      },
+      "_default": {
+        "overview": "Visão geral"
+      }
+    },
+    "assistant": {
+      "projectsSection": "Projetos",
+      "newProject": "Novo projeto"
+    },
+    "groups": {
+      "main": "Principal",
+      "system": "Sistema",
+      "admin": "Administração",
+      "tools": "Ferramentas",
+      "modules": "Módulos"
+    }
+  },
+  "ar": {
+    "nav": {
+      "monitor": "المراقبة",
+      "files": "الملفات",
+      "firewall": "جدار الحماية",
+      "bitninja": "BitNinja",
+      "users": "المستخدمون",
+      "assistant": "وكلاء الذكاء الاصطناعي",
+      "terminal": "الطرفية",
+      "modules": "الوحدات",
+      "githubStore": "GitHub",
+      "settings": "الإعدادات",
+      "mail": "البريد",
+      "dns": "NGINX",
+      "backups": "النسخ الاحتياطية",
+      "cron": "Cron",
+      "databases": "قواعد البيانات",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "الإشعارات",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "الاستضافة",
+      "openclaw": "OpenClaw",
+      "preferences": "تفضيلاتي",
+      "moduleDev": "تطوير الوحدات",
+      "expo": "Expo",
+      "codebaseGraph": "رسم الشيفرة"
+    },
+    "actions": {
+      "closeSession": "تسجيل الخروج",
+      "closingSession": "جارٍ تسجيل الخروج…",
+      "openMenu": "فتح القائمة",
+      "openHistory": "فتح السجل",
+      "openCommandPalette": "فتح لوحة الأوامر",
+      "search": "بحث...",
+      "settings": "الإعدادات",
+      "switchTheme": "تغيير المظهر",
+      "notifications": "الإشعارات",
+      "chat": "الرسائل",
+      "navigate": "التنقل",
+      "open": "فتح",
+      "close": "إغلاق",
+      "toggleFilesEditor": "محرر الملفات",
+      "noResults": "لا نتائج لـ",
+      "lightMode": "التبديل إلى الوضع الفاتح",
+      "darkMode": "التبديل إلى الوضع الداكن"
+    },
+    "serverSwitcher": {
+      "label": "تبديل الخادم",
+      "title": "تبديل الخادم",
+      "currentOption": "{server} (تبديل)",
+      "connectingTitle": "جارٍ الاتصال بالخادم...",
+      "connectingStatus": "جارٍ تجهيز جلسة اتصال جديدة.",
+      "changeServer": "تغيير الخادم...",
+      "localOption": "محلي (هذا الخادم)",
+      "manageServers": "إدارة الخوادم...",
+      "viewServers": "عرض الخوادم...",
+      "noOtherServers": "لا توجد خوادم نشطة أخرى",
+      "sshKeyFallback": "مفتاح {n}",
+      "chooseSshKey": "اختيار مفتاح SSH",
+      "chooseSshKeyHelp": "هناك أكثر من مستخدم مُعدٍّ لهذا الخادم. اختر أيهم تريد الاتصال به.",
+      "cancel": "إلغاء",
+      "openingConnection": "جارٍ فتح اتصال آمن مع الخادم الجديد...",
+      "unknownError": "خطأ غير معروف",
+      "switchFailedStatus": "تعذّر تغيير الخادم ({detail}).",
+      "switchFailedAlert": "تعذّر إنشاء اتصال بالخادم الجديد: {detail}",
+      "connectionErrorTitle": "خطأ في الاتصال",
+      "returnButton": "رجوع",
+      "returnTitle": "العودة إلى الخادم المحلي"
+    },
+    "chatPanel": {
+      "newConversation": "محادثة جديدة"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "المحادثات"
+      },
+      "users": {
+        "users": "المستخدمون",
+        "roles": "المجموعات"
+      },
+      "monitor": {
+        "history": "السجل",
+        "processes": "العمليات"
+      },
+      "files": {
+        "browser": "المستكشف",
+        "editor": "المحرر"
+      },
+      "firewall": {
+        "audit": "تدقيق",
+        "rules": "قواعد UFW",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "الحالة",
+        "components": "المكوّنات",
+        "logs": "سجل"
+      },
+      "mail": {
+        "emails": "البريد الإلكتروني",
+        "spam-filters": "مرشحات البريد المزعج",
+        "track-delivery": "التسليم",
+        "global-filters": "المرشحات"
+      },
+      "dns": {
+        "overview": "نظرة عامة",
+        "sites": "المواقع و HTTPS",
+        "proxy": "المرور",
+        "perf": "الأداء",
+        "logs": "السجلات",
+        "status": "الخدمة"
+      },
+      "nginx": {
+        "overview": "نظرة عامة",
+        "sites": "المواقع و HTTPS",
+        "proxy": "المرور",
+        "perf": "الأداء",
+        "logs": "السجلات",
+        "status": "الخدمة"
+      },
+      "backups": {
+        "overview": "الحالة",
+        "schedules": "الجداول الزمنية",
+        "history": "السجل"
+      },
+      "cron": {
+        "jobs": "المهام",
+        "agents": "وكلاء الذكاء الاصطناعي"
+      },
+      "databases": {
+        "databases": "قواعد البيانات",
+        "tables": "الجداول",
+        "console": "وحدة تحكم SQL"
+      },
+      "obsidian": {
+        "vaults": "الخزائن والملاحظات",
+        "editor": "المحرر"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "التخزين المؤقت",
+        "security": "الأمان",
+        "access": "الوصول",
+        "config": "الإعدادات"
+      },
+      "server-alerts": {
+        "prefs": "التفضيلات",
+        "send": "إرسال",
+        "scheduled": "المجدولة",
+        "rules": "القواعد",
+        "history": "السجل"
+      },
+      "expo": {
+        "account": "الحساب",
+        "projects": "المشاريع",
+        "builds": "عمليات البناء",
+        "store": "المتاجر",
+        "environment": "المتغيرات"
+      },
+      "module-dev": {
+        "my-modules": "وحداتي",
+        "project-map": "خريطة المشروع"
+      },
+      "terminal": {
+        "terminal": "الطرفية"
+      },
+      "repository-store": {
+        "all": "استعراض",
+        "saved": "المحفوظة",
+        "cloned": "المستنسخة",
+        "update": "التحديثات"
+      },
+      "webhooks": {
+        "receive": "استقبال",
+        "webhooks": "Webhooks",
+        "keys": "المفاتيح",
+        "discovered": "المكتشفة"
+      },
+      "openclaw": {
+        "assistant": "المساعد"
+      },
+      "hosting": {
+        "accounts": "الحسابات",
+        "new": "حساب جديد"
+      },
+      "codebase-graph": {
+        "graph": "الرسم البياني المرئي",
+        "symbols": "رموز"
+      },
+      "preferences": {
+        "profile": "الملف الشخصي",
+        "security": "الأمان",
+        "audit": "النشاط"
+      },
+      "settings": {
+        "settings": "الإعدادات"
+      },
+      "modules": {
+        "catalog": "الكتالوج"
+      },
+      "chat": {
+        "chat": "الدردشة"
+      },
+      "_default": {
+        "overview": "نظرة عامة"
+      }
+    },
+    "assistant": {
+      "projectsSection": "المشاريع",
+      "newProject": "مشروع جديد"
+    },
+    "groups": {
+      "main": "الرئيسية",
+      "system": "النظام",
+      "admin": "الإدارة",
+      "tools": "الأدوات",
+      "modules": "الوحدات"
+    }
+  },
+  "bn": {
+    "nav": {
+      "monitor": "মনিটর",
+      "files": "ফাইলস",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "ব্যবহারকারী",
+      "assistant": "AI এজেন্ট",
+      "terminal": "টার্মিনাল",
+      "modules": "মডিউলস",
+      "githubStore": "GitHub",
+      "settings": "সেটিংস",
+      "mail": "মেইল",
+      "dns": "NGINX",
+      "backups": "ব্যাকআপ",
+      "cron": "Cron",
+      "databases": "ডেটাবেস",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "বিজ্ঞপ্তি",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "হোস্টিং",
+      "openclaw": "OpenClaw",
+      "preferences": "আমার পছন্দ",
+      "moduleDev": "মডিউল ডেভ",
+      "expo": "Expo",
+      "codebaseGraph": "কোডবেস গ্রাফ"
+    },
+    "actions": {
+      "closeSession": "সেশন বন্ধ করুন",
+      "closingSession": "সাইন আউট করা হচ্ছে…",
+      "openMenu": "মেনু খুলুন",
+      "openHistory": "ইতিহাস খুলুন",
+      "openCommandPalette": "কমান্ড প্যালেট খুলুন",
+      "search": "খুঁজুন...",
+      "settings": "কনফিগারেশন",
+      "switchTheme": "থিম পরিবর্তন করুন",
+      "notifications": "বিজ্ঞপ্তি",
+      "chat": "বার্তা",
+      "navigate": "নেভিগেট করুন",
+      "open": "খুলুন",
+      "close": "বন্ধ করুন",
+      "toggleFilesEditor": "ফাইল এডিটর",
+      "noResults": "কোনো ফলাফল নেই",
+      "lightMode": "লাইট মোডে স্যুইচ করুন",
+      "darkMode": "ডার্ক মোডে স্যুইচ করুন"
+    },
+    "serverSwitcher": {
+      "label": "সার্ভার পরিবর্তন করুন",
+      "title": "সার্ভার পরিবর্তন করুন",
+      "currentOption": "{server} (পরিবর্তন করুন)",
+      "connectingTitle": "সার্ভারে সংযোগ হচ্ছে...",
+      "connectingStatus": "নতুন সংযোগ সেশন প্রস্তুত হচ্ছে।",
+      "changeServer": "সার্ভার পরিবর্তন করুন...",
+      "localOption": "স্থানীয় (এই বক্স)",
+      "manageServers": "সার্ভার পরিচালনা করুন...",
+      "viewServers": "সার্ভার দেখুন...",
+      "noOtherServers": "অন্য কোনো সক্রিয় সার্ভার নেই",
+      "sshKeyFallback": "{n} নম্বর কী",
+      "chooseSshKey": "SSH কী বেছে নিন",
+      "chooseSshKeyHelp": "এই সার্ভারের জন্য একাধিক ব্যবহারকারী কনফিগার করা আছে। কোনটি দিয়ে সংযুক্ত হবেন তা নির্বাচন করুন।",
+      "cancel": "বাতিল",
+      "openingConnection": "নতুন সার্ভারের সাথে নিরাপদ সংযোগ খোলা হচ্ছে...",
+      "unknownError": "অজানা ত্রুটি",
+      "switchFailedStatus": "সার্ভার পরিবর্তন করা যায়নি ({detail})।",
+      "switchFailedAlert": "নতুন সার্ভারের সাথে সংযোগ স্থাপন করা যায়নি: {detail}",
+      "connectionErrorTitle": "সংযোগ ত্রুটি",
+      "returnButton": "ফিরুন",
+      "returnTitle": "স্থানীয় সার্ভারে ফিরে যান"
+    },
+    "chatPanel": {
+      "newConversation": "নতুন কথোপকথন"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "কথোপকথন"
+      },
+      "users": {
+        "users": "ব্যবহারকারী",
+        "roles": "গ্রুপ"
+      },
+      "monitor": {
+        "history": "ইতিহাস",
+        "processes": "প্রক্রিয়াসমূহ"
+      },
+      "files": {
+        "browser": "এক্সপ্লোরার",
+        "editor": "এডিটর"
+      },
+      "firewall": {
+        "audit": "নিরীক্ষা",
+        "rules": "UFW নিয়মাবলী",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "অবস্থা",
+        "components": "উপাদান",
+        "logs": "রেকর্ড"
+      },
+      "mail": {
+        "emails": "ইমেইলসমূহ",
+        "spam-filters": "স্প্যাম ফিল্টার",
+        "track-delivery": "ডেলিভারি",
+        "global-filters": "ফিল্টার"
+      },
+      "dns": {
+        "overview": "সারসংক্ষেপ",
+        "sites": "সাইট ও HTTPS",
+        "proxy": "ট্রাফিক",
+        "perf": "পারফরম্যান্স",
+        "logs": "লগ",
+        "status": "সার্ভিস"
+      },
+      "nginx": {
+        "overview": "সারসংক্ষেপ",
+        "sites": "সাইট ও HTTPS",
+        "proxy": "ট্রাফিক",
+        "perf": "পারফরম্যান্স",
+        "logs": "লগ",
+        "status": "সেবা"
+      },
+      "backups": {
+        "overview": "অবস্থা",
+        "schedules": "সময়সূচি",
+        "history": "ইতিহাস"
+      },
+      "cron": {
+        "jobs": "কাজ",
+        "agents": "AI এজেন্ট"
+      },
+      "databases": {
+        "databases": "ডেটাবেস",
+        "tables": "টেবিল",
+        "console": "SQL কনসোল"
+      },
+      "obsidian": {
+        "vaults": "ভল্ট ও নোট",
+        "editor": "এডিটর"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "ক্যাশ",
+        "security": "নিরাপত্তা",
+        "access": "অ্যাক্সেস",
+        "config": "কনফিগারেশন"
+      },
+      "server-alerts": {
+        "prefs": "পছন্দসমূহ",
+        "send": "পাঠান",
+        "scheduled": "নির্ধারিত",
+        "rules": "নিয়মাবলী",
+        "history": "ইতিহাস"
+      },
+      "expo": {
+        "account": "অ্যাকাউন্ট",
+        "projects": "প্রকল্প",
+        "builds": "বিল্ডসমূহ",
+        "store": "স্টোর",
+        "environment": "ভেরিয়েবল"
+      },
+      "module-dev": {
+        "my-modules": "আমার মডিউল",
+        "project-map": "প্রকল্পের মানচিত্র"
+      },
+      "terminal": {
+        "terminal": "টার্মিনাল"
+      },
+      "repository-store": {
+        "all": "ব্রাউজ করুন",
+        "saved": "সংরক্ষিত",
+        "cloned": "ক্লোন করা",
+        "update": "আপডেট"
+      },
+      "webhooks": {
+        "receive": "গ্রহণ",
+        "webhooks": "ওয়েবহুক",
+        "keys": "কী",
+        "discovered": "শনাক্তকৃত"
+      },
+      "openclaw": {
+        "assistant": "সহকারী"
+      },
+      "hosting": {
+        "accounts": "অ্যাকাউন্ট",
+        "new": "নতুন অ্যাকাউন্ট"
+      },
+      "codebase-graph": {
+        "graph": "দৃশ্যমান গ্রাফ",
+        "symbols": "প্রতীক"
+      },
+      "preferences": {
+        "profile": "প্রোফাইল",
+        "security": "নিরাপত্তা",
+        "audit": "কার্যকলাপ"
+      },
+      "settings": {
+        "settings": "কনফিগারেশন"
+      },
+      "modules": {
+        "catalog": "ক্যাটালগ"
+      },
+      "chat": {
+        "chat": "চ্যাট"
+      },
+      "_default": {
+        "overview": "সারসংক্ষেপ"
+      }
+    },
+    "assistant": {
+      "projectsSection": "প্রজেক্টসমূহ",
+      "newProject": "নতুন প্রকল্প"
+    },
+    "groups": {
+      "main": "প্রধান",
+      "system": "সিস্টেম",
+      "admin": "প্রশাসন",
+      "tools": "টুলস",
+      "modules": "মডিউলস"
+    }
+  },
+  "hi": {
+    "nav": {
+      "monitor": "मॉनिटर",
+      "files": "फ़ाइलें",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "उपयोगकर्ता",
+      "assistant": "AI एजेंट",
+      "terminal": "टर्मिनल",
+      "modules": "मॉड्यूल",
+      "githubStore": "GitHub",
+      "settings": "सेटिंग्स",
+      "mail": "मेल",
+      "dns": "NGINX",
+      "backups": "बैकअप",
+      "cron": "Cron",
+      "databases": "डेटाबेस",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "सूचनाएं",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "होस्टिंग",
+      "openclaw": "OpenClaw",
+      "preferences": "मेरी प्राथमिकताएँ",
+      "moduleDev": "मॉड्यूल डेव",
+      "expo": "Expo",
+      "codebaseGraph": "कोडबेस ग्राफ़"
+    },
+    "actions": {
+      "closeSession": "सत्र बंद करें",
+      "closingSession": "साइन आउट हो रहा है…",
+      "openMenu": "मेनू खोलें",
+      "openHistory": "इतिहास खोलें",
+      "openCommandPalette": "कमांड पैलेट खोलें",
+      "search": "खोजें...",
+      "settings": "कॉन्फ़िगरेशन",
+      "switchTheme": "थीम बदलें",
+      "notifications": "सूचनाएँ",
+      "chat": "संदेश",
+      "navigate": "नेविगेट करें",
+      "open": "खोलें",
+      "close": "बंद करें",
+      "toggleFilesEditor": "फ़ाइल संपादक",
+      "noResults": "कोई परिणाम नहीं",
+      "lightMode": "लाइट मोड पर स्विच करें",
+      "darkMode": "डार्क मोड पर स्विच करें"
+    },
+    "serverSwitcher": {
+      "label": "सर्वर बदलें",
+      "title": "सर्वर बदलें",
+      "currentOption": "{server} (बदलें)",
+      "connectingTitle": "सर्वर से कनेक्ट हो रहा है...",
+      "connectingStatus": "नया कनेक्शन सत्र तैयार किया जा रहा है।",
+      "changeServer": "सर्वर बदलें...",
+      "localOption": "स्थानीय (यह बॉक्स)",
+      "manageServers": "सर्वर प्रबंधित करें...",
+      "viewServers": "सर्वर देखें...",
+      "noOtherServers": "कोई अन्य सक्रिय सर्वर नहीं",
+      "sshKeyFallback": "कुंजी {n}",
+      "chooseSshKey": "SSH कुंजी चुनें",
+      "chooseSshKeyHelp": "इस सर्वर के लिए एक से अधिक उपयोगकर्ता कॉन्फ़िगर हैं। कनेक्ट करने के लिए एक चुनें।",
+      "cancel": "रद्द करें",
+      "openingConnection": "नए सर्वर के साथ सुरक्षित कनेक्शन खुल रहा है...",
+      "unknownError": "अज्ञात त्रुटि",
+      "switchFailedStatus": "सर्वर नहीं बदल सका ({detail}).",
+      "switchFailedAlert": "नए सर्वर से कनेक्शन स्थापित नहीं हो सका: {detail}",
+      "connectionErrorTitle": "कनेक्शन त्रुटि",
+      "returnButton": "वापस",
+      "returnTitle": "स्थानीय सर्वर पर लौटें"
+    },
+    "chatPanel": {
+      "newConversation": "नई बातचीत"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "बातचीत"
+      },
+      "users": {
+        "users": "उपयोगकर्ता",
+        "roles": "समूह"
+      },
+      "monitor": {
+        "history": "इतिहास",
+        "processes": "प्रक्रियाएं"
+      },
+      "files": {
+        "browser": "एक्सप्लोरर",
+        "editor": "संपादक"
+      },
+      "firewall": {
+        "audit": "ऑडिट",
+        "rules": "UFW नियम",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "स्थिति",
+        "components": "घटक",
+        "logs": "रिकॉर्ड"
+      },
+      "mail": {
+        "emails": "ईमेल",
+        "spam-filters": "स्पैम फ़िल्टर",
+        "track-delivery": "डिलीवरी",
+        "global-filters": "फ़िल्टर"
+      },
+      "dns": {
+        "overview": "सारांश",
+        "sites": "साइटें और HTTPS",
+        "proxy": "ट्रैफ़िक",
+        "perf": "प्रदर्शन",
+        "logs": "लॉग",
+        "status": "सेवा"
+      },
+      "nginx": {
+        "overview": "सारांश",
+        "sites": "साइटें और HTTPS",
+        "proxy": "ट्रैफ़िक",
+        "perf": "प्रदर्शन",
+        "logs": "लॉग",
+        "status": "सेवा"
+      },
+      "backups": {
+        "overview": "स्थिति",
+        "schedules": "शेड्यूल",
+        "history": "इतिहास"
+      },
+      "cron": {
+        "jobs": "कार्य",
+        "agents": "AI एजेंट"
+      },
+      "databases": {
+        "databases": "डेटाबेस",
+        "tables": "तालिकाएँ",
+        "console": "SQL कंसोल"
+      },
+      "obsidian": {
+        "vaults": "वॉल्ट और नोट्स",
+        "editor": "संपादक"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "कैश",
+        "security": "सुरक्षा",
+        "access": "पहुँच",
+        "config": "कॉन्फ़िगरेशन"
+      },
+      "server-alerts": {
+        "prefs": "प्राथमिकताएं",
+        "send": "भेजें",
+        "scheduled": "अनुसूचित",
+        "rules": "नियम",
+        "history": "इतिहास"
+      },
+      "expo": {
+        "account": "खाता",
+        "projects": "प्रोजेक्ट्स",
+        "builds": "बिल्ड",
+        "store": "स्टोर",
+        "environment": "चर"
+      },
+      "module-dev": {
+        "my-modules": "मेरे मॉड्यूल",
+        "project-map": "प्रोजेक्ट मैप"
+      },
+      "terminal": {
+        "terminal": "टर्मिनल"
+      },
+      "repository-store": {
+        "all": "ब्राउज़ करें",
+        "saved": "सहेजे गए",
+        "cloned": "क्लोन किए गए",
+        "update": "अपडेट"
+      },
+      "webhooks": {
+        "receive": "प्राप्त करें",
+        "webhooks": "वेबहुक",
+        "keys": "कुंजियाँ",
+        "discovered": "पता लगाए गए"
+      },
+      "openclaw": {
+        "assistant": "सहायक"
+      },
+      "hosting": {
+        "accounts": "खाते",
+        "new": "नया खाता"
+      },
+      "codebase-graph": {
+        "graph": "दृश्य ग्राफ",
+        "symbols": "प्रतीक"
+      },
+      "preferences": {
+        "profile": "प्रोफ़ाइल",
+        "security": "सुरक्षा",
+        "audit": "गतिविधि"
+      },
+      "settings": {
+        "settings": "कॉन्फ़िगरेशन"
+      },
+      "modules": {
+        "catalog": "कैटलॉग"
+      },
+      "chat": {
+        "chat": "चैट"
+      },
+      "_default": {
+        "overview": "अवलोकन"
+      }
+    },
+    "assistant": {
+      "projectsSection": "प्रोजेक्ट",
+      "newProject": "नई परियोजना"
+    },
+    "groups": {
+      "main": "मुख्य",
+      "system": "सिस्टम",
+      "admin": "प्रशासन",
+      "tools": "उपकरण",
+      "modules": "मॉड्यूल"
+    }
+  },
+  "ja": {
+    "nav": {
+      "monitor": "モニター",
+      "files": "ファイル",
+      "firewall": "ファイアウォール",
+      "bitninja": "BitNinja",
+      "users": "ユーザー",
+      "assistant": "AIエージェント",
+      "terminal": "ターミナル",
+      "modules": "モジュール",
+      "githubStore": "GitHub",
+      "settings": "設定",
+      "mail": "メール",
+      "dns": "NGINX",
+      "backups": "バックアップ",
+      "cron": "Cron",
+      "databases": "データベース",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "通知",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "ホスティング",
+      "openclaw": "OpenClaw",
+      "preferences": "マイ設定",
+      "moduleDev": "モジュール開発",
+      "expo": "Expo",
+      "codebaseGraph": "コードグラフ"
+    },
+    "actions": {
+      "closeSession": "ログアウト",
+      "closingSession": "ログアウトしています…",
+      "openMenu": "メニューを開く",
+      "openHistory": "履歴を開く",
+      "openCommandPalette": "コマンドパレットを開く",
+      "search": "検索...",
+      "settings": "設定",
+      "switchTheme": "テーマを変更",
+      "notifications": "通知",
+      "chat": "メッセージ",
+      "navigate": "移動",
+      "open": "開く",
+      "close": "閉じる",
+      "toggleFilesEditor": "ファイルエディター",
+      "noResults": "結果なし：",
+      "lightMode": "ライトモードに切り替え",
+      "darkMode": "ダークモードに切り替え"
+    },
+    "serverSwitcher": {
+      "label": "サーバーを切り替える",
+      "title": "サーバーを切り替える",
+      "currentOption": "{server}（切り替え）",
+      "connectingTitle": "サーバーに接続中...",
+      "connectingStatus": "新しい接続セッションを準備中。",
+      "changeServer": "サーバーを切り替え...",
+      "localOption": "ローカル (このサーバー)",
+      "manageServers": "サーバーを管理...",
+      "viewServers": "サーバーを表示...",
+      "noOtherServers": "他にアクティブなサーバーはありません",
+      "sshKeyFallback": "鍵 {n}",
+      "chooseSshKey": "SSH 鍵を選択",
+      "chooseSshKeyHelp": "このサーバーに複数のユーザーが設定されています。接続に使用するユーザーを選択してください。",
+      "cancel": "キャンセル",
+      "openingConnection": "新しいサーバーとの安全な接続を確立しています...",
+      "unknownError": "不明なエラー",
+      "switchFailedStatus": "サーバーを切り替えられませんでした ({detail})。",
+      "switchFailedAlert": "新しいサーバーへの接続を確立できませんでした: {detail}",
+      "connectionErrorTitle": "接続エラー",
+      "returnButton": "戻る",
+      "returnTitle": "ローカルサーバーに戻る"
+    },
+    "chatPanel": {
+      "newConversation": "新しい会話"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "会話"
+      },
+      "users": {
+        "users": "ユーザー",
+        "roles": "グループ"
+      },
+      "monitor": {
+        "history": "履歴",
+        "processes": "プロセス"
+      },
+      "files": {
+        "browser": "エクスプローラー",
+        "editor": "エディター"
+      },
+      "firewall": {
+        "audit": "監査",
+        "rules": "UFWルール",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "状態",
+        "components": "コンポーネント",
+        "logs": "レコード"
+      },
+      "mail": {
+        "emails": "メール",
+        "spam-filters": "迷惑メールフィルター",
+        "track-delivery": "配信",
+        "global-filters": "フィルター"
+      },
+      "dns": {
+        "overview": "概要",
+        "sites": "サイトと HTTPS",
+        "proxy": "トラフィック",
+        "perf": "パフォーマンス",
+        "logs": "ログ",
+        "status": "サービス"
+      },
+      "nginx": {
+        "overview": "概要",
+        "sites": "サイトと HTTPS",
+        "proxy": "トラフィック",
+        "perf": "パフォーマンス",
+        "logs": "ログ",
+        "status": "サービス"
+      },
+      "backups": {
+        "overview": "状態",
+        "schedules": "スケジュール",
+        "history": "履歴"
+      },
+      "cron": {
+        "jobs": "ジョブ",
+        "agents": "AIエージェント"
+      },
+      "databases": {
+        "databases": "データベース",
+        "tables": "テーブル",
+        "console": "SQLコンソール"
+      },
+      "obsidian": {
+        "vaults": "保管庫とメモ",
+        "editor": "エディター"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "キャッシュ",
+        "security": "セキュリティ",
+        "access": "アクセス",
+        "config": "設定"
+      },
+      "server-alerts": {
+        "prefs": "個人設定",
+        "send": "送信",
+        "scheduled": "予約",
+        "rules": "ルール",
+        "history": "履歴"
+      },
+      "expo": {
+        "account": "アカウント",
+        "projects": "プロジェクト",
+        "builds": "ビルド",
+        "store": "ストア",
+        "environment": "変数"
+      },
+      "module-dev": {
+        "my-modules": "マイモジュール",
+        "project-map": "プロジェクトマップ"
+      },
+      "terminal": {
+        "terminal": "ターミナル"
+      },
+      "repository-store": {
+        "all": "参照",
+        "saved": "保存済み",
+        "cloned": "クローン済み",
+        "update": "更新"
+      },
+      "webhooks": {
+        "receive": "受信",
+        "webhooks": "Webhook",
+        "keys": "キー",
+        "discovered": "検出済み"
+      },
+      "openclaw": {
+        "assistant": "アシスタント"
+      },
+      "hosting": {
+        "accounts": "アカウント",
+        "new": "新規アカウント"
+      },
+      "codebase-graph": {
+        "graph": "ビジュアルグラフ",
+        "symbols": "シンボル"
+      },
+      "preferences": {
+        "profile": "プロフィール",
+        "security": "セキュリティ",
+        "audit": "アクティビティ"
+      },
+      "settings": {
+        "settings": "設定"
+      },
+      "modules": {
+        "catalog": "カタログ"
+      },
+      "chat": {
+        "chat": "チャット"
+      },
+      "_default": {
+        "overview": "概要"
+      }
+    },
+    "assistant": {
+      "projectsSection": "プロジェクト",
+      "newProject": "新しいプロジェクト"
+    },
+    "groups": {
+      "main": "メイン",
+      "system": "システム",
+      "admin": "管理",
+      "tools": "ツール",
+      "modules": "モジュール"
+    }
+  },
+  "ko": {
+    "nav": {
+      "monitor": "모니터",
+      "files": "파일",
+      "firewall": "방화벽",
+      "bitninja": "BitNinja",
+      "users": "사용자",
+      "assistant": "AI 에이전트",
+      "terminal": "터미널",
+      "modules": "모듈",
+      "githubStore": "GitHub",
+      "settings": "설정",
+      "mail": "메일",
+      "dns": "NGINX",
+      "backups": "백업",
+      "cron": "Cron",
+      "databases": "데이터베이스",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "알림",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "호스팅",
+      "openclaw": "OpenClaw",
+      "preferences": "내 환경설정",
+      "moduleDev": "모듈 개발",
+      "expo": "Expo",
+      "codebaseGraph": "코드베이스 그래프"
+    },
+    "actions": {
+      "closeSession": "로그아웃",
+      "closingSession": "로그아웃 중…",
+      "openMenu": "메뉴 열기",
+      "openHistory": "기록 열기",
+      "openCommandPalette": "명령 팔레트 열기",
+      "search": "검색...",
+      "settings": "구성",
+      "switchTheme": "테마 변경",
+      "notifications": "알림",
+      "chat": "메시지",
+      "navigate": "이동",
+      "open": "열기",
+      "close": "닫기",
+      "toggleFilesEditor": "파일 편집기",
+      "noResults": "결과 없음:",
+      "lightMode": "라이트 모드로 전환",
+      "darkMode": "다크 모드로 전환"
+    },
+    "serverSwitcher": {
+      "label": "서버 전환",
+      "title": "서버 전환",
+      "currentOption": "{server} (전환)",
+      "connectingTitle": "서버에 연결 중...",
+      "connectingStatus": "새 연결 세션을 준비하는 중입니다.",
+      "changeServer": "서버 변경...",
+      "localOption": "로컬 (이 서버)",
+      "manageServers": "서버 관리...",
+      "viewServers": "서버 보기...",
+      "noOtherServers": "다른 활성 서버가 없습니다",
+      "sshKeyFallback": "키 {n}",
+      "chooseSshKey": "SSH 키 선택",
+      "chooseSshKeyHelp": "이 서버에 구성된 사용자가 여러 명입니다. 연결할 사용자를 선택하세요.",
+      "cancel": "취소",
+      "openingConnection": "새 서버와 보안 연결을 여는 중...",
+      "unknownError": "알 수 없는 오류",
+      "switchFailedStatus": "서버를 변경할 수 없습니다 ({detail}).",
+      "switchFailedAlert": "새 서버에 연결할 수 없습니다: {detail}",
+      "connectionErrorTitle": "연결 오류",
+      "returnButton": "돌아가기",
+      "returnTitle": "로컬 서버로 돌아가기"
+    },
+    "chatPanel": {
+      "newConversation": "새 대화"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "대화"
+      },
+      "users": {
+        "users": "사용자",
+        "roles": "그룹"
+      },
+      "monitor": {
+        "history": "기록",
+        "processes": "프로세스"
+      },
+      "files": {
+        "browser": "탐색기",
+        "editor": "편집기"
+      },
+      "firewall": {
+        "audit": "감사",
+        "rules": "UFW 규칙",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "상태",
+        "components": "구성 요소",
+        "logs": "레코드"
+      },
+      "mail": {
+        "emails": "이메일",
+        "spam-filters": "스팸 필터",
+        "track-delivery": "전달",
+        "global-filters": "필터"
+      },
+      "dns": {
+        "overview": "개요",
+        "sites": "사이트와 HTTPS",
+        "proxy": "트래픽",
+        "perf": "성능",
+        "logs": "로그",
+        "status": "서비스"
+      },
+      "nginx": {
+        "overview": "개요",
+        "sites": "사이트와 HTTPS",
+        "proxy": "트래픽",
+        "perf": "성능",
+        "logs": "로그",
+        "status": "서비스"
+      },
+      "backups": {
+        "overview": "상태",
+        "schedules": "예약",
+        "history": "기록"
+      },
+      "cron": {
+        "jobs": "작업",
+        "agents": "AI 에이전트"
+      },
+      "databases": {
+        "databases": "데이터베이스",
+        "tables": "테이블",
+        "console": "SQL 콘솔"
+      },
+      "obsidian": {
+        "vaults": "보관함과 메모",
+        "editor": "편집기"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "캐시",
+        "security": "보안",
+        "access": "접근",
+        "config": "설정"
+      },
+      "server-alerts": {
+        "prefs": "환경설정",
+        "send": "보내기",
+        "scheduled": "예약됨",
+        "rules": "규칙",
+        "history": "기록"
+      },
+      "expo": {
+        "account": "계정",
+        "projects": "프로젝트",
+        "builds": "빌드",
+        "store": "스토어",
+        "environment": "변수"
+      },
+      "module-dev": {
+        "my-modules": "내 모듈",
+        "project-map": "프로젝트 맵"
+      },
+      "terminal": {
+        "terminal": "터미널"
+      },
+      "repository-store": {
+        "all": "찾아보기",
+        "saved": "저장됨",
+        "cloned": "복제됨",
+        "update": "업데이트"
+      },
+      "webhooks": {
+        "receive": "수신",
+        "webhooks": "웹훅",
+        "keys": "키",
+        "discovered": "감지됨"
+      },
+      "openclaw": {
+        "assistant": "어시스턴트"
+      },
+      "hosting": {
+        "accounts": "계정",
+        "new": "새 계정"
+      },
+      "codebase-graph": {
+        "graph": "시각적 그래프",
+        "symbols": "심볼"
+      },
+      "preferences": {
+        "profile": "프로필",
+        "security": "보안",
+        "audit": "활동"
+      },
+      "settings": {
+        "settings": "구성"
+      },
+      "modules": {
+        "catalog": "카탈로그"
+      },
+      "chat": {
+        "chat": "채팅"
+      },
+      "_default": {
+        "overview": "개요"
+      }
+    },
+    "assistant": {
+      "projectsSection": "프로젝트",
+      "newProject": "새 프로젝트"
+    },
+    "groups": {
+      "main": "메인",
+      "system": "시스템",
+      "admin": "관리",
+      "tools": "도구",
+      "modules": "모듈"
+    }
+  },
+  "ru": {
+    "nav": {
+      "monitor": "Монитор",
+      "files": "Файлы",
+      "firewall": "Firewall",
+      "bitninja": "BitNinja",
+      "users": "Пользователи",
+      "assistant": "ИИ-агенты",
+      "terminal": "Терминал",
+      "modules": "Модули",
+      "githubStore": "GitHub",
+      "settings": "Настройки",
+      "mail": "Почта",
+      "dns": "NGINX",
+      "backups": "Резервные копии",
+      "cron": "Cron",
+      "databases": "Базы данных",
+      "obsidian": "Obsidian",
+      "cloudflare": "Cloudflare",
+      "serverAlerts": "Уведомления",
+      "ssl": "SSL",
+      "webhooks": "Webhooks",
+      "hosting": "Хостинг",
+      "openclaw": "OpenClaw",
+      "preferences": "Мои настройки",
+      "moduleDev": "Разработка модулей",
+      "expo": "Expo",
+      "codebaseGraph": "Граф кода"
+    },
+    "actions": {
+      "closeSession": "Выйти из системы",
+      "closingSession": "Выход из системы…",
+      "openMenu": "Открыть меню",
+      "openHistory": "Открыть историю",
+      "openCommandPalette": "Открыть палитру команд",
+      "search": "Поиск...",
+      "settings": "Настройки",
+      "switchTheme": "Сменить тему",
+      "notifications": "Уведомления",
+      "chat": "Сообщения",
+      "navigate": "Перейти",
+      "open": "Открыть",
+      "close": "Закрыть",
+      "toggleFilesEditor": "Редактор файлов",
+      "noResults": "Нет результатов для",
+      "lightMode": "Переключить на светлую тему",
+      "darkMode": "Переключить на тёмную тему"
+    },
+    "serverSwitcher": {
+      "label": "Сменить сервер",
+      "title": "Сменить сервер",
+      "currentOption": "{server} (сменить)",
+      "connectingTitle": "Подключение к серверу...",
+      "connectingStatus": "Подготовка нового сеанса подключения.",
+      "changeServer": "Сменить сервер...",
+      "localOption": "Локально (этот хост)",
+      "manageServers": "Управление серверами...",
+      "viewServers": "Просмотр серверов...",
+      "noOtherServers": "Нет других активных серверов",
+      "sshKeyFallback": "Ключ {n}",
+      "chooseSshKey": "Выбрать SSH-ключ",
+      "chooseSshKeyHelp": "Для этого сервера настроено несколько пользователей. Выберите, с каким подключиться.",
+      "cancel": "Отмена",
+      "openingConnection": "Открытие защищённого соединения с новым сервером...",
+      "unknownError": "Неизвестная ошибка",
+      "switchFailedStatus": "Не удалось сменить сервер ({detail}).",
+      "switchFailedAlert": "Не удалось установить соединение с новым сервером: {detail}",
+      "connectionErrorTitle": "Ошибка подключения",
+      "returnButton": "Назад",
+      "returnTitle": "Вернуться к локальному серверу"
+    },
+    "chatPanel": {
+      "newConversation": "Новый разговор"
+    },
+    "workspaceViews": {
+      "assistant": {
+        "chat": "Беседы"
+      },
+      "users": {
+        "users": "Пользователи",
+        "roles": "Группы"
+      },
+      "monitor": {
+        "history": "История",
+        "processes": "Процессы"
+      },
+      "files": {
+        "browser": "Обозреватель",
+        "editor": "Редактор"
+      },
+      "firewall": {
+        "audit": "Аудит",
+        "rules": "Правила UFW",
+        "fail2ban": "Fail2ban"
+      },
+      "bitninja": {
+        "status": "Состояние",
+        "components": "Компоненты",
+        "logs": "Запись"
+      },
+      "mail": {
+        "emails": "Почтовые ящики",
+        "spam-filters": "Антиспам",
+        "track-delivery": "Доставка",
+        "global-filters": "Фильтры"
+      },
+      "dns": {
+        "overview": "Обзор",
+        "sites": "Сайты и HTTPS",
+        "proxy": "Трафик",
+        "perf": "Производительность",
+        "logs": "Журналы",
+        "status": "Сервис"
+      },
+      "nginx": {
+        "overview": "Обзор",
+        "sites": "Сайты и HTTPS",
+        "proxy": "Трафик",
+        "perf": "Производительность",
+        "logs": "Журналы",
+        "status": "Служба"
+      },
+      "backups": {
+        "overview": "Состояние",
+        "schedules": "Расписания",
+        "history": "История"
+      },
+      "cron": {
+        "jobs": "Задачи",
+        "agents": "ИИ-агенты"
+      },
+      "databases": {
+        "databases": "Базы данных",
+        "tables": "Таблицы",
+        "console": "SQL-консоль"
+      },
+      "obsidian": {
+        "vaults": "Хранилища и заметки",
+        "editor": "Редактор"
+      },
+      "cloudflare": {
+        "dns": "DNS",
+        "cache": "Кэш",
+        "security": "Безопасность",
+        "access": "Доступ",
+        "config": "Настройки"
+      },
+      "server-alerts": {
+        "prefs": "Настройки",
+        "send": "Отправить",
+        "scheduled": "Запланированные",
+        "rules": "Правила",
+        "history": "История"
+      },
+      "expo": {
+        "account": "Аккаунт",
+        "projects": "Проекты",
+        "builds": "Сборки",
+        "store": "Магазины",
+        "environment": "Переменные"
+      },
+      "module-dev": {
+        "my-modules": "Мои модули",
+        "project-map": "Карта проекта"
+      },
+      "terminal": {
+        "terminal": "Терминал"
+      },
+      "repository-store": {
+        "all": "Обзор",
+        "saved": "Сохранённые",
+        "cloned": "Клонированные",
+        "update": "Обновления"
+      },
+      "webhooks": {
+        "receive": "Приём",
+        "webhooks": "Вебхуки",
+        "keys": "Ключи",
+        "discovered": "Обнаруженные"
+      },
+      "openclaw": {
+        "assistant": "Ассистент"
+      },
+      "hosting": {
+        "accounts": "Учётные записи",
+        "new": "Новая учётная запись"
+      },
+      "codebase-graph": {
+        "graph": "Визуальный граф",
+        "symbols": "Символы"
+      },
+      "preferences": {
+        "profile": "Профиль",
+        "security": "Безопасность",
+        "audit": "Активность"
+      },
+      "settings": {
+        "settings": "Настройки"
+      },
+      "modules": {
+        "catalog": "Каталог"
+      },
+      "chat": {
+        "chat": "Чат"
+      },
+      "_default": {
+        "overview": "Обзор"
+      }
+    },
+    "assistant": {
+      "projectsSection": "Проекты",
+      "newProject": "Новый проект"
+    },
+    "groups": {
+      "main": "Главное",
+      "system": "Система",
+      "admin": "Администрирование",
+      "tools": "Инструменты",
+      "modules": "Модули"
+    }
+  }
+}

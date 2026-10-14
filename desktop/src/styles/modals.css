@@ -1,0 +1,450 @@
+/* Modales (look & feel /frontend). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ─────────── Modales (look & feel /frontend) ─────────── */
+.lp-modal-overlay {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+[data-theme="dark"] .lp-modal-overlay {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.lp-modal-card {
+  background-color: var(--lp-card-solid, #ffffff);
+  color: var(--lp-text, #334155);
+  border: 1px solid var(--lp-border, rgba(15, 23, 42, 0.08));
+  border-radius: 1.1rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+[data-theme="dark"] .lp-modal-card {
+  background-color: #1a1a1a;
+}
+
+[data-theme="dark"] .lp-modal-card {
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.7);
+}
+
+.lp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--lp-border);
+}
+
+.lp-modal-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--lp-heading);
+  margin: 0;
+}
+
+/* Fila de item del dropdown de cuenta (avatar ▾). */
+.lp-acct-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.6rem;
+  background: transparent;
+  border: none;
+  color: var(--lp-text, inherit);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.lp-acct-row:hover {
+  background: color-mix(in srgb, var(--lp-primary, #7c3aed) 12%, transparent);
+}
+.lp-acct-row.text-error:hover {
+  background: color-mix(in srgb, #e11d48 14%, transparent);
+}
+
+.lp-modal-close {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.lp-modal-close:hover {
+  background: color-mix(in srgb, var(--lp-text) 8%, transparent);
+  color: var(--lp-heading);
+}
+
+.lp-modal-body {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  /* Sin scroll horizontal: `overflow-y:auto` con `overflow-x` por defecto
+     (`visible`) hace que el navegador lo compute como `auto`, y cualquier hijo
+     sub-pixel más ancho (p. ej. el track del carrusel de Datos) muestra una
+     barra en X. Fijarlo en `hidden` la elimina; el contenido ancho que sí
+     necesita scroll (tablas) lo gestiona en su propio contenedor. */
+  overflow-x: hidden;
+  color: var(--lp-text);
+}
+
+.lp-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--lp-border);
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  align-items: center;
+  background: color-mix(in srgb, var(--lp-text) 2%, var(--lp-card-solid));
+}
+
+.lp-modal-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--lp-text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.lp-modal-hint {
+  font-size: 0.78rem;
+  color: var(--lp-text-muted);
+  margin-top: 0.35rem;
+}
+
+.lp-modal-error {
+  border: 1px solid color-mix(in srgb, #f43f5e 60%, var(--lp-border));
+  background: color-mix(in srgb, #f43f5e 10%, var(--lp-card-solid));
+  color: #b91c1c;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+[data-theme="dark"] .lp-modal-error {
+  color: #fecaca;
+}
+
+/* Form controls inside lp modals */
+.lp-modal-input,
+.lp-modal-select,
+.lp-modal-textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--lp-border);
+  background: var(--lp-ink-1);
+  color: var(--lp-text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.lp-modal-input:focus,
+.lp-modal-select:focus,
+.lp-modal-textarea:focus {
+  outline: none;
+  border-color: var(--lp-brand);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lp-brand) 22%, transparent);
+}
+
+.lp-modal-input:disabled {
+  background: color-mix(in srgb, var(--lp-text) 4%, var(--lp-ink-1));
+  color: var(--lp-text-muted);
+  cursor: not-allowed;
+}
+
+/* Campo obligatorio que falló la validación al guardar: borde rojo. */
+.lp-modal-input--error,
+.lp-modal-input--error:focus {
+  border-color: #f43f5e;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #f43f5e 22%, transparent);
+}
+
+/* Fila de toggle/checkbox con etiqueta (opciones de login). */
+.lp-modal-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.lp-modal-textarea {
+  min-height: 120px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+}
+
+.lp-modal-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 9rem;
+  overflow-y: auto;
+  border: 1px solid var(--lp-border);
+  background: var(--lp-ink-1);
+  border-radius: 0.6rem;
+  padding: 0.5rem;
+}
+
+.lp-modal-checklist--column {
+  flex-wrap: nowrap;
+  flex-direction: column;
+  max-height: 11rem;
+}
+
+.lp-modal-checklist__empty {
+  color: var(--lp-text-muted);
+  font-size: 0.78rem;
+  padding: 0.25rem;
+}
+
+.lp-modal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--lp-border);
+  background: color-mix(in srgb, var(--lp-text) 3%, var(--lp-ink-1));
+  color: var(--lp-text);
+  border-radius: 9999px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lp-modal-chip input {
+  accent-color: var(--lp-brand);
+}
+
+.lp-modal-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+}
+
+.lp-modal-key-row:hover {
+  background: color-mix(in srgb, var(--lp-text) 5%, transparent);
+}
+
+.lp-modal-key-row__user {
+  color: var(--lp-heading);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.lp-modal-key-row__meta {
+  color: var(--lp-text-muted);
+  font-size: 0.72rem;
+  display: block;
+}
+
+.lp-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.5rem;
+  background: var(--lp-card-solid);
+  padding: 0 0.55rem;
+  min-height: 38px;
+  margin: 0.5rem 0;
+  color: var(--lp-text-muted);
+}
+
+.lp-modal-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.85rem;
+  color: var(--lp-text);
+  padding: 0;
+  min-height: 0;
+}
+
+.lp-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background .15s, border-color .15s, color .15s, transform .12s;
+}
+
+.lp-modal-btn--ghost {
+  background: transparent;
+  color: var(--lp-text);
+  border-color: var(--lp-border);
+}
+
+.lp-modal-btn--ghost:hover {
+  background: color-mix(in srgb, var(--lp-text) 6%, transparent);
+}
+
+.lp-modal-btn--primary {
+  background: var(--lp-brand);
+  color: #ffffff;
+  border-color: var(--lp-brand);
+}
+
+.lp-modal-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.lp-modal-btn--danger {
+  background: #e11d48;
+  color: #ffffff;
+  border-color: #e11d48;
+}
+
+.lp-modal-btn--danger:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.lp-modal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lp-modal-btn--sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.lp-modal-btn--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.lp-modal-search-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.lp-modal-search-row .lp-modal-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.lp-connect-method-option {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.875rem 1rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--lp-border);
+  background: var(--lp-surface);
+  color: var(--lp-text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.lp-connect-method-option:hover {
+  background: color-mix(in srgb, var(--lp-brand) 8%, var(--lp-surface));
+  border-color: color-mix(in srgb, var(--lp-brand) 40%, var(--lp-border));
+  transform: translateY(-1px);
+}
+
+.lp-connect-method-option:active {
+  transform: translateY(0);
+}
+
+.lp-connect-method-option__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--lp-brand) 12%, transparent);
+  color: var(--lp-brand);
+}
+
+.lp-connect-method-option__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.lp-connect-method-option__body strong {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.lp-connect-method-option__body span {
+  font-size: 0.775rem;
+  color: var(--lp-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lp-modal-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--lp-border);
+  padding: 0 1.5rem;
+  overflow-x: auto;
+  background: var(--lp-card-solid);
+  flex-shrink: 0;
+}
+
+.lp-modal-tab {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--lp-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lp-modal-tab:hover {
+  color: var(--lp-heading);
+}
+
+.lp-modal-tab.is-active {
+  color: var(--lp-brand-light);
+  border-bottom-color: var(--lp-brand);
+}
+
+

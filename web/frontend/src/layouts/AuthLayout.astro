@@ -1,0 +1,165 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+import "@/styles/starwind.css";
+import SetupWizardFooter from "@/components/auth/AuthWizardFooter.astro";
+import { getMessages } from '@/i18n';
+import { localeFromRequest } from '@/i18n/server';
+import { localeDir } from '@/i18n/config';
+import { loadLayoutRuntimeContext, parseLayoutBoolean } from "@/lib/layout-context";
+import LoginEffectIsland from "@/components/login-effects/LoginEffectIsland.tsx";
+import { resolveLoginEffect } from "@/lib/login-effects/resolve";
+import { isEmbeddedClientUA } from "@/lib/embedded-source";
+import BrandingRuntime from "@/components/layout/BrandingRuntime.astro";
+import DbLogo from "@/components/layout/DbLogo.astro";
+import DocumentHead from "@/components/layout/DocumentHead.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  canonical?: string;
+  noindex?: boolean;
+  shellId?: string;
+  asideId?: string;
+  stageId?: string;
+  logoId?: string;
+  footerId?: string;
+  pageVariant?: "login";
+  previewSettings?: Record<string, string>;
+}
+
+const {
+  title,
+  description = "",
+  canonical = Astro.url.href,
+  noindex = true,
+  shellId = "auth-shell",
+  asideId = "auth-aside",
+  stageId = "auth-stage",
+  logoId = "auth-aside-logo",
+  footerId = "auth-aside-footer",
+  pageVariant = "login",
+  previewSettings = {},
+} = Astro.props;
+
+const locale = localeFromRequest(Astro.request);
+const t = await getMessages(locale, ['components', 'baseLayout']);
+const footerCopy = t.components.setupWizardFooter;
+const metaDescription = description || t.baseLayout.description;
+const fullTitle = `${title} - ${t.baseLayout.titleSuffix}`;
+const {
+  layoutSettings,
+  layoutCss,
+  layoutLogoMap,
+  themeColorLight,
+  themeColorDark,
+} = await loadLayoutRuntimeContext(Astro.request, Astro.locals.uiBootstrap);
+const isLoginPage = pageVariant === "login";
+// Hide the theme/language toggle row on /login when the page is being
+// rendered inside the desktop or mobile-app wrapper — those wrappers ship
+// their own theme/language controls and the duplicates are confusing.
+const userAgent = Astro.request.headers.get("user-agent");
+const hideAuthFooterControls = isLoginPage && isEmbeddedClientUA(userAgent);
+
+const effectiveLayoutSettings = { ...layoutSettings, ...previewSettings };
+const loginBackgroundEnabled = parseLayoutBoolean(effectiveLayoutSettings.layout_login_background_enabled, true);
+const loginBackgroundFallbackColor = effectiveLayoutSettings.layout_login_background_fallback_color || "#020617";
+
+// Resolve the selected react-bits effect (registry-driven). Any persisted id
+// that no longer exists falls back to the default effect.
+const { effect: activeEffect, props: activeEffectProps } = resolveLoginEffect(effectiveLayoutSettings);
+---
+
+<!DOCTYPE html>
+<html lang={locale} dir={localeDir(locale)}>
+  <DocumentHead includeClientRouter={true}
+    fullTitle={fullTitle}
+    metaDescription={metaDescription}
+    canonical={canonical}
+    noindex={noindex}
+    themeColorLight={themeColorLight}
+    themeColorDark={themeColorDark}
+    faviconHref={layoutLogoMap.favicon || "/favicon.ico?v=3"}
+    shortcutIconHref="/favicon.ico?v=3"
+    locale={locale}
+  />
+  <body class="min-h-screen bg-background font-sans text-foreground antialiased">
+    <BrandingRuntime layoutCss={layoutCss} layoutLogoMap={layoutLogoMap} />
+
+    <div class="min-h-screen">
+      <div id={shellId} class="relative grid min-h-screen w-full grid-cols-1 lg:grid-cols-2 lg:items-stretch">
+        <aside id={asideId} class={`absolute inset-0 z-0 overflow-hidden p-6 lg:relative lg:inset-auto lg:order-2 lg:z-auto lg:p-8`}>
+          <div class="absolute inset-0">
+            {isLoginPage ? (
+              loginBackgroundEnabled && activeEffect ? (
+                <LoginEffectIsland client:load effectId={activeEffect.id} effectProps={activeEffectProps} />
+              ) : (
+                <div class="h-full w-full" style={`background:${loginBackgroundFallbackColor}`}></div>
+              )
+            ) : (
+              <LoginEffectIsland
+                client:load
+                effectId="line_waves"
+                effectProps={{
+                  speed: 0.3,
+                  innerLineCount: 40,
+                  outerLineCount: 36,
+                  warpIntensity: 1.3,
+                  rotation: -19,
+                  edgeFadeWidth: 0.15,
+                  colorCycleSpeed: 0.9,
+                  brightness: 0.4,
+                  color1: "#1c96e9",
+                  color2: "#8011dd",
+                  color3: "#11dc2d",
+                  mouseInfluence: 2,
+                }}
+              />
+            )}
+          </div>
+          {/* Theme-reactive illumination scrim over the (theme-blind) react-bits
+              effect: dims toward dark in light mode so the white logo pops, and
+              lightens in dark mode — mirroring the intended split-login look.
+              `.dark` is toggled client-side on <html>, so dark: variants apply
+              live when the theme switch is used. pointer-events-none + z-[1]
+              keep it below the logo/footer (z-10) and non-blocking. */}
+          <div
+            class="pointer-events-none absolute inset-0 z-[1] bg-slate-950/30 transition-colors duration-500 dark:bg-white/10"
+            aria-hidden="true"
+          ></div>
+          <div class="relative z-10 hidden h-full w-full flex-col items-center text-center lg:flex">
+            <div class="flex w-full flex-1 items-center justify-center">
+              <div class="flex h-40 w-40 items-center justify-center rounded-full bg-white p-6 shadow-xl ring-1 ring-black/5">
+                <DbLogo role="login" id={logoId} alt={t.components.logoAlt} class="h-full w-full" />
+              </div>
+            </div>
+
+            <div id={footerId} class="w-full max-w-md pb-6 lg:pb-10">
+              <SetupWizardFooter locale={locale} footerCopy={footerCopy} hideControls={hideAuthFooterControls} />
+            </div>
+          </div>
+        </aside>
+
+        <section id={stageId} class="relative z-10 order-2 flex min-h-screen items-center justify-center bg-transparent p-6 lg:order-1 lg:z-auto lg:bg-background lg:p-8">
+          <slot />
+        </section>
+      </div>
+    </div>
+
+    <script type="module">
+      import "/scripts/extracted/layouts/BaseLayout-script1.js?v=20260929-drawer-speed-v3";
+    </script>
+  <script>import "@/lib/tabler-svg-fallback";</script>
+  </body>
+</html>
+
+<style is:global>
+  @import "../styles/extracted/layouts/BaseLayout-style1.css";
+</style>
+
+<script>
+ import { navigate } from "astro:transitions/client";
+ import { warmLoginShell } from "@/lib/login-preload";
+ document.addEventListener("focusin", event => { if ((event.target as Element)?.closest("#form-password")) warmLoginShell(); });
+ (window as any).__lxpAuthNavigate = navigate;
+</script>

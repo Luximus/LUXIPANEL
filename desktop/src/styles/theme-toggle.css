@@ -1,0 +1,98 @@
+/* Theme toggle (daisyUI-style con iconos dentro). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ─────────── Theme toggle (daisyUI-style with icons inside) ─────────── */
+.lp-theme-toggle {
+  --track-w: 3.25rem;
+  --track-h: 1.6rem;
+  --pad: 0.18rem;
+  --thumb: calc(var(--track-h) - 2 * var(--pad));
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: var(--track-w);
+  height: var(--track-h);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.lp-theme-toggle input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.lp-theme-toggle__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--lp-text-muted) 22%, transparent);
+  border: 1px solid var(--lp-border);
+  transition: background .18s, border-color .18s;
+  display: block;
+}
+
+.lp-theme-toggle.is-dark .lp-theme-toggle__track {
+  background: color-mix(in srgb, var(--lp-brand) 32%, #1f2937);
+  border-color: color-mix(in srgb, var(--lp-brand) 40%, var(--lp-border));
+}
+
+.lp-theme-toggle__icon {
+  position: absolute;
+  top: 50%;
+  width: calc(var(--track-h) * 0.62);
+  height: calc(var(--track-h) * 0.62);
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: color .18s, opacity .18s;
+}
+
+.lp-theme-toggle__icon--sun {
+  left: calc(var(--pad) + 2px);
+  color: #f59e0b;
+}
+
+.lp-theme-toggle__icon--moon {
+  right: calc(var(--pad) + 2px);
+  color: #ffffff;
+}
+
+.lp-theme-toggle.is-light .lp-theme-toggle__icon--moon {
+  color: var(--lp-text-muted);
+  opacity: 0.55;
+}
+
+.lp-theme-toggle.is-dark .lp-theme-toggle__icon--sun {
+  color: #ffffff;
+  opacity: 0.85;
+}
+
+.lp-theme-toggle__thumb {
+  position: absolute;
+  top: var(--pad);
+  left: var(--pad);
+  width: var(--thumb);
+  height: var(--thumb);
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  transition: transform .2s ease, background .18s;
+  pointer-events: none;
+}
+
+.lp-theme-toggle.is-dark .lp-theme-toggle__thumb {
+  transform: translateX(calc(var(--track-w) - var(--thumb) - 2 * var(--pad)));
+  background: #0f172a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.lp-theme-toggle input:focus-visible + .lp-theme-toggle__track {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lp-brand) 35%, transparent);
+}
+
+

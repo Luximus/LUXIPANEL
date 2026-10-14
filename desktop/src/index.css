@@ -1,0 +1,449 @@
+﻿@import "flag-icons/css/flag-icons.min.css";
+@import "tailwindcss";
+
+/* daisyUI v5: se carga como plugin CSS-first de Tailwind 4 (antes era
+   `plugins:[require("daisyui")]` en tailwind.config). Mantenemos los dos temas
+   previos; el desktop conmuta vía [data-theme] en <html>. */
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+
+/* El toggle de tema usa [data-theme="dark"] (atributo daisyUI), NO la media
+   query del SO. Reproducimos el antiguo darkMode:['selector','[data-theme="dark"]']
+   para que las utilidades `dark:` sigan resolviendo igual que en v3. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Compat Tailwind v3→v4: en v4 el color de borde por defecto pasó a
+   `currentColor`. Restauramos el gris neutro de v3 para no alterar todos los
+   bordes `border` sin color explícito que ya existen en la app. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
+
+@font-face {
+  font-family: "LXP Inter";
+  src: url("/fonts/inter-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Inter";
+  src: url("/fonts/inter-700.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Mono";
+  src: url("/fonts/jetbrains-mono-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Mono";
+  src: url("/fonts/jetbrains-mono-600.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto Arabic";
+  src: url("/fonts/noto-sans-arabic-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto Arabic";
+  src: url("/fonts/noto-sans-arabic-700.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto Devanagari";
+  src: url("/fonts/noto-sans-devanagari-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto Devanagari";
+  src: url("/fonts/noto-sans-devanagari-700.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto JP";
+  src: url("/fonts/noto-sans-jp-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto JP";
+  src: url("/fonts/noto-sans-jp-700.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto KR";
+  src: url("/fonts/noto-sans-kr-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto KR";
+  src: url("/fonts/noto-sans-kr-700.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto TC";
+  src: url("/fonts/noto-sans-tc-400.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXP Noto TC";
+  src: url("/fonts/noto-sans-tc-700.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "LXP Inter", "Inter", "Segoe UI", "LXP Noto JP", "LXP Noto KR", "LXP Noto TC", "LXP Noto Devanagari", "LXP Noto Arabic", system-ui, sans-serif;
+}
+
+[data-locale="ja"] body { font-family: "LXP Noto JP", "LXP Inter", system-ui, sans-serif; }
+[data-locale="ko"] body { font-family: "LXP Noto KR", "LXP Inter", system-ui, sans-serif; }
+[data-locale="zh"] body { font-family: "LXP Noto TC", "LXP Inter", system-ui, sans-serif; }
+[data-locale="hi"] body { font-family: "LXP Noto Devanagari", "LXP Inter", system-ui, sans-serif; }
+[data-locale="ar"] body { font-family: "LXP Noto Arabic", "LXP Inter", system-ui, sans-serif; }
+[data-locale="ar"] { direction: rtl; }
+
+/* ─────────── RTL adjustments (Arabic) ─────────────────────────────── */
+/* Mirror direction-sensitive icons (lucide chevrons, arrows, etc.) so
+   that "previous/next/back" affordances point the correct way in RTL. */
+[dir="rtl"] .lp-rtl-flip,
+[dir="rtl"] .lucide-chevron-left,
+[dir="rtl"] .lucide-chevron-right,
+[dir="rtl"] .lucide-arrow-left,
+[dir="rtl"] .lucide-arrow-right {
+  transform: scaleX(-1);
+}
+
+/* daisyUI avatar-group uses left negative margin to overlap. Reverse it. */
+[dir="rtl"] .avatar-group > :not(:first-child) {
+  margin-inline-start: 0;
+  margin-inline-end: calc(var(--tw-space-x-reverse, 0) * 1px);
+}
+[dir="rtl"] .-space-x-3 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
+}
+
+/* Sticky first column on tables: pin to the row's start (right in RTL). */
+[dir="rtl"] .dt-sticky-cell,
+[dir="rtl"] th.sticky.left-0,
+[dir="rtl"] td.sticky.left-0 {
+  left: auto;
+  right: 0;
+}
+
+/* AccountMenu trigger anchors to the visual end (left edge in RTL). */
+[dir="rtl"] .titlebar-no-drag.fixed.right-36 {
+  right: auto;
+  left: 9rem;
+}
+[dir="rtl"] .account-menu-dropdown {
+  right: auto;
+  left: 0;
+}
+
+/* LoginScreen theme toggle anchors to the visual end (left in RTL). */
+[dir="rtl"] .login-theme-toggle {
+  right: auto;
+  left: 1.5rem;
+}
+
+/* Native <select> arrow position must mirror in RTL. */
+[dir="rtl"] .lp-rtl-select-bg {
+  background-position: left 0.75rem center !important;
+}
+
+/* UpdateRequiredScreen progress bar grows from the visual start. */
+[dir="rtl"] .lp-progress-bar {
+  left: auto;
+  right: 0;
+}
+
+/* Upload progress bar: rely on logical inset (set inline as inset-inline-end). */
+.upload-item__progress-bar {
+  inset: 0;
+}
+
+/* Theme toggle: keep thumb travelling toward the visual end in RTL. */
+[dir="rtl"] .lp-theme-toggle__thumb {
+  left: auto;
+  right: var(--pad);
+}
+[dir="rtl"] .lp-theme-toggle.is-dark .lp-theme-toggle__thumb {
+  transform: translateX(calc(-1 * (var(--track-w) - var(--thumb) - 2 * var(--pad))));
+}
+[dir="rtl"] .lp-theme-toggle__icon--sun {
+  left: auto;
+  right: calc(var(--pad) + 2px);
+}
+[dir="rtl"] .lp-theme-toggle__icon--moon {
+  right: auto;
+  left: calc(var(--pad) + 2px);
+}
+
+/* Modal close button stays at the visual end of the header (flex handles it). */
+
+[data-theme="light"] .btn-primary:hover,
+[data-theme="light"] .btn-primary.btn-active {
+  border-color: #6366f1;
+  background-color: #6366f1;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-primary {
+  border-color: #474747;
+  background-color: #14191f;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .btn-primary.btn-active {
+  border-color: #5a5a5a;
+  background-color: #1b222a;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn.btn-outline,
+[data-theme="dark"] .btn.btn-primary,
+[data-theme="dark"] .btn.btn-secondary,
+[data-theme="dark"] .btn.btn-ghost {
+  border-color: #474747;
+  background-color: #14191f;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn.btn-outline:hover,
+[data-theme="dark"] .btn.btn-primary:hover,
+[data-theme="dark"] .btn.btn-secondary:hover,
+[data-theme="dark"] .btn.btn-ghost:hover,
+[data-theme="dark"] .btn.btn-outline.btn-active,
+[data-theme="dark"] .btn.btn-primary.btn-active,
+[data-theme="dark"] .btn.btn-secondary.btn-active,
+[data-theme="dark"] .btn.btn-ghost.btn-active {
+  border-color: #5a5a5a;
+  background-color: #1b222a;
+  color: #ffffff;
+}
+
+[data-theme="light"] .select,
+[data-theme="light"] .input,
+[data-theme="light"] .textarea {
+  border-color: rgb(227 227 227) !important;
+  background-color: rgb(243 243 243 / 70%) !important;
+  color: black !important;
+}
+
+[data-theme="light"] .select::placeholder,
+[data-theme="light"] .input::placeholder,
+[data-theme="light"] .textarea::placeholder {
+  color: rgb(90 90 90) !important;
+}
+
+[data-theme="dark"] .select,
+[data-theme="dark"] .input,
+[data-theme="dark"] .textarea {
+  border-color: #474747 !important;
+  background-color: #14191f !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .select::placeholder,
+[data-theme="dark"] .input::placeholder,
+[data-theme="dark"] .textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+/* ───────────── UI pass: sistema de foco / scrollbars / transiciones ─────────
+   Refina la identidad actual: foco de marca accesible en TODA la app (campos,
+   botones, tabs), scrollbars finos temáticos y transiciones suaves. Bajo
+   riesgo: reglas aditivas que no cambian la estructura. */
+
+/* Foco de marca en campos — dark */
+[data-theme="dark"] .select:focus,
+[data-theme="dark"] .input:focus,
+[data-theme="dark"] .input:focus-within,
+[data-theme="dark"] .textarea:focus {
+  border-color: var(--lp-brand) !important;
+  box-shadow: 0 0 0 3px var(--lp-brand-glow) !important;
+  outline: none !important;
+}
+
+/* Foco de marca en campos — light */
+[data-theme="light"] .select:focus,
+[data-theme="light"] .input:focus,
+[data-theme="light"] .input:focus-within,
+[data-theme="light"] .textarea:focus {
+  border-color: var(--lp-brand) !important;
+  box-shadow: 0 0 0 3px var(--lp-brand-glow) !important;
+  outline: none !important;
+}
+
+/* Foco de marca en campos de modales (clases propias lp-modal-*). */
+.lp-modal-input:focus,
+.lp-modal-select:focus,
+.lp-modal-textarea:focus {
+  border-color: var(--lp-brand);
+  box-shadow: 0 0 0 3px var(--lp-brand-glow);
+  outline: none;
+}
+
+/* Transición suave de estados en campos (hover/focus). */
+.input,
+.select,
+.textarea,
+.lp-modal-input,
+.lp-modal-select,
+.lp-modal-textarea {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+/* Foco de teclado visible (accesibilidad) sin afectar el clic con mouse. */
+.btn:focus-visible,
+.lp-modal-btn:focus-visible,
+.tab:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--lp-brand);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* ─────────── Cursor "mano" (pointer) en TODO lo interactivo ───────────
+   Tailwind v4 cambió el cursor por defecto de los botones de `pointer` a
+   `default`. Reponemos el cursor de mano en toda la app —botones, botones de
+   icono/imagen, enlaces, tabs, selects y checkboxes/radios— para que cualquier
+   elemento clicable lo indique. Regla global: cubre todas las pantallas,
+   páginas y módulos sin tocar componentes uno a uno. Los estados
+   deshabilitados conservan/usan `not-allowed`. */
+button,
+a,
+select,
+summary,
+[role="button"],
+[role="tab"],
+[role="link"],
+[role="menuitem"],
+[role="menuitemradio"],
+[role="menuitemcheckbox"],
+[role="option"],
+[role="switch"],
+[role="radio"],
+[role="checkbox"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+input[type="color"],
+.btn,
+.tab,
+.link,
+.lp-icon-btn,
+.lp-modal-btn {
+  cursor: pointer;
+}
+
+/* Nunca "mano" en elementos deshabilitados. */
+button:disabled,
+button[disabled],
+select:disabled,
+input:disabled,
+.btn:disabled,
+.btn.btn-disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* Scrollbars finos y temáticos (Chromium/Electron) — coherentes en toda la app. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lp-scroll-thumb, rgba(120, 120, 120, 0.35)) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--lp-scroll-thumb, rgba(120, 120, 120, 0.35));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--lp-scroll-thumb-hover, rgba(120, 120, 120, 0.5));
+}
+
+/* Realce de fila al pasar el cursor en tablas de datos (escaneo más fácil).
+   Mayor especificidad que .dt-row-even/odd, así que gana sin !important. */
+.dt-table tbody tr:hover {
+  background-color: var(--lp-brand-dim);
+}
+
+/* Selección de texto con tinte de marca (coherente en ambos temas). */
+::selection {
+  background: color-mix(in srgb, var(--lp-brand) 28%, transparent);
+  color: var(--lp-heading);
+}
+
+/* Entrada suave de modales (fade + leve escala) — sensación más pulida. */
+@keyframes lp-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.lp-modal-card {
+  animation: lp-modal-in 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-modal-card {
+    animation: none;
+  }
+}
+

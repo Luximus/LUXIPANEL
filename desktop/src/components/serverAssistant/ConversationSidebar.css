@@ -1,0 +1,192 @@
+/* Árbol del sidebar del asistente (scope tabs + agentes IA + sueltos/proyectos).
+   Vive DENTRO de `.server-assistant` (ver src/styles/assistant.css): hereda sus
+   variables `--sa-*` (tematizadas claro/oscuro), así que aquí no se redefine
+   paleta propia — solo layout + tokens de esta pieza (prefijo `sat-`). */
+
+/* ── Scope tabs (segmentado) ─────────────────────────────────────────────── */
+.sat-scope-tabs {
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.15rem;
+  margin: 0.35rem 0;
+  border: 1px solid var(--sa-border);
+  border-radius: 0.5rem;
+  background: var(--sa-input-bg);
+  flex-shrink: 0;
+}
+.sat-scope-tab {
+  flex: 1 1 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.3rem 0.3rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--sa-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sat-scope-tab.is-active { background: var(--sa-msg-bg); color: var(--sa-text); }
+.sat-scope-tab svg { flex-shrink: 0; }
+
+/* ── Contenedor del árbol ─────────────────────────────────────────────────── */
+.sat-tree { display: flex; flex-direction: column; gap: 0.25rem; }
+
+/* ── Tarjeta de grupo (agente / grupo threaded / carpeta de proyecto) ────── */
+.sat-card {
+  border: 1px solid var(--sa-border);
+  border-radius: 0.5rem;
+  background: var(--sa-input-bg);
+  overflow: hidden;
+}
+/* Fila simple (chat suelto de un agente sin más chats): sin chrome de tarjeta,
+   el propio `.sat-row` ya trae su estilo. */
+.sat-card--flat { border: none; background: transparent; border-radius: 0.4rem; }
+
+/* ── Cabecera colapsable (agente / carpeta) ───────────────────────────────── */
+.sat-group-head { display: flex; align-items: stretch; gap: 0.1rem; }
+.sat-group-head__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.45rem;
+  border: none;
+  background: transparent;
+  color: var(--sa-text);
+  cursor: pointer;
+  text-align: start;
+}
+.sat-group-head__main:hover { background: color-mix(in srgb, var(--sa-text) 6%, transparent); }
+.sat-group-head__title-row { display: flex; align-items: center; gap: 0.3rem; min-width: 0; flex: 1 1 auto; flex-wrap: wrap; }
+.sat-group-head__name { font-size: 0.76rem; font-weight: 600; color: var(--sa-text); }
+.sat-group-head__add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--sa-muted);
+  cursor: pointer;
+}
+.sat-group-head__add:hover { color: var(--sa-accent); }
+
+/* Chevron rotable (abierto = 90°). */
+.sat-chevron { flex-shrink: 0; color: var(--sa-muted); transition: transform 0.15s ease; }
+.sat-chevron.is-open { transform: rotate(90deg); }
+
+/* Avatar circular del agente: fondo = agent.color, icono blanco. */
+.sat-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+}
+
+/* Chip de rol (violeta fijo). */
+.sat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  max-width: 6.5rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.sat-chip--role { color: #8b5cf6; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); }
+
+/* Pill de conteo. */
+.sat-count-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.03rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--sa-text);
+  background: color-mix(in srgb, var(--sa-accent) 15%, transparent);
+}
+
+/* Punto rojo "sin revisar". */
+.sat-dot { flex-shrink: 0; width: 0.4rem; height: 0.4rem; border-radius: 999px; background: #ef4444; }
+
+/* ── Caja anidada (timeline): borde izquierdo + sangría ──────────────────── */
+.sat-nested {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0.15rem 0 0.35rem 0.85rem;
+  padding: 0.2rem 0 0.2rem 0.5rem;
+  border-inline-start: 1px solid var(--sa-border);
+}
+.sat-nested-empty { padding: 0.25rem 0.3rem; font-size: 0.68rem; color: var(--sa-muted); }
+
+/* ── Fila de chat (ConvoRow) ──────────────────────────────────────────────── */
+.sat-row { display: flex; align-items: stretch; gap: 0.1rem; border-radius: 0.4rem; border: 1px solid transparent; }
+.sat-row:hover { background: var(--sa-conv-hover); }
+.sat-row.is-active { background: var(--sa-conv-active-bg); border-color: var(--sa-conv-active-border); }
+.sat-row__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.3rem 0.1rem 0.3rem 0.45rem;
+  background: transparent;
+  border: none;
+  color: var(--sa-text);
+  font-size: 0.74rem;
+  cursor: pointer;
+  text-align: start;
+}
+.sat-row__title { display: flex; align-items: center; gap: 0.3rem; min-width: 0; font-weight: 600; }
+.sat-row__preview { display: block; min-width: 0; font-size: 0.66rem; color: var(--sa-muted); }
+.sat-row__date { font-size: 0.6rem; color: var(--sa-muted); }
+.sat-row__pin { color: #f59e0b; flex-shrink: 0; }
+.sat-row__del {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.4rem;
+  background: transparent;
+  border: none;
+  color: var(--sa-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.sat-row:hover .sat-row__del,
+.sat-row.is-active .sat-row__del { opacity: 1; }
+.sat-row__del:hover { color: #ef4444; }
+
+/* ── Pager (chevrons prev/next) ───────────────────────────────────────────── */
+.sat-pager { display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.2rem 0; }
+.sat-pager__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border: none;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--sa-muted);
+  cursor: pointer;
+}
+.sat-pager__btn:disabled { opacity: 0.35; cursor: default; }
+.sat-pager__btn:not(:disabled):hover { color: var(--sa-text); }
+.sat-pager__text { font-size: 0.66rem; color: var(--sa-muted); min-width: 2.6rem; text-align: center; }

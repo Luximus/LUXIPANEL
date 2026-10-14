@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "keyPrefix": "lprc:v1",
+  "writeQueuePrefix": "lpwq:v1",
+  "collections": [
+    {
+      "module": "users",
+      "collection": "system",
+      "source": "system-collector",
+      "defaultIntervalSeconds": 300,
+      "projection": null,
+      "collector": "collector-users",
+      "scoped": false,
+      "scopeField": null,
+      "writable": true
+    },
+    {
+      "module": "users",
+      "collection": "roles",
+      "source": "system-collector",
+      "defaultIntervalSeconds": 600,
+      "projection": null,
+      "collector": "collector-roles",
+      "scoped": false,
+      "scopeField": null,
+      "writable": false
+    },
+    {
+      "module": "admin",
+      "collection": "settings",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 300,
+      "projection": null,
+      "collector": null,
+      "scoped": false,
+      "scopeField": null,
+      "writable": false
+    },
+    {
+      "module": "mail",
+      "collection": "accounts",
+      "source": "system-collector",
+      "defaultIntervalSeconds": 300,
+      "projection": [
+        "usedMb",
+        "usedPercent",
+        "id",
+        "address",
+        "domain",
+        "displayName",
+        "quotaMb",
+        "enabled",
+        "incomingMode",
+        "outgoingMode",
+        "loginMode",
+        "plusAddressingAutoFolder",
+        "forwards",
+        "forwardCount",
+        "createdAt"
+      ],
+      "collector": "collector-mail",
+      "scoped": false,
+      "scopeField": null,
+      "writable": true
+    },
+    {
+      "module": "mail",
+      "collection": "autoresponders",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 600,
+      "projection": null,
+      "collector": null,
+      "scoped": true,
+      "scopeField": "accountId",
+      "writable": false
+    },
+    {
+      "module": "mail",
+      "collection": "filters",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 600,
+      "projection": null,
+      "collector": null,
+      "scoped": true,
+      "scopeField": "accountId",
+      "writable": false
+    },
+    {
+      "module": "mail",
+      "collection": "forwards",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 600,
+      "projection": null,
+      "collector": null,
+      "scoped": true,
+      "scopeField": "accountId",
+      "writable": false
+    },
+    {
+      "module": "mail",
+      "collection": "contacts",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 900,
+      "projection": null,
+      "collector": null,
+      "scoped": true,
+      "scopeField": "accountId",
+      "writable": false
+    },
+    {
+      "module": "mail",
+      "collection": "calendars",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 900,
+      "projection": null,
+      "collector": null,
+      "scoped": true,
+      "scopeField": "accountId",
+      "writable": false
+    },
+    {
+      "module": "mail",
+      "collection": "signatures",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 900,
+      "projection": null,
+      "collector": null,
+      "scoped": true,
+      "scopeField": "accountId",
+      "writable": false
+    },
+    {
+      "module": "notifications",
+      "collection": "notifications",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 120,
+      "projection": [
+        "id",
+        "type",
+        "title",
+        "read",
+        "createdAt"
+      ],
+      "collector": null,
+      "scoped": false,
+      "scopeField": null,
+      "writable": false
+    },
+    {
+      "module": "webhooks",
+      "collection": "webhooks",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 600,
+      "projection": null,
+      "collector": null,
+      "scoped": false,
+      "scopeField": null,
+      "writable": false
+    },
+    {
+      "module": "webhooks",
+      "collection": "api-keys",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 600,
+      "projection": [
+        "id",
+        "name",
+        "prefix",
+        "createdAt",
+        "lastUsedAt"
+      ],
+      "collector": null,
+      "scoped": false,
+      "scopeField": null,
+      "writable": false
+    },
+    {
+      "module": "nginx",
+      "collection": "sites",
+      "source": "system-collector",
+      "defaultIntervalSeconds": 600,
+      "projection": [
+        "name",
+        "file",
+        "enabled",
+        "domains",
+        "root",
+        "proxyPass",
+        "ssl",
+        "kind"
+      ],
+      "collector": "collector-nginx",
+      "scoped": false,
+      "scopeField": null,
+      "writable": false
+    },
+    {
+      "module": "cron",
+      "collection": "jobs",
+      "source": "system-collector",
+      "defaultIntervalSeconds": 600,
+      "projection": null,
+      "collector": "collector-cron",
+      "scoped": false,
+      "scopeField": null,
+      "writable": true
+    },
+    {
+      "module": "firewall",
+      "collection": "rules",
+      "source": "system-collector",
+      "defaultIntervalSeconds": 600,
+      "projection": null,
+      "collector": "collector-firewall",
+      "scoped": false,
+      "scopeField": null,
+      "writable": true
+    },
+    {
+      "module": "backup",
+      "collection": "schedules",
+      "source": "sidecar-mirror",
+      "defaultIntervalSeconds": 900,
+      "projection": null,
+      "collector": null,
+      "scoped": false,
+      "scopeField": null,
+      "writable": false
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+vi.mock('../../theme/ThemeTransitionProvider',()=>({ThemeTransitionScope:()=>null}));
+import React from 'react';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { afterEach, expect, it, vi } from 'vitest';
+const mocks=vi.hoisted(()=>({newConversation:vi.fn(),openConversation:vi.fn(),setProvider:vi.fn(),chatMounts:0,chatUnmounts:0,storage:vi.fn(),connect:vi.fn(async()=> 'context'),modules:vi.fn(async()=>({ids:new Set(['assistant','terminal','files','users','modules','settings','preferences','project-map','server-alerts','chat']),available:[{id:'users',name:'Usuarios'},{id:'files',name:'Archivos'}],sidebar:[{id:'assistant'},{id:'users'},{id:'settings'},{id:'files'},{id:'terminal'},{id:'modules'}]}))}));
+vi.mock('react-native',()=>({View:'View',Pressable:'Pressable',Text:'Text',ScrollView:'ScrollView',ActivityIndicator:'Spinner',BackHandler:{addEventListener:()=>({remove:()=>{}})},PanResponder:{create:(handlers:any)=>({panHandlers:handlers})},Animated:{Value:class{}},StyleSheet:{create:(s:any)=>s},useWindowDimensions:()=>({width:320,height:700})}));
+vi.mock('react-native-safe-area-context',()=>({useSafeAreaInsets:()=>({top:24,bottom:20,left:0,right:0})}));
+vi.mock('react-native-gesture-handler',()=>({State:{ACTIVE:4},PanGestureHandler:'PanGestureHandler'}));
+vi.mock('@react-native-async-storage/async-storage',()=>({default:{getItem:async()=>null,setItem:mocks.storage}}));
+vi.mock('lucide-react-native',()=>Object.fromEntries(['ArrowLeft','Image','Terminal','Bell','ChevronDown','ChevronLeft','ChevronRight','Folder','FolderPlus','History','LogOut','Menu','MessageCircle','Plus','Search','Server','Settings','Sun','Moon','X'].map(name=>[name,'Icon'])));
+vi.mock('../../api/serverApi',()=>({callServerApi:vi.fn(),unwrap:()=>null}));
+vi.mock('../../api/client',()=>({luxAssistantProxy:vi.fn(async()=>({projects:[{id:'root',title:'Proyecto raíz',parentId:null},{id:'project',title:'Subproyecto',parentId:'root'}]}))}));
+vi.mock('../../api/workspaceContext',()=>({connectWorkspaceContext:mocks.connect,disposeWorkspaceContext:vi.fn(),retainWorkspaceContext:vi.fn(),returnWorkspaceToLocal:vi.fn()}));
+vi.mock('../server/native-module-access',()=>({fetchNativeModuleMenu:mocks.modules}));
+vi.mock('../ChatScreen',()=>({ChatScreen:(props:any)=>{React.useEffect(()=>{mocks.chatMounts++;return()=>{mocks.chatUnmounts++;};},[]);return React.createElement('Chat',{onBottomChromeLayout:props.onBottomChromeLayout,projectPath:props.projectPath},props.topBar,props.bottomNavigation);}}));
+vi.mock('../../theme/panel-palette',()=>({getActivePalette:()=>null}));
+vi.mock('../../hooks/useTheme',()=>({useTheme:()=>({theme:'light'})}));
+vi.mock('../../hooks/useTerminalKeyboard',()=>({useTerminalKeyboard:()=>({surfaceRef:null,onSurfaceLayout:()=>{},keyboardOpen:false,overlap:0})}));
+vi.mock('../../features/assistant/chat-controller',()=>({chatController:{newConversation:mocks.newConversation,openConversation:mocks.openConversation,setProvider:mocks.setProvider}}));
+vi.mock('../../features/assistant/chat-store',()=>({chatStore:{patchSession:vi.fn()}}));
+vi.mock('../../features/assistant/hooks',()=>({useAssistantChat:()=>({activeProject:null}),useAssistantSession:()=>({conversationId:'thread',projectId:'project'})}));
+vi.mock('../../components/assistant/drawer/ConversationsDrawer',()=>({ConversationsDrawer:'HistoryList'}));
+vi.mock('../../components/account/ProjectsModal',()=>({ProjectsModal:'Projects'}));
+vi.mock('../../components/ui/ModuleSettingsDrawer',()=>({ModuleSettingsDrawer:'SettingsDrawer'}));
+vi.mock('../../components/assistant-settings/AssistantSettingsTab',()=>({AssistantSettingsTab:'Settings'}));
+vi.mock('../../features/app/luxipanel-modules',()=>({TOOL_MODULES:[{id:'assistant',labelKey:'assistant',icon:'Icon'},{id:'terminal',labelKey:'terminal',icon:'Icon'}],LUX_MODULES:[{id:'files',labelKey:'files',icon:'Icon'},{id:'users',labelKey:'users',icon:'Icon'},{id:'project-map',labelKey:'projectMap',icon:'Icon'}],CORE_MODULES:[{id:'settings',labelKey:'settings',icon:'Icon'},{id:'modules',labelKey:'modules',icon:'Icon'},{id:'preferences',labelKey:'preferences',icon:'Icon'}]}));
+vi.mock('./PersistentNativeModules',()=>({PersistentNativeModules:'Modules'}));
+vi.mock('./WorkspaceTopPanels',()=>({WorkspaceNotifications:'NotificationsPanel',WorkspaceSearch:'SearchPanel'}));
+vi.mock('../../components/ui/Avatar',()=>({Avatar:'Avatar'}));
+vi.mock('../../components/assistant/NativeConversationMedia',()=>({NativeConversationMedia:'Media'}));
+vi.mock('../../components/ui/PanelLogo',()=>({PanelLogo:'Logo'}));
+vi.mock('./WorkspaceServers',()=>({WorkspaceServers:'Servers'}));
+import { NativePanelWorkspace, WorkspaceSurface } from './NativePanelWorkspace';
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+let tree:ReactTestRenderer|undefined;
+afterEach(async()=>{if(tree)await act(async()=>tree!.unmount());tree=undefined;vi.clearAllMocks();mocks.chatMounts=0;mocks.chatUnmounts=0;});
+const press=(label:string)=>tree!.root.findAllByType('Pressable' as any).find(node=>node.props.accessibilityLabel===label)!.props.onPress();
+const props={connection:{id:'context',panelId:'box',targetId:'local',name:'BACKEND'},token:'account',account:'owner',language:'es',active:true,onServers:vi.fn(),onAccount:vi.fn(),onLogout:vi.fn(),onSupport:vi.fn()};
+it('opens a module over the same mounted Chatbox and closing restores its draft surface',async()=>{
+ let drawer:any=null;const setDrawer=(value:any)=>{drawer=value;};
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer={drawer} setDrawer={setDrawer}/>);});
+ expect(mocks.chatMounts).toBe(1);
+ await act(async()=>press('Módulos'));expect(drawer).toBe('modules');
+ await act(async()=>{tree!.update(<WorkspaceSurface {...props} drawer={drawer} setDrawer={setDrawer}/>);});
+ const menuLabels=tree!.root.findAllByType('Pressable' as any).flatMap(node=>node.findAllByType('Text' as any).flatMap(text=>text.children)).filter(value=>value==='Usuarios'||value==='Archivos');
+ expect(menuLabels).toEqual(['Usuarios','Archivos']);
+ const files=tree!.root.findAllByType('Pressable' as any).find(node=>node.findAllByType('Text' as any).some(text=>text.children.includes('Archivos')))!;
+ await act(async()=>files.props.onPress());
+ // The first tap selects the file submenu, without mounting a module or requesting its data.
+ expect(tree!.root.findByType('Modules' as any).props.active).toBeNull();
+ const explorer=tree!.root.findAllByType('Pressable' as any).find(node=>node.findAllByType('Text' as any).some(text=>text.children.includes('Explorador')))!;
+ await act(async()=>explorer.props.onPress());
+ expect(tree!.root.findByType('Modules' as any).props.active).toMatchObject({moduleId:'files',panelId:'context',selectedView:'browser'});
+ await act(async()=>tree!.root.findByType('Modules' as any).props.onClose());
+ expect(mocks.chatMounts).toBe(1);expect(mocks.chatUnmounts).toBe(0);
+});
+it('matches the web menu order with fixed tools outside the scroll and keeps them visible in submenus',async()=>{
+ const setDrawer=vi.fn();
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer="modules" setDrawer={setDrawer}/>);});
+ const scroll=tree!.root.findByProps({testID:'workspace-modules-scroll'});
+ const rows=scroll.findAllByType('Pressable' as any).map(node=>node.props.testID).filter(Boolean);
+ expect(rows).toEqual(['workspace-menu-module:users','workspace-menu-module:files','workspace-menu-module:terminal']);
+ expect(tree!.root.findAllByProps({testID:'workspace-menu-module:assistant'})).toHaveLength(0);
+ const footer=tree!.root.findByProps({testID:'workspace-modules-tools'});
+ expect(footer.findAllByType('Pressable' as any).map(node=>node.props.testID)).toEqual(['workspace-menu-tool:modules','workspace-menu-tool:settings']);
+ let parent=footer.parent;while(parent){expect(parent.type).not.toBe('ScrollView');parent=parent.parent;}
+ await act(async()=>tree!.root.findByProps({testID:'workspace-menu-module:files'}).props.onPress());
+ expect(tree!.root.findByProps({testID:'workspace-modules-tools'})).toBe(footer);
+ await act(async()=>tree!.root.findByProps({testID:'workspace-menu-tool:modules'}).props.onPress());
+ expect(tree!.root.findByType('Modules' as any).props.active).toMatchObject({moduleId:'modules'});
+ expect(setDrawer).toHaveBeenCalledWith(null);
+ await act(async()=>tree!.root.findByType('Modules' as any).props.onClose());
+ await act(async()=>tree!.root.findByProps({testID:'workspace-menu-tool:settings'}).props.onPress());
+ expect(tree!.root.findByType('Modules' as any).props.active).toMatchObject({moduleId:'settings'});
+ expect(mocks.chatMounts).toBe(1);expect(mocks.chatUnmounts).toBe(0);
+});
+it('reloads the saved server order when reopening the menu and preserves hidden tools in search',async()=>{
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer={null} setDrawer={()=>{}}/>);});
+ const catalog=await mocks.modules.mock.results[0].value;
+ mocks.modules.mockResolvedValueOnce({...catalog,sidebar:[{id:'terminal'},{id:'files'},{id:'users'}]});
+ await act(async()=>{tree!.update(<WorkspaceSurface {...props} drawer="modules" setDrawer={()=>{}}/>);});
+ expect(tree!.root.findByProps({testID:'workspace-modules-scroll'}).findAllByType('Pressable' as any).map(node=>node.props.testID).filter(Boolean))
+   .toEqual(['workspace-menu-module:terminal','workspace-menu-module:files','workspace-menu-module:users']);
+ await act(async()=>{tree!.update(<WorkspaceSurface {...props} drawer={null} setDrawer={()=>{}}/>);});
+ await act(async()=>press('Buscar en LUXIPANEL'));
+ const searchable=tree!.root.findByType('SearchPanel' as any).props.modules.map((item:any)=>item.moduleId);
+ expect(searchable).toContain('assistant');expect(searchable).toContain('project-map');
+});
+it('pins return to local below the tools only for a remote connection',async()=>{
+ const onReturnLocal=vi.fn();
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer="modules" setDrawer={()=>{}} onReturnLocal={onReturnLocal}/>);});
+ expect(tree!.root.findAllByProps({testID:'workspace-menu-return-local'})).toHaveLength(0);
+ await act(async()=>{tree!.update(<WorkspaceSurface {...props} connection={{...props.connection,targetId:'remote'}} drawer="modules" setDrawer={()=>{}} onReturnLocal={onReturnLocal}/>);});
+ const button=tree!.root.findByProps({testID:'workspace-menu-return-local'});
+ let parent=button.parent;while(parent){expect(parent.type).not.toBe('ScrollView');parent=parent.parent;}
+ await act(async()=>button.props.onPress());
+ expect(onReturnLocal).toHaveBeenCalledOnce();
+});
+it('pins creation controls outside history scroll and uses the dark rail even in light mode',async()=>{
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer="history" setDrawer={()=>{}}/>);});
+ const history=tree!.root.findByType('HistoryList' as any);
+ expect(history.props.tokens.bgPrimary).toBe('#151c2c');
+ const createButtons=tree!.root.findAllByType('Pressable' as any).filter(node=>node.findAllByType('Text' as any).some(text=>text.children.includes('Nueva conversación')||text.children.includes('Nuevo proyecto')));
+ expect(createButtons).toHaveLength(2);
+ for(const button of createButtons){let parent=button.parent;while(parent){expect(parent.type).not.toBe('ScrollView');parent=parent.parent;}}
+ await act(async()=>createButtons.find(node=>node.findAllByType('Text' as any).some(text=>text.children.includes('Nuevo proyecto')))!.props.onPress());
+ expect(tree!.root.findByType('Projects' as any).props.createOnOpen).toBe(true);
+});
+it('keeps history open and preserves the project after deleting the active conversation',async()=>{
+ const setDrawer=vi.fn();
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer="history" setDrawer={setDrawer}/>);});
+ const history=tree!.root.findByType('HistoryList' as any);
+ await act(async()=>history.props.onDeleted('another-thread'));
+ expect(mocks.newConversation).not.toHaveBeenCalled();
+ await act(async()=>history.props.onDeleted('thread'));
+ expect(mocks.newConversation).toHaveBeenCalledWith('context',{projectId:'project'});
+ expect(setDrawer).not.toHaveBeenCalled();
+ expect(tree!.root.findByType('HistoryList' as any)).toBe(history);
+ expect(mocks.chatUnmounts).toBe(0);
+});
+it('single-panel login connects with stored credentials and opens Chatbox automatically',async()=>{
+ await act(async()=>{tree=create(<NativePanelWorkspace account="owner" token="account" panels={[{id:'box',nameLabel:'BACKEND'} as any]} busy={false} language="es" active onFocusHandled={()=>{}} onPanelChange={()=>{}} onManagePanels={()=>{}} onAccount={()=>{}} onLogout={()=>{}} onSupport={()=>{}}/>);});
+ expect(mocks.connect).toHaveBeenCalledWith('owner','box','account','local',expect.any(Function));
+ expect(tree!.root.findAllByType('Chat' as any)).toHaveLength(1);expect(mocks.storage).toHaveBeenCalledWith('luxipanel.workspace.owner',JSON.stringify({panelId:'box',targetId:'local'}));
+});
+
+it('keeps the deployed mobile action order and places the project action before new chat',async()=>{
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer="history" setDrawer={()=>{}}/>);});
+ const chat=tree!.root.findByType('Chat' as any);
+ const actions=chat.findAllByType('Pressable' as any).map(node=>node.props.accessibilityLabel).filter(Boolean);
+ expect(actions.slice(0,4)).toEqual(['Notificaciones','Seleccionar servidor','Mensajes','Buscar en LUXIPANEL']);
+ expect(actions).toContain('Nueva terminal');expect(actions).toContain('Multimedia');
+ const creates=tree!.root.findAllByType('Pressable' as any).flatMap(node=>node.findAllByType('Text' as any).flatMap(text=>text.children)).filter(text=>text==='Nuevo proyecto'||text==='Nueva conversación'||text==='Nueva conversación en Proyecto raíz');
+ expect(creates).toEqual(['Nuevo proyecto','Nueva conversación','Nueva conversación en Proyecto raíz']);
+ const rootChat=tree!.root.findAllByType('Pressable' as any).find(node=>node.findAllByType('Text' as any).some(text=>text.children.includes('Nueva conversación en Proyecto raíz')))!;
+ await act(async()=>rootChat.props.onPress());
+ expect(mocks.newConversation).toHaveBeenCalledWith('context',{projectId:'root'});
+});
+it('opens the correct top panels, keeps messaging native, and leaves navigation outside swipe zones',async()=>{
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer={null} setDrawer={()=>{}}/>);});
+ await act(async()=>press('Notificaciones'));
+ expect(tree!.root.findAllByType('NotificationsPanel' as any)).toHaveLength(1);
+ await act(async()=>tree!.root.findByType('NotificationsPanel' as any).props.onClose());
+ await act(async()=>press('Buscar en LUXIPANEL'));
+ expect(tree!.root.findByType('SearchPanel' as any).props.modules.map((item:any)=>item.moduleId)).toContain('files');
+ await act(async()=>tree!.root.findByType('SearchPanel' as any).props.onClose());
+ await act(async()=>press('Mensajes'));
+ expect(tree!.root.findByType('Modules' as any).props.active).toMatchObject({moduleId:'chat'});
+ await act(async()=>tree!.root.findByType('Modules' as any).props.onClose());
+ const chat=tree!.root.findByType('Chat' as any);
+ await act(async()=>chat.props.onBottomChromeLayout(220));
+ const layer=tree!.root.findAllByType('View' as any).find(node=>Array.isArray(node.props.style)&&node.props.style.some((item:any)=>item?.top===56&&item?.bottom===220));
+ expect(layer?.props.style).toContainEqual({top:56,bottom:220});
+});
+it('offers the web-style root project picker and starts chats in the selected scope',async()=>{
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer={null} setDrawer={()=>{}}/>);});
+ await act(async()=>press('Proyectos'));
+ const picker=tree!.root.findByType('Projects' as any);
+ expect(picker.props.pickerOnly).toBe(true);
+ expect(tree!.root.findByType('Chat' as any).findAllByType('Text' as any).some(node=>node.children.includes('Proyecto raíz / Subproyecto'))).toBe(true);
+ expect(tree!.root.findByType('Chat' as any).props.projectPath).toBe('Proyecto raíz / Subproyecto');
+ await act(async()=>picker.props.onPick('root'));
+ expect(mocks.newConversation).toHaveBeenCalledWith('context',{projectId:'root'});
+});
+it('opens both side menus from their physical screen edges and leaves the history header without a close button',async()=>{
+ let drawer:any=null;
+ const setDrawer=(value:any)=>{drawer=value;};
+ await act(async()=>{tree=create(<WorkspaceSurface {...props} drawer={drawer} setDrawer={setDrawer}/>);});
+ const edges=tree!.root.findAllByType('PanGestureHandler' as any);
+ await act(async()=>edges[0].props.onHandlerStateChange({nativeEvent:{oldState:4,translationX:70,velocityX:0}}));
+ expect(drawer).toBe('history');
+ await act(async()=>{tree!.update(<WorkspaceSurface {...props} drawer={drawer} setDrawer={setDrawer}/>);});
+ expect(tree!.root.findAllByType('Pressable' as any).filter(node=>node.props.accessibilityLabel==='Cerrar')).toHaveLength(1);
+ await act(async()=>tree!.root.findAllByType('View' as any).filter(node=>node.props.onMoveShouldSetPanResponder).at(-1)!.props.onPanResponderRelease(null,{dx:-70,dy:3}));
+ expect(drawer).toBeNull();
+ await act(async()=>{tree!.update(<WorkspaceSurface {...props} drawer={drawer} setDrawer={setDrawer}/>);});
+ const reopenedEdges=tree!.root.findAllByType('PanGestureHandler' as any);
+ await act(async()=>reopenedEdges[1].props.onHandlerStateChange({nativeEvent:{oldState:4,translationX:-70,velocityX:0}}));
+ expect(drawer).toBe('modules');
+});

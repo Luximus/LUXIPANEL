@@ -1,0 +1,120 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * ModalNavbar — shared modal/dialog header that mirrors the panel topbar
+ * (PanelLayout.astro): a compact h-14 row with an optional icon-only
+ * chevron-left "back" button, a font-semibold title (the description is
+ * exposed as a native `title` tooltip, NOT rendered as a subtitle), a pill
+ * actions cluster (slot) and a ✕ close button on the right.
+ *
+ * Drop-in replacement for the old
+ *   <div class="flex items-center justify-between border-b border-border px-6 py-4">
+ *     <h3 class="text-base font-semibold">…</h3>
+ *     <button id="…-close">…</button>
+ *   </div>
+ * header blocks used across the module dialogs.
+ *
+ * IMPORTANT — script contract: pass the SAME `closeId`/`titleId`/`backId`
+ * the extracted scripts (src/scripts/extracted/pages/panel/<mod>/) hook, so
+ * open/close wiring and dynamic title updates keep working. The close button
+ * keeps the canonical classes so existing selectors still match.
+ *
+ * Props:
+ *   title       modal title (font-semibold, truncated).
+ *   titleId?    id kept on the <h3> (scripts that rewrite the title).
+ *   description? shown as the native `title` tooltip on the heading.
+ *   icon?       optional leading Tabler icon class (e.g. "ti-folder-key").
+ *   showBack?   render the icon-only chevron-left back button (default false).
+ *   backId?     id for the back button (script hook).
+ *   backHref?   if set, back is an <a href>; otherwise a <button type=button>.
+ *   backLabel?  aria-label/title for back (defaults to i18n "Volver").
+ *   closeId?    id for the ✕ close button (script hook).
+ *   closeLabel? aria-label for close (defaults to i18n "Cerrar").
+ *
+ * Slots:
+ *   leading     custom markup rendered in the left icon slot (before the
+ *               title). Use it when the icon needs its own id/wrap that a
+ *               script mutates (e.g. the confirm/alert colored icon circle).
+ *               Takes precedence over the `icon` prop.
+ *   actions     pill-style actions rendered left of the ✕ (right cluster).
+ */
+import { getMessages } from "@/i18n";
+import { localeFromRequest } from "@/i18n/server";
+
+interface Props {
+  title: string;
+  titleId?: string;
+  description?: string;
+  icon?: string;
+  showBack?: boolean;
+  backId?: string;
+  backHref?: string;
+  backLabel?: string;
+  closeId?: string;
+  closeLabel?: string;
+}
+
+const locale = localeFromRequest(Astro.request);
+const t = await getMessages(locale, ["components"]);
+const nav = t.components.modalNavbar;
+
+const {
+  title,
+  titleId,
+  description,
+  icon,
+  showBack = false,
+  backId,
+  backHref,
+  backLabel = nav.back,
+  closeId,
+  closeLabel = nav.close,
+} = Astro.props;
+
+const hasActions = Astro.slots.has("actions");
+const hasLeading = Astro.slots.has("leading");
+---
+
+<div class="flex h-14 items-center gap-3 border-b border-border px-4">
+  {showBack && (
+    backHref ? (
+      <a
+        id={backId}
+        href={backHref}
+        class="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        aria-label={backLabel}
+        title={backLabel}
+      >
+        <i class="ti ti-chevron-left text-lg"></i>
+      </a>
+    ) : (
+      <button
+        id={backId}
+        type="button"
+        class="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        aria-label={backLabel}
+        title={backLabel}
+      >
+        <i class="ti ti-chevron-left text-lg"></i>
+      </button>
+    )
+  )}
+
+  <div class="flex min-w-0 items-center gap-2">
+    {hasLeading ? <slot name="leading" /> : icon && <i class={`ti ${icon} shrink-0 text-lg text-primary`}></i>}
+    <h3 id={titleId} class="truncate text-base font-semibold" title={description}>{title}</h3>
+  </div>
+
+  <div class="ml-auto flex items-center gap-2">
+    {hasActions && <slot name="actions" />}
+    <button
+      id={closeId}
+      type="button"
+      class="shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+      aria-label={closeLabel}
+    >
+      <i class="ti ti-x text-lg"></i>
+    </button>
+  </div>
+</div>

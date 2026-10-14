@@ -1,0 +1,95 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * FloatingTerminal — botón flotante + drawer global del panel.
+ *
+ * Vive en PanelLayout para estar disponible en todas las vistas.
+ * El botón abre un drawer con consola, snippets e historial. Configuración usa
+ * el drawer lateral compartido con los demás módulos.
+ * La terminal solo se inicializa al primer click; las sesiones sobreviven al cierre del drawer
+ * y solo se destruyen al cerrar todas las pestañas o al hacer logout.
+ */
+import FloatingTerminalDrawer from "./FloatingTerminalDrawer";
+import { getMessages } from "@/i18n";
+import { localeFromRequest } from "@/i18n/server";
+import { DEFAULT_BACKEND_PORT } from "@/lib/server-env";
+
+const backendPort = process.env.BACKEND_PORT ?? DEFAULT_BACKEND_PORT;
+const locale = localeFromRequest(Astro.request);
+const t = await getMessages(locale, ["components", "terminal"]);
+const ft = t.components.floatingTerminal;
+const isAdmin = Astro.locals.user?.kind === "admin";
+const isEmbedded = Astro.url.searchParams.get("embed") === "1";
+import { DIALOG_CHROME } from "@/lib/ui-classes";
+---
+
+<link rel="stylesheet" href="/scripts/extracted/components/floating-terminal/floating-terminal.css?v=20260929-drawer-speed" />
+
+{!isEmbedded && <FloatingTerminalDrawer client:load locale={locale} isAdmin={isAdmin} />}
+
+<!-- Slice del namespace "terminal" para el script vanilla (floating-terminal.ts).
+     El script lo lee con getElementById("terminal-i18n") → JSON.parse. -->
+<script type="application/json" id="terminal-i18n" data-user-id={Astro.locals.user?.userId ?? ""} set:html={JSON.stringify(t["terminal"])}></script>
+
+<!-- Pocket donde viven los containers xterm cuando el drawer está cerrado o
+     entre transiciones de página. Persistente entre navegaciones. -->
+<div
+  id="lxp-terminal-pocket"
+  transition:persist="lxp-terminal-pocket"
+  style="position:fixed;left:-9999px;top:-9999px;width:800px;height:500px;overflow:hidden;pointer-events:none;visibility:hidden;"
+  aria-hidden="true"
+></div>
+
+<dialog id="dialog-snippet" class={`w-full max-w-md ${DIALOG_CHROME}`}>
+  <div class="flex items-center justify-between border-b border-border px-6 py-4">
+    <h3 id="snippet-dialog-title" class="text-base font-semibold">{ft.newSnippet}</h3>
+    <button id="snippet-dialog-close" class="rounded-lg p-1 text-muted-foreground hover:bg-accent" aria-label={ft.close}><i class="ti ti-x text-lg"></i></button>
+  </div>
+  <form id="form-snippet" class="flex flex-col gap-4 px-6 py-5">
+    <input type="hidden" id="snippet-edit-id" />
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="snippet-name">{ft.name}</label>
+      <input id="snippet-name" type="text" required placeholder={ft.namePlaceholder}
+        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+    </div>
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="snippet-category">{ft.category}</label>
+      <select id="snippet-category" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"></select>
+    </div>
+    <div class="space-y-1.5">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">{ft.tags}</label>
+        <span class="text-xs text-muted-foreground">{ft.tagsHelp}</span>
+      </div>
+      <div id="snippet-tags" class="grid max-h-40 grid-cols-2 gap-2 overflow-y-auto rounded-lg border border-border bg-background p-3"></div>
+    </div>
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="snippet-cmd">{ft.command}</label>
+      <div id="snippet-cmd-editor" class="h-36 overflow-hidden rounded-lg border border-input bg-background"></div>
+      <textarea id="snippet-cmd" class="hidden" aria-hidden="true" tabindex="-1"></textarea>
+      <p class="text-xs text-muted-foreground">{ft.monacoHelp}</p>
+    </div>
+    <div class="flex gap-3">
+      <button type="button" id="snippet-cancel" class="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent">{ft.cancel}</button>
+      <button type="submit" class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">{ft.save}</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" define:vars={{ backendPort }}>
+  window.__BACKEND_PORT__ = backendPort;
+  const terminalScript = "/scripts/extracted/components/floating-terminal/floating-terminal.reactbits-controls-20261004-1.js";
+  let terminalLoad;
+  const ensureTerminalScript = () => {
+    if (!terminalLoad) terminalLoad = import(terminalScript).catch((error) => {
+      terminalLoad = null;
+      console.error("[floating-terminal] script", error);
+    });
+    return terminalLoad;
+  };
+  window.addEventListener("lxp-terminal:init", ensureTerminalScript);
+  window.addEventListener("lxp-terminal:opened", ensureTerminalScript);
+  // TerminalPanel may mount before this inline module runs on a fast restore.
+  if (document.getElementById("terminal-container")) void ensureTerminalScript();
+</script>

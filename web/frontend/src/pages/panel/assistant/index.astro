@@ -1,0 +1,13 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * /panel/assistant — ruta legada. La vista de Agentes IA es ahora la página de
+ * inicio del panel (`pages/panel/index.astro`, servida en `/`). Redirigimos
+ * conservando la query string para no romper deep-links (`?tab=…`, etc.).
+ */
+const search = new URLSearchParams(Astro.url.search);
+search.delete("__lxp_internal__"); // marcador interno del rewrite del middleware
+const qs = search.toString();
+return Astro.redirect(qs ? `/?${qs}` : "/", 302);
+---

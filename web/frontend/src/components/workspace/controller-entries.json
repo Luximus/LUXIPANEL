@@ -1,0 +1,209 @@
+{
+  "pages_panel_backups_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/backups/index-script1.js?v=20260929-progressive-load\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/backups"
+  },
+  "pages_panel_bitninja_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/bitninja/index-script1.js?v=20260928a\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/bitninja"
+  },
+  "pages_panel_chat_index": {
+    "scripts": [],
+    "directory": "src/pages/panel/chat"
+  },
+  "pages_panel_cloudflare_index": {
+    "scripts": [
+      "\n  (function cloudflareTableConfig() {\n    function tablePrefKey(tableId) {\n      const user = document.getElementById(\"messenger-link\")?.getAttribute(\"data-me\") || \"anonymous\";\n      const target = document.getElementById(\"sidebar-server-switcher\")?.getAttribute(\"data-current-target-id\")\n        || sessionStorage.getItem(\"panel-active-target-scope\") || \"local\";\n      return `lxp:prefs:${encodeURIComponent(user)}:${encodeURIComponent(target)}:data-table:${tableId}`;\n    }\n    const PAGE_SIZES = [10, 25, 50, 100];\n    function read(tableId) {\n      try {\n        const raw = localStorage.getItem(tablePrefKey(tableId));\n        if (raw) { const c = JSON.parse(raw); return { pageSize: Number(c.pageSize) || 25, hiddenActions: Array.isArray(c.hiddenActions) ? c.hiddenActions.map(String) : [] }; }\n      } catch {}\n      return { pageSize: 25, hiddenActions: [] };\n    }\n    function write(tableId, cfg) {\n      try { localStorage.setItem(tablePrefKey(tableId), JSON.stringify(cfg)); } catch {}\n      window.dispatchEvent(new CustomEvent(\"lxp:data-table:apply-prefs\", { detail: { tableId, pageSize: cfg.pageSize, hiddenActions: cfg.hiddenActions } }));\n    }\n    function reflect(tableId) {\n      const cfg = read(tableId);\n      document.querySelectorAll(`[data-cf-pagesize][data-cf-table=\"${tableId}\"]`).forEach((btn) => {\n        const on = Number(btn.getAttribute(\"data-cf-pagesize\")) === cfg.pageSize;\n        btn.classList.toggle(\"bg-primary/10\", on); btn.classList.toggle(\"text-primary\", on); btn.classList.toggle(\"border-primary/40\", on); btn.classList.toggle(\"text-muted-foreground\", !on);\n      });\n      document.querySelectorAll(`[data-cf-action-toggle][data-cf-table=\"${tableId}\"]`).forEach((cb) => {\n        cb.checked = !cfg.hiddenActions.includes(cb.getAttribute(\"data-cf-action-toggle\"));\n      });\n    }\n    const tableIds = Array.from(new Set(Array.from(document.querySelectorAll(\"[data-cf-view]\")).map((el) => el.getAttribute(\"data-cf-view\"))));\n    // Left-nav switching\n    document.querySelectorAll(\"[data-cf-settings-nav]\").forEach((btn) => {\n      btn.addEventListener(\"click\", () => {\n        const view = btn.getAttribute(\"data-cf-settings-nav\");\n        document.querySelectorAll(\"[data-cf-view]\").forEach((sec) => sec.classList.toggle(\"hidden\", sec.getAttribute(\"data-cf-view\") !== view));\n        document.querySelectorAll(\"[data-cf-settings-nav]\").forEach((b) => {\n          const on = b === btn;\n          b.classList.toggle(\"bg-primary/10\", on); b.classList.toggle(\"text-primary\", on); b.classList.toggle(\"text-muted-foreground\", !on);\n        });\n        if (view) reflect(view);\n      });\n    });\n    // Pagination\n    document.querySelectorAll(\"[data-cf-pagesize]\").forEach((btn) => {\n      btn.addEventListener(\"click\", () => {\n        const tableId = btn.getAttribute(\"data-cf-table\"); const size = Number(btn.getAttribute(\"data-cf-pagesize\"));\n        if (!tableId || !PAGE_SIZES.includes(size)) return;\n        const cfg = read(tableId); cfg.pageSize = size; write(tableId, cfg); reflect(tableId);\n      });\n    });\n    // Action toggles\n    document.querySelectorAll(\"[data-cf-action-toggle]\").forEach((cb) => {\n      cb.addEventListener(\"change\", () => {\n        const tableId = cb.getAttribute(\"data-cf-table\"); const id = cb.getAttribute(\"data-cf-action-toggle\");\n        if (!tableId || !id) return;\n        const cfg = read(tableId); const set = new Set(cfg.hiddenActions);\n        if (cb.checked) set.delete(id); else set.add(id);\n        cfg.hiddenActions = Array.from(set); write(tableId, cfg);\n      });\n    });\n    tableIds.forEach(reflect);\n  })();\n",
+      "\n  import \"/scripts/extracted/pages/panel/cloudflare/index-script1.js?v=20260928-focused-views\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/cloudflare"
+  },
+  "pages_panel_codebase_graph_index": {
+    "scripts": [
+      "import \"/scripts/extracted/pages/panel/codebase-graph/index-script1.js?v=20260928-focused-views-b\";",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/codebase-graph"
+  },
+  "pages_panel_cron_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/cron/index-script1.js?v=20260928-focused-views\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/cron"
+  },
+  "pages_panel_databases_index": {
+    "scripts": [
+      "\n  function initDbSettingsDrawer() {\n    const TABLES = [\"db-structure-table\", \"db-console-table\"];\n    const ACTIVE = [\"bg-primary/10\", \"text-primary\"];\n    const INACTIVE = [\"text-muted-foreground\", \"hover:bg-accent\", \"hover:text-foreground\"];\n    function tablePrefKey(tableId) {\n      const user = document.getElementById(\"messenger-link\")?.getAttribute(\"data-me\") || \"anonymous\";\n      const target = document.getElementById(\"sidebar-server-switcher\")?.getAttribute(\"data-current-target-id\")\n        || sessionStorage.getItem(\"panel-active-target-scope\") || \"local\";\n      return `lxp:prefs:${encodeURIComponent(user)}:${encodeURIComponent(target)}:data-table:${tableId}`;\n    }\n    function readPref(id) { try { const raw = localStorage.getItem(tablePrefKey(id)); return raw ? JSON.parse(raw) : {}; } catch { return {}; } }\n    function writePagesize(size) {\n      TABLES.forEach((id) => {\n        const cfg = readPref(id); cfg.pageSize = size; if (!Array.isArray(cfg.hiddenActions)) cfg.hiddenActions = [];\n        try { localStorage.setItem(tablePrefKey(id), JSON.stringify(cfg)); } catch (e) {}\n        window.dispatchEvent(new CustomEvent(\"lxp:data-table:apply-prefs\", { detail: { tableId: id, pageSize: size, hiddenActions: cfg.hiddenActions } }));\n      });\n    }\n    function reflectPagesize() {\n      const cur = readPref(TABLES[0]).pageSize || 20;\n      document.querySelectorAll(\"[data-db-pagesize]\").forEach((btn) => {\n        const on = Number(btn.getAttribute(\"data-db-pagesize\")) === cur;\n        btn.classList.toggle(\"bg-primary\", on); btn.classList.toggle(\"text-primary-foreground\", on);\n      });\n    }\n    document.querySelectorAll(\"[data-db-pagesize]\").forEach((btn) => {\n      btn.addEventListener(\"click\", () => { writePagesize(Number(btn.getAttribute(\"data-db-pagesize\"))); reflectPagesize(); });\n    });\n    function showView(view) {\n      document.querySelectorAll(\"[data-db-settings-view]\").forEach((el) => el.classList.toggle(\"hidden\", el.getAttribute(\"data-db-settings-view\") !== view));\n      document.querySelectorAll(\"[data-db-settings-nav]\").forEach((btn) => {\n        const on = btn.getAttribute(\"data-db-settings-nav\") === view;\n        ACTIVE.forEach((c) => btn.classList.toggle(c, on));\n        INACTIVE.forEach((c) => btn.classList.toggle(c, !on));\n      });\n      if (view === \"tabla\") reflectPagesize();\n    }\n    document.querySelectorAll(\"[data-db-settings-nav]\").forEach((btn) => {\n      btn.addEventListener(\"click\", () => showView(btn.getAttribute(\"data-db-settings-nav\") || \"tabla\"));\n    });\n    const CW_KEY = \"lxp:databases:console-allow-write\";\n    let cw = false; try { cw = localStorage.getItem(CW_KEY) === \"1\"; } catch (e) {}\n    const cwBox = document.getElementById(\"db-cfg-allow-write\");\n    if (cwBox) {\n      cwBox.checked = cw;\n      cwBox.addEventListener(\"change\", () => {\n        try { localStorage.setItem(CW_KEY, cwBox.checked ? \"1\" : \"0\"); } catch (e) {}\n        const live = document.getElementById(\"sql-allow-write\"); if (live) live.checked = cwBox.checked;\n      });\n    }\n    const live = document.getElementById(\"sql-allow-write\"); if (live && cw) live.checked = true;\n    reflectPagesize();\n  }\n  document.addEventListener(\"astro:page-load\", initDbSettingsDrawer);\n",
+      "\n  import \"/scripts/extracted/pages/panel/databases/index-script1.js?v=20260928a\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/databases"
+  },
+  "pages_panel_expo_index": {
+    "scripts": [
+      "\n  (function () {\n    function tablePrefKey(tableId) {\n      const user = document.getElementById(\"messenger-link\")?.getAttribute(\"data-me\") || \"anonymous\";\n      const target = document.getElementById(\"sidebar-server-switcher\")?.getAttribute(\"data-current-target-id\")\n        || sessionStorage.getItem(\"panel-active-target-scope\") || \"local\";\n      return `lxp:prefs:${encodeURIComponent(user)}:${encodeURIComponent(target)}:data-table:${tableId}`;\n    }\n    function readCfg(tableId) {\n      try {\n        const raw = window.localStorage.getItem(tablePrefKey(tableId));\n        if (raw) return JSON.parse(raw);\n      } catch {}\n      return { pageSize: 25, hiddenActions: [] };\n    }\n    function writeCfg(tableId, cfg) {\n      try { window.localStorage.setItem(tablePrefKey(tableId), JSON.stringify(cfg)); } catch {}\n      window.dispatchEvent(new CustomEvent(\"lxp:data-table:apply-prefs\", { detail: { tableId, pageSize: cfg.pageSize, hiddenActions: cfg.hiddenActions } }));\n    }\n    function reflect(tableId) {\n      const cfg = readCfg(tableId);\n      document.querySelectorAll('[data-expo-pagesize=\"' + tableId + '\"]').forEach((btn) => {\n        const on = Number(btn.getAttribute(\"data-value\")) === Number(cfg.pageSize);\n        btn.classList.toggle(\"bg-primary\", on);\n        btn.classList.toggle(\"text-primary-foreground\", on);\n      });\n      document.querySelectorAll('[data-expo-action=\"' + tableId + '\"]').forEach((cb) => {\n        cb.checked = !(cfg.hiddenActions || []).includes(cb.getAttribute(\"data-action-id\"));\n      });\n    }\n    function init() {\n      const root = document.getElementById(\"expo-settings-modal\");\n      if (!root) return;\n      const tables = Array.from(new Set(\n        Array.from(document.querySelectorAll(\"[data-expo-pagesize]\")).map((b) => b.getAttribute(\"data-expo-pagesize\"))\n      ));\n      tables.forEach(reflect);\n      document.querySelectorAll(\"[data-expo-pagesize]\").forEach((btn) => {\n        btn.addEventListener(\"click\", () => {\n          const tableId = btn.getAttribute(\"data-expo-pagesize\");\n          const cfg = readCfg(tableId);\n          cfg.pageSize = Number(btn.getAttribute(\"data-value\"));\n          writeCfg(tableId, cfg);\n          reflect(tableId);\n        });\n      });\n      document.querySelectorAll(\"[data-expo-action]\").forEach((cb) => {\n        cb.addEventListener(\"change\", () => {\n          const tableId = cb.getAttribute(\"data-expo-action\");\n          const id = cb.getAttribute(\"data-action-id\");\n          const cfg = readCfg(tableId);\n          const set = new Set(cfg.hiddenActions || []);\n          if (cb.checked) set.delete(id); else set.add(id);\n          cfg.hiddenActions = Array.from(set);\n          writeCfg(tableId, cfg);\n        });\n      });\n    }\n    document.addEventListener(\"astro:page-load\", init);\n    if (document.readyState !== \"loading\") init();\n  })();\n",
+      "\n  import \"/scripts/extracted/pages/panel/expo/index-script1.js?v=20260929-progressive-load\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/expo"
+  },
+  "pages_panel_files_index": {
+    "scripts": [
+      "import \"/scripts/extracted/pages/panel/files/index-script1.js?v=20260930-editor-drawer\";",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/files"
+  },
+  "pages_panel_firewall_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/firewall/index-script1.js?v=20260928-focused-views-b\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/firewall"
+  },
+  "pages_panel_hosting_index": {
+    "scripts": [
+      "\n  // Config drawer \"Tabla\" → DataTable prefs (paginación + acciones a mostrar).\n  // Contrato compartido: localStorage `lxp:data-table:prefs:<tableId>` y evento\n  // `lxp:data-table:apply-prefs` que el DataTable genérico ya consume.\n  (function () {\n    const TABLE_ID = \"hosting-accounts-table\";\n    function tablePrefKey(tableId) {\n      const user = document.getElementById(\"messenger-link\")?.getAttribute(\"data-me\") || \"anonymous\";\n      const target = document.getElementById(\"sidebar-server-switcher\")?.getAttribute(\"data-current-target-id\")\n        || sessionStorage.getItem(\"panel-active-target-scope\") || \"local\";\n      return `lxp:prefs:${encodeURIComponent(user)}:${encodeURIComponent(target)}:data-table:${tableId}`;\n    }\n    function key() { return tablePrefKey(TABLE_ID); }\n    const PAGE_SIZES = [10, 25, 50, 100];\n\n    function readCfg() {\n      try {\n        const raw = localStorage.getItem(key());\n        if (raw) {\n          const c = JSON.parse(raw);\n          return { pageSize: Number(c.pageSize) || 25, hiddenActions: Array.isArray(c.hiddenActions) ? c.hiddenActions.map(String) : [] };\n        }\n      } catch (_) {}\n      return { pageSize: 25, hiddenActions: [] };\n    }\n    function writeCfg(cfg) {\n      try { localStorage.setItem(key(), JSON.stringify(cfg)); } catch (_) {}\n      window.dispatchEvent(new CustomEvent(\"lxp:data-table:apply-prefs\", { detail: { tableId: TABLE_ID, pageSize: cfg.pageSize, hiddenActions: cfg.hiddenActions } }));\n    }\n    function scope() { return document.getElementById(\"hosting-settings-modal\"); }\n    function reflect() {\n      const root = scope(); if (!root) return;\n      const cfg = readCfg();\n      root.querySelectorAll(\"[data-hosting-pagesize]\").forEach(function (btn) {\n        const on = Number(btn.getAttribute(\"data-hosting-pagesize\")) === cfg.pageSize;\n        btn.classList.toggle(\"bg-primary\", on);\n        btn.classList.toggle(\"text-primary-foreground\", on);\n        btn.classList.toggle(\"text-muted-foreground\", !on);\n      });\n      root.querySelectorAll(\"[data-hosting-action-toggle]\").forEach(function (cb) {\n        cb.checked = cfg.hiddenActions.indexOf(cb.getAttribute(\"data-hosting-action-toggle\")) === -1;\n      });\n    }\n\n    document.addEventListener(\"click\", function (e) {\n      const t = e.target instanceof Element ? e.target : null;\n      if (!t) return;\n      const ps = t.closest(\"[data-hosting-pagesize]\");\n      if (ps && scope() && scope().contains(ps)) {\n        const cfg = readCfg(); cfg.pageSize = Number(ps.getAttribute(\"data-hosting-pagesize\")) || 25; writeCfg(cfg); reflect(); return;\n      }\n      const all = t.closest(\"[data-hosting-actions-all]\");\n      if (all && scope() && scope().contains(all)) {\n        const cfg = readCfg();\n        const ids = Array.prototype.map.call(scope().querySelectorAll(\"[data-hosting-action-toggle]\"), function (cb) { return cb.getAttribute(\"data-hosting-action-toggle\"); });\n        cfg.hiddenActions = all.getAttribute(\"data-hosting-actions-all\") === \"hide\" ? ids.slice() : [];\n        writeCfg(cfg); reflect(); return;\n      }\n      if (t.closest(\"#hosting-settings-modal-trigger\")) { setTimeout(reflect, 0); }\n    });\n    document.addEventListener(\"change\", function (e) {\n      const cb = e.target instanceof Element ? e.target.closest(\"[data-hosting-action-toggle]\") : null;\n      if (!cb || !scope() || !scope().contains(cb)) return;\n      const id = cb.getAttribute(\"data-hosting-action-toggle\");\n      const cfg = readCfg();\n      const i = cfg.hiddenActions.indexOf(id);\n      if (cb.checked) { if (i !== -1) cfg.hiddenActions.splice(i, 1); }\n      else { if (i === -1) cfg.hiddenActions.push(id); }\n      writeCfg(cfg);\n    });\n    reflect();\n    document.addEventListener(\"astro:page-load\", reflect);\n  })();\n",
+      "\n  import \"/scripts/extracted/pages/panel/hosting/index-script1.js?v=20260928a\";\n  import \"/scripts/extracted/pages/panel/hosting/provider-settings.js?v=20260930-permission-labels\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/hosting"
+  },
+  "pages_panel_mail_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/mail/index-script1.js?v=20260930-mail-refresh\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/mail"
+  },
+  "pages_panel_module_dev_index": {
+    "scripts": [
+      "\n  (function () {\n    var TABLE = \"module-dev-table\";\n    function tablePrefKey(tableId) {\n      const user = document.getElementById(\"messenger-link\")?.getAttribute(\"data-me\") || \"anonymous\";\n      const target = document.getElementById(\"sidebar-server-switcher\")?.getAttribute(\"data-current-target-id\")\n        || sessionStorage.getItem(\"panel-active-target-scope\") || \"local\";\n      return `lxp:prefs:${encodeURIComponent(user)}:${encodeURIComponent(target)}:data-table:${tableId}`;\n    }\n    function key() { return tablePrefKey(TABLE); }\n    function read() { try { var r = localStorage.getItem(key()); if (r) return JSON.parse(r); } catch (e) {} return { pageSize: 25, hiddenActions: [] }; }\n    function write(cfg) {\n      try { localStorage.setItem(key(), JSON.stringify(cfg)); } catch (e) {}\n      window.dispatchEvent(new CustomEvent(\"lxp:data-table:apply-prefs\", { detail: { tableId: TABLE, pageSize: cfg.pageSize, hiddenActions: cfg.hiddenActions } }));\n    }\n    var root = document.getElementById(\"moduledev-settings-body\");\n    if (!root) return;\n    document.querySelectorAll(\"[data-moduledev-settings-nav]\").forEach(function (button) {\n      button.addEventListener(\"click\", function () {\n        const section = button.getAttribute(\"data-moduledev-settings-nav\");\n        root.querySelectorAll(\"[data-moduledev-settings-panel]\").forEach(function (panel) {\n          const selected = panel.getAttribute(\"data-moduledev-settings-panel\") === section;\n          panel.hidden = !selected; panel.classList.toggle(\"hidden\", !selected);\n        });\n        document.querySelectorAll(\"[data-moduledev-settings-nav]\").forEach(function (tab) {\n          const selected = tab === button;\n          tab.classList.toggle(\"bg-primary/10\", selected); tab.classList.toggle(\"text-primary\", selected);\n          tab.classList.toggle(\"text-muted-foreground\", !selected); tab.setAttribute(\"aria-selected\", String(selected));\n        });\n      });\n    });\n    function reflect() {\n      var cfg = read();\n      root.querySelectorAll(\"[data-moduledev-pagesize]\").forEach(function (b) {\n        var on = Number(b.getAttribute(\"data-moduledev-pagesize\")) === cfg.pageSize;\n        b.classList.toggle(\"bg-primary\", on);\n        b.classList.toggle(\"text-primary-foreground\", on);\n      });\n      root.querySelectorAll(\"[data-moduledev-action]\").forEach(function (c) {\n        c.checked = cfg.hiddenActions.indexOf(c.getAttribute(\"data-moduledev-action\")) === -1;\n      });\n    }\n    root.querySelectorAll(\"[data-moduledev-pagesize]\").forEach(function (b) {\n      b.addEventListener(\"click\", function () { var cfg = read(); cfg.pageSize = Number(b.getAttribute(\"data-moduledev-pagesize\")); write(cfg); reflect(); });\n    });\n    root.querySelectorAll(\"[data-moduledev-action]\").forEach(function (c) {\n      c.addEventListener(\"change\", function () {\n        var cfg = read(); var id = c.getAttribute(\"data-moduledev-action\");\n        var set = cfg.hiddenActions.filter(function (x) { return x !== id; });\n        if (!c.checked) set.push(id);\n        cfg.hiddenActions = set; write(cfg);\n      });\n    });\n    document.getElementById(\"module-dev-settings-modal-trigger\")?.addEventListener(\"click\", function () { setTimeout(reflect, 60); });\n    reflect();\n  })();\n",
+      "\n  import \"/scripts/extracted/pages/panel/module-dev/index-script1.js?v=20260929-modules4\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/module-dev"
+  },
+  "pages_panel_modules_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/modules/index-script1.js?v=20260628row2\";\n"
+    ],
+    "directory": "src/pages/panel/modules"
+  },
+  "pages_panel_monitor_index": {
+    "scripts": [
+      "\n  (function monitorTableConfig() {\n    const TABLE_ID = \"monitor-processes-table\";\n    const KEY = \"lxp:data-table:prefs:\" + TABLE_ID;\n    function read() {\n      try { const r = localStorage.getItem(KEY); if (r) return JSON.parse(r); } catch {}\n      return { pageSize: 25, hiddenActions: [] };\n    }\n    function write(cfg) {\n      try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch {}\n      window.dispatchEvent(new CustomEvent(\"lxp:data-table:apply-prefs\", { detail: { tableId: TABLE_ID, pageSize: cfg.pageSize, hiddenActions: cfg.hiddenActions } }));\n    }\n    function reflect() {\n      const cfg = read();\n      document.querySelectorAll(\"[data-monitor-pagesize]\").forEach((b) => {\n        const active = Number(b.getAttribute(\"data-monitor-pagesize\")) === cfg.pageSize;\n        b.classList.toggle(\"bg-primary/10\", active);\n        b.classList.toggle(\"text-primary\", active);\n        b.classList.toggle(\"border-primary/40\", active);\n        b.classList.toggle(\"text-muted-foreground\", !active);\n      });\n      document.querySelectorAll(\"[data-monitor-action-toggle]\").forEach((c) => {\n        const id = c.getAttribute(\"data-monitor-action-toggle\");\n        c.checked = !(cfg.hiddenActions || []).includes(id);\n      });\n    }\n    document.querySelectorAll(\"[data-monitor-pagesize]\").forEach((b) => {\n      b.addEventListener(\"click\", () => {\n        const cfg = read(); cfg.pageSize = Number(b.getAttribute(\"data-monitor-pagesize\")); write(cfg); reflect();\n      });\n    });\n    document.querySelectorAll(\"[data-monitor-action-toggle]\").forEach((c) => {\n      c.addEventListener(\"change\", () => {\n        const id = c.getAttribute(\"data-monitor-action-toggle\");\n        const cfg = read(); const set = new Set(cfg.hiddenActions || []);\n        if (c.checked) set.delete(id); else set.add(id);\n        cfg.hiddenActions = Array.from(set); write(cfg);\n      });\n    });\n    document.getElementById(\"monitor-settings-modal-trigger\")?.addEventListener(\"click\", () => setTimeout(reflect, 0));\n    reflect();\n  })();\n",
+      "\n  import \"/scripts/extracted/pages/panel/monitor/monitor-v2.js?b=20260927-settings\";\n  import \"/scripts/extracted/pages/panel/monitor/charts.js?b=20260929-progressive-load\";\n  import \"/scripts/extracted/pages/panel/monitor/watchdog.js?b=20260927-settings\";\n  import \"/scripts/extracted/pages/panel/monitor/settings.js?b=20260929-progressive-load\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/monitor"
+  },
+  "pages_panel_nginx_index": {
+    "scripts": [
+      "\n  // Mismo invariante de caché que en /panel/files: el editor Monaco del \"modo\n  // avanzado\" se importa DESDE este bundle, así que un `?v=` interno nuevo en\n  // el asset compartido no llega si este URL sigue cacheado. Bumpear ambos.\n  import \"/scripts/extracted/pages/panel/nginx/index-script1.js?v=20260929-i18n-actions\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/nginx"
+  },
+  "pages_panel_obsidian_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/obsidian/index-script1.js?v=20260929-progressive-load\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/obsidian"
+  },
+  "pages_panel_openclaw_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/openclaw/index-script1.js\";\n"
+    ],
+    "directory": "src/pages/panel/openclaw"
+  },
+  "pages_panel_preferences_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/preferences/index-script1.js?v=20260928-focused-views-b\";\n"
+    ],
+    "directory": "src/pages/panel/preferences"
+  },
+  "pages_panel_project_map_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/project-map/index-script1.js?v=20260929-explorer1\";\n"
+    ],
+    "directory": "src/pages/panel/project-map"
+  },
+  "pages_panel_repository_store_index": {
+    "scripts": [
+      "const {stacks}=scope.vars;",
+      "\n  window.__REPO_STORE_STACKS__ = stacks;\n",
+      "\n  import \"/scripts/extracted/pages/panel/repository-store/index-script1.js?v=20260927github1\";\n",
+      "\n  import { initRepositorySettingsTabs } from \"@/scripts/repository-settings-tabs\";\n  initRepositorySettingsTabs();\n  document.addEventListener(\"astro:after-swap\", initRepositorySettingsTabs);\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/repository-store"
+  },
+  "pages_panel_server_alerts_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/server-alerts/index-script1.js?v=20260928-focused-views\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/server-alerts"
+  },
+  "pages_panel_settings_index": {
+    "scripts": [
+      "\n  // LUXIPANEL is standalone: the panel is never auth-managed by an external\n  // license server, and every user manages their OWN passkeys/recovery/2FA on\n  // the connected server. `CAN_MANAGE_LOCAL_AUTH` (read by settings/state.ts)\n  // is therefore always true here.\n  window.__LUXIPANEL_CAN_MANAGE_LOCAL_AUTH__ = true;\n",
+      "\n  import \"/scripts/extracted/pages/panel/settings/index-script1.js?v=20261001-server-scope\";\n  import \"/scripts/extracted/pages/panel/settings/modules-cache.js?v=2\";\n  import \"/scripts/extracted/pages/panel/settings/credentials-script1.js?v=20260616gitssh\";\n  import \"/scripts/extracted/pages/panel/settings/servers-script1.js?v=1\";\n"
+    ],
+    "directory": "src/pages/panel/settings"
+  },
+  "pages_panel_terminal_index": {
+    "scripts": [],
+    "directory": "src/pages/panel/terminal"
+  },
+  "pages_panel_users_index": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/users/index-script1.js?v=20260930-permission-labels\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/users"
+  },
+  "pages_panel_webhooks_index": {
+    "scripts": [
+      "\n  (function () {\n    function tablePrefKey(tableId) {\n      const user = document.getElementById(\"messenger-link\")?.getAttribute(\"data-me\") || \"anonymous\";\n      const target = document.getElementById(\"sidebar-server-switcher\")?.getAttribute(\"data-current-target-id\")\n        || sessionStorage.getItem(\"panel-active-target-scope\") || \"local\";\n      return `lxp:prefs:${encodeURIComponent(user)}:${encodeURIComponent(target)}:data-table:${tableId}`;\n    }\n    const PREF = (id: string) => tablePrefKey(id);\n    type Cfg = { pageSize: number; hiddenActions: string[] };\n    function read(id: string): Cfg {\n      try { const r = localStorage.getItem(PREF(id)); if (r) { const c = JSON.parse(r); return { pageSize: Number(c.pageSize) || 25, hiddenActions: Array.isArray(c.hiddenActions) ? c.hiddenActions : [] }; } } catch { /* noop */ }\n      return { pageSize: 25, hiddenActions: [] };\n    }\n    function apply(id: string, cfg: Cfg) {\n      try { localStorage.setItem(PREF(id), JSON.stringify(cfg)); } catch { /* noop */ }\n      window.dispatchEvent(new CustomEvent(\"lxp:data-table:apply-prefs\", { detail: { tableId: id, pageSize: cfg.pageSize, hiddenActions: cfg.hiddenActions } }));\n    }\n    const navs = Array.from(document.querySelectorAll<HTMLElement>(\"[data-wh-nav]\"));\n    const views = Array.from(document.querySelectorAll<HTMLElement>(\"[data-wh-view]\"));\n    navs.forEach((btn) => btn.addEventListener(\"click\", () => {\n      const key = btn.getAttribute(\"data-wh-nav\");\n      views.forEach((v) => v.classList.toggle(\"hidden\", v.getAttribute(\"data-wh-view\") !== key));\n      navs.forEach((n) => {\n        const active = n === btn;\n        n.classList.toggle(\"bg-primary/10\", active);\n        n.classList.toggle(\"text-primary\", active);\n        n.classList.toggle(\"text-muted-foreground\", !active);\n      });\n    }));\n    document.querySelectorAll<HTMLElement>(\"[data-wh-pagesize]\").forEach((group) => {\n      const id = group.getAttribute(\"data-wh-table\") || \"\";\n      const cfg = read(id);\n      const btns = Array.from(group.querySelectorAll<HTMLButtonElement>(\"button[data-size]\"));\n      const mark = (size: number) => btns.forEach((x) => {\n        const on = Number(x.getAttribute(\"data-size\")) === size;\n        x.classList.toggle(\"bg-primary\", on); x.classList.toggle(\"text-primary-foreground\", on);\n      });\n      mark(cfg.pageSize);\n      btns.forEach((b) => b.addEventListener(\"click\", () => {\n        const size = Number(b.getAttribute(\"data-size\"));\n        const c = read(id); c.pageSize = size; apply(id, c); mark(size);\n      }));\n    });\n    document.querySelectorAll<HTMLInputElement>(\"input[data-wh-action]\").forEach((cb) => {\n      const id = cb.getAttribute(\"data-wh-table\") || \"\";\n      const act = cb.getAttribute(\"data-wh-action\") || \"\";\n      const cfg = read(id);\n      cb.checked = !cfg.hiddenActions.includes(act);\n      cb.addEventListener(\"change\", () => {\n        const c = read(id); const hidden = new Set(c.hiddenActions);\n        if (cb.checked) hidden.delete(act); else hidden.add(act);\n        c.hiddenActions = Array.from(hidden); apply(id, c);\n      });\n    });\n  })();\n",
+      "\n  import \"/scripts/extracted/pages/panel/webhooks/index-script1.js?v=20260928-focused-views\";\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/webhooks"
+  },
+  "pages_panel_mail__id__inbox": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/mail/[id]/inbox-script1b.js?v=20260930-mail-server\";\n"
+    ],
+    "directory": "src/pages/panel/mail/[id]/inbox"
+  },
+  "pages_panel_mail_compose": {
+    "scripts": [
+      "\n  import \"/scripts/extracted/pages/panel/mail/compose-script1.js?v=20260930-mail-server\";\n"
+    ],
+    "directory": "src/pages/panel/mail/compose"
+  },
+  "pages_panel_repository_store__owner___repo_": {
+    "scripts": [
+      "const {fullName}=scope.vars;",
+      "\n  import initScript from \"/scripts/extracted/pages/panel/repository-store/[owner]/[repo]-define-vars-script1.js?v=20260927github2\";\n  initScript({ fullName });\n",
+      "\n  import { initRepositorySettingsTabs } from \"@/scripts/repository-settings-tabs\";\n  initRepositorySettingsTabs();\n  document.addEventListener(\"astro:after-swap\", initRepositorySettingsTabs);\n",
+      "import \"/scripts/extracted/components/ui/view-settings-modal.js?v=20260928-sections\";"
+    ],
+    "directory": "src/pages/panel/repository-store/[owner]/[repo]"
+  },
+  "pages_panel_docs_hosting_api": {
+    "scripts": [],
+    "directory": "src/pages/panel/docs/hosting-api"
+  }
+}

@@ -1,0 +1,40 @@
+# pnpm@11 — Configuración de seguridad y resolución (Electron + Vite).
+
+# === SEGURIDAD ===
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - '@tolqia/*'
+
+# Electron y electron-builder requieren postinstall para descargar binarios.
+allowBuilds:
+  electron: true
+  '@electron/get': true
+  electron-builder: true
+  esbuild: true
+  '@swc/core': true
+  es5-ext: false
+  core-js: false
+  electron-winstaller: false # sólo construye instaladores Windows, no aplica en Linux
+  protobufjs: true
+
+packageManagerStrict: true
+packageManagerStrictVersion: false
+engineStrict: true
+verifyDepsBeforeRun: warn
+
+# === RESOLUCIÓN ===
+# Overrides de seguridad: forzar versiones parcheadas de deps transitivas.
+# undici (runtime, high) y tmp (dev). pnpm@11 lee overrides desde aquí, no
+# desde package.json (ver CLAUDE.md §pnpm v11).
+overrides:
+  '@tolqia/contracts': file:vendor/tolqia-contracts-1.2.0.tgz
+  undici: '^6.28.1'
+  tmp: '>=0.2.6'
+
+preferFrozenLockfile: true
+autoInstallPeers: true
+strictPeerDependencies: false
+dedupePeerDependents: true
+resolutionMode: highest
+
+shamefullyHoist: true

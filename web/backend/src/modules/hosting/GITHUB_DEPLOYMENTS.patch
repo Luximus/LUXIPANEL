@@ -1,0 +1,1927 @@
+--- /dev/null
++++ b/backend/src/modules/hosting/services/deployment-provider.service.ts
+@@ -0,0 +1,426 @@
++import { createHash, randomUUID } from "node:crypto";
++import path from "node:path";
++import { z } from "zod";
++import { panelConfigDir } from "../../../config/paths.js";
++import {
++  quoteArg,
++  pathExists,
++  type Executor,
++} from "../../../shared/executor/index.js";
++import {
++  ConflictError,
++  ForbiddenError,
++  NotFoundError,
++} from "../../../shared/errors/index.js";
++import { providerService } from "./provider.service.js";
++import type { HostingProvider } from "../models/provider.model.js";
++import { getRedis } from "../../../shared/redis/index.js";
++
++const uuid = z.string().uuid(),
++  name = z.string().regex(/^[a-z][a-z0-9-]{0,29}$/);
++const relative = z
++  .string()
++  .max(300)
++  .refine(
++    (v) =>
++      v === "." ||
++      (/^[A-Za-z0-9_./@-]+$/.test(v) &&
++        !v.startsWith("/") &&
++        v.split("/").every((p) => p && p !== "." && p !== "..")),
++  );
++export const deploymentSnapshotSchema = z
++  .object({
++    sourceDigest: z.string().regex(/^[a-f0-9]{64}$/),
++    manifest: z
++      .object({
++        schemaVersion: z.literal(1),
++        digest: z.string().regex(/^[a-f0-9]{64}$/),
++        components: z
++          .array(
++            z
++              .object({
++                name,
++                context: relative,
++                surface: z.enum(["http", "worker", "mobile"]),
++                port: z.number().int().min(1).max(65535),
++                healthPath: z
++                  .string()
++                  .regex(/^\/[A-Za-z0-9_/?=&.-]*$/)
++                  .max(200),
++                stack: z.string().max(40),
++                dockerfile: relative.optional(),
++                recipe: z.string().max(20000).optional(),
++                start: z.string().max(2000).optional(),
++                build: z.string().max(2000).optional(),
++                output: relative.optional(),
++                generatedFiles: z
++                  .record(z.string(), z.string().max(10000))
++                  .refine((files) =>
++                    Object.keys(files).every(
++                      (p) => p === ".luxisoft-runtime/Caddyfile",
++                    ),
++                  )
++                  .optional(),
++                routePrefix: z
++                  .string()
++                  .regex(/^\/[a-zA-Z0-9_/-]+$/)
++                  .max(100)
++                  .optional(),
++                volumes: z
++                  .array(
++                    z.object({
++                      name,
++                      path: z
++                        .string()
++                        .regex(
++                          /^\/(?:app|data|srv|var\/lib)\/[A-Za-z0-9_/-]+$/,
++                        ),
++                    }),
++                  )
++                  .max(10),
++              })
++              .strict(),
++          )
++          .min(1)
++          .max(10),
++        resources: z
++          .array(
++            z.object({
++              name,
++              engine: z.enum(["postgres", "mysql", "redis", "mongo", "sqlite"]),
++            }),
++          )
++          .max(5),
++      })
++      .strict(),
++  })
++  .strict();
++export const deploymentJobSchema = z
++  .object({
++    requestId: uuid,
++    versionId: uuid,
++    environment: z.enum(["preview", "production"]),
++    variables: z
++      .record(
++        z.string().regex(/^[A-Z][A-Z0-9_]{0,100}$/),
++        z.string().max(10000),
++      )
++      .refine(
++        (v) =>
++          Object.keys(v).length <= 100 &&
++          !Object.keys(v).some((k) =>
++            /^(?:EXPO_TOKEN|LUXIPANEL_|LD_|NODE_OPTIONS|GIT_|SSH_)/.test(k),
++          ),
++      )
++      .default({}),
++  })
++  .strict();
++const hash = (value: string | Buffer) =>
++  createHash("sha256").update(value).digest("hex");
++function canonicalJson(value: unknown): string {
++  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
++  if (value && typeof value === "object")
++    return `{${Object.keys(value)
++      .sort()
++      .filter((key) => (value as any)[key] !== undefined)
++      .map(
++        (key) => `${JSON.stringify(key)}:${canonicalJson((value as any)[key])}`,
++      )
++      .join(",")}}`;
++  return JSON.stringify(value);
++}
++function publicJob(state: any) {
++  const {
++    id,
++    status,
++    versionId,
++    environment,
++    error,
++    logs,
++    result,
++    createdAt,
++    updatedAt,
++  } = state;
++  return {
++    id,
++    status,
++    versionId,
++    environment,
++    error,
++    logs,
++    result,
++    createdAt,
++    updatedAt,
++  };
++}
++async function readJson(executor: Executor, file: string) {
++  return JSON.parse(String(await executor.readFile(file, "utf8")));
++}
++async function optionalJson(executor: Executor, file: string) {
++  return (await pathExists(executor, file)) ? readJson(executor, file) : null;
++}
++async function context(
++  provider: HostingProvider,
++  accountRef: string,
++  projectRef: string,
++) {
++  uuid.parse(accountRef);
++  uuid.parse(projectRef);
++  const owned = await providerService.ownedAccount(provider, accountRef);
++  if (owned.account.status !== "active")
++    throw new ForbiddenError("Cuenta suspendida");
++  if (
++    !/^hp[a-f0-9]{20}$/.test(owned.account.username) ||
++    owned.account.homeRoot !== `/home/${owned.account.username}`
++  )
++    throw new ForbiddenError("Identidad hosting inválida");
++  const id = hash(`${provider.id}:${accountRef}:${projectRef}`),
++    root = path.join(panelConfigDir(), "hosting", "deployments", id);
++  return { ...owned, id, root };
++}
++async function locked<T>(key: string, fn: () => Promise<T>) {
++  const redis = getRedis(),
++    owner = randomUUID(),
++    lock = "lxp:deployment:" + hash(key);
++  if ((await redis.set(lock, owner, "EX", 120, "NX")) !== "OK")
++    throw new ConflictError("Operación concurrente");
++  try {
++    return await fn();
++  } finally {
++    await redis.eval(
++      "if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end",
++      1,
++      lock,
++      owner,
++    );
++  }
++}
++export const deploymentProviderService = {
++  async register(provider: HostingProvider, account: string, project: string) {
++    const c = await context(provider, account, project);
++    await c.executor.mkdir(c.root, { recursive: true });
++    const probe = await c.executor.exec(
++      "test -x /usr/lib/luxipanel/deployment-helper && command -v podman",
++      { timeoutMs: 5000 },
++    );
++    if (
++      probe.exitCode === 0 &&
++      (await pathExists(c.executor, path.join(c.root, "retire.json")))
++    ) {
++      const resume = path.join(c.root, "resume.json");
++      await c.executor.writeFile(
++        resume,
++        JSON.stringify({
++          projectId: project,
++          username: c.account.username,
++          home: c.account.homeRoot,
++          root: c.root,
++        }),
++        { mode: 0o600 },
++      );
++      const result = await c.executor.exec(
++        `/usr/bin/sudo -n /usr/lib/luxipanel/deployment-helper ${quoteArg(resume)} resume`,
++        { timeoutMs: 30000 },
++      );
++      if (result.exitCode !== 0)
++        throw new ConflictError("deployment_resume_failed");
++      await c.executor.unlink(path.join(c.root, "retire.json"));
++      await c.executor.unlink(resume);
++    }
++    return { id: c.id, runtimeInstalled: probe.exitCode === 0 };
++  },
++  async snapshot(
++    provider: HostingProvider,
++    account: string,
++    project: string,
++    version: string,
++    input: z.infer<typeof deploymentSnapshotSchema>,
++  ) {
++    uuid.parse(version);
++    const c = await context(provider, account, project);
++    const { digest, ...contents } = input.manifest;
++    if (hash(canonicalJson(contents)) !== digest)
++      throw new ConflictError("Manifiesto modificado");
++    return locked(c.id, async () => {
++      const root = path.join(c.root, "versions", version),
++        file = path.join(root, "manifest.json"),
++        old = await optionalJson(c.executor, file);
++      if (
++        old &&
++        (old.sourceDigest !== input.sourceDigest ||
++          old.manifest.digest !== digest)
++      )
++        throw new ConflictError("Versión inmutable");
++      await c.executor.mkdir(root, { recursive: true });
++      if (!old)
++        await c.executor.writeFile(file, JSON.stringify(input), {
++          mode: 0o600,
++        });
++      return { versionId: version, sourceDigest: input.sourceDigest };
++    });
++  },
++  async source(
++    provider: HostingProvider,
++    account: string,
++    project: string,
++    version: string,
++    buffer: Buffer,
++  ) {
++    uuid.parse(version);
++    if (!Buffer.isBuffer(buffer) || buffer.length > 32 * 1024 * 1024)
++      throw new ConflictError("Archivo inválido o demasiado grande");
++    const c = await context(provider, account, project),
++      root = path.join(c.root, "versions", version),
++      manifest = await readJson(c.executor, path.join(root, "manifest.json"));
++    if (hash(buffer) !== manifest.sourceDigest)
++      throw new ConflictError("Código no coincide con la versión");
++    return locked(c.id, async () => {
++      const file = path.join(root, "source.zip");
++      if (!(await pathExists(c.executor, file)))
++        await c.executor.writeFile(file, buffer, { mode: 0o600 });
++      return { versionId: version };
++    });
++  },
++  async enqueue(
++    provider: HostingProvider,
++    account: string,
++    project: string,
++    input: z.infer<typeof deploymentJobSchema>,
++  ) {
++    const c = await context(provider, account, project);
++    return locked(c.id, async () => {
++      if (await pathExists(c.executor, path.join(c.root, "retire.json")))
++        throw new ConflictError("deployment_retired");
++      const root = path.join(c.root, "jobs", input.requestId),
++        stateFile = path.join(root, "state.json"),
++        requestDigest = hash(JSON.stringify(input)),
++        old = await optionalJson(c.executor, stateFile);
++      if (old) {
++        if (old.requestDigest !== requestDigest)
++          throw new ConflictError("Identificador de trabajo reutilizado");
++        return publicJob(old);
++      }
++      const versionRoot = path.join(c.root, "versions", input.versionId),
++        snapshot = deploymentSnapshotSchema.parse(
++          await readJson(c.executor, path.join(versionRoot, "manifest.json")),
++        );
++      if (!(await pathExists(c.executor, path.join(versionRoot, "source.zip"))))
++        throw new ConflictError("Falta el código de la versión");
++      const probe = await c.executor.exec(
++        "test -x /usr/lib/luxipanel/deployment-helper && command -v podman",
++        { timeoutMs: 5000 },
++      );
++      if (probe.exitCode !== 0)
++        throw new ConflictError("deployment_runtime_not_installed");
++      await c.executor.mkdir(root, { recursive: true });
++      const state = {
++        id: input.requestId,
++        status: "queued",
++        versionId: input.versionId,
++        environment: input.environment,
++        requestDigest,
++        createdAt: new Date().toISOString(),
++      };
++      await c.executor.writeFile(stateFile, JSON.stringify(state), {
++        mode: 0o600,
++      });
++      const task = {
++        ...input,
++        projectId: project,
++        accountId: account,
++        providerId: provider.id,
++        username: c.account.username,
++        home: c.account.homeRoot,
++        root,
++        versionRoot,
++        snapshot,
++        limits: {
++          memoryMb: 512,
++          cpuPercent: 100,
++          maxProcesses: 128,
++          diskMb: c.account.diskQuotaMb,
++          maxDatabases: c.account.maxDatabases,
++        },
++      };
++      const manifest = path.join(root, "input.json");
++      await c.executor.writeFile(manifest, JSON.stringify(task), {
++        mode: 0o600,
++      });
++      const command = `nohup /usr/bin/sudo -n /usr/lib/luxipanel/deployment-helper ${quoteArg(manifest)} </dev/null >${quoteArg(path.join(root, "launch.log"))} 2>&1 &`;
++      const result = await c.executor.exec(`sh -lc ${quoteArg(command)}`, {
++        timeoutMs: 10000,
++      });
++      if (result.exitCode !== 0) {
++        await c.executor.unlink(manifest).catch(() => {});
++        throw new ConflictError("deployment_launch_failed");
++      }
++      return publicJob(state);
++    });
++  },
++  async job(
++    provider: HostingProvider,
++    account: string,
++    project: string,
++    id: string,
++  ) {
++    uuid.parse(id);
++    const c = await context(provider, account, project);
++    const state = await optionalJson(
++      c.executor,
++      path.join(c.root, "jobs", id, "state.json"),
++    );
++    if (!state) throw new NotFoundError("Trabajo de despliegue");
++    if (
++      !["finished", "failed"].includes(state.status) &&
++      Date.now() - Date.parse(state.createdAt) > 35 * 60_000
++    )
++      return publicJob({
++        ...state,
++        status: "failed",
++        error: "deployment_job_timeout",
++      });
++    return publicJob(state);
++  },
++  async activate(
++    provider: HostingProvider,
++    account: string,
++    project: string,
++    id: string,
++    operation: "activate" | "cleanup" = "activate",
++  ) {
++    uuid.parse(id);
++    const c = await context(provider, account, project),
++      root = path.join(c.root, "jobs", id),
++      state = await readJson(c.executor, path.join(root, "state.json"));
++    if (state.status !== "finished" || state.environment !== "production")
++      throw new ConflictError("Publicación no preparada");
++    const result = await c.executor.exec(
++      `/usr/bin/sudo -n /usr/lib/luxipanel/deployment-helper ${quoteArg(path.join(root, "state.json"))} ${operation}`,
++      { timeoutMs: 120000 },
++    );
++    if (result.exitCode !== 0)
++      throw new ConflictError("deployment_activation_failed");
++    return { active: true };
++  },
++  async retire(provider: HostingProvider, account: string, project: string) {
++    const c = await context(provider, account, project),
++      marker = path.join(c.root, "retire.json");
++    await c.executor.writeFile(
++      marker,
++      JSON.stringify({
++        projectId: project,
++        username: c.account.username,
++        home: c.account.homeRoot,
++        root: c.root,
++      }),
++      { mode: 0o600 },
++    );
++    const result = await c.executor.exec(
++      `/usr/bin/sudo -n /usr/lib/luxipanel/deployment-helper ${quoteArg(marker)} retire`,
++      { timeoutMs: 30000 },
++    );
++    if (result.exitCode !== 0)
++      throw new ConflictError("deployment_retirement_failed");
++    return { retired: true };
++  },
++};
+--- /dev/null
++++ b/backend/src/modules/hosting/services/deployment-provider.service.test.ts
+@@ -0,0 +1,188 @@
++import { createHash } from "node:crypto";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++const m = vi.hoisted(() => ({
++  owned: vi.fn(),
++  read: vi.fn(),
++  write: vi.fn(),
++  mkdir: vi.fn(),
++  unlink: vi.fn(),
++  exists: vi.fn(),
++  exec: vi.fn(),
++  redis: { set: vi.fn(), eval: vi.fn() },
++}));
++vi.mock("../../../config/paths.js", () => ({
++  panelConfigDir: () => "/test/config",
++}));
++vi.mock("../../../shared/redis/index.js", () => ({ getRedis: () => m.redis }));
++vi.mock("./provider.service.js", () => ({
++  providerService: { ownedAccount: m.owned },
++}));
++vi.mock("../../../shared/executor/index.js", () => ({
++  pathExists: m.exists,
++  quoteArg: (value: string) => JSON.stringify(value),
++}));
++import {
++  deploymentProviderService as service,
++  deploymentSnapshotSchema,
++  deploymentJobSchema,
++} from "./deployment-provider.service.js";
++const account = "00000000-0000-4000-8000-000000000001",
++  project = "00000000-0000-4000-8000-000000000002",
++  version = "00000000-0000-4000-8000-000000000003",
++  provider = { id: "provider-a" } as never;
++const hash = (body: string) => createHash("sha256").update(body).digest("hex");
++const contents = {
++  schemaVersion: 1,
++  components: [
++    {
++      name: "app",
++      context: ".",
++      surface: "http",
++      port: 8080,
++      healthPath: "/",
++      stack: "static",
++      volumes: [],
++    },
++  ],
++  resources: [],
++};
++function canonical(value: any): string {
++  return Array.isArray(value)
++    ? `[${value.map(canonical).join(",")}]`
++    : value && typeof value === "object"
++      ? `{${Object.keys(value)
++          .sort()
++          .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
++          .join(",")}}`
++      : JSON.stringify(value);
++}
++const snapshot = () =>
++  deploymentSnapshotSchema.parse({
++    sourceDigest: hash("source"),
++    manifest: { ...contents, digest: hash(canonical(contents)) },
++  });
++beforeEach(() => {
++  for (const mock of [
++    m.owned,
++    m.read,
++    m.write,
++    m.mkdir,
++    m.unlink,
++    m.exists,
++    m.exec,
++    m.redis.set,
++    m.redis.eval,
++  ])
++    mock.mockReset();
++  m.redis.set.mockResolvedValue("OK");
++  m.exists.mockResolvedValue(false);
++  m.owned.mockResolvedValue({
++    account: {
++      status: "active",
++      username: "hp" + "a".repeat(20),
++      homeRoot: "/home/hp" + "a".repeat(20),
++    },
++    executor: {
++      readFile: m.read,
++      writeFile: m.write,
++      mkdir: m.mkdir,
++      unlink: m.unlink,
++      exec: m.exec,
++    },
++  });
++});
++describe("repository provider ownership and immutable snapshots", () => {
++  it("checks provider ownership before creating runtime metadata", async () => {
++    m.owned.mockRejectedValue(new Error("foreign account"));
++    await expect(service.register(provider, account, project)).rejects.toThrow(
++      "foreign account",
++    );
++    expect(m.mkdir).not.toHaveBeenCalled();
++  });
++  it("does not launch suspended or malformed hosting identities", async () => {
++    m.owned.mockResolvedValue({ account: { status: "suspended" } });
++    await expect(service.register(provider, account, project)).rejects.toThrow(
++      "suspendida",
++    );
++    expect(m.exec).not.toHaveBeenCalled();
++  });
++  it("resumes only the owned retired project when the runtime is installed", async () => {
++    m.exec.mockResolvedValue({ exitCode: 0 });
++    m.exists.mockImplementation(async (_executor, filename) =>
++      filename.endsWith("/retire.json"),
++    );
++    const result = await service.register(provider, account, project);
++    expect(result.runtimeInstalled).toBe(true);
++    expect(m.write).toHaveBeenCalledWith(
++      expect.stringContaining("/resume.json"),
++      expect.stringContaining(project),
++      { mode: 0o600 },
++    );
++    expect(m.exec).toHaveBeenCalledWith(expect.stringContaining(" resume"), {
++      timeoutMs: 30000,
++    });
++    expect(m.unlink).toHaveBeenCalledWith(
++      expect.stringContaining("/retire.json"),
++    );
++  });
++  it("keeps the retirement marker when resuming fails", async () => {
++    m.exec
++      .mockResolvedValueOnce({ exitCode: 0 })
++      .mockResolvedValueOnce({ exitCode: 1 });
++    m.exists.mockResolvedValue(true);
++    await expect(service.register(provider, account, project)).rejects.toThrow(
++      "deployment_resume_failed",
++    );
++    expect(m.unlink).not.toHaveBeenCalled();
++  });
++  it("rejects a manifest changed after approval", async () => {
++    const input = snapshot();
++    input.manifest.components[0]!.port = 9999;
++    await expect(
++      service.snapshot(provider, account, project, version, input),
++    ).rejects.toThrow("Manifiesto");
++    expect(m.write).not.toHaveBeenCalled();
++  });
++  it("accepts canonical manifests and stores them privately", async () => {
++    await service.snapshot(provider, account, project, version, snapshot());
++    expect(m.write).toHaveBeenCalledWith(
++      expect.stringContaining("/versions/" + version + "/manifest.json"),
++      expect.any(String),
++      { mode: 0o600 },
++    );
++  });
++  it("refuses to overwrite an immutable version", async () => {
++    m.exists.mockResolvedValue(true);
++    m.read.mockResolvedValue(
++      JSON.stringify({
++        sourceDigest: "f".repeat(64),
++        manifest: { digest: "e".repeat(64) },
++      }),
++    );
++    await expect(
++      service.snapshot(provider, account, project, version, snapshot()),
++    ).rejects.toThrow("inmutable");
++    expect(m.write).not.toHaveBeenCalled();
++  });
++  it("rejects host paths and credential broker variables at the boundary", () => {
++    expect(
++      deploymentSnapshotSchema.safeParse({
++        ...snapshot(),
++        manifest: {
++          ...snapshot().manifest,
++          components: [
++            { ...snapshot().manifest.components[0], context: "../other" },
++          ],
++        },
++      }).success,
++    ).toBe(false);
++    expect(
++      deploymentJobSchema.safeParse({
++        requestId: account,
++        versionId: version,
++        environment: "preview",
++        variables: { EXPO_TOKEN: "private" },
++      }).success,
++    ).toBe(false);
++  });
++});
+--- /dev/null
++++ b/backend/src/modules/hosting/routes/deployment-provider.routes.ts
+@@ -0,0 +1,148 @@
++import { Router, raw } from "express";
++import { asyncHandler } from "../../../shared/types/index.js";
++import { AuthError } from "../../../shared/errors/index.js";
++import { providerService } from "../services/provider.service.js";
++import type {
++  HostingProvider,
++  ProviderOperation,
++} from "../models/provider.model.js";
++import {
++  deploymentProviderService as service,
++  deploymentSnapshotSchema,
++  deploymentJobSchema,
++} from "../services/deployment-provider.service.js";
++export const deploymentProviderRouter = Router();
++const base = "/api/hosting/v1/accounts/:account/deployments/:project";
++deploymentProviderRouter.use(
++  "/api/hosting/v1/accounts/:account/deployments",
++  asyncHandler(async (req, res, next) => {
++    const authorization = req.headers.authorization ?? "";
++    if (!authorization.startsWith("Bearer lhp_"))
++      throw new AuthError("Credencial de proveedor requerida");
++    (res.locals as any).deploymentProvider = await providerService.authenticate(
++      authorization.slice(7),
++    );
++    next();
++  }),
++);
++const provider = (res: any, operation: ProviderOperation) => {
++  const value = res.locals.deploymentProvider as HostingProvider;
++  providerService.assertOperation(value, operation);
++  return value;
++};
++const refs = (req: any) =>
++  [String(req.params.account), String(req.params.project)] as const;
++deploymentProviderRouter.put(
++  base,
++  asyncHandler(async (req, res) => {
++    res.json({
++      ok: true,
++      data: await service.register(
++        provider(res, "deployments.write"),
++        ...refs(req),
++      ),
++    });
++  }),
++);
++deploymentProviderRouter.put(
++  base + "/versions/:version",
++  asyncHandler(async (req, res) => {
++    res.json({
++      ok: true,
++      data: await service.snapshot(
++        provider(res, "deployments.write"),
++        ...refs(req),
++        String(req.params.version),
++        deploymentSnapshotSchema.parse(req.body),
++      ),
++    });
++  }),
++);
++deploymentProviderRouter.put(
++  base + "/versions/:version/source",
++  raw({ type: "application/octet-stream", limit: "32mb" }),
++  asyncHandler(async (req, res) => {
++    res.json({
++      ok: true,
++      data: await service.source(
++        provider(res, "deployments.write"),
++        ...refs(req),
++        String(req.params.version),
++        req.body,
++      ),
++    });
++  }),
++);
++deploymentProviderRouter.post(
++  base + "/jobs",
++  asyncHandler(async (req, res) => {
++    const input = deploymentJobSchema.parse(req.body);
++    res
++      .status(202)
++      .json({
++        ok: true,
++        data: await service.enqueue(
++          provider(
++            res,
++            input.environment === "production"
++              ? "deployments.publish"
++              : "deployments.build",
++          ),
++          ...refs(req),
++          input,
++        ),
++      });
++  }),
++);
++deploymentProviderRouter.get(
++  base + "/jobs/:job",
++  asyncHandler(async (req, res) => {
++    res.json({
++      ok: true,
++      data: await service.job(
++        provider(res, "deployments.read"),
++        ...refs(req),
++        String(req.params.job),
++      ),
++    });
++  }),
++);
++deploymentProviderRouter.post(
++  base + "/jobs/:job/activate",
++  asyncHandler(async (req, res) => {
++    res.json({
++      ok: true,
++      data: await service.activate(
++        provider(res, "deployments.publish"),
++        ...refs(req),
++        String(req.params.job),
++      ),
++    });
++  }),
++);
++deploymentProviderRouter.post(
++  base + "/jobs/:job/cleanup",
++  asyncHandler(async (req, res) => {
++    res.json({
++      ok: true,
++      data: await service.activate(
++        provider(res, "deployments.publish"),
++        ...refs(req),
++        String(req.params.job),
++        "cleanup",
++      ),
++    });
++  }),
++);
++deploymentProviderRouter.delete(
++  base,
++  asyncHandler(async (req, res) => {
++    res.json({
++      ok: true,
++      data: await service.retire(
++        provider(res, "deployments.write"),
++        ...refs(req),
++      ),
++    });
++  }),
++);
+--- /dev/null
++++ b/backend/src/modules/hosting/services/expo-repository-policy.ts
+@@ -0,0 +1,151 @@
++import { z } from "zod";
++const binary = /\.(?:png|jpe?g|webp|ttf|otf|woff2?)$/;
++export const repositoryExpoFiles = z
++  .record(z.string(), z.string().max(2_800_000))
++  .refine((files) => {
++    const entries = Object.entries(files);
++    return (
++      entries.length > 0 &&
++      entries.length <= 2000 &&
++      Buffer.byteLength(JSON.stringify(files)) <= 16_000_000 &&
++      entries.every(
++        ([name, body]) =>
++          name.length <= 500 &&
++          !name.startsWith("/") &&
++          !name.includes("\\") &&
++          !name.includes("\0") &&
++          name
++            .split("/")
++            .every((part) => part && part !== "." && part !== "..") &&
++          /\.(?:[cm]?[jt]sx?|json|css|svg|png|jpe?g|webp|ttf|otf|woff2?|gradle|properties|xml|java|kt|swift|h|m|mm)$/.test(
++            name,
++          ) &&
++          !/(?:^|\/)(?:node_modules|\.git|app\.config\.[cm]?[jt]s|\.env.*|credentials.*|.*\.(?:pem|key|p8|p12|pfx))(?:$|\/)/i.test(
++            name,
++          ) &&
++          (!binary.test(name) || /^[a-zA-Z0-9+/]*={0,2}$/.test(body)),
++      )
++    );
++  }, "invalid_repository_mobile_source");
++const registryVersion = (value: unknown) =>
++  typeof value === "string" &&
++  value.length < 100 &&
++  /^[~^<>=*0-9][0-9a-zA-Z~^<>=*.+| -]*$/.test(value);
++export function validateRepositoryExpoSource(files: Record<string, string>) {
++  repositoryExpoFiles.parse(files);
++  if (
++    Object.values(files).some((body) =>
++      /-----BEGIN (?:RSA |EC )?PRIVATE KEY-----/.test(body),
++    )
++  )
++    throw new Error("source_contains_secret");
++  for (const key of ["package.json", "app.json", "eas.json", "tsconfig.json"])
++    if (!files[key]) throw new Error(`source_missing:${key}`);
++  const pkg = JSON.parse(files["package.json"]!);
++  if (!pkg.dependencies?.expo || !pkg.dependencies?.["react-native"])
++    throw new Error("expo_project_required");
++  if (
++    Object.keys(pkg).some(
++      (key) =>
++        ![
++          "name",
++          "version",
++          "private",
++          "main",
++          "scripts",
++          "dependencies",
++          "devDependencies",
++          "peerDependencies",
++          "description",
++          "license",
++        ].includes(key),
++    )
++  )
++    throw new Error("package_configuration_requires_review");
++  for (const [name, version] of Object.entries({
++    ...pkg.dependencies,
++    ...pkg.devDependencies,
++    ...pkg.peerDependencies,
++  }))
++    if (
++      !/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/.test(name) ||
++      !registryVersion(version)
++    )
++      throw new Error(`registry_dependency_required:${name}`);
++  if (
++    (pkg.main && typeof pkg.main !== "string") ||
++    (pkg.main &&
++      (!/^[a-zA-Z0-9_.@/-]+$/.test(pkg.main) ||
++        pkg.main.startsWith("/") ||
++        pkg.main.split("/").includes("..")))
++  )
++    throw new Error("entry_requires_review");
++  const config = JSON.parse(files["app.json"]!).expo;
++  const staticPaths = (value: unknown): void => {
++    if (
++      typeof value === "string" &&
++      (/^(?:\/|~|file:)/.test(value) ||
++        value.split(/[\\/]/).includes("..") ||
++        /(?:^|[\\/])(?:node_modules|\.env[^/]*|credentials[^/]*)/.test(value))
++    )
++      throw new Error("static_configuration_path_requires_review");
++    if (value && typeof value === "object")
++      for (const child of Object.values(value)) staticPaths(child);
++  };
++  staticPaths(config);
++  if (
++    !/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*){2,}$/.test(
++      config?.android?.package ?? "",
++    ) ||
++    !/^[a-zA-Z][a-zA-Z0-9.-]+$/.test(config?.ios?.bundleIdentifier ?? "")
++  )
++    throw new Error("application_identifier_missing");
++  // Dynamic config and local plugins never execute alongside the Expo credential.
++  // Approved Expo plugins resolve from authenticated npm packages, not customer paths.
++  for (const plugin of config.plugins ?? []) {
++    const name = Array.isArray(plugin) ? plugin[0] : plugin;
++    if (
++      typeof name !== "string" ||
++      ![
++        "expo-router",
++        "expo-font",
++        "expo-splash-screen",
++        "expo-secure-store",
++        "expo-notifications",
++        "expo-image-picker",
++        "expo-camera",
++        "expo-location",
++        "expo-build-properties",
++      ].includes(name) ||
++      !registryVersion(pkg.dependencies?.[name])
++    )
++      throw new Error("native_plugin_requires_static_configuration");
++  }
++  const eas = JSON.parse(files["eas.json"]!);
++  if (
++    Object.keys(eas).some((key) => !["cli", "build", "submit"].includes(key)) ||
++    Object.values(eas.build ?? {}).some(
++      (profile: any) =>
++        Object.keys(profile).some(
++          (key) =>
++            ![
++              "developmentClient",
++              "distribution",
++              "autoIncrement",
++              "credentialsSource",
++            ].includes(key),
++        ) ||
++        (profile.credentialsSource && profile.credentialsSource !== "remote"),
++    )
++  )
++    throw new Error("build_configuration_requires_review");
++  const ts = JSON.parse(files["tsconfig.json"]!);
++  if (
++    ts.extends &&
++    ts.extends !== "expo/tsconfig.base" &&
++    (!/^\.\/[a-zA-Z0-9_./-]+$/.test(ts.extends) ||
++      ts.extends.split("/").includes(".."))
++  )
++    throw new Error("tsconfig_not_allowed");
++}
++export const expoBinaryPath = (name: string) => binary.test(name);
+--- /dev/null
++++ b/backend/src/modules/hosting/services/expo-repository-policy.test.ts
+@@ -0,0 +1,85 @@
++import { describe, expect, it } from "vitest";
++import {
++  validateRepositoryExpoSource,
++  repositoryExpoFiles,
++} from "./expo-repository-policy.js";
++const base = {
++  "package.json": JSON.stringify({
++    name: "customer-app",
++    main: "expo-router/entry",
++    dependencies: {
++      expo: "~57.0.17",
++      "react-native": "0.86.3",
++      "expo-router": "~7.0.0",
++      zustand: "^5.0.0",
++    },
++  }),
++  "app.json": JSON.stringify({
++    expo: {
++      android: { package: "com.example.app" },
++      ios: { bundleIdentifier: "com.example.app" },
++      plugins: ["expo-router"],
++    },
++  }),
++  "eas.json": JSON.stringify({
++    build: { production: { autoIncrement: true, credentialsSource: "remote" } },
++  }),
++  "tsconfig.json": JSON.stringify({ extends: "expo/tsconfig.base" }),
++  "app/index.tsx": "export default function Screen(){return null;}",
++  "assets/font.ttf": Buffer.from([0, 1, 2, 3]).toString("base64"),
++};
++describe("GitHub Expo imports", () => {
++  it("preserves router entries, custom source, registry dependencies and binary assets", () =>
++    expect(() => validateRepositoryExpoSource(base)).not.toThrow());
++  it.each([
++    "app.config.ts",
++    "src/../app.json",
++    "node_modules/expo/index.js",
++    "credentials.json",
++    "key.p8",
++    ".env.production",
++  ])(
++    "rejects credential-side executable configuration or secret path %s",
++    (name) =>
++      expect(
++        repositoryExpoFiles.safeParse({ ...base, [name]: "secret" }).success,
++      ).toBe(false),
++  );
++  it.each([
++    "file:/etc/luxipanel",
++    "https://evil.example/archive.tgz",
++    "git+https://example.test/repo",
++    "workspace:*",
++  ])("rejects non-registry dependency %s", (version) =>
++    expect(() =>
++      validateRepositoryExpoSource({
++        ...base,
++        "package.json": JSON.stringify({
++          dependencies: { expo: version, "react-native": "0.86.3" },
++        }),
++      }),
++    ).toThrow("registry_dependency_required"),
++  );
++  it("rejects local plugins and custom EAS workflows", () => {
++    expect(() =>
++      validateRepositoryExpoSource({
++        ...base,
++        "app.json": JSON.stringify({
++          expo: {
++            android: { package: "com.example.app" },
++            ios: { bundleIdentifier: "com.example.app" },
++            plugins: ["./plugin.js"],
++          },
++        }),
++      }),
++    ).toThrow("native_plugin");
++    expect(() =>
++      validateRepositoryExpoSource({
++        ...base,
++        "eas.json": JSON.stringify({
++          build: { production: { config: "custom.yml" } },
++        }),
++      }),
++    ).toThrow("build_configuration");
++  });
++});
+--- /dev/null
++++ b/backend/scripts/deployments/install.sh
+@@ -0,0 +1,28 @@
++#!/usr/bin/env bash
++set -euo pipefail
++[[ $EUID -eq 0 ]] || { echo 'Ejecuta el instalador como administrador.' >&2; exit 1; }
++script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++service_user=${LUXISOFT_DEPLOY_SERVICE_USER:-${SUDO_USER:?Set the deployment service account}}
++config_root=${LUXIPANEL_CONFIG_DIR:-/etc/luxipanel}
++getent passwd "$service_user" >/dev/null
++apt-get update
++DEBIAN_FRONTEND=noninteractive apt-get install -y podman uidmap passt slirp4netns fuse-overlayfs
++install -d -m 0755 /usr/lib/luxipanel
++install -m 0755 "$script_dir/deployment-helper.py" /usr/lib/luxipanel/deployment-helper
++install -m 0755 "$script_dir/deployment-tenant.mjs" /usr/lib/luxipanel/deployment-tenant.mjs
++install -d -m 0755 /etc/luxipanel
++DEPLOY_SERVICE_USER="$service_user" DEPLOY_CONFIG_ROOT="$config_root" python3 - <<'PY'
++import json,os
++file='/etc/luxipanel-deployment-runtime.json'
++with open(file,'w') as f: json.dump({'serviceUser':os.environ['DEPLOY_SERVICE_USER'],'configRoot':os.environ['DEPLOY_CONFIG_ROOT']},f)
++os.chmod(file,0o644)
++PY
++printf '%s ALL=(root) NOPASSWD: /usr/lib/luxipanel/deployment-helper\n' "$service_user" > /etc/sudoers.d/luxisoft-deployments
++chmod 0440 /etc/sudoers.d/luxisoft-deployments
++visudo -cf /etc/sudoers.d/luxisoft-deployments
++printf 'f /run/lock/luxisoft-heavy-build.lock 0644 root root -\n' > /etc/tmpfiles.d/luxisoft-builds.conf
++systemd-tmpfiles --create /etc/tmpfiles.d/luxisoft-builds.conf
++touch /run/lock/luxisoft-heavy-build.lock
++chmod 0644 /run/lock/luxisoft-heavy-build.lock
++podman --version
++echo 'Runtime de despliegues instalado. Activa deployments.read/write/build/publish en el proveedor de Luxisoft.'
+--- /dev/null
++++ b/backend/scripts/deployments/deployment-helper.py
+@@ -0,0 +1,109 @@
++#!/usr/bin/python3
++"""Restricted supervisor: metadata and systemd only; customer code runs as its
++hosting identity in rootless containers. Installed root-owned by install.sh."""
++import base64, fcntl, hashlib, json, os, pathlib, pwd, re, stat, subprocess, sys, time, signal
++
++POLICY = '/etc/luxipanel-deployment-runtime.json'
++def require(condition, message):
++    if not condition: raise RuntimeError(message)
++def regular(path, owners):
++    path = pathlib.Path(path)
++    for parent in [*reversed(path.parents), path]:
++        item = parent.lstat()
++        require(not stat.S_ISLNK(item.st_mode), 'unsafe_runtime_path')
++        if str(parent).startswith('/etc/luxipanel'):
++            require(item.st_uid in owners and not item.st_mode & 0o002 and (not item.st_mode & 0o020 or item.st_gid in owners), 'unsafe_runtime_owner')
++    return path
++def run(argv, **kwargs):
++    timeout=kwargs.pop('timeout',30)
++    body=kwargs.pop('input',None)
++    capture=kwargs.pop('capture_output',False)
++    process=subprocess.Popen(argv,start_new_session=True,stdin=subprocess.PIPE if body is not None else None,
++        stdout=subprocess.PIPE if capture else None,stderr=subprocess.PIPE if capture else None,**kwargs)
++    try: output,error=process.communicate(body,timeout=timeout)
++    except subprocess.TimeoutExpired:
++        os.killpg(process.pid,signal.SIGKILL);process.communicate();raise
++    if process.returncode: raise subprocess.CalledProcessError(process.returncode,argv,output,error)
++    return subprocess.CompletedProcess(argv,process.returncode,output,error)
++require(os.geteuid() == 0, 'supervisor_requires_root')
++regular(POLICY, [0])
++policy = json.loads(pathlib.Path(POLICY).read_text())
++service = pwd.getpwnam(policy['serviceUser'])
++require(len(sys.argv) in [2,3], 'invalid_arguments')
++file = regular(sys.argv[1], [0, service.pw_uid])
++root = pathlib.Path(policy['configRoot']) / 'hosting/deployments'
++relative = str(file.relative_to(root))
++require(re.fullmatch(r'[a-f0-9]{64}/(?:jobs/[a-f0-9-]{36}/(?:input|state)\.json|(?:retire|resume)\.json)', relative), 'invalid_job_path')
++task = json.loads(file.read_text())
++operation = sys.argv[2] if len(sys.argv) == 3 else 'run'
++require(operation in ['run','activate','cleanup','retire','resume'], 'invalid_operation')
++require(re.fullmatch(r'hp[a-f0-9]{20}', task['username']), 'invalid_hosting_identity')
++user = pwd.getpwnam(task['username'])
++require(user.pw_uid >= 1000 and user.pw_dir == task['home'] == '/home/'+user.pw_name, 'invalid_hosting_home')
++require(re.fullmatch(r'[a-f0-9-]{36}',task['projectId']), 'invalid_project')
++statefile = file.parent / 'state.json'
++def save(patch):
++    current = json.loads(statefile.read_text()) if statefile.exists() else {}
++    current.update(patch)
++    current.update(username=user.pw_name, home=user.pw_dir, projectId=task['projectId'])
++    temporary = statefile.with_suffix('.tmp')
++    temporary.write_text(json.dumps(current)); os.chmod(temporary,0o600); os.chown(temporary,service.pw_uid,service.pw_gid)
++    os.replace(temporary,statefile)
++try:
++    with open('/run/lock/luxisoft-deployment-provision.lock','a') as provision:
++        fcntl.flock(provision,fcntl.LOCK_EX)
++        for filename,flag in [('/etc/subuid','--add-subuids'),('/etc/subgid','--add-subgids')]:
++            rows = pathlib.Path(filename).read_text().splitlines()
++            if not any(row.startswith(user.pw_name+':') for row in rows):
++                end=max([100000]+[int(row.split(':')[1])+int(row.split(':')[2]) for row in rows if re.fullmatch(r'[^:]+:\d+:\d+',row)])
++                start=((end+65535)//65536)*65536
++                require(start+65535<2**32,'subordinate_id_capacity_exceeded')
++                run(['/usr/sbin/usermod',flag,str(start)+'-'+str(start+65535),user.pw_name])
++        run(['/usr/bin/loginctl','enable-linger',user.pw_name])
++        run(['/usr/bin/systemctl','set-property','user-'+str(user.pw_uid)+'.slice','MemoryMax=4096M','CPUQuota=150%','TasksMax=1536'])
++        run(['/usr/bin/systemctl','start','user@'+str(user.pw_uid)+'.service'])
++    env=['/usr/sbin/runuser','-u',user.pw_name,'--','/usr/bin/env','-i',
++         'HOME='+user.pw_dir,'PATH=/usr/local/bin:/usr/bin:/bin','LANG=C.UTF-8',
++         'XDG_RUNTIME_DIR=/run/user/'+str(user.pw_uid),'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/'+str(user.pw_uid)+'/bus',
++         '/usr/bin/node','/usr/lib/luxipanel/deployment-tenant.mjs']
++    if operation == 'run':
++        require(not (file.parent.parent.parent/'retire.json').exists(),'deployment_retired')
++        save({'status':'running'})
++        version_root = file.parent.parent.parent / 'versions' / task['versionId']
++        require(pathlib.Path(task['versionRoot']) == version_root, 'invalid_version_path')
++        archive=regular(version_root/'source.zip',[0,service.pw_uid]).read_bytes()
++        require(hashlib.sha256(archive).hexdigest()==task['snapshot']['sourceDigest'],'source_digest_mismatch')
++        # The client never chooses a host path or host command. Only the owned
++        # source archive and validated application manifest cross the boundary.
++        payload={key:task[key] for key in ['projectId','versionId','environment','username','home','snapshot','limits','variables','requestId']}
++        payload['archive']=base64.b64encode(archive).decode()
++        # One lock across all accounts. Runner holds it through installation,
++        # compilation and validation; platform build adapters share this lock.
++        with open('/run/lock/luxisoft-heavy-build.lock','a') as lock:
++            fcntl.flock(lock,fcntl.LOCK_EX)
++            result=run(env,input=json.dumps(payload),text=True,capture_output=True,timeout=1900)
++        if (file.parent.parent.parent/'retire.json').exists():
++            cleanup={'operation':'retire','home':user.pw_dir,'username':user.pw_name,'projectId':task['projectId']}
++            run(env,input=json.dumps(cleanup),text=True,capture_output=True,timeout=120)
++            raise RuntimeError('deployment_retired')
++        output=json.loads(result.stdout)
++        require(output['ok'],'deployment_failed')
++        save({'status':'finished','result':output['result'],'logs':output.get('logs','')})
++    else:
++        payload={'operation':operation,'home':user.pw_dir,'username':user.pw_name,'projectId':task['projectId'],'requestId':task.get('id','')}
++        result=run(env,input=json.dumps(payload),text=True,capture_output=True,timeout=120)
++        require(json.loads(result.stdout).get('ok'),'deployment_lifecycle_failed')
++except Exception as error:
++    # Raw subprocess output could contain credentials. Trusted runner provides
++    # its own sanitized diagnostics in the failure envelope.
++    logs=''; code=str(error)
++    if isinstance(error,subprocess.CalledProcessError):
++        try:
++            output=json.loads(error.stdout or '{}');code=output.get('error','deployment_process_failed');logs=output.get('logs','')
++        except Exception: code='deployment_process_failed'
++    if operation=='run': save({'status':'failed','error':code[:500],'logs':logs[-24000:]})
++    sys.exit(1)
++finally:
++    if operation=='run':
++        try: file.unlink()
++        except FileNotFoundError: pass
+--- /dev/null
++++ b/backend/scripts/deployments/deployment-tenant.mjs
+@@ -0,0 +1,627 @@
++#!/usr/bin/env node
++// Installed root-owned. Application scripts run only inside rootless Podman.
++import fs from "node:fs/promises";
++import path from "node:path";
++import { spawn } from "node:child_process";
++import { createHash, randomBytes } from "node:crypto";
++import http from "node:http";
++import net from "node:net";
++let input = "";
++for await (const chunk of process.stdin) input += chunk;
++const job = JSON.parse(input),
++  project = job.projectId.replaceAll("-", "");
++if (
++  !/^[a-f0-9]{32}$/.test(project) ||
++  process.getuid() === 0 ||
++  job.home !== process.env.HOME
++)
++  throw new Error("invalid_runtime_identity");
++const root = path.join(job.home, ".luxisoft", "deployments", project),
++  quadlet = path.join(job.home, ".config", "containers", "systemd");
++let logs = "",
++  started = [],
++  workers = [];
++const clean = (value) => {
++  let text = String(value);
++  for (const secret of Object.values(job.variables ?? {}).filter(
++    (v) => v.length >= 4,
++  )) {
++    text = text
++      .split(secret)
++      .join("[redacted]")
++      .split(Buffer.from(secret).toString("base64"))
++      .join("[redacted]");
++  }
++  return text
++    .replace(
++      /(password|token|secret|api[_-]?key)\s*[=:]\s*[^\s,;]+/gi,
++      "$1=[redacted]",
++    )
++    .slice(-24000);
++};
++async function secureDir(directory) {
++  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
++  if ((await fs.realpath(directory)) !== directory)
++    throw new Error("runtime_path_symlink");
++  return directory;
++}
++async function command(
++  bin,
++  args,
++  { cwd = root, timeout = 120000, record = true, stdin } = {},
++) {
++  return new Promise((resolve, reject) => {
++    const child = spawn(bin, args, {
++      cwd,
++      env: { ...process.env, CI: "1" },
++      stdio: ["pipe", "pipe", "pipe"],
++    });
++    let output = "",
++      error = "";
++    const timer = setTimeout(() => {
++      child.kill("SIGTERM");
++      setTimeout(() => child.kill("SIGKILL"), 3000).unref();
++    }, timeout);
++    child.stdout.on("data", (body) => {
++      output = (output + body.toString()).slice(-100000);
++      if (record) logs = clean(logs + body.toString());
++    });
++    child.stderr.on("data", (body) => {
++      error = (error + body.toString()).slice(-100000);
++      if (record) logs = clean(logs + body.toString());
++    });
++    child.on("error", reject);
++    child.on("close", (code) => {
++      clearTimeout(timer);
++      code === 0
++        ? resolve(output.trim())
++        : reject(new Error(`command_failed:${path.basename(bin)}:${code}`));
++    });
++    child.stdin.end(stdin);
++  });
++}
++async function json(file, fallback) {
++  try {
++    return JSON.parse(await fs.readFile(file, "utf8"));
++  } catch (error) {
++    if (error.code === "ENOENT") return fallback;
++    throw error;
++  }
++}
++const quote = (value) => JSON.stringify(String(value)).replace(/%/g, "%%");
++async function startContainer(
++  unit,
++  image,
++  {
++    port,
++    environment = {},
++    network,
++    volumes = [],
++    memory = 512,
++    commandArgs,
++    resource = false,
++    deferred = false,
++  } = {},
++) {
++  await secureDir(quadlet);
++  const lines = [
++    "[Unit]",
++    "Description=Luxisoft isolated deployment",
++    "StartLimitBurst=3",
++    "StartLimitIntervalSec=60",
++    "[Container]",
++    `Image=${image}`,
++    "Pull=never",
++    `ContainerName=${unit}`,
++    "DropCapability=all",
++    "NoNewPrivileges=true",
++    `Network=${network ?? "slirp4netns:allow_host_loopback=false"}`,
++    "ReadOnly=false",
++    "Tmpfs=/tmp:rw,size=128m",
++    "Tmpfs=/run:rw,size=32m",
++    `PodmanArgs=--memory=${memory}m --cpus=1 --pids-limit=128`,
++  ];
++  if (await fs.stat(path.join(root, "retired")).catch(() => null))
++    throw new Error("deployment_retired");
++  if (resource)
++    for (const capability of ["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE"])
++      lines.push("AddCapability=" + capability);
++  const hostPort = port
++    ? await new Promise((resolve, reject) => {
++        const listener = net.createServer();
++        listener.on("error", reject);
++        listener.listen(0, "127.0.0.1", () => {
++          const bound = listener.address().port;
++          listener.close(() => resolve(bound));
++        });
++      })
++    : null;
++  if (port) lines.push(`PublishPort=127.0.0.1:${hostPort}:${port}`);
++  for (const [key, value] of Object.entries(environment))
++    lines.push(`Environment=${quote(key + "=" + value)}`);
++  for (const [volume, mount] of volumes)
++    lines.push(`Volume=${volume}:${mount}`);
++  if (commandArgs) lines.push(`Exec=${commandArgs.map(quote).join(" ")}`);
++  lines.push(
++    "[Service]",
++    "Restart=on-failure",
++    "RestartSec=3",
++    "TimeoutStartSec=90",
++    "TimeoutStopSec=20",
++  );
++  if (!deferred) lines.push("[Install]", "WantedBy=default.target");
++  await fs.writeFile(
++    path.join(quadlet, unit + ".container"),
++    lines.join("\n") + "\n",
++    { mode: 0o600 },
++  );
++  await command("/usr/bin/systemctl", ["--user", "daemon-reload"], {
++    record: false,
++  });
++  started.push(unit);
++  if (deferred) {
++    workers.push(unit);
++    return null;
++  }
++  await command("/usr/bin/systemctl", ["--user", "start", unit + ".service"], {
++    record: false,
++    timeout: 120000,
++  });
++  if (!port) return null;
++  const published = await command(
++    "/usr/bin/podman",
++    ["port", unit, String(port) + "/tcp"],
++    { record: false },
++  );
++  const match = published.match(/^127\.0\.0\.1:(\d+)$/);
++  if (!match || Number(match[1]) !== hostPort)
++    throw new Error("runtime_port_not_loopback");
++  return Number(match[1]);
++}
++async function healthy(port, healthPath) {
++  for (let attempt = 0; attempt < 30; attempt++) {
++    const ready = await new Promise((resolve) => {
++      const req = http.get(
++        { host: "127.0.0.1", port, path: healthPath, timeout: 3000 },
++        (response) => {
++          response.resume();
++          resolve(response.statusCode >= 200 && response.statusCode < 500);
++        },
++      );
++      req.on("timeout", () => {
++        req.destroy();
++        resolve(false);
++      });
++      req.on("error", () => resolve(false));
++    });
++    if (ready) return;
++    await new Promise((r) => setTimeout(r, 1000));
++  }
++  throw new Error("runtime_health_failed");
++}
++async function stopUnit(unit) {
++  if (!/^luxi-[a-f0-9-]+-[a-z0-9-]+$/.test(unit) || !unit.includes(project))
++    throw new Error("invalid_owned_unit");
++  await command("/usr/bin/systemctl", ["--user", "stop", unit + ".service"], {
++    record: false,
++  }).catch(() => {});
++  await fs.unlink(path.join(quadlet, unit + ".container")).catch(() => {});
++}
++try {
++  await secureDir(root);
++  await secureDir(path.join(root, "jobs"));
++  if (job.operation) {
++    const activeFile = path.join(root, "active.json"),
++      pendingFile = path.join(root, "pending.json"),
++      active = await json(activeFile, { units: [] });
++    if (job.operation === "activate") {
++      const current = await json(
++        path.join(root, "jobs", job.requestId + ".json"),
++        null,
++      );
++      if (!current || current.environment !== "production")
++        throw new Error("publication_missing");
++      const pending = await json(pendingFile, null);
++      if (
++        pending?.requestId === job.requestId ||
++        active.requestId === job.requestId
++      ) {
++        process.stdout.write(JSON.stringify({ ok: true }));
++        process.exit(0);
++      }
++      const stopped = [];
++      try {
++        for (const unit of active.workers ?? []) {
++          await command(
++            "/usr/bin/systemctl",
++            ["--user", "stop", unit + ".service"],
++            { record: false },
++          );
++          stopped.push(unit);
++        }
++        for (const unit of current.workers ?? []) {
++          const file = path.join(quadlet, unit + ".container"),
++            definition = await fs.readFile(file, "utf8");
++          if (!definition.includes("[Install]"))
++            await fs.appendFile(file, "[Install]\nWantedBy=default.target\n");
++          await command("/usr/bin/systemctl", ["--user", "daemon-reload"], {
++            record: false,
++          });
++          await command(
++            "/usr/bin/systemctl",
++            ["--user", "start", unit + ".service"],
++            { record: false },
++          );
++          await new Promise((resolve) => setTimeout(resolve, 5000));
++          const state = await command(
++            "/usr/bin/podman",
++            ["inspect", "--format", "{{.State.Running}}", unit],
++            { record: false },
++          );
++          if (state !== "true") throw new Error("worker_not_running");
++        }
++      } catch (error) {
++        for (const unit of current.workers ?? [])
++          await command(
++            "/usr/bin/systemctl",
++            ["--user", "stop", unit + ".service"],
++            { record: false },
++          ).catch(() => {});
++        for (const unit of stopped)
++          await command(
++            "/usr/bin/systemctl",
++            ["--user", "start", unit + ".service"],
++            { record: false },
++          ).catch(() => {});
++        throw error;
++      }
++      // Keep the previous HTTP services until the platform commits its route.
++      await fs.writeFile(
++        pendingFile,
++        JSON.stringify({ ...current, requestId: job.requestId }),
++        { mode: 0o600 },
++      );
++    } else if (job.operation === "cleanup") {
++      const pending = await json(pendingFile, null);
++      if (active.requestId !== job.requestId) {
++        if (pending?.requestId !== job.requestId)
++          throw new Error("publication_not_activated");
++        for (const unit of active.units ?? [])
++          if (!pending.units.includes(unit)) await stopUnit(unit);
++        await fs.writeFile(activeFile, JSON.stringify(pending), {
++          mode: 0o600,
++        });
++      }
++      await fs.unlink(pendingFile).catch(() => {});
++    } else if (job.operation === "resume") {
++      await fs.unlink(path.join(root, "retired")).catch((error) => {
++        if (error.code !== "ENOENT") throw error;
++      });
++    } else if (job.operation === "retire") {
++      await fs.writeFile(path.join(root, "retired"), "retired", {
++        mode: 0o600,
++      });
++      for (const filename of await fs.readdir(quadlet))
++        if (
++          filename.startsWith("luxi-" + project + "-") &&
++          filename.endsWith(".container")
++        )
++          await stopUnit(filename.slice(0, -10));
++      await fs.writeFile(activeFile, JSON.stringify({ units: [] }), {
++        mode: 0o600,
++      });
++    }
++    process.stdout.write(JSON.stringify({ ok: true }));
++    process.exit(0);
++  }
++  const evictedVersionIds = [];
++  if (job.environment === "preview") {
++    for (const filename of await fs.readdir(path.join(root, "jobs"))) {
++      if (!filename.endsWith(".json") || filename === job.requestId + ".json")
++        continue;
++      const previous = await json(path.join(root, "jobs", filename), null);
++      if (previous?.environment === "preview") {
++        for (const unit of previous.units ?? []) await stopUnit(unit);
++        if (previous.result?.versionId)
++          evictedVersionIds.push(previous.result.versionId);
++        await fs.unlink(path.join(root, "jobs", filename));
++      }
++    }
++  }
++  const environment =
++      job.environment === "production" ? "production" : "preview",
++    versionRoot = await secureDir(path.join(root, "versions", job.versionId)),
++    workspace = path.join(versionRoot, "source");
++  const archive = Buffer.from(job.archive, "base64");
++  if (
++    createHash("sha256").update(archive).digest("hex") !==
++    job.snapshot.sourceDigest
++  )
++    throw new Error("source_digest_mismatch");
++  await secureDir(workspace);
++  // Python's stdlib extracts only regular files beneath the owned workspace.
++  const extract = `import io,os,stat,sys,zipfile\nroot=sys.argv[1]; total=0\nwith zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:\n if len(z.infolist())>20000: raise Exception('too_many_files')\n for f in z.infolist():\n  if f.is_dir(): continue\n  p=f.filename\n  if p.startswith('/') or '\\\\' in p or any(x in ('','..','.') for x in p.split('/')) or stat.S_ISLNK(f.external_attr>>16): raise Exception('unsafe_archive')\n  total+=f.file_size\n  if total>134217728 or f.file_size>16777216: raise Exception('archive_too_large')\n  destination=os.path.join(root,p); os.makedirs(os.path.dirname(destination),exist_ok=True)\n  if os.path.realpath(destination)!=destination: raise Exception('unsafe_archive_path')\n  with open(destination,'wb') as o: o.write(z.read(f))\n  os.chmod(destination,0o755 if f.external_attr>>16&0o111 else 0o644)\n`;
++  await command("/usr/bin/python3", ["-I", "-c", extract, workspace], {
++    stdin: archive,
++    record: false,
++  });
++  const disk = Number(
++    await command("/usr/bin/du", ["-sm", job.home], {
++      cwd: job.home,
++      record: false,
++    }).then((output) => output.split(/\s/)[0]),
++  );
++  if (disk > job.limits.diskMb) throw new Error("disk_quota_exceeded");
++  const space = await fs.statfs(root);
++  if (space.bavail * space.bsize < 2 * 1024 ** 3)
++    throw new Error("runtime_disk_capacity");
++  const manifest = job.snapshot.manifest,
++    images = await json(path.join(versionRoot, "images.json"), {}),
++    components = [],
++    network = `luxi-${project}-${environment}`,
++    resourceEnv = {};
++  await command("/usr/bin/podman", ["network", "exists", network], {
++    record: false,
++  }).catch(() =>
++    command("/usr/bin/podman", ["network", "create", network], {
++      record: false,
++    }),
++  );
++  if (manifest.resources.length > job.limits.maxDatabases)
++    throw new Error("database_quota_exceeded");
++  // Reserve against configured limits, so a candidate/build cannot exhaust the
++  // account slice and kill the current production services.
++  const running = (
++    await command("/usr/bin/podman", ["ps", "--format", "{{.Names}}"], {
++      record: false,
++    })
++  )
++    .split("\n")
++    .filter(Boolean);
++  const newResources = manifest.resources.filter(
++    (resource) =>
++      resource.engine !== "sqlite" &&
++      !running.includes(`luxi-${project}-${environment}-data-${resource.name}`),
++  ).length;
++  if (
++    (running.length + newResources + manifest.components.length) * 512 > 3584 ||
++    (running.length + newResources) * 512 + 1536 > 3584
++  )
++    throw new Error("runtime_memory_capacity");
++  const available = Number(
++    (await fs.readFile("/proc/meminfo", "utf8")).match(
++      /MemAvailable:\s+(\d+)/,
++    )?.[1] ?? 0,
++  );
++  if (available < 2 * 1024 * 1024) throw new Error("runtime_host_capacity");
++  // Resources have stable names and volumes per environment. A new application
++  // version never replaces the database or copies production data to previews.
++  for (const resource of manifest.resources) {
++    if (resource.engine === "sqlite") {
++      resourceEnv.SQLITE_URL = "file:/app/data/app.db";
++      resourceEnv.DATABASE_URL ??= resourceEnv.SQLITE_URL;
++      continue;
++    }
++    const key = resource.name.toUpperCase().replaceAll("-", "_"),
++      unit = `luxi-${project}-${environment}-data-${resource.name}`,
++      dataFile = path.join(root, environment + "-" + resource.name + ".json");
++    let credentials = await json(dataFile, null);
++    if (!credentials) {
++      credentials = { password: randomBytes(24).toString("hex") };
++      await fs.writeFile(dataFile, JSON.stringify(credentials), {
++        mode: 0o600,
++      });
++    }
++    const catalog = {
++      postgres: {
++        image: "docker.io/library/postgres:17-alpine",
++        port: 5432,
++        environment: {
++          POSTGRES_USER: "app",
++          POSTGRES_DB: "app",
++          POSTGRES_PASSWORD: credentials.password,
++        },
++        mount: "/var/lib/postgresql/data",
++        url: `postgresql://app:${credentials.password}@${unit}:5432/app`,
++      },
++      mysql: {
++        image: "docker.io/library/mysql:8.4",
++        port: 3306,
++        environment: {
++          MYSQL_USER: "app",
++          MYSQL_DATABASE: "app",
++          MYSQL_PASSWORD: credentials.password,
++          MYSQL_RANDOM_ROOT_PASSWORD: "yes",
++        },
++        mount: "/var/lib/mysql",
++        url: `mysql://app:${credentials.password}@${unit}:3306/app`,
++      },
++      redis: {
++        image: "docker.io/library/redis:7-alpine",
++        environment: {},
++        mount: "/data",
++        url: `redis://${unit}:6379/0`,
++      },
++      mongo: {
++        image: "docker.io/library/mongo:8",
++        environment: {
++          MONGO_INITDB_ROOT_USERNAME: "app",
++          MONGO_INITDB_ROOT_PASSWORD: credentials.password,
++        },
++        mount: "/data/db",
++        url: `mongodb://app:${credentials.password}@${unit}:27017/app?authSource=admin`,
++      },
++    };
++    const recipe = catalog[resource.engine];
++    if (!recipe) throw new Error("unknown_resource");
++    await command("/usr/bin/podman", ["pull", recipe.image], {
++      timeout: 180000,
++      record: false,
++    });
++    const image = await command(
++      "/usr/bin/podman",
++      ["image", "inspect", "--format", "{{.Id}}", recipe.image],
++      { record: false },
++    );
++    await startContainer(unit, image, {
++      environment: recipe.environment,
++      network,
++      volumes: [[unit, recipe.mount]],
++      memory: 512,
++      resource: true,
++    });
++    resourceEnv[key + "_URL"] = recipe.url;
++    if (
++      ["postgres", "mysql", "mongo"].includes(resource.engine) &&
++      !resourceEnv.DATABASE_URL
++    )
++      resourceEnv.DATABASE_URL = recipe.url;
++    if (resource.engine === "redis" && !resourceEnv.REDIS_URL)
++      resourceEnv.REDIS_URL = recipe.url;
++    started = started.filter((name) => name !== unit);
++  }
++  for (const part of manifest.components) {
++    const context = path.join(
++      workspace,
++      part.context === "." ? "" : part.context,
++    );
++    if ((await fs.realpath(context)) !== context)
++      throw new Error("unsafe_build_context");
++    for (const [name, body] of Object.entries(part.generatedFiles ?? {})) {
++      const file = path.join(context, name);
++      await secureDir(path.dirname(file));
++      await fs.writeFile(file, body, { mode: 0o600 });
++    }
++    let image = images[part.name];
++    if (!image) {
++      if (environment === "production")
++        throw new Error("immutable_image_missing");
++      let dockerfile = part.dockerfile;
++      if (part.surface === "mobile" && part.stack === "expo") {
++        dockerfile = ".luxisoft-runtime/Containerfile";
++        await secureDir(path.join(context, ".luxisoft-runtime"));
++        await fs.writeFile(
++          path.join(context, ".luxisoft-runtime/Caddyfile"),
++          `:${part.port} {\n root * /srv/public\n try_files {path} /index.html\n file_server\n}\n`,
++        );
++        await fs.writeFile(
++          path.join(context, dockerfile),
++          "FROM docker.io/library/node:22-bookworm-slim AS build\nWORKDIR /app\nCOPY . .\nRUN " +
++            ((await fs
++              .stat(path.join(context, "package-lock.json"))
++              .catch(() => null))
++              ? "npm ci"
++              : "npm install") +
++            "\nRUN npx expo export --platform web --output-dir dist\nFROM docker.io/library/caddy:2-alpine\nCOPY --from=build /app/dist/ /srv/public/\nCOPY --from=build /app/.luxisoft-runtime/Caddyfile /etc/caddy/Caddyfile\n",
++        );
++      } else if (part.recipe) {
++        dockerfile = ".luxisoft-runtime/Containerfile";
++        await secureDir(path.join(context, ".luxisoft-runtime"));
++        const publicKeys = Object.keys(job.variables ?? {}).filter((key) =>
++          /^(?:VITE_|NEXT_PUBLIC_|PUBLIC_|EXPO_PUBLIC_)[A-Z0-9_]+$/.test(key),
++        );
++        const recipe = part.recipe.replace(
++          /^(FROM .+)$/gm,
++          (line) =>
++            line +
++            "\n" +
++            publicKeys
++              .map((key) => "ARG " + key + "\nENV " + key + "=$" + key)
++              .join("\n"),
++        );
++        await fs.writeFile(path.join(context, dockerfile), recipe, {
++          mode: 0o600,
++        });
++      }
++      if (!dockerfile) throw new Error("dockerfile_required");
++      const tag = `localhost/luxisoft-${project}-${job.versionId}-${part.name}`;
++      const publicArgs = Object.entries(job.variables ?? {})
++        .filter(([key]) =>
++          /^(?:VITE_|NEXT_PUBLIC_|PUBLIC_|EXPO_PUBLIC_)[A-Z0-9_]+$/.test(key),
++        )
++        .flatMap(([key, value]) => ["--build-arg", key + "=" + value]);
++      await command(
++        "/usr/bin/podman",
++        [
++          "build",
++          "--network=slirp4netns:allow_host_loopback=false",
++          "--memory=1536m",
++          "--cpu-quota=100000",
++          "--cpu-period=100000",
++          ...publicArgs,
++          "--file",
++          path.join(context, dockerfile),
++          "--tag",
++          tag,
++          context,
++        ],
++        { timeout: 1500000 },
++      );
++      image = await command(
++        "/usr/bin/podman",
++        ["image", "inspect", "--format", "{{.Id}}", tag],
++        { record: false },
++      );
++      if (!/^sha256:[a-f0-9]{64}$/.test(image))
++        throw new Error("image_digest_invalid");
++      images[part.name] = image;
++      await fs.writeFile(
++        path.join(versionRoot, "images.json"),
++        JSON.stringify(images),
++        { mode: 0o600 },
++      );
++    }
++    const unit = `luxi-${project}-${environment}-${job.requestId.slice(0, 8)}-${part.name}`,
++      env = {
++        ...job.variables,
++        ...resourceEnv,
++        PORT: String(part.port),
++        HOST: "0.0.0.0",
++        LUXISOFT_ENVIRONMENT: environment,
++      };
++    const surface = part.surface === "mobile" ? "http" : part.surface;
++    const port = await startContainer(unit, image, {
++      port: surface === "http" ? part.port : undefined,
++      environment: env,
++      network,
++      volumes: part.volumes.map((v) => [
++        `luxi-${project}-${environment}-${v.name}`,
++        v.path,
++      ]),
++      deferred: surface === "worker" && environment === "production",
++    });
++    if (port) await healthy(port, part.healthPath);
++    else if (!workers.includes(unit)) {
++      await new Promise((resolve) => setTimeout(resolve, 5000));
++      const state = await command(
++        "/usr/bin/podman",
++        ["inspect", "--format", "{{.State.Running}}", unit],
++        { record: false },
++      );
++      if (state !== "true") throw new Error("worker_not_running");
++    }
++    components.push({ name: part.name, port, image, surface });
++  }
++  const result = {
++    components,
++    environment,
++    versionId: job.versionId,
++    evictedVersionIds,
++  };
++  await fs.writeFile(
++    path.join(root, "jobs", job.requestId + ".json"),
++    JSON.stringify({ environment, units: started, workers, result }),
++    { mode: 0o600 },
++  );
++  process.stdout.write(JSON.stringify({ ok: true, result, logs: clean(logs) }));
++} catch (error) {
++  for (const unit of started) await stopUnit(unit).catch(() => {});
++  process.stdout.write(
++    JSON.stringify({
++      ok: false,
++      error: String(error.message).slice(0, 500),
++      logs: clean(logs),
++    }),
++  );
++  process.exitCode = 1;
++}
+--- a/backend/src/app.ts
++++ b/backend/src/app.ts
+@@ -37,6 +37,7 @@
+ import { webhookIngestPublicRouter } from "./modules/webhooks/routes/ingest.routes.js";
+ import { chatCallsPublicRouter } from "./modules/chat/routes/call-webhook.routes.js";
+ import { providerRouter } from "./modules/hosting/routes/provider.routes.js";
++import { deploymentProviderRouter } from "./modules/hosting/routes/deployment-provider.routes.js";
+ import { apiErrorMessage } from "./shared/i18n/errors.js";
+
+ const log = createModuleLogger("app");
+@@ -209,6 +210,7 @@
+   // HOSTING's machine Bearer API must precede module routers with pathless
+   // session gates. Its administrative paths enforce admin session and CSRF.
+   app.use(providerRouter);
++  app.use(deploymentProviderRouter);
+
+   //
+   // No Redis cache here: module enable/disable is user-mutable and we want
+--- a/backend/src/modules/hosting/models/provider.model.ts
++++ b/backend/src/modules/hosting/models/provider.model.ts
+@@ -7,6 +7,7 @@
+   "accounts.read", "accounts.write", "accounts.status", "accounts.delete",
+   "usage.read", "sites.write", "access.issue",
+   "expo.read", "expo.write", "expo.build", "expo.submit",
++  "deployments.read", "deployments.write", "deployments.build", "deployments.publish",
+ ] as const;
+
+ export type ProviderOperation = (typeof PROVIDER_OPERATIONS)[number];
+--- a/backend/src/modules/hosting/services/provider.service.ts
++++ b/backend/src/modules/hosting/services/provider.service.ts
+@@ -235,7 +235,8 @@
+       const sites = await providerRepository.listSitesForAccount(provider.id, externalId);
+       if (sites.length >= account.maxDomains) throw new ForbiddenError("Cupo de dominios agotado");
+       const marker = `${SITE_MARK}${provider.id}:${externalId}:${siteId}\n`;
+-      const content = marker + nginxSitesService.generateConfig(parsed);
++      const generated = nginxSitesService.generateConfig(parsed);
++      const content = marker + (siteId.startsWith("gh:") ? generated.replace("        proxy_pass ", "        proxy_buffering off;\n        proxy_read_timeout 3600s;\n        proxy_pass ") : generated);
+       try {
+         const current = await nginxSitesService.readRaw(executor, parsed.domain);
+         if (current !== content) throw new ConflictError("Existe una configuración NGINX ajena para ese dominio");
+--- a/backend/src/modules/hosting/services/expo-provider-policy.ts
++++ b/backend/src/modules/hosting/services/expo-provider-policy.ts
+@@ -1,5 +1,6 @@
+ import { createHash } from "node:crypto";
+ import { z } from "zod";
++import { validateRepositoryExpoSource } from "./expo-repository-policy.js";
+
+ export const filesSchema = z.record(z.string(), z.string().max(400_000)).refine((files) => {
+   const entries = Object.entries(files);
+@@ -13,7 +14,8 @@
+   return createHash("sha256").update(JSON.stringify(Object.keys(files).sort().map((key) => [key, files[key]]))).digest("hex");
+ }
+
+-export function validateExpoSource(files: Record<string, string>): void {
++export function validateExpoSource(files: Record<string, string>,sourceMode?:string): void {
++  if(sourceMode === "repository"){validateRepositoryExpoSource(files);return;}
+   filesSchema.parse(files);
+   for (const key of ["App.tsx", "package.json", "app.json", "eas.json", "tsconfig.json"]) if (!files[key]) throw new Error(`source_missing:${key}`);
+   if(Object.values(files).some(body=>/-----BEGIN (?:RSA |EC )?PRIVATE KEY-----/.test(body)))throw new Error("source_contains_secret");
+--- a/backend/src/modules/hosting/services/expo-provider.service.ts
++++ b/backend/src/modules/hosting/services/expo-provider.service.ts
+@@ -13,8 +13,9 @@
+ import { EXPO_PROVIDER_RUNNER } from "./expo-provider-runner.js";
+ import { filesSchema, sourceDigest, validateExpoSource } from "./expo-provider-policy.js";
+ import { getRedis } from "../../../shared/redis/index.js";
++import { repositoryExpoFiles } from "./expo-repository-policy.js";
+
+-export const snapshotSchema = z.object({ files: filesSchema, sourceDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
++export const snapshotSchema = z.union([z.object({files:repositoryExpoFiles,sourceDigest:z.string().regex(/^[a-f0-9]{64}$/),sourceMode:z.literal("repository")}).strict(),z.object({ files: filesSchema, sourceDigest: z.string().regex(/^[a-f0-9]{64}$/),sourceMode:z.literal("foundation").optional() }).strict()]);
+ export const jobSchema = z.object({ requestId: z.string().uuid(), versionId: z.string().uuid(), kind: z.enum(["validate", "build", "submit"]), platform: z.enum(["android", "ios"]).default("android"), profile: z.enum(["preview", "production", "development"]).default("preview"), easBuildId: z.string().uuid().optional(), track: z.enum(["internal", "alpha", "beta", "production"]).default("internal"), storeAppId: z.string().max(100).optional() });
+ type AppRecord = { id: string; accountRef: string; appRef: string; projectId: string | null; androidPackage?:string; bundleIdentifier?:string; google?: string; apple?: string; createdAt?: string };
+ const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+@@ -43,7 +44,7 @@
+  },
+  async status(provider: HostingProvider,accountRef: string,appRef: string) { const c=await context(provider,accountRef,appRef),row=await c.records.get(c.id);if(!row)throw new NotFoundError("App Expo");return safe(row); },
+  async snapshot(provider:HostingProvider,accountRef:string,appRef:string,versionId:string,input:z.infer<typeof snapshotSchema>) {
+-  ref(versionId);validateExpoSource(input.files);if(sourceDigest(input.files)!==input.sourceDigest)throw new ConflictError("El código no corresponde al digest");
++  ref(versionId);validateExpoSource(input.files,input.sourceMode);if(sourceDigest(input.files)!==input.sourceDigest)throw new ConflictError("El código no corresponde al digest");
+   const c=await context(provider,accountRef,appRef);return locked(c.id,async()=>{const appRow=await c.records.get(c.id);if(!appRow)throw new NotFoundError("App Expo");
+   const expo=JSON.parse(input.files["app.json"]!).expo;
+   if(appRow.androidPackage&&appRow.androidPackage!==expo.android.package||appRow.bundleIdentifier&&appRow.bundleIdentifier!==expo.ios.bundleIdentifier)throw new ConflictError("Los identificadores de la app son inmutables");
+@@ -70,8 +71,9 @@
+    if(input.kind!=="validate"&&!projectId){
+     const initRoot=path.join(c.root,"init");await c.executor.mkdir(initRoot,{recursive:true});
+     const app=JSON.parse(snapshot.files["app.json"]);app.expo.slug="app-"+appRef.slice(0,12);delete app.expo.owner;delete app.expo.extra?.eas;
++    delete app.expo.plugins;
+     await c.executor.writeFile(path.join(initRoot,"app.json"),JSON.stringify(app),{mode:0o600});
+-    await c.executor.writeFile(path.join(initRoot,"package.json"),snapshot.files["package.json"]!,{mode:0o600});
++    await c.executor.writeFile(path.join(initRoot,"package.json"),JSON.stringify({name:"luxisoft-expo-broker",version:"1.0.0",private:true}),{mode:0o600});
+     // ExecOptions.env keeps the token out of command arguments and diagnostics.
+     const result=await runWithExecutor(c.executor,()=>c.executor.exec(`/usr/bin/eas init --non-interactive --force`,{cwd:initRoot,env:{EXPO_TOKEN:token,CI:"1"},timeoutMs:120000}));
+     if(result.exitCode!==0)throw new ConflictError("No se pudo vincular Expo; revisa la cuenta del módulo");
+@@ -95,7 +97,7 @@
+    await c.executor.mkdir(root,{recursive:true});
+    const state={id:input.requestId,status:"queued",kind:input.kind,versionId:input.versionId,sourceDigest:snapshot.sourceDigest,requestDigest:digest,projectId,createdAt:new Date().toISOString()};
+    await c.executor.writeFile(stateFile,JSON.stringify(state),{mode:0o600});
+-   const manifest={...input,root,versionRoot,home:c.account.homeRoot,runnerLock:path.join(path.dirname(c.root),"runner.lock"),username:c.account.username,expoSlug:"app-"+appRef.slice(0,12),public:state,files:snapshot.files,token,projectId,credentials};
++   const manifest={...input,root,versionRoot,home:c.account.homeRoot,runnerLock:path.join(path.dirname(c.root),"runner.lock"),username:c.account.username,expoSlug:"app-"+appRef.slice(0,12),public:state,files:snapshot.files,sourceMode:snapshot.sourceMode,token,projectId,credentials};
+    const manifestPath=path.join(root,"input.json"),runner=path.join(root,"runner.mjs");
+    await c.executor.writeFile(manifestPath,JSON.stringify(manifest),{mode:0o600});await c.executor.writeFile(runner,EXPO_PROVIDER_RUNNER,{mode:0o600});
+    const result=await c.executor.exec(`sh -lc ${quoteArg(`nohup /usr/bin/node ${quoteArg(runner)} ${quoteArg(manifestPath)} </dev/null >${quoteArg(path.join(root,"launch.log"))} 2>&1 &`)}`,{timeoutMs:10000});
+--- a/backend/src/modules/hosting/services/expo-provider-runner.ts
++++ b/backend/src/modules/hosting/services/expo-provider-runner.ts
+@@ -20,6 +20,7 @@
+   await fs.mkdir(safe.HOME,{recursive:true,mode:0o755});
+   if(sandbox)await new Promise((resolve,reject)=>{const c=spawn('/usr/bin/sudo',['chown','-R',job.username,safe.HOME],{stdio:'ignore'});c.on('close',code=>code===0?resolve():reject(new Error('sandbox_home_failed')));});
+   let actual=sandbox?['/usr/bin/sudo',['-u',job.username,'--','/usr/bin/env','-i',...Object.entries(safe).map(([k,v])=>k+'='+v),bin,...args]]:[bin,args];
++  if(await fs.stat('/run/lock/luxisoft-heavy-build.lock').catch(()=>null))actual=['/usr/bin/flock',['/run/lock/luxisoft-heavy-build.lock',actual[0],...actual[1]]];
+   return await new Promise((resolve,reject)=>{let collected=''; const child=spawn(actual[0],actual[1],{cwd,env:safe,stdio:['ignore','pipe','pipe'],detached:true});activeChild=child;
+     const timer=setTimeout(()=>{try{process.kill(-child.pid,'SIGTERM');}catch{}setTimeout(()=>{try{process.kill(-child.pid,'SIGKILL');}catch{}},3000).unref();},job.kind==='validate'?600000:3600000);
+     child.stdout.on('data',b=>{collected+=b;output=clean(output+b);});child.stderr.on('data',b=>{output=clean(output+b);});child.on('error',reject);child.on('close',code=>{activeChild=null;clearTimeout(timer);code===0?resolve(collected):reject(new Error('command_failed:'+bin+':'+code));});
+@@ -37,13 +38,14 @@
+  if(job.kind==='validate'){
+   workspace=path.join('/tmp','lxp-mobile-'+job.public.id);
+   await fs.mkdir(workspace,{mode:0o750});
+-  for(const [name,body] of Object.entries(job.files)){const dest=path.join(workspace,name);await fs.mkdir(path.dirname(dest),{recursive:true});await fs.writeFile(dest,/\.(png|jpe?g|webp)$/.test(name)?Buffer.from(body,'base64'):body,{mode:0o644});}
++  for(const [name,body] of Object.entries(job.files)){const dest=path.join(workspace,name);await fs.mkdir(path.dirname(dest),{recursive:true});await fs.writeFile(dest,/\.(png|jpe?g|webp|ttf|otf|woff2?)$/.test(name)?Buffer.from(body,'base64'):body,{mode:0o644});}
++  const validationPackage=JSON.parse(await fs.readFile(path.join(workspace,'package.json'),'utf8'));validationPackage.scripts={};await fs.writeFile(path.join(workspace,'package.json'),JSON.stringify(validationPackage));
+   // Only approved registry dependencies are installed by the broker. npm never runs customer hooks.
+   // The hosting UID has no outbound network; source compilation/export runs with that restriction.
+   await command('/usr/bin/npm',['install','--ignore-scripts','--no-audit','--no-fund'],workspace);
+   await fs.mkdir(path.join(workspace,'.home'),{mode:0o755});
+   await command('/usr/bin/sudo',['chown','-R',job.username,workspace],job.root);
+-  await command('/usr/bin/node',['node_modules/typescript/bin/tsc','--noEmit'],workspace,{},true);
++  if(await fs.stat(path.join(workspace,'node_modules/typescript/bin/tsc')).catch(()=>null))await command('/usr/bin/node',['node_modules/typescript/bin/tsc','--noEmit'],workspace,{},true);
+   await command('/usr/bin/node',['node_modules/expo/bin/cli','export','--platform','web','--output-dir','dist'],workspace,{EXPO_OFFLINE:'1'},true);
+   const walk=async(dir,base='')=>{const files={};for(const e of await fs.readdir(dir,{withFileTypes:true})){if(e.isSymbolicLink())throw new Error('preview_symlink');const n=base+e.name;if(e.isDirectory())Object.assign(files,await walk(path.join(dir,e.name),n+'/'));else{const b=await fs.readFile(path.join(dir,e.name));if(b.length>10000000)throw new Error('preview_asset_too_large');files[n]=b.toString('base64');}}return files;};
+   const preview=await walk(path.join(workspace,'dist'));
+@@ -57,9 +59,10 @@
+   // Broker source has static JSON configuration, approved dependencies and no customer hooks.
+   // It is outside the consumer's home and never executes application source.
+   const work=path.join(job.root,'source');workspace=work;await fs.mkdir(work,{recursive:true,mode:0o700});
+-  for(const [name,body] of Object.entries(job.files)){const dest=path.join(work,name);await fs.mkdir(path.dirname(dest),{recursive:true});await fs.writeFile(dest,/\.(png|jpe?g|webp)$/.test(name)?Buffer.from(body,'base64'):body,{mode:0o600});}
++  for(const [name,body] of Object.entries(job.files)){const dest=path.join(work,name);await fs.mkdir(path.dirname(dest),{recursive:true});await fs.writeFile(dest,/\.(png|jpe?g|webp|ttf|otf|woff2?)$/.test(name)?Buffer.from(body,'base64'):body,{mode:0o600});}
+   const app=JSON.parse(await fs.readFile(path.join(work,'app.json'),'utf8'));delete app.expo.owner;app.expo.slug=job.expoSlug;app.expo.extra={...app.expo.extra,eas:{projectId:job.projectId}};await fs.writeFile(path.join(work,'app.json'),JSON.stringify(app));
+-  const runtime=JSON.parse(await fs.readFile(path.join(work,'runtime-config.json'),'utf8'));runtime.environment=job.kind==='build'&&job.profile!=='production'?'preview':'production';await fs.writeFile(path.join(work,'runtime-config.json'),JSON.stringify(runtime));
++  if(job.sourceMode!=='repository'){const runtime=JSON.parse(await fs.readFile(path.join(work,'runtime-config.json'),'utf8'));runtime.environment=job.kind==='build'&&job.profile!=='production'?'preview':'production';await fs.writeFile(path.join(work,'runtime-config.json'),JSON.stringify(runtime));}
++  const pkg=JSON.parse(await fs.readFile(path.join(work,'package.json'),'utf8'));pkg.scripts={};await fs.writeFile(path.join(work,'package.json'),JSON.stringify(pkg));
+   await fs.writeFile(path.join(work,'.easignore'),'node_modules\n.expo\ndist\ncredentials*\n*.p8\nservice-account.json\n');
+   const easEnv={EXPO_TOKEN:job.token,EAS_NO_VCS:'1'};
+   if(job.platform==='ios'&&job.credentials){const c=job.credentials;await fs.writeFile(path.join(job.root,'apple.p8'),c.privateKey,{mode:0o600});Object.assign(easEnv,{EXPO_ASC_API_KEY_PATH:path.join(job.root,'apple.p8'),EXPO_ASC_KEY_ID:c.keyId,EXPO_ASC_ISSUER_ID:c.issuerId,EXPO_APPLE_TEAM_ID:c.teamId,EXPO_APPLE_TEAM_TYPE:c.teamType||'COMPANY_OR_ORGANIZATION'});}

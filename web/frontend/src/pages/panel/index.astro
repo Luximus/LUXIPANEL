@@ -1,0 +1,86 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * Home — `/` (público) == `/panel` (interno).
+ *
+ * La página de inicio del panel ES el módulo "Agentes IA": renderiza el MISMO
+ * componente compartido que el drawer flotante global (`AssistantPanel`, vía
+ * `AssistantView`), de modo que ambos modos mantienen paridad automática. El
+ * antiguo Tablero (KPIs, widgets, atajos) se eliminó; `/panel/assistant`
+ * redirige aquí para conservar los enlaces existentes. El FAB del asistente y
+ * el del terminal se ocultan mientras se está en esta ruta (instancia única,
+ * ver `lib/panel-routes.ts`).
+ */
+import PanelLayout from "@/layouts/PanelLayout.astro";
+import { getPageLocale, getPageMessages } from "@/pages/_page-context";
+import { NO_CACHE_HEADER } from "@/lib/http-cache";
+import { canSeeSidebar } from "@/lib/auth";
+
+const locale = getPageLocale(Astro);
+const t = await getPageMessages(Astro, ['assistant', 'panelLayout']);
+const canUseAssistant = Boolean(Astro.locals.user && canSeeSidebar(Astro.locals.user, "assistant"));
+
+// Prevent Cloudflare/browser caching of the home HTML so that script
+// references always reflect the latest deploy.
+Astro.response.headers.set("Cache-Control", NO_CACHE_HEADER);
+Astro.response.headers.set("Pragma", "no-cache");
+
+// Deep-link a una conversación IA concreta (`/panel?c=<id>&provider=<p>`): lo
+// producen las notificaciones IA y el super buscador. `AssistantPanel` lo
+// consume UNA vez (cuando ya hay providers activos) y limpia la query con
+// `history.replaceState`. Se acota aquí para no pasar basura al cliente.
+---
+
+<PanelLayout title={canUseAssistant ? t.assistant.pageTitle : t.panelLayout.groups.modules} activeModule={canUseAssistant ? "assistant" : undefined} titleInActions={canUseAssistant} flush={canUseAssistant}>
+  {/* `flush` quita el `max-lg:pb-14` del PanelLayout; en <lg el topbar del panel
+      es una barra FIJA inferior (h-14, z-30) que si no taparía el fondo del
+      asistente (composer/dashboard). Reponemos esa holgura solo en <lg; en lg+
+      la barra va en flujo estático y no hace falta. */}
+  {canUseAssistant ? <div aria-hidden="true"></div> : (
+    <section class="mx-auto flex w-full max-w-3xl flex-col gap-5 py-8" aria-labelledby="panel-home-modules-title">
+      <h1 id="panel-home-modules-title" class="text-2xl font-semibold tracking-tight">{t.panelLayout.groups.modules}</h1>
+      <nav id="panel-home-module-links" class="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label={t.panelLayout.groups.modules}>
+        <a href="/preferences" class="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-4 hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+          <i class="ti ti-user text-lg" aria-hidden="true"></i><span>{t.panelLayout.nav.preferences}</span>
+        </a>
+      </nav>
+    </section>
+  )}
+</PanelLayout>
+
+<script>
+  // Reuse the existing permission-filtered module menu. No second module list
+  // or additional API request; dynamic modules appear here as well.
+  function syncHomeModules() {
+    const home = document.getElementById("panel-home-module-links");
+    const menu = document.querySelector("#sidebar #nav-modules-group");
+    if (!home || !menu) return;
+    home.querySelectorAll("[data-home-module]").forEach((link) => link.remove());
+    menu.querySelectorAll<HTMLAnchorElement>("a[data-module]:not([data-lxp-module-view])").forEach((source) => {
+      if (source.dataset.module === "assistant" || source.dataset.module === "preferences") return;
+      const link = source.cloneNode(true) as HTMLAnchorElement;
+      link.removeAttribute("id");
+      link.removeAttribute("data-module");
+      link.removeAttribute("aria-current");
+      link.removeAttribute("aria-expanded");
+      link.removeAttribute("data-lxp-has-submenu");
+      link.querySelector(".lxp-module-nav-chevron")?.remove();
+      link.setAttribute("data-home-module", "");
+      link.className = "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-4 hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
+      home.append(link);
+    });
+  }
+  let observer: MutationObserver | undefined;
+  function watchHomeModules() {
+    observer?.disconnect();
+    const menu = document.querySelector("#sidebar #nav-modules-group");
+    if (!menu || !document.getElementById("panel-home-module-links")) return;
+    observer = new MutationObserver(syncHomeModules);
+    observer.observe(menu, { childList: true, subtree: true });
+    syncHomeModules();
+  }
+  document.addEventListener("astro:before-swap", () => observer?.disconnect());
+  document.addEventListener("astro:page-load", watchHomeModules);
+  watchHomeModules();
+</script>

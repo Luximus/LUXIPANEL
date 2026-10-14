@@ -1,0 +1,37 @@
+name: Release checks
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: corepack enable && corepack prepare pnpm@11.5.0 --activate
+      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm exec vitest run src/shared/diagnostics src/shared/releases/version.test.ts src/modules/module-dev/services/logs-tools.test.ts src/modules/module-dev/services/community-principal.test.ts && pnpm run build
+        working-directory: web/backend
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560
+      - run: pnpm install --frozen-lockfile && pnpm exec vitest run src/components/module-dev/LogsPanel.test.ts && pnpm run build
+        working-directory: web/frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560
+      - run: node scripts/build-release-bundle.mjs --verify
+        working-directory: web
+      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm run build
+        working-directory: desktop
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560
+      - run: pnpm install --frozen-lockfile && pnpm exec tsc --noEmit && pnpm exec vitest run src/screens/server/NativeModuleDevLogScreen.test.tsx src/screens/DirectPanelApp.test.tsx src/screens/main/workspace-menu.test.ts src/screens/main/WorkspaceTopPanels.test.tsx
+        working-directory: mobile
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560

@@ -1,0 +1,54 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * DbLogo — renders the panel's branded logo at SSR time, falling back to
+ * the bundled placeholder when no DB value is configured. The runtime
+ * branding script (branding-runtime.ts) keeps the image in sync if the
+ * branding changes after view transitions.
+ *
+ * Shows a small CSS spinner overlay while the image is loading; the spinner
+ * is removed as soon as the image finishes loading (or errors). For inline
+ * images coming from LP-LS via /api/branding/asset/<hash> this hides the
+ * cold-cache flash.
+ */
+import { loadLayoutRuntimeContext } from "@/lib/layout-context";
+
+type Role = "primary" | "sidebar" | "login" | "footer";
+
+interface Props {
+  role?: Role;
+  class?: string;
+  alt?: string;
+  id?: string;
+  fallback?: string;
+}
+
+const { role = "primary", class: className = "", alt = "LuxiPanel", id, fallback = "/logo.webp" } = Astro.props;
+// alt default kept as "LuxiPanel" for backward compatibility; layouts pass
+// a localized string from the i18n tree (e.g. t.components.logoAlt).
+
+const { layoutLogoMap } = await loadLayoutRuntimeContext(Astro.request, Astro.locals.uiBootstrap);
+const src =
+  (role === "sidebar" && (layoutLogoMap.sidebar || layoutLogoMap.primary)) ||
+  (role === "login" && (layoutLogoMap.login || layoutLogoMap.primary)) ||
+  (role === "footer" && (layoutLogoMap.footer || layoutLogoMap.primary)) ||
+  layoutLogoMap.primary ||
+  fallback;
+---
+
+<span class={`lxp-logo-wrap relative inline-flex items-center justify-center ${className}`} data-lxp-logo-loading="true">
+  <span
+    aria-hidden="true"
+    class="lxp-logo-spinner pointer-events-none absolute inset-0 m-auto h-5 w-5 rounded-full border-2 border-muted-foreground/30 border-t-primary animate-spin"
+  ></span>
+  <img
+    data-lxp-logo-role={role}
+    id={id}
+    src={src}
+    alt={alt}
+    class="lxp-logo-img h-full w-full object-contain transition-opacity duration-150 opacity-0"
+    onload="this.classList.remove('opacity-0');this.previousElementSibling?.remove();this.parentElement?.removeAttribute('data-lxp-logo-loading');"
+    onerror="this.classList.remove('opacity-0');this.previousElementSibling?.remove();this.parentElement?.removeAttribute('data-lxp-logo-loading');"
+  />
+</span>

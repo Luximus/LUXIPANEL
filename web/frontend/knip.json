@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "astro.config.mjs",
+    "playwright.config.ts",
+    "src/pages/**/*.astro",
+    "src/middleware.ts",
+    "src/layouts/**/*.astro",
+    "src/components/login-effects/**",
+    "src/scripts/extracted/**/*.ts",
+    "scripts/*.mjs",
+    "e2e/**/*.spec.ts",
+    "e2e/*.setup.ts"
+  ],
+  "project": ["src/**/*.{astro,ts,tsx,js,mjs}", "scripts/**/*.mjs", "e2e/**/*.ts"],
+  "ignore": ["src/**/*.generated.ts", "public/**", "dist/**", ".astro/**"],
+  "ignoreDependencies": []
+}

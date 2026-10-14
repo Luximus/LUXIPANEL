@@ -1,0 +1,22 @@
+/* ServerWindowCarousel.module.css
+   CSS Module para ServerWindowCarousel.tsx.
+   Solo contiene las reglas extraídas de los style={{}} del componente;
+   los estilos estructurales viven en index.css (clases globales server-*). */
+
+/* Punteros del window-mockup (status / CPU / RAM).
+   El color llega como CSS variable --dot-color desde el componente. */
+.windowDot {
+  background: var(--dot-color);
+}
+
+/* Color de acento del stat de estado (stat-figure + stat-value).
+   El valor llega como CSS variable --status-color desde el componente. */
+.statusColor {
+  color: var(--status-color);
+}
+
+/* Barra de uso (CPU / RAM / disco).
+   El ancho llega como CSS variable --bar-w desde el componente. */
+.barFill {
+  width: var(--bar-w);
+}

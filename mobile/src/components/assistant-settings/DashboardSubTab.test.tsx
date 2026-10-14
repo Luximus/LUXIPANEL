@@ -1,0 +1,37 @@
+import React from "react";
+import {act,create,type ReactTestRenderer} from "react-test-renderer";
+import {afterEach,expect,it,vi} from "vitest";
+const api=vi.hoisted(()=>vi.fn());
+vi.mock("react-native",()=>({View:"View",Text:"Text",Pressable:"Pressable",ScrollView:"ScrollView",TextInput:"Input",ActivityIndicator:"Spinner",StyleSheet:{create:(v:unknown)=>v}}));
+vi.mock("../../api/client",()=>({luxAssistantProxy:api}));
+vi.mock("../../api/serverApi",()=>({callServerApi:vi.fn()}));
+vi.mock("../../hooks/useServerApi",()=>({runServerMutation:vi.fn()}));
+vi.mock("../ui/Button",()=>({Button:"Button"}));
+vi.mock("../ui/Select",()=>({Select:"Select"}));
+vi.mock("../ui/SegmentedControl",()=>({SegmentedControl:"Segments"}));
+vi.mock("../server/Form",()=>({Field:({label,children}:any)=>React.createElement("Field",{label},children),ConfirmDialog:"Confirm"}));
+vi.mock("../server/ServerDataTable",()=>({ServerDataTable:"Table"}));
+vi.mock("../server/SvgLineChart",()=>({SvgLineChart:"Chart"}));
+vi.mock("../ProviderIcon",()=>({PROVIDER_ORDER:["claude","codex"],PROVIDER_META:{claude:{label:"Claude"},codex:{label:"Codex"}},ProviderIcon:"Icon"}));
+import {DashboardSubTab} from "./DashboardSubTab";
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+let tree:ReactTestRenderer;
+afterEach(async()=>{if(tree)await act(async()=>tree.unmount());api.mockReset();});
+it("keeps the web section order and scopes statistics to the selected provider without a write",async()=>{
+ api.mockImplementation(async(_p:string,_t:string,_method:string,path:string)=>{
+  if(path==="/api/ai/storage")return {imagesBytes:12,chatsBytes:20,totalBytes:32};
+  if(path.startsWith("/api/ai/stats/cost"))return {models:[{model:"test",inputTokens:20,outputTokens:10,total:30,usd:.2}],totalUsd:.2};
+  if(path.startsWith("/api/ai/stats/usage"))return {items:[],total:0,totals:{input:20,output:10,total:30}};
+  if(path.startsWith("/api/ai/stats/daily"))return {series:[]};
+  if(path.startsWith("/api/ai/stats/savings"))return {savings:{rawInput:100,sentInput:20,savedTokens:80}};
+  return {models:["test"],projects:[],items:[],users:[]};
+ });
+ await act(async()=>{tree=create(<DashboardSubTab panelId="box" token="session" tokens={{} as any} t={{dashInputTokens:"Entrada",dashOutputTokens:"Salida",dashTotalTokens:"Total",dashCostTitle:"Coste"} as any}/>);});
+ expect(tree.root.findAllByType("Field" as any).map(n=>n.props.label)).toEqual(["Modelo","Desde","Orden","Proyecto","Usuario","Chat"]);
+ const text=JSON.stringify(tree.toJSON());
+ const sections=["Almacenamiento","Modelo","Entrada","Salida","Coste","Ahorro de contexto","Consumo diario","Historial"];
+ for(let i=1;i<sections.length;i++)expect(text.indexOf(sections[i])).toBeGreaterThan(text.indexOf(sections[i-1]));
+ await act(async()=>tree.root.findByProps({accessibilityLabel:"Codex"}).props.onPress());
+ expect(api.mock.calls.some(call=>String(call[3]).startsWith("/api/ai/stats/usage?provider=codex"))).toBe(true);
+ expect(api.mock.calls.every(call=>call[2]==="GET")).toBe(true);
+});

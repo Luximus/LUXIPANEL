@@ -1,0 +1,28 @@
+/* En el WebView de la app MÓVIL (clase .lxp-webview, marcada por el script de
+   detección) se ocultan por completo el navbar inferior (menú, búsqueda,
+   notificaciones, etc.) y los botones flotantes (terminal y asistente IA): esa
+   UI la provee el contenedor nativo. En navegador normal NO aplica. */
+html.lxp-webview [data-hide-in-webview] {
+  display: none !important;
+}
+/* Con el navbar inferior oculto, el contenido ya no necesita reservar el hueco
+   inferior (`max-lg:pb-14`); se respeta el safe-area por si hay gesture bar. */
+html.lxp-webview main[data-panel-content] {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px)) !important;
+}
+/* Páginas `flush` (p.ej. la vista del Asistente IA): sin holgura inferior, solo
+   el safe-area por la gesture bar, para llenar el 100% del alto del contenedor. */
+html.lxp-webview main[data-panel-content][data-flush] {
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+/* En el webview de la app desktop, el tema y el idioma los gobierna la app
+   nativa (los sincroniza al webview), así que sus controles del navbar sobran. */
+html.lxp-desktop-app [data-hide-in-desktop] {
+  display: none !important;
+}
+/* En el webview de la app MÓVIL el control de idioma debe verse aunque la
+   pantalla sea angosta (el `hidden lg:flex` responsive lo ocultaría): la
+   app móvil sincroniza el idioma de forma bidireccional con el WebView. */
+html.lxp-webview [data-show-in-webview] {
+  display: flex !important;
+}

@@ -1,0 +1,38 @@
+import React, { useState } from "react";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+const mocks=vi.hoisted(()=>({ensure:vi.fn(),access:vi.fn()}));
+vi.mock("react-native",()=>({View:"View",Text:"Text",ActivityIndicator:"Spinner"}));
+vi.mock("../../hooks/useTheme",()=>({useTheme:()=>({theme:"dark"})}));
+vi.mock("../../theme/colors",()=>({getThemeTokens:()=>({brand:"#23ab84",danger:"#ef4444"})}));
+vi.mock("../../api/terminalSession",()=>({ensureDirectPanelSession:mocks.ensure}));
+vi.mock("../server/native-module-access",()=>({fetchNativeModuleAccess:mocks.access}));
+vi.mock("../../components/server/ServerModuleScreen",()=>({ServerModuleScreen:({children,...props}:any)=>React.createElement("scaffold",props,children)}));
+vi.mock("../../components/ui/Button",()=>({Button:"button"}));
+vi.mock("../../features/app/luxipanel-modules",()=>({moduleById:(id:string)=>({labelKey:id})}));
+vi.mock("../../lib/session-state",()=>({loadSessionState:()=>({language:"es"})}));
+vi.mock("../../i18n",()=>({getMessages:()=>({modules:{labels:{files:"Archivos",terminal:"Terminal"}},serverStandalone:{errSavedConnection:"Credencial no disponible",errGeneric:"Error",connecting:"Conectando"}})}));
+import { NativeSessionBoundary } from "./NativeSessionBoundary";
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+let tree:ReactTestRenderer|undefined;
+const Probe=()=>{const[draft,setDraft]=useState("");return React.createElement("draft",{draft,onChange:setDraft});};
+const view=(moduleId="files",token="token")=><NativeSessionBoundary panelId="box" moduleId={moduleId} token={token} onBack={()=>{}}><Probe/></NativeSessionBoundary>;
+beforeEach(()=>{mocks.ensure.mockReset().mockResolvedValue(true);mocks.access.mockReset().mockResolvedValue(new Set(["files"]));});
+afterEach(async()=>{if(tree)await act(async()=>tree!.unmount());tree=undefined;});
+it("monta la consola desde el primer frame y deja su autenticación dentro de la consola",async()=>{await act(async()=>{tree=create(view("terminal"));});expect(tree!.root.findByType("draft" as any)).toBeDefined();expect(mocks.ensure).not.toHaveBeenCalled();});
+it("reintenta la credencial guardada dentro del mismo destino",async()=>{mocks.ensure.mockResolvedValueOnce(false);await act(async()=>{tree=create(view());});expect(tree!.root.findByType("scaffold" as any).props.title).toBe("Archivos");expect(tree!.root.findByType("scaffold" as any).props.error).toBe("Credencial no disponible");await act(async()=>tree!.root.findByType("scaffold" as any).props.onRetry());expect(tree!.root.findByType("draft" as any)).toBeDefined();});
+it("conserva un borrador si la renovación encuentra un fallo de red",async()=>{await act(async()=>{tree=create(view());});await act(async()=>tree!.root.findByType("draft" as any).props.onChange("sin guardar"));mocks.access.mockRejectedValueOnce(new Error("Sin red"));await act(async()=>tree!.update(view("files","renewed")));expect(tree!.root.findByType("draft" as any).props.draft).toBe("sin guardar");expect(JSON.stringify(tree!.toJSON())).toContain("No se pudo conectar con el servidor. Comprueba tu conexión.");});
+it("no monta el módulo si fue deshabilitado",async()=>{mocks.access.mockResolvedValueOnce(new Set());await act(async()=>{tree=create(view());});expect(tree!.root.findAllByType("draft" as any)).toHaveLength(0);expect(tree!.root.findByType("scaffold" as any).props.error).toContain("no está habilitado");});
+it("ignora la autorización que termina después de salir de la pantalla",async()=>{let finish!:(value:boolean)=>void;mocks.ensure.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));await act(async()=>{tree=create(view());});await act(async()=>tree!.unmount());tree=undefined;await act(async()=>finish(true));expect(mocks.access).not.toHaveBeenCalled();});
+
+it("shows a themed accessible spinner without visible connecting text", async () => {
+  let finish!: (value: boolean) => void;
+  mocks.ensure.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await act(async () => { tree = create(view()); });
+  expect(tree!.root.findAllByType("Text" as any)).toHaveLength(0);
+  expect(tree!.root.findByType("Spinner" as any).props.color).toBe("#23ab84");
+  expect(tree!.root.findByProps({accessibilityRole:"progressbar"}).props.accessibilityLabel).toBe("Conectando");
+  await act(async () => finish(true));
+  expect(tree!.root.findAllByType("Spinner" as any)).toHaveLength(0);
+  expect(tree!.root.findByType("draft" as any)).toBeDefined();
+});

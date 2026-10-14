@@ -1,0 +1,45 @@
+name: Module review relay
+on:
+  workflow_run:
+    workflows: [Module review]
+    types: [completed]
+  pull_request_target:
+    branches: [modules]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        required: true
+        type: string
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: read
+  actions: read
+jobs:
+  relay:
+    if: github.repository == 'Luxisoft/LUXIPANEL' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: corepack enable && corepack prepare pnpm@11.5.0 --activate
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+        working-directory: web/backend
+      - run: python3 scripts/install-review-tools.py
+        working-directory: web
+      - run: python3 scripts/module-review-relay.py
+        working-directory: web
+        env:
+          REVIEW_RUN_ID: ${{ github.event.workflow_run.id }}
+          MODULE_PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}
+          GH_TOKEN: ${{ github.token }}
+          LP_REVIEW_URL: ${{ vars.LP_REVIEW_URL }}
+          RUNNER_REVIEW_TOKEN: ${{ secrets.RUNNER_REVIEW_TOKEN }}

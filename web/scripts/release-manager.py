@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""Install a published tag in a separate worktree and roll back on failed health checks."""
+import fcntl
+import hashlib
+import tempfile
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+
+TAG_RE = re.compile(r"v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?\Z")
+UPSTREAM = "https://github.com/Luxisoft/LUXIPANEL.git"
+PM2 = shutil.which("pm2") or str(Path.home() / ".npm-global" / "bin" / "pm2")
+
+
+def run(args, cwd, timeout=900, env=None):
+    subprocess.run(args, cwd=cwd, env=env, timeout=timeout, check=True)
+
+
+def write_state(path, state):
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(state, indent=2) + "\n")
+    temp.chmod(0o600)
+    os.replace(temp, path)
+
+
+def application(source):
+    return source / "web" if (source / "web/backend").is_dir() else source
+
+
+def ports(source):
+    source = application(source)
+    result = []
+    for area, default in (("backend", 8080), ("frontend", 4321)):
+        value = default
+        env_path = source / area / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith("PORT=") and line[5:].strip().isdigit():
+                    value = int(line[5:].strip())
+        result.append(value)
+    return result
+
+
+def healthy(source):
+    backend_port, frontend_port = ports(source)
+    for app in ("luxipanel-backend", "luxipanel-frontend"):
+        output = subprocess.check_output([PM2, "jlist"], text=True)
+        rows = json.loads(output)
+        if not any(row.get("name") == app and row.get("pm2_env", {}).get("status") == "online" for row in rows):
+            return False
+    for url in (f"http://127.0.0.1:{backend_port}/api/health", f"http://127.0.0.1:{frontend_port}/login"):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                if response.status != 200:
+                    return False
+        except Exception:
+            return False
+    return True
+
+
+def activate(source):
+    ecosystem = source / "ecosystem.config.cjs"
+    if not ecosystem.is_file():
+        raise RuntimeError("Falta ecosystem.config.cjs en la versión preparada")
+    for app in ("luxipanel-backend", "luxipanel-frontend"):
+        subprocess.run([PM2, "delete", app], cwd=source, timeout=60, check=False)
+        run([PM2, "start", str(ecosystem), "--only", app, "--update-env"], source, timeout=60)
+        run([PM2, "restart", str(ecosystem), "--only", app, "--update-env"], source, timeout=60)
+    for _ in range(18):
+        if healthy(source):
+            run([PM2, "save"], source, timeout=60)
+            return
+        time.sleep(5)
+    raise RuntimeError("Los procesos no quedaron online o la API y el frontend no respondieron")
+
+
+RUNTIME_PATHS = (".releases/", ".lxp/", "backend/dist/", "frontend/dist/")
+
+
+def local_changes(source):
+    output = subprocess.check_output(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd=source)
+    names = []
+    entries = iter(output.decode().split("\0"))
+    for entry in entries:
+        if not entry:
+            continue
+        name = entry[3:]
+        if entry[:2].strip() in ("R", "C", "RM"):
+            next(entries, None)
+        if not name.startswith(RUNTIME_PATHS):
+            names.append(name)
+    return names
+
+
+def verify_bundle(source, tag):
+    file = source / "release.manifest.json"
+    if not file.is_file():
+        raise RuntimeError("La Release no incluye un manifiesto de entrega conjunta")
+    manifest = json.loads(file.read_text())
+    if not isinstance(manifest.get("modules"), list):
+        raise RuntimeError("Falta el conjunto aprobado de módulos")
+    if manifest.get("format") != 1 or manifest.get("version") != tag.removeprefix("v"):
+        raise RuntimeError("El manifiesto no corresponde a la versión solicitada")
+    for module in manifest.get("modules", []):
+        if not re.fullmatch(r"[a-z][a-z0-9-]{2,38}", module.get("id", "")):
+            raise RuntimeError("Identificador de módulo inválido")
+        if not re.fullmatch(r"[a-f0-9]{40}", module.get("commit", "")) or not re.fullmatch(r"\d+\.\d+\.\d+", module.get("version", "")) or not re.fullmatch(r"[a-f0-9-]{36}", module.get("versionId", "")):
+            raise RuntimeError("Provenance de módulo no verificable")
+        directory = application(source) / "backend/dist/modules/community/installed" / module["id"]
+        for name, digest in module.get("files", {}).items():
+            if not re.fullmatch(r"[a-f0-9]{64}", digest):
+                raise RuntimeError("Hash de entrega inválido")
+            path = directory / name
+            if path.is_symlink() or not path.resolve().is_relative_to(directory.resolve()) or not path.is_file():
+                raise RuntimeError("Archivo de módulo fuera del bundle aprobado")
+            if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                raise RuntimeError("El hash del módulo no corresponde a la Release")
+        if not module.get("files"):
+            raise RuntimeError("Módulo sin hashes de entrega")
+    return manifest
+
+
+def preserve_previews(previous, release):
+    previous = application(previous); release = application(release)
+    installed = Path("backend/dist/modules/community/installed")
+    if not (previous / installed).is_dir():
+        return
+    for source in (previous / installed).iterdir():
+        if source.is_symlink() or not source.is_dir() or not (source / ".preview.json").is_file():
+            continue
+        destination = release / installed / source.name
+        if destination.exists() and (destination / ".preview.json").is_file():
+            continue
+        if destination.exists():
+            raise RuntimeError("Preview privada en conflicto con módulo oficial: " + source.name)
+        shutil.copytree(source, destination, symlinks=True)
+
+
+def switch_static(root, release, manager):
+    previous = []
+    try:
+        for area, name in (("backend", "dist"), ("frontend", "dist"), ("backend", ".env"), ("frontend", ".env")):
+            if name == ".env" and not (application(release) / area / name).is_file(): continue
+            path = application(root) / area / name
+            old = {"path": str(path), "link": os.readlink(path) if path.is_symlink() else None, "backup": None}
+            if path.exists() and not path.is_symlink():
+                backup = manager / ("legacy-" + area + "-" + name + "-" + str(time.time_ns()))
+                path.rename(backup)
+                old["backup"] = str(backup)
+            previous.append(old)
+            temp = path.with_name(name + ".next")
+            if temp.exists() or temp.is_symlink():
+                raise RuntimeError("Existe un cambio de directorio estático pendiente")
+            temp.symlink_to(application(release) / area / name, target_is_directory=name == "dist")
+            os.replace(temp, path)
+        return previous
+    except Exception:
+        restore_static(previous)
+        raise
+
+
+def restore_static(previous):
+    for entry in reversed(previous):
+        path = Path(entry["path"])
+        if path.is_symlink():
+            path.unlink()
+        if entry["link"]:
+            path.symlink_to(entry["link"], target_is_directory=True)
+        elif entry["backup"]:
+            Path(entry["backup"]).rename(path)
+
+
+def main(root, tag):
+    if not TAG_RE.fullmatch(tag):
+        raise ValueError("Etiqueta inválida")
+    if not Path(PM2).is_file():
+        raise RuntimeError("PM2 no está disponible para el usuario de LUXIPANEL")
+    manager = root / ".releases"
+    manager.mkdir(mode=0o700, exist_ok=True)
+    manager.chmod(0o700)
+    lock = manager / "manager.lock"
+    build_dir = root / ".lxp"
+    build_dir.mkdir(mode=0o700, exist_ok=True)
+    with lock.open("w") as locked, (build_dir / "build.lock").open("a") as build_lock:
+        fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(build_lock, fcntl.LOCK_EX)
+        state_path = manager / "state.json"
+        state = json.loads(state_path.read_text()) if state_path.exists() else {}
+        prior = state.get("installed")
+        previous_path = Path(prior["path"]) if isinstance(prior, dict) and prior.get("path") else root
+        state["operation"] = {"status": "running", "tag": tag, "stage": "preflight", "startedAt": int(time.time() * 1000)}
+        write_state(state_path, state)
+        switched = False
+        static_previous = []
+        old_head = None
+        checkout_changed = False
+        try:
+            changed = local_changes(root)
+            if changed:
+                raise RuntimeError("Cambios locales preservados; resuélvelos antes de actualizar: " + ", ".join(changed[:20]))
+            old_head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            if shutil.disk_usage(root).free < 5 * 1024 ** 3:
+                raise RuntimeError("Espacio insuficiente: se requieren al menos 5 GiB libres")
+            run(["git", "fetch", "--no-tags", UPSTREAM, "refs/heads/main:refs/luxipanel/upstream-main", f"refs/tags/{tag}:refs/luxipanel/releases/{tag}"], root, timeout=180)
+            ancestry = subprocess.run(["git", "merge-base", "--is-ancestor", old_head, "refs/luxipanel/upstream-main"], cwd=root, check=False)
+            if ancestry.returncode != 0:
+                raise RuntimeError("Commits personalizados preservados; intégralos o cambia a una versión oficial antes de actualizar")
+            commit = subprocess.check_output(["git", "rev-parse", f"refs/luxipanel/releases/{tag}^{{commit}}"], cwd=root, text=True).strip()
+            if subprocess.run(["git", "merge-base", "--is-ancestor", commit, "refs/luxipanel/upstream-main"], cwd=root, check=False).returncode != 0:
+                raise RuntimeError("La Release no pertenece al historial oficial de main")
+            release = manager / commit
+            if not (release / ".build-complete").is_file():
+                if release.exists():
+                    try:
+                        run(["git", "worktree", "remove", "--force", str(release)], root, timeout=60)
+                    except subprocess.CalledProcessError:
+                        shutil.rmtree(release)
+                        run(["git", "worktree", "prune"], root, timeout=60)
+                run(["git", "worktree", "add", "--detach", str(release), commit], root, timeout=180)
+                for area in ("backend", "frontend"):
+                    origin_env = application(previous_path) / area / ".env"
+                    if origin_env.is_file():
+                        destination = application(release) / area / ".env"
+                        shutil.copy2(origin_env, destination)
+                        destination.chmod(0o600)
+                env = dict(os.environ, NODE_OPTIONS="--max-old-space-size=2560")
+                state["operation"]["stage"] = "building-backend"
+                write_state(state_path, state)
+                run(["pnpm", "install", "--frozen-lockfile"], application(release) / "backend", env=env)
+                run(["pnpm", "run", "build"], application(release) / "backend", env=env)
+                state["operation"]["stage"] = "building-frontend"
+                write_state(state_path, state)
+                run(["pnpm", "install", "--frozen-lockfile"], application(release) / "frontend", env=env)
+                shutil.rmtree(application(release) / "frontend" / "dist", ignore_errors=True)
+                for command in (["pnpm", "run", "i18n:audit"], ["pnpm", "run", "i18n:split"],
+                                ["node", "scripts/build-extracted.mjs"], ["pnpm", "exec", "astro", "build"],
+                                ["node", "scripts/copy-dist-metadata.mjs"]):
+                    run(command, application(release) / "frontend", env=env)
+                run(["node", "scripts/build-release-bundle.mjs", "--verify"], application(release), env=env)
+                verify_bundle(release, tag)
+                (release / ".build-complete").write_text(commit + "\n")
+            preserve_previews(previous_path, release)
+            manifest = verify_bundle(release, tag)
+            for area in ("backend", "frontend"):
+                origin_env = application(previous_path) / area / ".env"
+                if origin_env.is_file():
+                    destination = application(release) / area / ".env"
+                    shutil.copy2(origin_env, destination)
+                    destination.chmod(0o600)
+            state["operation"]["stage"] = "activating"
+            write_state(state_path, state)
+            static_previous = switch_static(root, release, manager)
+            switched = True
+            activate(release)
+            # Preserve branch refs while making the clone itself match the chosen official tag.
+            checkout_changed = True
+            run(["git", "-c", "core.hooksPath=/dev/null", "switch", "--detach", commit], root, timeout=60)
+            state["previous"] = prior
+            state["installed"] = {"tag": tag, "commit": commit, "path": str(release), "modules": [{"id": row["id"], "version": row["version"]} for row in manifest.get("modules", [])]}
+            state["operation"] = {"status": "complete", "tag": tag}
+        except Exception as error:
+            if switched:
+                try:
+                    restore_static(static_previous)
+                    if checkout_changed and old_head:
+                        run(["git", "-c", "core.hooksPath=/dev/null", "switch", "--detach", old_head], root, timeout=60)
+                    activate(previous_path)
+                    state["operation"] = {"status": "rolled_back", "tag": tag, "error": str(error)}
+                except Exception as rollback_error:
+                    state["operation"] = {"status": "failed", "tag": tag, "error": str(error), "rollbackError": str(rollback_error)}
+            else:
+                state["operation"] = {"status": "failed", "tag": tag, "error": str(error)}
+            raise
+        finally:
+            write_state(state_path, state)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        raise SystemExit("usage: release-manager.py ROOT TAG")
+    main(Path(sys.argv[1]).resolve(), sys.argv[2])

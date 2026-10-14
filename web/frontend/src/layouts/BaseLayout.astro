@@ -1,0 +1,77 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * BaseLayout - root layout with HTML head, fonts, and global styles.
+ * Used by both auth pages and panel pages.
+ */
+import "@/styles/starwind.css";
+import { getMessages } from '@/i18n';
+import { localeFromRequest } from '@/i18n/server';
+import { localeDir } from '@/i18n/config';
+import { loadLayoutRuntimeContext } from "@/lib/layout-context";
+import BrandingRuntime from "@/components/layout/BrandingRuntime.astro";
+import DocumentHead from "@/components/layout/DocumentHead.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  canonical?: string;
+  noindex?: boolean;
+  includeClientRouter?: boolean;
+}
+
+const {
+  title,
+  description = "",
+  canonical = Astro.url.href,
+  noindex = true,
+  includeClientRouter = true,
+} = Astro.props;
+
+const locale = localeFromRequest(Astro.request);
+const t = await getMessages(locale, ['baseLayout']);
+const metaDescription = description || t.baseLayout.description;
+const fullTitle = `${title} - ${t.baseLayout.titleSuffix}`;
+const {
+  layoutCss,
+  layoutLogoMap,
+  themeColorLight,
+  themeColorDark,
+} = await loadLayoutRuntimeContext(Astro.request, Astro.locals.uiBootstrap);
+const isPanelRoute = Astro.url.pathname.startsWith("/panel");
+const fallbackFavicon = isPanelRoute ? "/panel/favicon.ico?v=3" : "/favicon.ico?v=3";
+const manifestHref = "/manifest.webmanifest";
+---
+
+<!DOCTYPE html>
+<html lang={locale} dir={localeDir(locale)}>
+  <DocumentHead
+    fullTitle={fullTitle}
+    metaDescription={metaDescription}
+    canonical={canonical}
+    noindex={noindex}
+    themeColorLight={themeColorLight}
+    themeColorDark={themeColorDark}
+    faviconHref={layoutLogoMap.favicon || layoutLogoMap.primary || fallbackFavicon}
+    locale={locale}
+    shortcutIconHref={layoutLogoMap.favicon || layoutLogoMap.primary || fallbackFavicon}
+    appleTouchIconHref={layoutLogoMap.favicon || layoutLogoMap.primary || fallbackFavicon}
+    manifestHref={manifestHref}
+    includeClientRouter={includeClientRouter}
+  />
+  <body class="min-h-screen bg-background font-sans text-foreground antialiased">
+    <BrandingRuntime layoutCss={layoutCss} layoutLogoMap={layoutLogoMap} />
+
+    <slot />
+
+    <script type="module">
+      import "/scripts/extracted/layouts/BaseLayout-script1.js?v=20260929-drawer-speed-v3";
+    </script>
+  <script>import "@/lib/tabler-svg-fallback";</script>
+  </body>
+</html>
+
+<style is:global>
+  @import "../styles/extracted/layouts/BaseLayout-style1.css";
+</style>

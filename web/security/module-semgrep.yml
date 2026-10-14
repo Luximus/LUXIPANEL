@@ -1,0 +1,182 @@
+# Semgrep ruleset for community modules (modules/<id>/backend).
+# Runs in the disposable review runner (ROADMAP-DEV-MARKETPLACE.md §4.2).
+#
+# Two jobs:
+#  (A) FORBID rules (severity: ERROR, metadata.capability: forbidden) — block
+#      anything outside the @luxipanel/module-sdk surface. A single ERROR fails
+#      the review.
+#  (B) CAPABILITY rules (severity: INFO, metadata.capability: <cap>) — tag each
+#      SDK effect with the capability it needs. These never fail on their own;
+#      capability-diff.mjs reads `semgrep --json` and diffs the tagged set
+#      against manifest.capabilities (undeclared => FAIL, unused => WARN).
+#
+# Run:
+#   semgrep --config security/module-semgrep.yml --json \
+#     --output sg.json modules/<id>/backend
+#   node security/capability-diff.mjs modules/<id>/module.manifest.json sg.json
+
+rules:
+  # ──────────────────────────────────────────────────────────────────────
+  # (A) FORBIDDEN — only @luxipanel/module-sdk may have effects
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: module-forbidden-node-builtins
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Forbidden Node builtin. Third-party modules have no direct OS/network/FS
+      access — use the SDK ctx (ctx.server.* / ctx.http) with the matching
+      capability instead.
+    metadata: { capability: forbidden, category: sandbox-escape }
+    patterns:
+      - pattern-either:
+          - pattern: import $X from "$MOD"
+          - pattern: import * as $X from "$MOD"
+          - pattern: import "$MOD"
+          - pattern: import { ... } from "$MOD"
+          - pattern: require("$MOD")
+          - pattern: import("$MOD")
+      - metavariable-regex:
+          metavariable: $MOD
+          regex: ^(node:)?(child_process|fs|fs/promises|net|dgram|dns|dns/promises|tls|http|https|http2|cluster|worker_threads|vm|v8|inspector|module|repl|perf_hooks|trace_events)$
+
+  - id: module-forbidden-internal-imports
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Modules may only import "@luxipanel/module-sdk" (and their own files /
+      allowlisted deps). Internal LUXIPANEL aliases bypass the SDK sandbox.
+    metadata: { capability: forbidden, category: sandbox-escape }
+    patterns:
+      - pattern-either:
+          - pattern: import $X from "$MOD"
+          - pattern: import * as $X from "$MOD"
+          - pattern: import { ... } from "$MOD"
+          - pattern: require("$MOD")
+          - pattern: import("$MOD")
+      - metavariable-regex:
+          metavariable: $MOD
+          regex: ^(@shared/|@modules/|@config/|@/|.*(kv-store|/executor|agent-capability|license-server-tls|remote-cache)).*$
+
+  - id: module-no-raw-executor-or-store
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Do not reach the raw Executor / kv() / dataStore / registry. The SDK ctx
+      is the only sanctioned bridge (ctx.server.*, ctx.storage).
+    metadata: { capability: forbidden, category: sandbox-escape }
+    pattern-either:
+      - pattern: getContextExecutor(...)
+      - pattern: runWithExecutor(...)
+      - pattern: kv(...)
+      - pattern: dataStore(...)
+      - pattern: agentCapabilityRegistry.$M(...)
+      - pattern: submitMutation($EXEC, ...)   # the raw shared helper (SDK wraps it as ctx.server.submitMutation)
+
+  - id: module-no-process-env
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      No process / process.env access. Configuration comes from manifest
+      configFields, secrets from ctx.storage — never the panel host env.
+    metadata: { capability: forbidden, category: secret-exfil }
+    pattern-either:
+      - pattern: process.env
+      - pattern: process.env.$K
+      - pattern: process.$P
+      - pattern: globalThis.process
+
+  - id: module-no-dynamic-eval
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: "No eval / Function constructor / dynamic code generation."
+    metadata: { capability: forbidden, category: rce }
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+      - pattern: $X["eval"](...)
+
+  - id: module-no-dynamic-import
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: "Dynamic require()/import() with a non-literal target is forbidden."
+    metadata: { capability: forbidden, category: sandbox-escape }
+    patterns:
+      - pattern-either:
+          - pattern: require($X)
+          - pattern: import($X)
+      - metavariable-pattern:
+          metavariable: $X
+          patterns:
+            - pattern-not: '"..."'
+
+  - id: module-no-global-fetch
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Use ctx.http.fetch (capability "http", restricted to http_allowlist), not
+      the global fetch / XMLHttpRequest (unrestricted egress / SSRF).
+    metadata: { capability: forbidden, category: ssrf }
+    pattern-either:
+      - pattern: fetch(...)
+      - pattern: globalThis.fetch(...)
+      - pattern: new XMLHttpRequest()
+
+  # ──────────────────────────────────────────────────────────────────────
+  # (B) CAPABILITY TAGGING — INFO; capability-diff.mjs does the verdict
+  # ──────────────────────────────────────────────────────────────────────
+
+  - id: cap-server-exec
+    languages: [typescript, javascript]
+    severity: INFO
+    message: "uses ctx.server.exec → capability server.exec"
+    metadata: { capability: server.exec }
+    pattern-either:
+      - pattern: $C.server.exec(...)
+      - pattern: $C.server.spawn(...)
+
+  - id: cap-server-sudo
+    languages: [typescript, javascript]
+    severity: INFO
+    message: "uses sudo:true → capability server.sudo"
+    metadata: { capability: server.sudo }
+    pattern-either:
+      - pattern: "$C.server.exec($CMD, { ..., sudo: true, ... })"
+      - pattern: "{ ..., sudo: true, ... }"   # also catches sudo steps inside submitMutation
+
+  - id: cap-server-fs-read
+    languages: [typescript, javascript]
+    severity: INFO
+    message: "reads files via ctx.server → capability server.fs.read"
+    metadata: { capability: server.fs.read }
+    pattern-either:
+      - pattern: $C.server.readFile(...)
+      - pattern: $C.server.readdir(...)
+      - pattern: $C.server.stat(...)
+
+  - id: cap-server-fs-write
+    languages: [typescript, javascript]
+    severity: INFO
+    message: "writes/mutates via ctx.server → capability server.fs.write"
+    metadata: { capability: server.fs.write }
+    pattern-either:
+      - pattern: $C.server.writeFile(...)
+      - pattern: $C.server.mkdir(...)
+      - pattern: $C.server.rename(...)
+      - pattern: $C.server.unlink(...)
+      - pattern: $C.server.submitMutation(...)
+
+  - id: cap-storage
+    languages: [typescript, javascript]
+    severity: INFO
+    message: "uses ctx.storage → capability storage"
+    metadata: { capability: storage }
+    pattern: $C.storage.collection(...)
+
+  - id: cap-http
+    languages: [typescript, javascript]
+    severity: INFO
+    message: "uses ctx.http → capability http"
+    metadata: { capability: http }
+    pattern: $C.http.fetch(...)

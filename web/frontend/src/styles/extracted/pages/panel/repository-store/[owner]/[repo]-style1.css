@@ -1,0 +1,185 @@
+/* GitHub-Flavored Markdown styling for the rendered README. Aimed at
+ * matching the legibility of github.com while staying inside the panel
+ * design system (uses --foreground / --border / --muted tokens). */
+#readme-content,
+#readme-content article.markdown-body {
+  color: hsl(var(--foreground));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  word-wrap: break-word;
+}
+
+/* ── Headings ────────────────────────────────────────────── */
+#readme-content h1,
+#readme-content h2,
+#readme-content h3,
+#readme-content h4,
+#readme-content h5,
+#readme-content h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.25;
+  scroll-margin-top: 1rem;
+}
+#readme-content h1 { font-size: 1.875rem; padding-bottom: 0.3em; border-bottom: 1px solid hsl(var(--border)); }
+#readme-content h2 { font-size: 1.5rem;   padding-bottom: 0.3em; border-bottom: 1px solid hsl(var(--border)); }
+#readme-content h3 { font-size: 1.25rem; }
+#readme-content h4 { font-size: 1rem; }
+#readme-content h5 { font-size: 0.9rem; color: hsl(var(--muted-foreground)); }
+#readme-content h6 { font-size: 0.85rem; color: hsl(var(--muted-foreground)); }
+
+/* ── Block spacing ───────────────────────────────────────── */
+#readme-content > *:first-child { margin-top: 0; }
+#readme-content > *:last-child  { margin-bottom: 0; }
+#readme-content p,
+#readme-content ul,
+#readme-content ol,
+#readme-content blockquote,
+#readme-content table,
+#readme-content pre,
+#readme-content .highlight,
+#readme-content details { margin: 0.85em 0; }
+
+/* ── Lists ───────────────────────────────────────────────── */
+#readme-content ul,
+#readme-content ol { padding-left: 2em; }
+#readme-content ul { list-style: disc; }
+#readme-content ol { list-style: decimal; }
+#readme-content li + li { margin-top: 0.25em; }
+#readme-content li > p { margin: 0.4em 0; }
+#readme-content li > ul, #readme-content li > ol { margin: 0.25em 0; }
+
+/* GitHub task lists */
+#readme-content .task-list-item { list-style: none; }
+#readme-content .task-list-item-checkbox { margin: 0 0.4em 0 -1.5em; vertical-align: middle; }
+
+/* ── Links ───────────────────────────────────────────────── */
+#readme-content a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+}
+#readme-content a:hover { text-decoration: underline; }
+
+/* ── Inline code ─────────────────────────────────────────── */
+#readme-content code,
+#readme-content tt {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85em;
+  padding: 0.2em 0.4em;
+  background: hsl(var(--muted));
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  white-space: break-spaces;
+}
+
+/* ── Code blocks (containers) ────────────────────────────── */
+#readme-content pre {
+  background: hsl(var(--muted) / 0.6);
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 14px 18px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  position: relative;
+}
+:root.dark #readme-content pre,
+.dark #readme-content pre { background: hsl(var(--muted) / 0.4); }
+/* GitHub wraps multi-line code with <div class="highlight"><pre>… */
+#readme-content .highlight { margin: 0.85em 0; }
+#readme-content .highlight pre { margin: 0; }
+/* Inner code element inside pre: strip the inline-code styling. */
+#readme-content pre > code,
+#readme-content pre code,
+#readme-content .highlight code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  display: block;
+}
+#readme-content pre code .pl-c   { color: hsl(var(--muted-foreground)); }     /* comment */
+#readme-content pre code .pl-en  { color: hsl(220 70% 60%); }                  /* function */
+#readme-content pre code .pl-k   { color: hsl(280 65% 65%); font-weight: 500; }/* keyword */
+#readme-content pre code .pl-s,
+#readme-content pre code .pl-s1  { color: hsl(140 50% 55%); }                  /* string */
+#readme-content pre code .pl-c1  { color: hsl(35 90% 60%); }                   /* number/const */
+#readme-content pre code .pl-smi { color: hsl(var(--foreground)); }            /* identifier */
+
+/* ── Blockquotes ─────────────────────────────────────────── */
+#readme-content blockquote {
+  padding: 0.4em 1em;
+  border-left: 4px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 0 6px 6px 0;
+}
+
+/* ── Tables ──────────────────────────────────────────────── */
+#readme-content table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.9rem;
+}
+#readme-content th, #readme-content td {
+  border: 1px solid hsl(var(--border));
+  padding: 8px 14px;
+}
+#readme-content th { background: hsl(var(--muted) / 0.7); font-weight: 600; text-align: left; }
+#readme-content tr:nth-child(2n) td { background: hsl(var(--muted) / 0.2); }
+
+/* ── Images ──────────────────────────────────────────────── */
+#readme-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: hsl(var(--background));
+  display: block;
+  margin: 1em auto;
+}
+/* Inline icons / badges (shields.io, github-actions, etc.): keep small. */
+#readme-content p > img,
+#readme-content a > img,
+#readme-content li > img {
+  display: inline-block;
+  margin: 0 0.15em;
+  vertical-align: middle;
+  max-height: 28px;
+}
+#readme-content img.emoji { display: inline-block; height: 1em; vertical-align: -0.15em; }
+
+/* ── HR ──────────────────────────────────────────────────── */
+#readme-content hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+}
+
+/* ── Details / summary (collapsible sections) ────────────── */
+#readme-content details {
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 0.5em 1em;
+  background: hsl(var(--muted) / 0.3);
+}
+#readme-content details summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.25em 0;
+}
+#readme-content details[open] { padding-bottom: 0.75em; }
+
+/* ── Hide GitHub-only chrome ─────────────────────────────── */
+#readme-content .octicon,
+#readme-content svg.octicon { display: none; } /* anchor icons */
+#readme-content .markdown-heading a.anchor,
+#readme-content a.anchor { display: none; }
+#readme-content .zeroclipboard-container,
+#readme-content .zeroclipboard-button,
+#readme-content .copy-button { display: none; }

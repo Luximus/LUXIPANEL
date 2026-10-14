@@ -1,0 +1,125 @@
+import type { DataTableSettingsMessages } from "./es";
+import { catalogEn } from "./catalog";
+
+export const en: DataTableSettingsMessages = {
+    "accordion": {
+      "form": "Registration form",
+      "records": "Records table"
+    },
+    "titleConfigure": "Configure table",
+    "closeAria": "Close",
+    "closeButton": "Close",
+    "tabs": {
+      "chat": "Chat",
+      "columns": "Columns",
+      "categories": "Categories",
+      "tags": "Tags",
+      "sshKeys": "SSH Keys",
+      "integrations": "Integrations",
+      "api": "API"
+    },
+    "subTables": {
+      "nameHeader": "Name",
+      "tagsHeader": "Tags",
+      "categoryHeader": "Category",
+      "sshUserHeader": "SSH user",
+      "fingerprintHeader": "Fingerprint",
+      "panelsHeader": "Panels",
+      "providerHeader": "Provider",
+      "statusHeader": "Status",
+      "accountHeader": "Account",
+      "searchCategory": "Search category…",
+      "searchTag": "Search tag…",
+      "searchKey": "Search key…",
+      "changeSshUser": "Change SSH user"
+    },
+    "columnsTab": {
+      "visibleAndOrder": "Visible columns and order",
+      "pageSize": "Results per page",
+      "moveUpAria": "Move up",
+      "moveDownAria": "Move down"
+    },
+    "categoriesTab": {
+      "heading": "Categories",
+      "help": "Manage your custom categories and the tags each one contains.",
+      "newPlaceholder": "New category...",
+      "create": "Create category",
+      "confirmDelete": "Delete category? Associated panels will lose their category and tags.",
+      "tableTitle": "categories"
+    },
+    "tagsTab": {
+      "heading": "Tags",
+      "help": "Create and edit tags within each category.",
+      "newPlaceholder": "New tag...",
+      "create": "Create tag",
+      "confirmDelete": "Delete tag?",
+      "noCategories": "No categories",
+      "tableTitle": "tags"
+    },
+    "sshKeysTab": {
+      "heading": "SSH key vault (.pem)",
+      "help": "Register a key once and assign it to multiple panels by SSH user. The SSH user is the Linux user that has access to that key.",
+      "docsLink": "View documentation →",
+      "sshUserPlaceholder": "SSH user (root, ubuntu, deploy...)",
+      "register": "Register key",
+      "keyPlaceholder": "-----BEGIN OPENSSH PRIVATE KEY----- ...",
+      "assignToPanels": "Assign to existing panels (optional)",
+      "missingFields": "Enter the SSH user and the private key.",
+      "confirmDelete": "Delete SSH key?",
+      "tableTitle": "SSH keys",
+      "fallbackUser": "(no user)"
+    },
+    "integrationsTab": {
+      "catalog": catalogEn,
+      "heading": "Google Cloud",
+      "help": "Connect a Google Cloud Service Account to list and register VPS directly from the dashboard.",
+      "docsLink": "View documentation →",
+      "configuredWith": "Integration configured with {email}.",
+      "notConfigured": "No integration configured.",
+      "clientEmailLabel": "Client Email (Service Account)",
+      "privateKeyLabel": "Private Key",
+      "replaceHint": "Saving again with new data will replace the current integration.",
+      "save": "Save integration",
+      "missingFields": "Enter client email and private key.",
+      "saved": "Integration saved successfully.",
+      "confirmDelete": "Delete the Google Cloud integration?",
+      "providerLabel": "Google Cloud",
+      "statusConfigured": "Configured",
+      "statusUnconfigured": "Not configured",
+      "serviceAccountFallback": "(service account)",
+      "tableTitle": "integrations",
+      "connectionTab": "Connection",
+      "helpTab": "Help",
+      "helpDocsLink": "Official documentation →",
+      "helpEmpty": "No help available for this provider."
+    },
+    "apiTab": {
+      "heading": "Servers API",
+      "helpBefore": "Manage your panels, categories, tags, and SSH keys programmatically. Use this token + your email to obtain a Bearer JWT at",
+      "helpAfter": ".",
+      "docsLink": "View documentation →",
+      "tokenLabel": "API Token",
+      "tokenActive": "Token active. Use it with your email to obtain a Bearer token.",
+      "loadingState": "Loading token status…",
+      "lastUsedPrefix": "Last used:",
+      "notUsedYet": "Never used.",
+      "createdAt": "Created:",
+      "onlyShownNow": "Shown only this once.",
+      "saveSafely": "Store it somewhere safe — you won't be able to see it again.",
+      "copy": "Copy",
+      "copyPrefix": "Copy prefix",
+      "copied": "Copied",
+      "copyError": "Error",
+      "currentToken": "Current token",
+      "registeredEmail": "Registered email",
+      "registeredEmailHelp": "Use it as the \"email\" field when requesting the Bearer token.",
+      "endpoint": "Bearer token endpoint",
+      "endpointHelpBefore": "POST with",
+      "endpointHelpMid": "+",
+      "endpointHelpAfter": "in the JSON body.",
+      "rotate": "Rotate token",
+      "rotateConfirm": "Rotating replaces the active token with a new one. Continue?",
+      "rotated": "Token rotated. Copy it now — it won't be shown again.",
+      "autoGenerated": "Token generated automatically. Copy it now — it won't be shown again."
+    }
+};

@@ -1,0 +1,155 @@
+/* AdminBlogModal — CSS Module */
+
+/* Shared label column layout (replaces the `labelStyle` JS object) */
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* flex: 1 1 8rem variant (AI min-chars field) */
+.labelFlexLg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 8rem;
+}
+
+/* flex: 1 1 6rem variant (AI image-count field) */
+.labelFlexSm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 6rem;
+}
+
+/* lp-modal-body inner layout */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}
+
+/* Publish tab column container */
+.publishTab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Two-column grid (category + locale) */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+/* AI parameters row */
+.aiRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+/* AI generate button inner layout */
+.aiBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Tags checkbox list */
+.tagsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+}
+
+/* Individual tag checkbox label */
+.tagItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+/* Excerpt + content textareas: resizable vertically */
+.resizable {
+  resize: vertical;
+}
+
+/* Markdown content textarea: monospace + small */
+.contentTextarea {
+  resize: vertical;
+  font-family: monospace;
+  font-size: 0.82rem;
+}
+
+/* Hidden file inputs */
+.hidden {
+  display: none;
+}
+
+/* Cover image action row */
+.coverActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Cover preview image */
+.coverPreview {
+  max-height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  align-self: flex-start;
+}
+
+/* Categories / Tags tab column container */
+.taxTab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Add-item input+button row (categories and tags) */
+.addRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* SEO & social fieldset */
+.seoFieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 1px solid var(--fallback-b3, oklch(var(--b3)));
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+}
+
+.seoLegend {
+  padding: 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* SEO optimize button: align to the start of the fieldset */
+.seoBtn {
+  align-self: flex-start;
+}
+
+/* Public URL preview line under the slug field */
+.publicUrl {
+  font-size: 0.78rem;
+  opacity: 0.7;
+  word-break: break-all;
+}
+
+.publicUrl b {
+  font-weight: 600;
+  opacity: 0.85;
+}

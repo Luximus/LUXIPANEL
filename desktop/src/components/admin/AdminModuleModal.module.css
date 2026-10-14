@@ -1,0 +1,42 @@
+/* AdminModuleModal — CSS Module */
+
+/* Shared label column layout (replaces the `labelStyle` JS object) */
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* lp-modal-body inner layout */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}
+
+/* Two-column grid */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+/* Three-column grid */
+.grid3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+}
+
+/* Vertically resizable textarea */
+.resizable {
+  resize: vertical;
+}
+
+/* Config schema textarea: monospace + small */
+.schemaTextarea {
+  font-family: monospace;
+  font-size: 0.78rem;
+  resize: vertical;
+}

@@ -1,0 +1,25 @@
+import { it, expect, vi } from "vitest";
+const state = vi.hoisted(() => ({ config: { enabled: true, repairPolicies: {} as Record<string, any> }, jobs: [] as any[], create: vi.fn(), listener: undefined as ((event: any) => void) | undefined }));
+vi.mock("./module-events.js", () => ({ onDiagnostic: (fn: any) => state.listener = fn }));
+vi.mock("./store.js", () => ({ diagnosticsStore: { config: async () => state.config, health: { error: "" } } }));
+vi.mock("./module-source.js", () => ({ snapshotModuleSource: async () => undefined }));
+vi.mock("./repair-jobs.js", () => ({ repairJobs: { list: async (scope: string) => state.jobs.filter((job) => job.scope === scope), create: async (...args: any[]) => { state.create(...args); state.jobs.push({ scope: args[0], incidentId: args[1], automatic: args[3].automatic, createdAt: new Date().toISOString() }); } } }));
+import { startAutomaticRepairs } from "./automatic-repairs.js";
+import { runWithExecutor } from "../executor/context.js";
+const pause = () => new Promise((resolve) => setTimeout(resolve, 15));
+it("automates only new opted-in incidents, deduplicates, enforces costs and uses the local policy owner", async () => {
+ startAutomaticRepairs(); startAutomaticRepairs();
+ const policy = { enabled: true, severities: ["error"], since: "2026-10-01T00:00:00Z", userId: 7, username: "local-admin" };
+ const event = (fingerprint: string) => ({ id: fingerprint, fingerprint, timestamp: new Date().toISOString(), severity: "error", source: "backend", module: "runtime", message: "failure", component: { kind: "luxipanel", id: "luxipanel", version: "2.0.0", origin: "execution" } });
+ state.listener!(event("off")); await pause(); expect(state.create).not.toHaveBeenCalled();
+ state.config.repairPolicies.luxipanel = policy;
+ state.listener!({ ...event("history"), historical: true }); state.listener!({ ...event("old"), timestamp: "2026-09-01T00:00:00Z" }); state.listener!({ ...event("anonymous"), source: "frontend" }); state.listener!({ ...event("warn"), severity: "warn" }); await pause(); expect(state.create).not.toHaveBeenCalled();
+ state.listener!({ ...event("trusted-browser"), source: "frontend", administratorId: 7 }); await vi.waitFor(() => expect(state.create).toHaveBeenCalledTimes(1));
+ state.listener!(event("trusted-browser")); await pause(); expect(state.create).toHaveBeenCalledTimes(1);
+ state.listener!(event("second")); state.listener!(event("third")); state.listener!(event("daily-cap")); await vi.waitFor(() => expect(state.create).toHaveBeenCalledTimes(3)); await pause(); expect(state.create).toHaveBeenCalledTimes(3);
+ state.config.repairPolicies["module:B:7:example-module"] = policy;
+ const moduleEvent = { ...event("module"), component: { kind: "module", id: "example-module", version: "1.0.0", origin: "execution", targetId: "B", userId: 7 } };
+ runWithExecutor({ target: { id: "B" } } as any, () => state.listener!(moduleEvent), 7, { userId: 7, username: "remote-admin", kind: "admin", direct: true, targetId: "B" } as any);
+ await vi.waitFor(() => expect(state.create).toHaveBeenCalledTimes(4));
+ const [scope, , owner] = state.create.mock.calls[3]!; expect(scope).toBe("modules:B:7"); expect(owner.username).toBe("local-admin"); expect(owner.direct).toBeUndefined(); expect(owner.targetId).toBeUndefined();
+});

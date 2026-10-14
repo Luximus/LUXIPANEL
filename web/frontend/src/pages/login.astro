@@ -1,0 +1,396 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * Login page - /login
+ * Métodos: Password - Passkey - Código de recuperación
+ */
+import AuthLayout from "@/layouts/AuthLayout.astro";
+import SetupWizardFooter from "@/components/auth/AuthWizardFooter.astro";
+import DbLogo from "@/components/layout/DbLogo.astro";
+import { getPageLocale, getPageMessages } from "@/pages/_page-context";
+import { LOCALES } from '@/i18n/config';
+import { isDesktopChromeUA } from "@/lib/embedded-source";
+import { getBackendUrl } from "@/lib/server-env";
+import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/lib/api-client";
+import { LOGIN_METHODS_PATH } from "@/lib/api-routes";
+
+// SSR: redirect if already authenticated.
+// When the page is reached via the logout flow (`?logout=1`) we ALWAYS clear
+// the auth cookies on the response and skip the auth-redirect, even if the
+// browser still has a session cookie. Otherwise a stale `luxipanel_session`
+// cookie (e.g. when the backend Set-Cookie header was dropped by an
+// intermediate proxy) bounces the user straight back to the dashboard.
+import { getSession } from "@/lib/auth";
+const isLogoutLanding = Astro.url.searchParams.get("logout") === "1";
+if (isLogoutLanding) {
+  const rawCookieDomain = (process.env.COOKIE_DOMAIN ?? "").trim();
+  const requestHost = (Astro.request.headers.get("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
+  const normalizedDomain = rawCookieDomain.replace(/^\./, "").toLowerCase();
+  const domainMatches =
+    normalizedDomain.length > 0 &&
+    requestHost.length > 0 &&
+    (requestHost === normalizedDomain || requestHost.endsWith(`.${normalizedDomain}`));
+  const baseDeleteOptions: { path: string; domain?: string } = { path: "/" };
+  const domainDeleteOptions: { path: string; domain?: string } | null = domainMatches
+    ? { path: "/", domain: rawCookieDomain }
+    : null;
+  Astro.cookies.delete(SESSION_COOKIE_NAME, baseDeleteOptions);
+  Astro.cookies.delete(CSRF_COOKIE_NAME, baseDeleteOptions);
+  if (domainDeleteOptions) {
+    Astro.cookies.delete(SESSION_COOKIE_NAME, domainDeleteOptions);
+    Astro.cookies.delete(CSRF_COOKIE_NAME, domainDeleteOptions);
+  }
+} else {
+  const session = await getSession(Astro.request);
+  if (session && !Astro.url.searchParams.has("nativeRequest")) return Astro.redirect("/");
+}
+
+const hostHeader = Astro.request.headers.get("host") ?? "";
+const locale = getPageLocale(Astro);
+const t = await getPageMessages(Astro, ['login', 'components', 'panelLayout', 'baseLayout']);
+
+// Fetch enabled login methods from backend. Forward the original Host header
+// so the backend resolves the right panel (BACKEND_URL points at localhost
+// which loses the original subdomain otherwise).
+const backendUrl = getBackendUrl();
+let loginMethods = { password: true, passkey: true, recovery: true };
+// hCaptcha config lives on the same login-methods payload (the secret is never
+// exposed — only the public site key + the enabled flag).
+let hcaptchaEnabled = false;
+let hcaptchaSitekey = "";
+try {
+  const res = await fetch(`${backendUrl}${LOGIN_METHODS_PATH}`, {
+    headers: {
+      host: hostHeader,
+      "x-forwarded-host": hostHeader,
+    },
+  });
+  if (res.ok) {
+    const data = await res.json();
+    if (data.ok && data.data) {
+      loginMethods = data.data;
+      hcaptchaEnabled = Boolean(data.data.hcaptchaEnabled);
+      hcaptchaSitekey = typeof data.data.hcaptchaSitekey === "string" ? data.data.hcaptchaSitekey : "";
+    }
+  }
+} catch {
+  // Use defaults if fetch fails
+}
+// Mirror AuthLayout: hide the theme/language buttons inside the embedded
+// (desktop / mobile-app) wrapper that already renders its own controls.
+// Ocultar tema/idioma solo en el wrapper DESKTOP (chrome nativo los gobierna).
+// En la app MÓVIL (React Native) se muestran y sincronizan bidireccionalmente.
+const hideEmbeddedControls = isDesktopChromeUA(Astro.request.headers.get("user-agent"));
+const setupFooterCopy = t.components.setupWizardFooter;
+const themeCopy = t.panelLayout.actions;
+const methodTabBaseClass = "method-tab flex-1 rounded-xl px-3 py-2 text-xs font-medium transition-all";
+const methodTabIdleClass = `${methodTabBaseClass} text-muted-foreground hover:text-foreground`;
+const textInputBaseClass =
+  "h-11 w-full rounded-lg border border-input bg-background text-sm transition-colors placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
+const textInputWithIconClass = `${textInputBaseClass} pl-10 pr-4`;
+const passwordInputClass = `${textInputBaseClass} pl-10 pr-12 font-sans tracking-normal`;
+const recoveryCodeInputClass =
+  `${textInputBaseClass} pl-10 pr-4 font-mono tracking-widest uppercase placeholder:normal-case placeholder:tracking-normal`;
+const linkButtonClass =
+  "w-full py-2 text-center text-xs text-muted-foreground transition-colors hover:text-foreground";
+const submitButtonBaseClass =
+  "login-submit-btn relative h-11 w-full rounded-lg font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50";
+const primarySubmitButtonClass =
+  `${submitButtonBaseClass} bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90`;
+const passkeySubmitButtonClass =
+  `${submitButtonBaseClass} bg-blue-600 text-white shadow-lg shadow-blue-600/25 hover:bg-blue-600/90`;
+const recoverySubmitButtonClass =
+  `${submitButtonBaseClass} bg-amber-600 text-white shadow-lg shadow-amber-600/25 hover:bg-amber-600/90`;
+const iconButtonTextClass = "btn-text flex items-center justify-center gap-2";
+---
+
+<AuthLayout
+  title={t.login.pageTitle}
+  shellId="login-shell"
+  asideId="login-aside"
+  stageId="login-stage"
+  logoId="login-aside-logo"
+  footerId="login-aside-footer"
+  pageVariant="login"
+>
+  <div class="w-full max-w-xl space-y-6">
+          <div
+            id="login-card"
+            class="wizard-step rounded-2xl border border-border bg-card/80 p-8 shadow-xl space-y-5"
+            data-allow-password={loginMethods.password}
+            data-allow-passkey={loginMethods.passkey}
+            data-allow-recovery={loginMethods.recovery}
+            data-hcaptcha-enabled={String(hcaptchaEnabled)}
+            data-hcaptcha-sitekey={hcaptchaSitekey}
+          >
+            <div class="flex flex-wrap items-center justify-between gap-3 lg:hidden">
+              <div class="flex h-14 w-14 items-center justify-center rounded-full bg-white p-2.5 shadow-md ring-1 ring-black/5">
+                <DbLogo role="login" alt="LUXIPANEL" class="h-full w-full" />
+              </div>
+              {!hideEmbeddedControls && (
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    class="setup-theme-toggle inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground transition-colors hover:border-primary/30 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    aria-label={themeCopy.switchTheme}
+                    title={themeCopy.switchTheme}
+                    data-theme-label-light={themeCopy.lightMode}
+                    data-theme-label-dark={themeCopy.darkMode}
+                  >
+                    <i class="setup-theme-toggle__icon ti ti-sun text-base" aria-hidden="true"></i>
+                    <span class="setup-theme-toggle__label sr-only sm:not-sr-only">{themeCopy.switchTheme}</span>
+                  </button>
+
+                  <select
+                    class="setup-language-selector h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    aria-label={t.login.languageLabel}
+                  >
+                    {LOCALES.map((l) => (
+                      <option value={l.code} selected={locale === l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div class="space-y-1">
+              <h2 class="text-lg font-semibold flex items-center gap-2">
+                <i class="ti ti-lock text-primary"></i>
+                {t.login.pageTitle}
+              </h2>
+              <p class="text-sm text-muted-foreground">{t.login.panelSubtitle}</p>
+            </div>
+
+            <div id="login-method-tabs" class="flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
+              <button type="button" id="tab-passkey" data-method="passkey" class={methodTabIdleClass}>
+                <i class="ti ti-fingerprint"></i>{t.login.tabs.passkey}
+              </button>
+              <button type="button" id="tab-password" data-method="password" class={methodTabIdleClass}>
+                <i class="ti ti-lock"></i>{t.login.tabs.password}
+              </button>
+              <button type="button" id="tab-recovery" data-method="recovery" class={methodTabIdleClass}>
+                <i class="ti ti-shield-check"></i>{t.login.tabs.recovery}
+              </button>
+            </div>
+
+            <div
+              id="login-error"
+              class="setup-alert setup-alert--error hidden rounded-lg px-4 py-3 text-sm"
+            >
+            </div>
+
+            <!-- Passkey -->
+            <div id="form-passkey" class="method-form hidden space-y-5">
+              <div class="rounded-xl border border-border bg-muted/30 px-5 py-6 text-center space-y-3">
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-500/10">
+                  <i class="ti ti-fingerprint text-2xl text-blue-500"></i>
+                </div>
+                <div>
+                  <p class="text-sm font-medium">{t.login.text.biometricAuth}</p>
+                  <p class="text-xs text-muted-foreground mt-1">{t.login.text.biometricHelp}</p>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <label for="passkey-username" class="text-sm font-medium">{t.login.labels.user}</label>
+                <div class="relative">
+                  <i class="ti ti-user absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-base"></i>
+                  <input
+                    id="passkey-username"
+                    type="text"
+                    autocomplete="username"
+                    placeholder={t.login.placeholders.user}
+                    class={textInputWithIconClass}
+                  />
+                </div>
+              </div>
+
+              <button type="button" id="btn-passkey" class={passkeySubmitButtonClass}>
+                <span class={iconButtonTextClass}>
+                  <i class="ti ti-fingerprint text-base"></i>{t.login.text.usePasskey}
+                </span>
+                <span class="btn-spinner hidden">
+                  <svg class="mx-auto h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              </button>
+
+              <p id="passkey-status" class="text-xs text-center text-muted-foreground hidden"></p>
+            </div>
+
+            <!-- Password -->
+            <form id="form-password" class="method-form space-y-5">
+              <div class="space-y-2">
+                <label for="username" class="text-sm font-medium">{t.login.labels.user}</label>
+                <div class="relative">
+                  <i class="ti ti-user absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-base"></i>
+                  <input
+                    id="username"
+                    name="user"
+                    type="text"
+                    required
+                    autocomplete="username"
+                    placeholder={t.login.placeholders.user}
+                    class={textInputWithIconClass}
+                  />
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <label for="password" class="text-sm font-medium">{t.login.labels.sshPassphrase}</label>
+                <div class="relative">
+                  <i class="ti ti-key absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-base"></i>
+                  <input
+                    id="password"
+                    name="pass"
+                    type="password"
+                    required
+                    autocomplete="current-password"
+                    placeholder={t.login.placeholders.sshPassphrase}
+                    class={passwordInputClass}
+                  />
+                  <button
+                    type="button"
+                    id="toggle-password"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <i class="ti ti-eye text-lg" id="eye-icon"></i>
+                  </button>
+                </div>
+              </div>
+
+              <label for="remember" class="inline-flex w-fit cursor-pointer select-none items-center gap-2.5">
+                <input id="remember" type="checkbox" class="remember-toggle sr-only" />
+                <span
+                  class="remember-indicator h-5 w-5 rounded-full border-2 border-primary/70 bg-background transition-all shadow-sm"
+                  aria-hidden="true"
+                ></span>
+                <span class="remember-label text-sm text-muted-foreground transition-colors">
+                  {t.login.labels.remember}
+                </span>
+              </label>
+
+              <!-- hCaptcha widget (rendered by the login script only when the
+                   backend reports hcaptchaEnabled; empty/no-op otherwise). -->
+              <div id="login-hcaptcha" class="flex justify-center empty:hidden"></div>
+
+              <button type="submit" id="btn-password" class={primarySubmitButtonClass}>
+                <span class="btn-text">{t.login.text.signIn}</span>
+                <span class="btn-spinner hidden">
+                  <svg class="mx-auto h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              </button>
+            </form>
+
+            <!-- Recovery code -->
+            <form id="form-recovery" class="method-form hidden space-y-5">
+              <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                <p class="text-xs text-amber-600 dark:text-amber-400">
+                  <i class="ti ti-alert-triangle mr-1"></i>
+                  {t.login.text.recoveryWarning}
+                </p>
+              </div>
+
+              <div class="space-y-2">
+                <label for="recovery-username" class="text-sm font-medium">{t.login.labels.user}</label>
+                <div class="relative">
+                  <i class="ti ti-user absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-base"></i>
+                  <input
+                    id="recovery-username"
+                    type="text"
+                    autocomplete="username"
+                    placeholder={t.login.placeholders.user}
+                    class={textInputWithIconClass}
+                  />
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <label for="recovery-code" class="text-sm font-medium">{t.login.labels.recoveryCode}</label>
+                <div class="relative">
+                  <i class="ti ti-key absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-base"></i>
+                  <input
+                    id="recovery-code"
+                    type="text"
+                    autocomplete="off"
+                    placeholder={t.login.placeholders.recoveryCode}
+                    class={recoveryCodeInputClass}
+                  />
+                </div>
+              </div>
+
+              <button type="submit" id="btn-recovery" class={recoverySubmitButtonClass}>
+                <span class={iconButtonTextClass}>
+                  <i class="ti ti-shield-check text-base"></i>{t.login.text.verifyCode}
+                </span>
+                <span class="btn-spinner hidden">
+                  <svg class="mx-auto h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              </button>
+            </form>
+
+            <!-- Two-factor -->
+            <div id="form-2fa" class="hidden space-y-5">
+              <div class="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-center">
+                <i class="ti ti-shield-lock text-2xl text-primary mb-2 block"></i>
+                <p class="text-sm font-medium">{t.login.text.twoFactorTitle}</p>
+                <p class="text-xs text-muted-foreground mt-1">{t.login.text.twoFactorHelp}</p>
+              </div>
+
+              <div class="space-y-2">
+                <label for="totp-code" class="text-sm font-medium">{t.login.labels.code6Digits}</label>
+                <input
+                  id="totp-code"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="6"
+                  autocomplete="one-time-code"
+                  placeholder={t.login.placeholders.totp}
+                  class="h-14 w-full rounded-lg border border-input bg-background px-4 text-center text-2xl font-mono tracking-[0.5em] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              <button type="button" id="btn-2fa" class={primarySubmitButtonClass}>
+                <span class={iconButtonTextClass}>
+                  <i class="ti ti-shield-check text-base"></i>{t.login.text.verify}
+                </span>
+                <span class="btn-spinner hidden">
+                  <svg class="mx-auto h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              </button>
+
+              <button type="button" id="btn-2fa-cancel" class={linkButtonClass}>
+                {t.login.backToLogin}
+              </button>
+            </div>
+
+            <div class="lg:hidden">
+              <SetupWizardFooter
+                locale={locale}
+                footerCopy={setupFooterCopy}
+                hideControls={true}
+              />
+            </div>
+          </div>
+  </div>
+</AuthLayout>
+
+<style is:global>
+  @import "../styles/extracted/pages/login-style1.css";
+</style>
+
+<script type="module" define:vars={{ locale }}>
+  import initScript from "/scripts/extracted/pages/login-define-vars-script1.js?v=20261003-session-reset";
+  void initScript({ locale });
+</script>

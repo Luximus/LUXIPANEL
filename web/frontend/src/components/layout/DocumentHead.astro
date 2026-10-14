@@ -1,0 +1,125 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+import { ClientRouter } from "astro:transitions";
+import DiagnosticsRuntime from "./DiagnosticsRuntime.astro";
+
+interface Props {
+  fullTitle: string;
+  metaDescription: string;
+  canonical?: string;
+  noindex?: boolean;
+  robotsContent?: string;
+  themeColorLight: string;
+  themeColorDark: string;
+  faviconHref: string;
+  shortcutIconHref?: string;
+  /** Apple touch icon. When omitted, falls back to faviconHref so the home-screen
+   *  icon matches the customer's branded logo from LP-LS. */
+  appleTouchIconHref?: string;
+  manifestHref?: string;
+  includeClientRouter?: boolean;
+  includeSocialMeta?: boolean;
+  /** Active locale for og:locale meta (defaults to es_ES). */
+  locale?: string;
+}
+
+const {
+  fullTitle,
+  metaDescription,
+  canonical = Astro.url.href,
+  noindex = true,
+  robotsContent = "noindex, nofollow, noarchive, nosnippet, noimageindex",
+  themeColorLight,
+  themeColorDark,
+  faviconHref,
+  shortcutIconHref,
+  appleTouchIconHref,
+  manifestHref = "/manifest.webmanifest",
+  includeClientRouter = false,
+  includeSocialMeta = true,
+  locale = "es",
+} = Astro.props;
+
+// Branded icons share the same source as the tab favicon (LP-LS DB logo,
+// with the bundled file as last-resort fallback).
+const brandedShortcut = shortcutIconHref || faviconHref;
+const brandedApple = appleTouchIconHref || faviconHref;
+
+// Google Analytics is OFF by default for a self-hosted admin panel: sending the
+// hostname + route of an administration console to Google on every page is a
+// privacy leak (and adds a third party that can execute JS). It only loads when
+// the operator explicitly sets ANALYTICS_ID to a GA4 measurement id.
+const analyticsId = (process.env.ANALYTICS_ID ?? "").trim();
+
+// Map active locale to a fully qualified og:locale string. Falls back to es_ES.
+const ogLocale = ({
+  es: "es_ES",
+  en: "en_US",
+  fr: "fr_FR",
+  de: "de_DE",
+  it: "it_IT",
+  pt: "pt_PT",
+  ar: "ar_SA",
+  bn: "bn_BD",
+  hi: "hi_IN",
+  ja: "ja_JP",
+  ko: "ko_KR",
+  ru: "ru_RU",
+}[locale as string] ?? "es_ES");
+---
+
+<head>
+  {analyticsId && (
+    <>
+      <script async src={`https://www.googletagmanager.com/gtag/js?id=${analyticsId}`}></script>
+      <script is:inline src="/scripts/extracted/layouts/google-analytics.js?v=20260511a"></script>
+    </>
+  )}
+
+  <meta charset="UTF-8" />
+  <DiagnosticsRuntime />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="generator" content={Astro.generator} />
+
+  <title>{fullTitle}</title>
+  <meta name="description" content={metaDescription} />
+  {noindex && <meta name="robots" content={robotsContent} />}
+  <link rel="canonical" href={canonical} />
+
+  {includeSocialMeta && (
+    <>
+      <meta property="og:type" content="website" />
+      <meta property="og:title" content={fullTitle} />
+      <meta property="og:description" content={metaDescription} />
+      <meta property="og:url" content={canonical} />
+      <meta property="og:image" content="/og-image.svg" />
+      <meta property="og:site_name" content="LuxiPanel" />
+      <meta property="og:locale" content={ogLocale} />
+
+      <meta name="twitter:card" content="summary" />
+      <meta name="twitter:title" content={fullTitle} />
+      <meta name="twitter:description" content={metaDescription} />
+      <meta name="twitter:image" content="/og-image.svg" />
+    </>
+  )}
+
+  {includeClientRouter && <ClientRouter />}
+  <script>import "@/lib/spa-csp";</script>
+  <script>import "@/scripts/reactbits-controls";</script>
+
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content={themeColorDark} />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content={themeColorLight} />
+
+  <link rel="icon" href={faviconHref} sizes="any" />
+  <link rel="shortcut icon" href={brandedShortcut} />
+  <link rel="apple-touch-icon" sizes="180x180" href={brandedApple} />
+  <link rel="manifest" href={manifestHref} />
+  <meta name="application-name" content="LuxiPanel" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LuxiPanel" />
+  {/* MUST match layout-palettes.ts DEFAULT_CUSTOM_LAYOUT_COLOR (.astro inline literal). */}
+  <meta name="msapplication-TileColor" content="#7c3aed" />
+</head>

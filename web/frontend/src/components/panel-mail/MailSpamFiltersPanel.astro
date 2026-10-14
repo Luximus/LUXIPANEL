@@ -1,0 +1,213 @@
+---
+const { t } = Astro.props;
+---
+  <section data-mail-main-panel="spam-filters" class="hidden space-y-4">
+    <div class="rounded-xl border border-border bg-background p-4">
+      <h4 class="text-sm font-semibold">{t.mail.spamFilters.sectionTitle}</h4>
+      <p class="mt-1 text-xs text-muted-foreground">
+        {t.mail.spamFilters.sectionDesc}
+      </p>
+      <div id="mail-spam-error" class="mt-3 hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+      <p id="mail-spam-status" role="status" class="mt-3 rounded-lg border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground"></p>
+
+      <div class="mt-4 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+        <span id="mail-spam-breadcrumb">{t.mail.spamFilters.overviewLabel}</span>
+      </div>
+
+      <div data-mail-spam-view="overview" class="mt-4 space-y-3">
+        <div class="rounded-lg border border-border p-3">
+          <label class="inline-flex items-center gap-2 text-sm font-medium">
+            <input id="mail-spam-enabled" type="checkbox" class="h-4 w-4 rounded border-input" />
+            {t.mail.spamFilters.processNewLabel}
+          </label>
+          <p class="mt-2 text-xs text-muted-foreground">
+            {t.mail.spamFilters.processNewDesc}
+          </p>
+        </div>
+
+        <div class="rounded-lg border border-border p-3">
+          <label class="inline-flex items-center gap-2 text-sm font-medium">
+            <input id="mail-spam-box-enabled" type="checkbox" class="h-4 w-4 rounded border-input" />
+            {t.mail.spamFilters.spamBoxLabel}
+          </label>
+          <p class="mt-2 text-xs text-muted-foreground">
+            {t.mail.spamFilters.spamBoxDesc}
+          </p>
+          <button type="button" data-mail-spam-open="spam-box" class="mt-3 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+            {t.mail.spamFilters.btnConfigSpamBox}
+          </button>
+        </div>
+
+        <div class="rounded-lg border border-border p-3">
+          <label class="inline-flex items-center gap-2 text-sm font-medium">
+            <input id="mail-spam-autodelete-enabled" type="checkbox" class="h-4 w-4 rounded border-input" />
+            {t.mail.spamFilters.autoDeleteLabel}
+          </label>
+          <p class="mt-2 text-xs text-muted-foreground">
+            {t.mail.spamFilters.autoDeleteDesc}
+          </p>
+          <button type="button" data-mail-spam-open="auto-delete" class="mt-3 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+            {t.mail.spamFilters.btnConfigAutoDelete}
+          </button>
+        </div>
+
+        <div class="rounded-lg border border-border p-3">
+          <div class="flex items-center justify-between">
+            <p class="text-sm font-medium">{t.mail.spamFilters.additionalConfig}</p>
+            <button type="button" id="mail-spam-toggle-advanced" class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+              {t.mail.spamFilters.btnShowAdditional}
+            </button>
+          </div>
+          <div id="mail-spam-advanced" class="mt-3 hidden space-y-3">
+            <div class="rounded-md border border-border p-3">
+              <p class="text-sm font-medium">{t.mail.spamFilters.thresholdTitle}</p>
+              <button type="button" data-mail-spam-open="adjust-threshold" class="mt-2 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+                {t.mail.spamFilters.btnAdjustThreshold}
+              </button>
+            </div>
+            <div class="rounded-md border border-border p-3">
+              <p class="text-sm font-medium">{t.mail.spamFilters.whitelistTitle}</p>
+              <button type="button" data-mail-spam-open="whitelist" class="mt-2 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+                {t.mail.spamFilters.btnEditWhitelist}
+              </button>
+            </div>
+            <div class="rounded-md border border-border p-3">
+              <p class="text-sm font-medium">{t.mail.spamFilters.blacklistTitle}</p>
+              <button type="button" data-mail-spam-open="blacklist" class="mt-2 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+                {t.mail.spamFilters.btnEditBlacklist}
+              </button>
+            </div>
+            <div class="rounded-md border border-border p-3">
+              <p class="text-sm font-medium">{t.mail.spamFilters.calculatedTitle}</p>
+              <button type="button" data-mail-spam-open="calculated" class="mt-2 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+                {t.mail.spamFilters.btnConfigCalculated}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-mail-spam-view="adjust-threshold" class="mt-4 hidden space-y-3">
+        <h5 class="text-base font-semibold">{t.mail.spamFilters.adjustThresholdTitle}</h5>
+        <p class="text-xs text-muted-foreground">
+          {t.mail.spamFilters.adjustThresholdDesc}
+        </p>
+        <div class="space-y-1.5">
+          <label for="mail-spam-required-score-select" class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.spamFilters.thresholdScoreLabel}</label>
+          <select id="mail-spam-required-score-select" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+            <option value="1">{t.mail.spamFilters.score1}</option>
+            <option value="4">{t.mail.spamFilters.score4}</option>
+            <option value="5">{t.mail.spamFilters.score5}</option>
+            <option value="8">{t.mail.spamFilters.score8}</option>
+            <option value="10">{t.mail.spamFilters.score10}</option>
+            <option value="custom">{t.mail.spamFilters.scoreCustom}</option>
+          </select>
+        </div>
+        <div id="mail-spam-custom-score-wrap" class="hidden space-y-1.5">
+          <label for="mail-spam-custom-score" class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.spamFilters.customScoreLabel}</label>
+          <input id="mail-spam-custom-score" type="number" min="0" max="999" step="0.1" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+        </div>
+        <div class="flex gap-2">
+          <button type="button" id="mail-spam-save-threshold" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {t.mail.spamFilters.btnUpdateThreshold}
+          </button>
+          <button type="button" data-mail-spam-open="overview" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+            {t.mail.spamFilters.btnReturnOverview}
+          </button>
+        </div>
+      </div>
+
+      <div data-mail-spam-view="spam-box" class="mt-4 hidden space-y-3">
+        <h5 class="text-base font-semibold">{t.mail.spamFilters.spamBoxViewTitle}</h5>
+        <label class="inline-flex items-center gap-2 text-sm font-medium">
+          <input id="mail-spam-box-view-enabled" type="checkbox" class="h-4 w-4 rounded border-input" />
+          {t.mail.spamFilters.spamBoxViewEnabledLabel}
+        </label>
+        <p class="rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
+          {t.mail.spamFilters.spamBoxNote}
+        </p>
+        <div class="flex gap-2">
+          <button type="button" id="mail-spam-save-spam-box" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {t.mail.spamFilters.btnSaveSpamBox}
+          </button>
+          <button type="button" data-mail-spam-open="overview" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+            {t.mail.spamFilters.btnReturnOverview}
+          </button>
+        </div>
+      </div>
+
+      <div data-mail-spam-view="auto-delete" class="mt-4 hidden space-y-3">
+        <h5 class="text-base font-semibold">{t.mail.spamFilters.autoDeleteViewTitle}</h5>
+        <label class="inline-flex items-center gap-2 text-sm font-medium">
+          <input id="mail-spam-autodelete-view-enabled" type="checkbox" class="h-4 w-4 rounded border-input" />
+          {t.mail.spamFilters.autoDeleteViewEnabledLabel}
+        </label>
+        <div class="space-y-1.5">
+          <label for="mail-spam-autodelete-threshold" class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.spamFilters.autoDeleteThresholdLabel}</label>
+          <input id="mail-spam-autodelete-threshold" type="number" min="1" max="999" step="1" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+        </div>
+        <div class="flex gap-2">
+          <button type="button" id="mail-spam-save-autodelete" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {t.mail.spamFilters.btnSaveAutoDelete}
+          </button>
+          <button type="button" data-mail-spam-open="overview" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+            {t.mail.spamFilters.btnReturnOverview}
+          </button>
+        </div>
+      </div>
+
+      <div data-mail-spam-view="whitelist" class="mt-4 hidden space-y-3">
+        <h5 class="text-base font-semibold">{t.mail.spamFilters.whitelistViewTitle}</h5>
+        <p class="text-xs text-muted-foreground">{t.mail.spamFilters.whitelistDesc}</p>
+        <div id="mail-spam-whitelist-items" class="space-y-2"></div>
+        <button type="button" id="mail-spam-whitelist-add" class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+          {t.mail.spamFilters.btnAddWhitelist}
+        </button>
+        <div class="flex gap-2">
+          <button type="button" id="mail-spam-save-whitelist" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {t.mail.spamFilters.btnUpdateWhitelist}
+          </button>
+          <button type="button" data-mail-spam-open="overview" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+            {t.mail.spamFilters.btnReturnOverview}
+          </button>
+        </div>
+      </div>
+
+      <div data-mail-spam-view="blacklist" class="mt-4 hidden space-y-3">
+        <h5 class="text-base font-semibold">{t.mail.spamFilters.blacklistViewTitle}</h5>
+        <p class="text-xs text-muted-foreground">{t.mail.spamFilters.blacklistDesc}</p>
+        <div id="mail-spam-blacklist-items" class="space-y-2"></div>
+        <button type="button" id="mail-spam-blacklist-add" class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+          {t.mail.spamFilters.btnAddBlacklist}
+        </button>
+        <div class="flex gap-2">
+          <button type="button" id="mail-spam-save-blacklist" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {t.mail.spamFilters.btnUpdateBlacklist}
+          </button>
+          <button type="button" data-mail-spam-open="overview" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+            {t.mail.spamFilters.btnReturnOverview}
+          </button>
+        </div>
+      </div>
+
+      <div data-mail-spam-view="calculated" class="mt-4 hidden space-y-3">
+        <h5 class="text-base font-semibold">{t.mail.spamFilters.calculatedViewTitle}</h5>
+        <p class="text-xs text-muted-foreground">{t.mail.spamFilters.calculatedDesc}</p>
+        <div class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          {t.mail.spamFilters.calculatedWarning}
+        </div>
+        <div id="mail-spam-calculated-items" class="space-y-2"></div>
+        <button type="button" id="mail-spam-calculated-add" class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+          {t.mail.spamFilters.btnAddCalculated}
+        </button>
+        <div class="flex gap-2">
+          <button type="button" id="mail-spam-save-calculated" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {t.mail.spamFilters.btnUpdateCalculated}
+          </button>
+          <button type="button" data-mail-spam-open="overview" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+            {t.mail.spamFilters.btnReturnOverview}
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>

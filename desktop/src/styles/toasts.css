@@ -1,0 +1,125 @@
+/* Toasts (daisyUI toast + alert). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ───────────── Toasts (daisyUI toast + alert) ─────────────
+   Sistema global de notificaciones para respuestas de formularios/auth y otros
+   mensajes transitorios (éxito/error/info/advertencia). Lo monta ToastProvider,
+   que portalea la región a document.body; el [data-theme] vive en <html>
+   (useTheme lo fija), así que los colores semánticos de daisyUI resuelven igual
+   dentro del portal. */
+.lp-toast-region {
+  z-index: 9999; /* por encima de modales (z 150–200) y drawers */
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 1rem;
+  gap: 0.55rem;
+  pointer-events: none; /* deja pasar los clics en el espacio vacío de la región */
+}
+
+.lp-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.75rem 0.8rem;
+  border-radius: 0.85rem;
+  box-shadow: var(--lp-shadow-xl);
+  /* .alert usa grid por defecto en daisyUI v5; lo anulamos para apilar
+     título + mensaje de forma predecible con flex. */
+  grid-auto-flow: unset;
+}
+
+.lp-toast__icon {
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.lp-toast__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  text-align: start;
+}
+
+.lp-toast__title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.lp-toast__message {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  word-break: break-word;
+  white-space: pre-line;
+}
+
+.lp-toast__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin: -0.1rem -0.1rem 0 0;
+  border-radius: 0.45rem;
+  color: currentColor;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.lp-toast__close:hover {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.lp-toast__close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+@keyframes lp-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes lp-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+.lp-toast {
+  animation: lp-toast-in 0.2s cubic-bezier(0.21, 1.02, 0.73, 1);
+}
+
+.lp-toast--leaving {
+  animation: lp-toast-out 0.2s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-toast {
+    animation: none;
+  }
+  .lp-toast--leaving {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+

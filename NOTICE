@@ -1,0 +1,113 @@
+LUXIPANEL
+Copyright (C) 2026 LUXISOFT. All rights reserved except as licensed below.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License, version 3, as published by
+the Free Software Foundation (AGPL-3.0-only).
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program (see the LICENSE file). If not, see
+<https://www.gnu.org/licenses/>.
+
+This NOTICE is informational and is governed by the LICENSE file. The LICENSE
+file (verbatim AGPL-3.0-only) is the authoritative and controlling document for
+the source code in this repository.
+
+------------------------------------------------------------------------------
+Network use is distribution (AGPL-3.0, section 13)
+------------------------------------------------------------------------------
+If you run a modified version of this program and let users interact with it
+over a network, you must offer those users, at no charge, the Complete
+Corresponding Source of the version you are running, from a network server
+(AGPL-3.0, section 13).
+
+Corresponding Source for LUXISOFT-operated instances:
+If you interact with a LUXISOFT-operated instance of this program over a
+network, the Complete Corresponding Source for the running version is available
+to you at:
+
+    https://github.com/luxisoft/luxipanel
+
+The exact version/commit served is identified in the panel footer ("About") and
+via the program's version endpoint (e.g. GET /api/version). If the repository
+location changes, this URL must be updated to the canonical public source; a
+running instance must always link to its own Corresponding Source from its
+network interface.
+
+------------------------------------------------------------------------------
+Trademarks
+------------------------------------------------------------------------------
+"LUXIPANEL" and "LUXISOFT", together with their logos, product names and visual
+identity (the "Marks"), including any confusingly similar marks, are trademarks
+of LUXISOFT. The Marks are NOT licensed under the AGPL-3.0.
+
+You remain free to redistribute and modify the source code under the AGPL-3.0.
+However, the Marks are not licensed: a redistributed or modified version must
+remove or replace LUXISOFT branding (names and logos) and identify itself under
+a different product name. You must not use the Marks in any way that suggests
+affiliation with, sponsorship by, or endorsement by LUXISOFT.
+
+Nominative/factual references permitted by applicable trademark law are allowed
+(for example, "compatible with LUXIPANEL" or "derived from LUXIPANEL"), provided
+they do not imply affiliation or endorsement.
+
+This trademark reservation is a condition on the use of the Marks only. It is
+NOT a condition on the use, modification, or distribution of the source code,
+and it imposes no additional restriction on the rights granted to you by the
+AGPL-3.0 over that source code.
+
+For permission to use the Marks beyond nominative fair use, contact:
+legal@luxisoft.com
+
+------------------------------------------------------------------------------
+Scope of this license (open core)
+------------------------------------------------------------------------------
+This license (AGPL-3.0-only) covers the LUXIPANEL administration panel, i.e. the
+source code in this repository.
+
+The following are separate, proprietary works of LUXISOFT. They are NOT part of
+this repository and are NOT covered by this license:
+
+  - LP-LICENSE-SERVER, the LUXISOFT control plane / license authority;
+  - the LUXISOFT hosted cloud service;
+  - single sign-on (SSO);
+  - the SSH gateway;
+  - the prepaid data-balance billing service (data balance measured in MB/GB);
+  - the community marketplace backend.
+
+LUXIPANEL communicates with these proprietary components only over a documented
+network API (HTTPS/JSON, with mTLS where applicable); they are not linked into,
+compiled into, or distributed as part of this program. They are described here
+solely to clarify the boundary of what this AGPL license does and does not
+cover. Nothing in this section conditions your rights in the AGPL-covered source
+code on the use of, connection to, or availability of any of those proprietary
+components: the panel's source code remains fully usable, modifiable and
+distributable under the AGPL-3.0 independently of them.
+
+Modules and extensions that interact with the panel solely through its defined
+plugin API are intended to be independent works; their authors are responsible
+for their own licensing. "Premium" in the LUXIPANEL catalog refers to a
+server-side billing/entitlement designation resolved by LP-LICENSE-SERVER, not
+to closed source: the panel module code in this repository is genuinely licensed
+under the AGPL-3.0.
+
+------------------------------------------------------------------------------
+No additional restrictions
+------------------------------------------------------------------------------
+Nothing in this NOTICE (including the Trademarks and Scope sections) is intended
+to add restrictions to, or remove permissions from, the rights granted to you
+under the GNU AGPL-3.0 with respect to the source code in this repository. To
+the extent of any conflict, the terms in the LICENSE file control.
+
+------------------------------------------------------------------------------
+Third-party components
+------------------------------------------------------------------------------
+This program bundles third-party open-source components, each under its own
+license (for example Express, Astro, Tailwind CSS, GSAP, and vendored icon sets
+such as simple-icons / vscode-icons). Their respective licenses and attributions
+apply. See the THIRD-PARTY-NOTICES file (when generated) and the license files
+shipped with each dependency for the applicable terms and required attributions.

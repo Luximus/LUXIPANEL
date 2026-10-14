@@ -1,0 +1,20 @@
+/*
+ * OfflineScreen — CSS Module
+ *
+ * Extrae los valores estáticos de los atributos style={{}} del componente.
+ * Los style dinámicos (backgroundImage via getPageGradient) permanecen inline.
+ * Las clases Tailwind/daisyUI se conservan en className.
+ *
+ * card: fondo + borde del panel glass, variantes light/dark.
+ * [data-theme] vive en el div raíz del mismo componente (ancestro de .card).
+ */
+.card {
+  /* dark (por defecto: el root div tiene data-theme={theme}) */
+  border-color: rgba(82, 82, 91, 0.7);  /* zinc-700/70 */
+  background-color: #131924cc;
+}
+
+[data-theme="light"] .card {
+  border-color: rgba(203, 213, 225, 0.8); /* base-300/80 ≈ slate-300 */
+  background-color: rgba(255, 255, 255, 0.9);
+}

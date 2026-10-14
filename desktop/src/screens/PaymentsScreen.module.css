@@ -1,0 +1,279 @@
+/* ── PaymentsScreen.module.css ── */
+
+/* ── Admin consumption chart: top-consumers bar chart row ── */
+.chartRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+}
+
+.chartLabel {
+  flex: 0 0 150px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: var(--lp-text);
+}
+
+.chartTrack {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--lp-ink-2);
+  overflow: hidden;
+}
+
+/* NOTE: .chartFill width is dynamic (set via CSS variable --bar-w) */
+.chartFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--lp-brand);
+  width: var(--bar-w, 0%);
+}
+
+.chartValue {
+  flex: 0 0 84px;
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--lp-text-muted);
+}
+
+/* ── Admin consumption table wrapper ── */
+.tableWrap {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--lp-border);
+}
+
+.table {
+  width: 100%;
+  font-size: 0.875rem;
+  border-collapse: collapse;
+}
+
+/* ── Admin table head row ── */
+.thead {
+  background: var(--lp-ink-1);
+  color: var(--lp-text-muted);
+}
+
+.thStart {
+  text-align: start;
+  padding: 0.5rem 0.75rem;
+}
+
+.thEnd {
+  text-align: end;
+  padding: 0.5rem 0.75rem;
+}
+
+/* ── Admin table body rows ── */
+.tbodyRow {
+  border-top: 1px solid var(--lp-border);
+}
+
+.tdUser {
+  padding: 0.5rem 0.75rem;
+}
+
+.tdUserName {
+  font-weight: 600;
+  color: var(--lp-heading);
+}
+
+.tdUserEmail {
+  font-size: 0.75rem;
+  color: var(--lp-text-muted);
+}
+
+.tdEnd {
+  text-align: end;
+  padding: 0.5rem 0.75rem;
+}
+
+.tdEmpty {
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--lp-text-muted);
+}
+
+/* ── Payout (desembolso de tokens → USD) ── */
+
+/* Conversor tokens → USD */
+.converter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.9rem;
+  background: var(--lp-ink-1);
+}
+
+.converterField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 180px;
+}
+
+.converterField label {
+  font-size: 0.78rem;
+  color: var(--lp-text-muted);
+}
+
+.converterArrow {
+  align-self: center;
+  color: var(--lp-text-muted);
+  padding-bottom: 0.55rem;
+}
+
+.converterUsd {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--lp-heading);
+}
+
+.converterMin {
+  width: 100%;
+  font-size: 0.78rem;
+  color: var(--lp-text-muted);
+}
+
+/* Lista de métodos */
+.methodList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.methodRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.8rem;
+  background: var(--lp-ink-1);
+}
+
+.methodInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.methodLabel {
+  font-weight: 600;
+  color: var(--lp-heading);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.methodMeta {
+  font-size: 0.78rem;
+  color: var(--lp-text-muted);
+}
+
+.methodActions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.defaultBadge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lp-brand) 18%, transparent);
+  color: var(--lp-brand);
+}
+
+/* Formulario de método */
+.methodForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.9rem;
+  background: var(--lp-ink-1);
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.formField label {
+  font-size: 0.78rem;
+  color: var(--lp-text-muted);
+}
+
+.formActions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.formError {
+  font-size: 0.82rem;
+  color: var(--lp-danger, #ef4444);
+}
+
+.formSuccess {
+  font-size: 0.82rem;
+  color: var(--lp-success, #22c55e);
+}
+
+/* Badges de estado del historial */
+.statusBadge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.statusRequested {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #f59e0b;
+}
+
+.statusApproved {
+  background: color-mix(in srgb, #3b82f6 18%, transparent);
+  color: #3b82f6;
+}
+
+.statusRejected {
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  color: #ef4444;
+}
+
+.statusPaid {
+  background: color-mix(in srgb, #22c55e 18%, transparent);
+  color: #22c55e;
+}
+
+.rejectionNote {
+  font-size: 0.75rem;
+  color: #ef4444;
+  margin-top: 0.2rem;
+}

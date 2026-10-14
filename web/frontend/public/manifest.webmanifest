@@ -1,0 +1,61 @@
+{
+  "id": "/?source=pwa",
+  "name": "LuxiPanel",
+  "short_name": "LuxiPanel",
+  "description": "Panel de administración de servidores Linux vía SSH (LuxiPanel)",
+  "start_url": "/panel?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#0a0a0a",
+  "theme_color": "#7c3aed",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "developer-tools"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Panel",
+      "short_name": "Panel",
+      "url": "/panel?source=pwa",
+      "description": "Ir al panel principal"
+    },
+    {
+      "name": "Monitor",
+      "short_name": "Monitor",
+      "url": "/panel/monitor?source=pwa",
+      "description": "Ver métricas del servidor en tiempo real"
+    },
+    {
+      "name": "Terminal",
+      "short_name": "Terminal",
+      "url": "/panel/terminal?source=pwa",
+      "description": "Abrir terminal SSH"
+    },
+    {
+      "name": "Archivos",
+      "short_name": "Archivos",
+      "url": "/panel/files?source=pwa",
+      "description": "Explorador de archivos del servidor"
+    }
+  ]
+}

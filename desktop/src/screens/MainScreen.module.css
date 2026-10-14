@@ -1,0 +1,94 @@
+.tabContent {
+  background-image: var(--ms-page-bg);
+}
+
+.adminDrawerLayer {
+  position: fixed;
+  inset: var(--lp-titlebar-h) 0 0;
+  z-index: 1305;
+}
+
+.adminDrawerBackdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: rgb(15 23 42 / 42%);
+  backdrop-filter: blur(3px);
+}
+
+.adminDrawerPanel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: min(94vw, 1100px);
+  min-width: 0;
+  background: var(--color-base-100, #fff);
+  border-left: 1px solid var(--lp-border, #d5d5da);
+  box-shadow: -16px 0 64px rgb(15 23 42 / 24%);
+}
+
+.adminDrawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  gap: 1rem;
+  min-height: 76px;
+  padding: 1rem clamp(1rem, 2.2vw, 2rem);
+  border-bottom: 1px solid var(--lp-border, #d5d5da);
+  background: var(--lp-card-solid, #fff);
+  box-shadow: inset 3px 0 var(--lp-primary, #7c3aed);
+}
+
+.adminDrawerIdentity, .adminDrawerActions { display: flex; align-items: center; gap: .8rem; }
+.adminDrawerIdentity { min-width: 0; }
+.adminDrawerIcon {
+  display: grid;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--lp-border);
+  border-radius: 12px;
+  color: var(--lp-primary, #7c3aed);
+  background: color-mix(in srgb, var(--lp-primary, #7c3aed) 12%, var(--lp-card-solid, #fff));
+}
+.adminDrawerHeading { display: grid; min-width: 0; gap: .15rem; }
+.adminDrawerHeading strong { overflow: hidden; color: var(--lp-heading); font-size: 1.15rem; text-overflow: ellipsis; white-space: nowrap; }
+.adminDrawerHeading span { color: var(--lp-text); font-size: .82rem; }
+.adminDrawerActions { flex: 0 0 auto; gap: .55rem; }
+.adminDrawerDocs, .adminDrawerClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  min-height: 44px;
+  border: 1px solid var(--lp-border);
+  border-radius: 12px;
+  color: var(--lp-text);
+  background: var(--color-base-100, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 600;
+}
+.adminDrawerDocs { padding: .55rem .85rem; }
+.adminDrawerClose { width: 44px; }
+.adminDrawerDocs:hover, .adminDrawerClose:hover { color: var(--lp-primary); border-color: var(--lp-primary); }
+.adminDrawerPanel :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--lp-primary); outline-offset: 3px; }
+
+.adminDrawerPanel > main { min-height: 0; }
+
+@media (max-width: 650px) {
+  .adminDrawerPanel { width: 100vw; }
+  .adminDrawerHeader { gap: .5rem; padding-inline: .85rem; }
+  .adminDrawerDocs { padding: .55rem; }
+  .adminDrawerDocs span { display: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .adminDrawerPanel { animation: adminDrawerEnter 220ms ease-out; }
+  @keyframes adminDrawerEnter { from { transform: translateX(100%); } to { transform: translateX(0); } }
+}

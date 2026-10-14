@@ -1,0 +1,455 @@
+  #login-shell {
+    --auth-split-border-width: 8px;
+    --auth-left-solid: #0f0f0f;
+    --auth-right-solid: #f8fafc;
+    --auth-left-text: #ffffff;
+    --auth-left-muted: #a0a0a0;
+    --auth-left-divider: rgba(255, 255, 255, 0.12);
+    --auth-left-border: rgba(255, 255, 255, 0.14);
+    --auth-left-footer-surface: rgba(26, 26, 26, 0.9);
+    --auth-right-card: #ffffff;
+    --auth-right-card-border: rgba(15, 23, 42, 0.08);
+    --auth-right-text: #0f172a;
+    --auth-right-muted: #64748b;
+    --auth-right-subtle: #f8fafc;
+    --auth-right-input-bg: #ffffff;
+    --auth-right-input-border: rgba(15, 23, 42, 0.12);
+    --auth-right-placeholder: #94a3b8;
+    --auth-right-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+    --auth-right-hover-surface: #ffffff;
+    /* Follows the admin's selected theme (button text, central divider, remember
+       toggle) instead of a fixed violet. --primary is set per-panel by
+       buildLayoutCss from the LP-LS branding. */
+    --auth-brand-text: var(--primary);
+    --auth-alert-error-bg: linear-gradient(180deg, #fff7fa 0%, #fff1f5 100%);
+    --auth-alert-error-border: #f9c8d8;
+    --auth-alert-error-text: #b83280;
+    --auth-primary-tint: #faf5ff;
+    --auth-primary-border: #e9d5ff;
+    --auth-blue-tint: rgba(59, 130, 246, 0.12);
+    --auth-amber-tint: rgba(245, 158, 11, 0.12);
+    --auth-amber-border: rgba(245, 158, 11, 0.24);
+    --auth-amber-text: #d97706;
+    background: linear-gradient(90deg, var(--auth-left-solid) 0%, var(--auth-left-solid) 50%, var(--auth-right-solid) 50%, var(--auth-right-solid) 100%);
+  }
+
+  .dark #login-shell {
+    --auth-left-solid: #f8fafc;
+    --auth-right-solid: #0f0f0f;
+    --auth-left-text: #0f172a;
+    --auth-left-muted: #64748b;
+    --auth-left-divider: rgba(15, 23, 42, 0.12);
+    --auth-left-border: rgba(15, 23, 42, 0.12);
+    --auth-left-footer-surface: rgba(255, 255, 255, 0.92);
+    --auth-right-card: #14161d;
+    --auth-right-card-border: rgba(148, 163, 184, 0.16);
+    --auth-right-text: #f8fafc;
+    --auth-right-muted: #94a3b8;
+    --auth-right-subtle: rgba(148, 163, 184, 0.08);
+    --auth-right-input-bg: rgba(255, 255, 255, 0.03);
+    --auth-right-input-border: rgba(148, 163, 184, 0.18);
+    --auth-right-placeholder: rgba(148, 163, 184, 0.72);
+    --auth-right-shadow: 0 24px 56px rgba(2, 6, 23, 0.45);
+    --auth-right-hover-surface: rgba(255, 255, 255, 0.04);
+    /* Dark mode: accent (button text, divider, toggle) follows the theme primary;
+       the container fills/gradients keep their designed look. */
+    --auth-brand-text: var(--primary);
+    --auth-alert-error-bg: linear-gradient(180deg, rgba(127, 29, 29, 0.34) 0%, rgba(69, 10, 10, 0.52) 100%);
+    --auth-alert-error-border: rgba(248, 113, 113, 0.28);
+    --auth-alert-error-text: #fca5a5;
+    --auth-primary-tint: rgba(124, 58, 237, 0.12);
+    --auth-primary-border: rgba(167, 139, 250, 0.24);
+    --auth-blue-tint: rgba(59, 130, 246, 0.16);
+    --auth-amber-tint: rgba(245, 158, 11, 0.16);
+    --auth-amber-border: rgba(251, 191, 36, 0.24);
+    --auth-amber-text: #fbbf24;
+  }
+
+  #login-aside {
+    background:
+      radial-gradient(circle at 50% 34%, rgba(124, 58, 237, 0.25) 0%, rgba(124, 58, 237, 0.13) 30%, rgba(124, 58, 237, 0.05) 56%, rgba(124, 58, 237, 0) 74%),
+      linear-gradient(180deg, #101013 0%, #14141a 42%, #0f0f0f 100%);
+    background-repeat: no-repeat;
+    /* Layout has the aside on the right column on desktop (lg:order-2). The
+       central purple divider is therefore drawn on its left edge (or on the
+       stage's right edge in light mode — see below). */
+    border-left: none;
+    color: #ffffff;
+    animation: login-aside-iridescent 14s ease-in-out infinite alternate;
+  }
+
+  .dark #login-aside {
+    background:
+      radial-gradient(circle at 50% 34%, rgba(124, 58, 237, 0.12) 0%, rgba(124, 58, 237, 0.06) 30%, rgba(124, 58, 237, 0.02) 56%, rgba(124, 58, 237, 0) 74%),
+      linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #eef2ff 100%);
+    border-left: var(--auth-split-border-width) solid var(--auth-brand-text);
+    color: var(--auth-left-text);
+    animation-name: login-aside-iridescent-light;
+  }
+
+  @keyframes login-aside-iridescent {
+    0% {
+      background:
+        radial-gradient(circle at 50% 34%, rgba(124, 58, 237, 0.25) 0%, rgba(124, 58, 237, 0.13) 30%, rgba(124, 58, 237, 0.05) 56%, rgba(124, 58, 237, 0) 74%),
+        linear-gradient(180deg, #101013 0%, #14141a 42%, #0f0f0f 100%);
+    }
+    33% {
+      background:
+        radial-gradient(circle at 47% 37%, rgba(59, 130, 246, 0.24) 0%, rgba(56, 189, 248, 0.14) 30%, rgba(56, 189, 248, 0.05) 56%, rgba(56, 189, 248, 0) 74%),
+        linear-gradient(180deg, #101013 0%, #14141a 42%, #0f0f0f 100%);
+    }
+    66% {
+      background:
+        radial-gradient(circle at 53% 31%, rgba(217, 70, 239, 0.24) 0%, rgba(244, 114, 182, 0.14) 30%, rgba(244, 114, 182, 0.05) 56%, rgba(244, 114, 182, 0) 74%),
+        linear-gradient(180deg, #101013 0%, #14141a 42%, #0f0f0f 100%);
+    }
+    100% {
+      background:
+        radial-gradient(circle at 49% 35%, rgba(45, 212, 191, 0.2) 0%, rgba(96, 165, 250, 0.13) 30%, rgba(96, 165, 250, 0.05) 56%, rgba(96, 165, 250, 0) 74%),
+        linear-gradient(180deg, #101013 0%, #14141a 42%, #0f0f0f 100%);
+    }
+  }
+
+  @keyframes login-aside-iridescent-light {
+    0% {
+      background:
+        radial-gradient(circle at 50% 34%, rgba(124, 58, 237, 0.12) 0%, rgba(124, 58, 237, 0.06) 30%, rgba(124, 58, 237, 0.02) 56%, rgba(124, 58, 237, 0) 74%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #eef2ff 100%);
+    }
+    33% {
+      background:
+        radial-gradient(circle at 47% 37%, rgba(59, 130, 246, 0.12) 0%, rgba(56, 189, 248, 0.06) 30%, rgba(56, 189, 248, 0.02) 56%, rgba(56, 189, 248, 0) 74%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #eef2ff 100%);
+    }
+    66% {
+      background:
+        radial-gradient(circle at 53% 31%, rgba(217, 70, 239, 0.12) 0%, rgba(244, 114, 182, 0.06) 30%, rgba(244, 114, 182, 0.02) 56%, rgba(244, 114, 182, 0) 74%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #eef2ff 100%);
+    }
+    100% {
+      background:
+        radial-gradient(circle at 49% 35%, rgba(45, 212, 191, 0.1) 0%, rgba(96, 165, 250, 0.06) 30%, rgba(96, 165, 250, 0.02) 56%, rgba(96, 165, 250, 0) 74%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #eef2ff 100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #login-aside,
+    #login-stage {
+      animation: none;
+    }
+  }
+
+  /* El logo se centra por el layout flex de su contenedor/span; no se desplaza
+     la imagen con transform (antes translate(0,66px) la descentraba en el
+     círculo y la "bajaba"). */
+
+  #login-shell div:has(> .lxp-logo-wrap > [data-lxp-logo-role="login"]) {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  #login-shell .lxp-logo-wrap:has(> [data-lxp-logo-role="login"]) {
+    border-radius: inherit;
+    overflow: hidden;
+  }
+
+  #login-shell [data-lxp-logo-role="login"] {
+    object-fit: cover;
+    border-radius: inherit;
+  }
+
+  #login-aside-footer .border-t {
+    border-color: var(--auth-left-divider) !important;
+  }
+
+  #login-aside-footer .text-muted-foreground {
+    color: var(--auth-left-muted) !important;
+  }
+
+  #login-aside-footer .text-foreground,
+  #login-aside-footer a:hover {
+    color: var(--auth-left-text) !important;
+  }
+
+  #login-aside-footer .bg-background {
+    background: var(--auth-left-footer-surface) !important;
+  }
+
+  #login-aside-footer .border-border,
+  #login-aside-footer .border-border\/60 {
+    border-color: var(--auth-left-border) !important;
+  }
+
+  #login-aside-footer select,
+  #login-aside-footer button {
+    color: var(--auth-left-text) !important;
+  }
+
+  #login-stage {
+    position: relative;
+    isolation: isolate;
+    /* Stage is the left column on desktop (lg:order-1). In light mode the
+       central purple divider is drawn here, on its right edge. In dark mode
+       the divider lives on .dark #login-aside's left edge instead. */
+    border-right: var(--auth-split-border-width) solid var(--auth-brand-text);
+    background:
+      radial-gradient(circle at 50% 34%, rgba(124, 58, 237, 0.12) 0%, rgba(124, 58, 237, 0.06) 30%, rgba(124, 58, 237, 0.02) 56%, rgba(124, 58, 237, 0) 74%),
+      linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #eef2ff 100%) !important;
+    color: var(--auth-right-text) !important;
+    animation: login-aside-iridescent-light 14s ease-in-out infinite alternate;
+  }
+
+  .dark #login-stage {
+    border-right: none;
+    background:
+      radial-gradient(circle at 50% 34%, rgba(124, 58, 237, 0.25) 0%, rgba(124, 58, 237, 0.13) 30%, rgba(124, 58, 237, 0.05) 56%, rgba(124, 58, 237, 0) 74%),
+      linear-gradient(180deg, #101013 0%, #14141a 42%, #0f0f0f 100%) !important;
+    animation-name: login-aside-iridescent;
+  }
+
+  #login-stage #login-card {
+    background: var(--auth-right-card) !important;
+    border-color: var(--auth-right-card-border) !important;
+    color: var(--auth-right-text) !important;
+    box-shadow: var(--auth-right-shadow) !important;
+    backdrop-filter: none;
+  }
+
+  #login-stage .bg-card\/80,
+  #login-stage .bg-background {
+    background: var(--auth-right-card) !important;
+  }
+
+  #login-stage .text-muted-foreground {
+    color: var(--auth-right-muted) !important;
+  }
+
+  #login-stage .bg-muted\/30 {
+    background: var(--auth-right-subtle) !important;
+  }
+
+  #login-stage .border-border {
+    border-color: var(--auth-right-card-border) !important;
+  }
+
+  #login-stage .border-border\/60,
+  #login-stage .border-border\/70,
+  #login-stage .border-border\/80 {
+    border-color: var(--auth-right-card-border) !important;
+  }
+
+  #login-stage .text-foreground {
+    color: var(--auth-right-text) !important;
+  }
+
+  #login-stage .text-primary,
+  #login-stage .text-primary\/80 {
+    color: var(--auth-brand-text) !important;
+  }
+
+  #login-stage .setup-alert {
+    border: 1px solid transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+
+  #login-stage .setup-alert--error {
+    background: var(--auth-alert-error-bg) !important;
+    border-color: var(--auth-alert-error-border) !important;
+    color: var(--auth-alert-error-text) !important;
+  }
+
+  #login-stage #login-method-tabs {
+    background: var(--auth-right-subtle) !important;
+    border-color: var(--auth-right-card-border) !important;
+  }
+
+  #login-stage .method-tab {
+    color: var(--auth-right-muted) !important;
+  }
+
+  #login-stage .method-tab:hover {
+    background: var(--auth-right-hover-surface) !important;
+    color: var(--auth-right-text) !important;
+  }
+
+  #login-stage .method-tab.bg-background {
+    background: var(--auth-right-card) !important;
+    border-color: var(--auth-right-card-border) !important;
+    color: var(--auth-right-text) !important;
+  }
+
+  #login-stage input,
+  #login-stage textarea,
+  #login-stage select {
+    background: var(--auth-right-input-bg) !important;
+    border-color: var(--auth-right-input-border) !important;
+    color: var(--auth-right-text) !important;
+    -webkit-text-fill-color: var(--auth-right-text) !important;
+    caret-color: var(--auth-right-text);
+  }
+
+  #login-stage input:focus,
+  #login-stage input:active,
+  #login-stage textarea:focus,
+  #login-stage textarea:active,
+  #login-stage select:focus,
+  #login-stage select:active {
+    color: var(--auth-right-text) !important;
+    -webkit-text-fill-color: var(--auth-right-text) !important;
+    caret-color: var(--auth-right-text);
+  }
+
+  #login-stage input::placeholder,
+  #login-stage textarea::placeholder {
+    color: var(--auth-right-placeholder) !important;
+  }
+
+  #login-stage input:-webkit-autofill,
+  #login-stage input:-webkit-autofill:hover,
+  #login-stage input:-webkit-autofill:focus,
+  #login-stage input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--auth-right-text) !important;
+    -webkit-box-shadow: 0 0 0 1000px var(--auth-right-input-bg) inset !important;
+    box-shadow: 0 0 0 1000px var(--auth-right-input-bg) inset !important;
+    border-color: var(--auth-right-input-border) !important;
+    caret-color: var(--auth-right-text);
+  }
+
+  #login-stage i.text-muted-foreground {
+    color: var(--auth-right-muted) !important;
+  }
+
+  #login-stage button.border {
+    border-color: var(--auth-right-input-border) !important;
+  }
+
+  #login-stage button.border:hover {
+    background: var(--auth-right-hover-surface) !important;
+  }
+
+  #login-stage .login-submit-btn {
+    border: 1px solid var(--border-brand) !important;
+    background: var(--brand-dim) !important;
+    color: var(--auth-brand-text) !important;
+    font-weight: 700;
+  }
+
+  #login-stage .login-submit-btn *,
+  #login-stage .login-submit-btn span {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  #login-stage .login-submit-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+    border-color: var(--border-brand) !important;
+    background: var(--brand-glow) !important;
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+  }
+
+  #login-stage .bg-primary\/5 {
+    background: var(--auth-primary-tint) !important;
+  }
+
+  #login-stage .border-primary\/20 {
+    border-color: var(--auth-primary-border) !important;
+  }
+
+  #login-stage .bg-blue-500\/10 {
+    background: var(--auth-blue-tint) !important;
+  }
+
+  #login-stage .bg-amber-500\/5 {
+    background: var(--auth-amber-tint) !important;
+  }
+
+  #login-stage .border-amber-500\/20 {
+    border-color: var(--auth-amber-border) !important;
+  }
+
+  #login-stage .text-amber-600,
+  #login-stage .dark\:text-amber-400 {
+    color: var(--auth-amber-text) !important;
+  }
+
+  @media (max-width: 1024px) {
+    /* On mobile the aside is positioned `absolute inset-0` (full-screen
+       behind the form) and the section sits on top with `z-10`. The desktop
+       split-gradient on `#login-shell` and the opaque iridescent gradient
+       baked into `#login-stage` would otherwise cover the animated
+       background painted inside the aside, so we strip them here. */
+    #login-shell {
+      background: transparent !important;
+    }
+
+    #login-stage {
+      background: transparent !important;
+      animation: none !important;
+      border-left: none;
+      border-right: none;
+    }
+
+    .dark #login-stage {
+      background: transparent !important;
+      animation: none !important;
+    }
+
+    .dark #login-aside {
+      border-left: none;
+      border-right: none;
+    }
+  }
+
+  #login-stage input[type="password"] {
+    font-family: "Segoe UI", "Segoe UI Symbol", "Noto Sans", sans-serif !important;
+    -webkit-text-security: disc;
+  }
+
+  #login-stage .remember-indicator {
+    border-color: var(--auth-brand-text) !important;
+    background: var(--auth-right-input-bg) !important;
+    opacity: 0.75;
+  }
+
+  #login-stage .remember-toggle:focus-visible + .remember-indicator {
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.3) !important;
+  }
+
+  #login-stage .remember-toggle:checked + .remember-indicator {
+    border-color: var(--auth-brand-text) !important;
+    background: var(--auth-brand-text) !important;
+    opacity: 1;
+  }
+
+  #login-stage .remember-toggle:checked + .remember-indicator + .remember-label {
+    color: var(--auth-right-text) !important;
+  }
+
+  .login-submit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .login-submit-btn .btn-text {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .login-submit-btn .btn-spinner {
+    display: contents;
+  }
+
+  .login-submit-btn .btn-spinner svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0 auto;
+  }
+
+  .login-submit-btn .btn-text.hidden,
+  .login-submit-btn .btn-spinner.hidden {
+    display: none !important;
+  }

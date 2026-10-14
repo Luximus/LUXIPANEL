@@ -1,0 +1,102 @@
+# Dependencies
+**/node_modules/
+__pycache__/
+*.py[cod]
+
+# Environment files
+backend/.env
+frontend/.env
+*.env.local
+*.env.production
+
+# Build outputs
+backend/dist/
+backend/dist-before-*/
+frontend/.astro/
+frontend/dist/
+frontend/dist-*/
+frontend/dist.*/
+frontend/playwright-report/
+frontend/test-results/
+frontend/e2e/results/
+
+# Local runtime data
+backend/dev-backups/
+backend/dev-uploads/
+colombia_contactos_2026.txt
+
+# AI assistant CLI attachments (legacy: these used to land in the repo cwd;
+# now written under LUXIPANEL_CONFIG_DIR on the client server). Never commit.
+.lxp-attachments/
+.lxp/log-fixes/
+**/.lxp-attachments/
+
+# Editor and OS files
+.DS_Store
+.idea/
+frontend/.vscode/
+frontend/.js
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm-cache/
+
+# Env backups (created before TLS/.env changes — contain secrets). Never commit.
+*.env.bak*
+**/.env.bak*
+
+# Core dumps
+core
+core.*
+
+# Verify-runner transient artifacts (/verify scaffolding)
+**/.verify_*
+
+# Agent-local working dirs (the tracked .claude/ project config stays)
+.claude/agent-memory-local/
+**/agent-memory-local/
+frontend/src/.claude/
+
+# Worktrees de git (repos embebidos: nunca deben entrar en el índice)
+/.worktrees/
+/refactoring/
+frontend/.i18n-tmp/
+
+# scratch de análisis/refactor (no versionar)
+*_n.txt
+*_sort.txt
+check_orphans*.py
+check_dead_exports.py
+stub_candidates.txt
+*.bak-*
+.bak-prev
+.claude/worktrees/
+
+# Caché de compilación de tsx/node (nunca versionar; se regenera)
+.tc/
+**/.cache/
+
+# Revisiones y dependencias temporales locales; no forman parte del producto.
+/.security-*/
+/frontend-security-next/
+/lighthouse/
+# Scratch temporal
+.tmp_*.txt
+.codex
+/node_modules/
+
+# Rotaciones del review/plan diario (generadas por la rutina de cron)
+cron/*.bak-*
+cron/*.md.bak*
+
+# isolation worktrees (do not track)
+.wt-*/
+.wt-*
+/.releases/
+
+# Private repair worktrees and build locks
+/.lxp/

@@ -1,0 +1,298 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 LUXISOFT */
+/* Semantic color-token remaps: Tailwind palette utilities (card/muted/
+   primary/emerald/blue/amber/destructive) rerouted to brand/theme vars,
+   plus the spinner reset. Mode-aware via var() so one rule covers both. */
+
+/* Utility aliases for pages that still use Tailwind color tokens directly. */
+:where([class~="bg-card/30"]) {
+  background: color-mix(in srgb, var(--card) 30%, transparent) !important;
+}
+
+:where([class~="bg-card/80"]) {
+  background: color-mix(in srgb, var(--card) 82%, transparent) !important;
+}
+
+:where([class~="bg-muted/20"]) {
+  background: color-mix(in srgb, var(--muted) 54%, transparent) !important;
+}
+
+:where([class~="bg-muted/30"]) {
+  background: color-mix(in srgb, var(--muted) 72%, transparent) !important;
+}
+
+:where([class~="bg-muted/50"]) {
+  background: color-mix(in srgb, var(--muted) 86%, transparent) !important;
+}
+
+:where([class~="hover:bg-muted/30"]:hover) {
+  background: color-mix(in srgb, var(--muted) 72%, transparent) !important;
+}
+
+:where([class~="hover:bg-muted/50"]:hover) {
+  background: color-mix(in srgb, var(--muted) 86%, transparent) !important;
+}
+
+:where([class~="bg-primary/5"]) {
+  background: color-mix(in srgb, var(--brand-dim) 56%, transparent) !important;
+}
+
+:where([class~="bg-primary/10"]) {
+  background: var(--brand-dim) !important;
+}
+
+:where([class~="bg-primary/20"]) {
+  background: color-mix(in srgb, var(--brand-glow) 80%, transparent) !important;
+}
+
+:where([class~="text-primary"]) {
+  color: var(--brand-light) !important;
+}
+
+:where([class~="text-primary/20"]) {
+  color: color-mix(in srgb, var(--brand) 22%, transparent) !important;
+}
+
+:where([class~="shadow-primary/20"], [class~="shadow-primary/25"]) {
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--brand-glow) 72%, transparent) !important;
+}
+
+:where(button, a)[class~="bg-primary/10"],
+:where(button, a)[class~="bg-primary/20"] {
+  border: 1px solid var(--border-brand) !important;
+  background: var(--brand-dim) !important;
+  color: var(--brand-light) !important;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+}
+
+:where(button, a)[class~="bg-primary/10"]:hover:not(:disabled):not([aria-disabled="true"]),
+:where(button, a)[class~="bg-primary/20"]:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: var(--border-brand) !important;
+  background: var(--brand-glow) !important;
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+:where(button, a)[class~="bg-primary/10"] *,
+:where(button, a)[class~="bg-primary/20"] * {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* Spinner reset:
+   Some global button selectors target any class containing "btn-",
+   which accidentally includes ".btn-spinner". Force spinners to stay
+   visually neutral and centered everywhere (login/setup/reset/password, etc.). */
+.btn-spinner,
+[id$="-spinner"] {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+.btn-spinner {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.btn-spinner *,
+[id$="-spinner"] * {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.btn-spinner svg,
+[id$="-spinner"] svg {
+  display: block;
+  overflow: visible;
+}
+
+:where(
+  [class~="bg-emerald-500/5"],
+  [class~="bg-emerald-500/10"],
+  [class~="bg-emerald-500/15"],
+  [class~="bg-green-50"],
+  [class~="bg-green-100"]
+) {
+  background: var(--ok-bg) !important;
+}
+
+:where([class~="bg-emerald-500"], [class~="bg-emerald-600"], [class~="bg-green-500"]) {
+  background: var(--ok-fg) !important;
+}
+
+:where(
+  [class~="text-emerald-400"],
+  [class~="text-emerald-500"],
+  [class~="text-emerald-600"],
+  [class~="text-green-400"],
+  [class~="text-green-500"],
+  [class~="text-green-600"],
+  [class~="text-green-800"],
+  [class~="text-green-900"],
+  [class~="dark:text-emerald-400"],
+  [class~="dark:text-green-400"]
+) {
+  color: var(--ok-fg) !important;
+}
+
+:where(
+  [class~="border-emerald-500/20"],
+  [class~="border-emerald-500/30"],
+  [class~="border-green-200"],
+  [class~="peer-checked:border-emerald-500"]
+) {
+  border-color: var(--ok-border) !important;
+}
+
+:where([class~="hover:border-emerald-500/50"]:hover) {
+  border-color: color-mix(in srgb, var(--ok-border) 72%, var(--border) 28%) !important;
+}
+
+:where(
+  [class~="bg-purple-500/5"],
+  [class~="bg-purple-500/10"],
+  [class~="bg-purple-500/15"]
+) {
+  background: var(--brand-dim) !important;
+}
+
+:where([class~="bg-purple-500"]) {
+  background: var(--brand) !important;
+}
+
+:where([class~="text-purple-400"], [class~="text-purple-500"]) {
+  color: var(--brand-light) !important;
+}
+
+/* Blue / sky / cyan "info" accents → brand family, so they follow the theme
+   like the purple/emerald remaps above (icon boxes, info notices, the backup
+   restore button, etc.). Same mode-aware var() trick: --brand* differ per
+   :root/.dark, so a single unconditional rule is correct in both modes. */
+:where(
+  [class~="bg-blue-500/10"],
+  [class~="bg-blue-500/15"],
+  [class~="bg-blue-500/20"],
+  [class~="bg-sky-500/10"],
+  [class~="bg-sky-500/15"],
+  [class~="bg-cyan-500/10"]
+) {
+  background: var(--brand-dim) !important;
+}
+
+:where([class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-sky-500"]) {
+  background: var(--brand) !important;
+}
+
+:where([class~="hover:bg-blue-600/90"]:hover) {
+  background: var(--primary-hover) !important;
+}
+
+:where([class~="hover:bg-blue-500/20"]:hover) {
+  background: var(--brand-glow) !important;
+}
+
+:where(
+  [class~="text-blue-300"],
+  [class~="text-blue-400"],
+  [class~="text-blue-500"],
+  [class~="text-blue-600"],
+  [class~="text-sky-200"],
+  [class~="text-sky-400"],
+  [class~="text-sky-500"],
+  [class~="text-sky-600"],
+  [class~="text-sky-700"],
+  [class~="text-cyan-400"],
+  [class~="text-cyan-600"],
+  [class~="dark:text-blue-300"],
+  [class~="dark:text-blue-400"],
+  [class~="dark:text-sky-300"],
+  [class~="dark:text-sky-400"],
+  [class~="dark:text-cyan-400"]
+) {
+  color: var(--brand-light) !important;
+}
+
+:where(
+  [class~="border-blue-500/30"],
+  [class~="border-blue-600/30"],
+  [class~="border-sky-500/30"],
+  [class~="border-sky-600/30"],
+  [class~="border-cyan-600/30"]
+) {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border) 65%) !important;
+}
+
+:where(
+  [class~="bg-amber-500/5"],
+  [class~="bg-amber-500/10"],
+  [class~="bg-amber-500/15"],
+  [class~="bg-amber-500/20"]
+) {
+  background: color-mix(in srgb, var(--badge-trial-bg) 90%, transparent) !important;
+}
+
+:where([class~="bg-amber-500"], [class~="bg-orange-500"], [class~="bg-yellow-500"]) {
+  background: var(--badge-trial-fg) !important;
+}
+
+:where(
+  [class~="text-amber-400"],
+  [class~="text-amber-500"],
+  [class~="text-amber-600"],
+  [class~="text-orange-500"],
+  [class~="text-yellow-400"],
+  [class~="dark:text-amber-400"]
+) {
+  color: var(--badge-trial-fg) !important;
+}
+
+:where(
+  [class~="border-amber-400/30"],
+  [class~="border-amber-500/20"],
+  [class~="border-amber-500/30"]
+) {
+  border-color: color-mix(in srgb, var(--badge-trial-fg) 36%, var(--border) 64%) !important;
+}
+
+:where(
+  [class~="bg-destructive/5"],
+  [class~="bg-destructive/10"],
+  [class~="bg-red-50"],
+  [class~="bg-red-500/10"]
+) {
+  background: var(--error-bg) !important;
+}
+
+:where([class~="bg-destructive"], [class~="bg-red-500"]) {
+  background: var(--error) !important;
+}
+
+:where(
+  [class~="text-destructive"],
+  [class~="text-red-400"],
+  [class~="text-red-500"],
+  [class~="text-red-600"],
+  [class~="text-red-800"],
+  [class~="text-red-900"]
+) {
+  color: var(--error-fg) !important;
+}
+
+:where([class~="text-destructive-foreground"]) {
+  color: var(--error-foreground) !important;
+}
+
+:where([class~="border-destructive/30"], [class~="border-red-500/40"]) {
+  border-color: var(--error-border) !important;
+}

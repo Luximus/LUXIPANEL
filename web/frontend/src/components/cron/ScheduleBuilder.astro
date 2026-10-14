@@ -1,0 +1,43 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * Friendly cron schedule builder. Renders a frequency selector + contextual
+ * fields; the JS in the cron page (`setupBuilder`) reads `data-prefix` to wire
+ * it up, compute the cron expression into the hidden input and show a live
+ * human description. Reused by both the script-job and AI-agent dialogs.
+ */
+interface Props {
+  prefix: string;
+  t: any;
+  /** Offer "no schedule" (run only manually or chained from another job). */
+  allowNone?: boolean;
+}
+const { prefix, t, allowNone = false } = Astro.props;
+const b = t.cron.builder;
+---
+<div class="schedule-builder space-y-2" data-prefix={prefix}>
+  <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <div class="space-y-1">
+      <label class="text-xs font-medium text-muted-foreground">{b.frequency}</label>
+      <select data-role="freq"
+        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20">
+        {allowNone && <option value="none">{b.none}</option>}
+        <option value="minutes">{b.everyNMinutes}</option>
+        <option value="hourly">{b.hourly}</option>
+        <option value="daily" selected>{b.daily}</option>
+        <option value="weekly">{b.weekly}</option>
+        <option value="monthly">{b.monthly}</option>
+        <option value="advanced">{b.advanced}</option>
+      </select>
+    </div>
+    <div data-role="freq-extra" class="space-y-1"></div>
+  </div>
+
+  <input type="hidden" data-role="schedule" />
+  <div data-role="preview" class="flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs">
+    <i class="ti ti-calendar-time text-sm"></i>
+    <span data-role="preview-text" class="text-muted-foreground">—</span>
+    <code data-role="preview-expr" class="ml-auto font-mono text-[11px] text-primary"></code>
+  </div>
+</div>

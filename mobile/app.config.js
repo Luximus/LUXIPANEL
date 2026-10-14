@@ -1,0 +1,20 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const base = require('./app.json').expo;
+module.exports = () => {
+  const localFile = path.join(__dirname, 'app.config.local.json');
+  const local = fs.existsSync(localFile) ? JSON.parse(fs.readFileSync(localFile, 'utf8')) : {};
+  const config = { ...base, ...local, version: base.version, ios: { ...base.ios, ...local.ios }, android: { ...base.android, ...local.android }, plugins: [...base.plugins] };
+  config.android.package = process.env.ANDROID_PACKAGE || config.android.package;
+  config.ios.bundleIdentifier = process.env.IOS_BUNDLE_IDENTIFIER || config.ios.bundleIdentifier;
+  if (process.env.EXPO_OWNER) config.owner = process.env.EXPO_OWNER;
+  const projectId = process.env.EAS_PROJECT_ID || local.extra?.eas?.projectId;
+  if (projectId) config.extra = { ...local.extra, eas: { projectId } };
+  const androidFile = process.env.ANDROID_GOOGLE_SERVICES_FILE;
+  const iosFile = process.env.IOS_GOOGLE_SERVICES_FILE;
+  if (androidFile) config.android.googleServicesFile = androidFile;
+  if (iosFile) config.ios.googleServicesFile = iosFile;
+  if (androidFile || iosFile) config.plugins.push('@react-native-firebase/app');
+  if (process.env.ADI_REGISTRATION_SNIPPET) config.plugins.push(['./plugins/withAdiRegistration', { snippet: process.env.ADI_REGISTRATION_SNIPPET }]);
+  return config;
+};

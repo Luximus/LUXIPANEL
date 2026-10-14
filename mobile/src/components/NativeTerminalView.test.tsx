@@ -1,0 +1,23 @@
+import React from "react";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, expect, it, vi } from "vitest";
+vi.mock("react-native", () => ({ View: "View", Platform: { OS: "android" }, StyleSheet: { create: (s: unknown) => s } }));
+vi.mock("react-native-svg", () => ({ default: "svg", G: "g", Rect: "rect", Text: "svg-text" }));
+import { NativeTerminalView } from "./NativeTerminalView";
+import { TerminalEmulator } from "../lib/terminal-emulator";
+let tree: ReactTestRenderer | undefined;
+let emulator: TerminalEmulator | undefined;
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+afterEach(async () => { if (tree) await act(async () => tree!.unmount()); emulator?.dispose(); tree = undefined; });
+it("places bold Codex text and Unicode at exact VT columns without paragraph truncation", async () => {
+  emulator = new TerminalEmulator(10, 2);
+  await new Promise<void>(resolve => emulator!.write("\x1b[1mABCDEFGHIJ\x1b[0m\r\n›界e\u0301Z", resolve));
+  await act(async () => { tree = create(<NativeTerminalView rows={emulator!.getRenderRows()} cursor={emulator!.getCursor()} cols={10} rowCount={2} metrics={{ cellWidth: 7.8, cellHeight: 18, fontSize: 13 }} isDark />); });
+  const glyphs = tree!.root.findAllByType("svg-text" as any);
+  const ascii = glyphs.find(node => node.props.children === "ABCDEFGHIJ")!;
+  expect(ascii.props.x).toEqual(Array.from({ length: 10 }, (_, i) => i * 7.8));
+  expect(ascii.props.fontWeight).toBe("700"); expect(ascii.props.numberOfLines).toBeUndefined();
+  expect(glyphs.find(node => node.props.children === "界")!.props.x).toBe(7.8);
+  expect(glyphs.find(node => node.props.children === "e\u0301")!.props.x).toBe(3 * 7.8);
+  expect(glyphs.find(node => node.props.children.startsWith("Z"))!.props.x[0]).toBe(4 * 7.8);
+});

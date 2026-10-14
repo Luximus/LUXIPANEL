@@ -1,0 +1,98 @@
+---
+import ModalNavbar from "@/components/ui/ModalNavbar.astro";
+const { t } = Astro.props;
+import { DIALOG_CHROME } from "@/lib/ui-classes";
+---
+<!-- ── Disk Usage Dialog ───────────────────────────────────── -->
+<dialog
+  id="dialog-disk-usage"
+  class={`w-full max-w-5xl ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.diskUsageDialog.title} closeId="disk-dialog-close" />
+  <p id="disk-account-label" class="px-6 pt-4 text-xs text-muted-foreground"></p>
+
+  <div class="space-y-4 px-6 py-5">
+    <div class="grid grid-cols-1 gap-3 rounded-xl border border-border p-3 md:grid-cols-[1fr_1fr_auto]">
+      <div>
+        <label class="mb-1 block text-xs font-medium text-muted-foreground">{t.mail.diskUsageDialog.labelCopyTo}</label>
+        <select id="disk-dest-account" class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"></select>
+      </div>
+      <div>
+        <label class="mb-1 block text-xs font-medium text-muted-foreground">{t.mail.diskUsageDialog.labelDestFolder}</label>
+        <input id="disk-dest-folder" type="text" placeholder={t.mail.diskUsageDialog.placeholderDestFolder} class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+      <div class="flex items-end">
+        <button id="disk-refresh" class="h-9 rounded-lg border border-border px-3 text-sm hover:bg-accent">{t.mail.diskUsageDialog.btnRefresh}</button>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-border overflow-hidden">
+      <div class="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
+        <p class="text-sm font-medium">{t.mail.diskUsageDialog.foldersHeader}</p>
+        <p id="disk-total-usage" class="text-xs text-muted-foreground"></p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/20 text-xs text-muted-foreground">
+              <th class="px-4 py-2 text-left">{t.mail.diskUsageDialog.colMailboxName}</th>
+              <th class="px-4 py-2 text-left">{t.mail.diskUsageDialog.colMessages}</th>
+              <th class="px-4 py-2 text-left">{t.mail.diskUsageDialog.colDiskUsage}</th>
+              <th class="px-4 py-2 text-left">{t.mail.diskUsageDialog.colDateRange}</th>
+              <th class="px-4 py-2 text-right">{t.mail.diskUsageDialog.colActions}</th>
+            </tr>
+          </thead>
+          <tbody id="disk-usage-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="disk-usage-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+  </div>
+</dialog>
+
+<!-- ── Change Password Dialog ─────────────────────────────────── -->
+<dialog
+  id="dialog-password"
+  class={`w-full max-w-sm ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.passwordDialog.title} closeId="pass-dialog-close" />
+  <form id="form-password" class="flex flex-col gap-4 px-6 py-5">
+    <input id="pass-dialog-username" type="text" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true" value="" readonly />
+    <p id="pass-dialog-account" class="text-sm text-muted-foreground"></p>
+    <div id="pass-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"></div>
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="change-password">{t.mail.passwordDialog.labelNewPassword}</label>
+      <input
+        id="change-password"
+        type="password"
+        required
+        autocomplete="new-password"
+        placeholder={t.mail.passwordDialog.placeholderPassword}
+        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+      />
+    </div>
+    <div class="flex gap-3">
+      <button type="button" id="pass-cancel" class="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent">{t.mail.passwordDialog.btnCancel}</button>
+      <button type="submit" class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">{t.mail.passwordDialog.btnChange}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Account Toggle Loading Dialog ─────────────────────────── -->
+<dialog
+  id="dialog-toggle-loading"
+  class={`w-full max-w-sm ${DIALOG_CHROME}`}
+>
+  <div class="px-6 py-6">
+    <div class="flex items-start gap-3">
+      <svg class="mt-0.5 h-5 w-5 animate-spin text-primary" viewBox="0 0 24 24" aria-hidden="true">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+        <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.37 0 0 5.37 0 12h4z"></path>
+      </svg>
+      <div class="space-y-1">
+        <p class="text-sm font-semibold">{t.mail.toggleLoading.title}</p>
+        <p id="toggle-loading-text" class="text-sm text-muted-foreground">{t.mail.toggleLoading.defaultText}</p>
+      </div>
+    </div>
+  </div>
+</dialog>

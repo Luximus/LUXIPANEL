@@ -1,0 +1,38 @@
+{
+  "name": "luxipanel-marketing-video",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "audio": "node scripts/generate-audio.mjs",
+    "render": "bash scripts/render.sh",
+    "poster": "remotion still src/index.ts LuxiPanelPortrait out/luxipanel-poster.png --frame 1280",
+    "audio:v2": "node scripts/generate-impact-audio.mjs",
+    "render:v2": "bash scripts/render-impact.sh",
+    "poster:v2": "remotion still src/index.ts LuxiPanelChatImpact out/luxipanel-chat-impact-v2-poster.png --frame 1300",
+    "audio:v3": "node scripts/generate-business-audio.mjs",
+    "render:v3": "bash scripts/render-business.sh",
+    "poster:v3": "remotion still src/index.ts LuxiSoftBusinessFree out/luxisoft-negocio-gratis-poster.png --frame 1300",
+    "voice:inspect": "node scripts/elevenlabs-business.mjs inspect",
+    "voice:es": "node scripts/elevenlabs-business.mjs generate es",
+    "voice:en": "node scripts/elevenlabs-business.mjs generate en",
+    "voice:prepare:es": "node scripts/prepare-business-narration.mjs es",
+    "voice:prepare:en": "node scripts/prepare-business-narration.mjs en",
+    "voice:mix:es": "node scripts/mix-business-voice.mjs es",
+    "voice:mix:en": "node scripts/mix-business-voice.mjs en",
+    "render:voice-base:en": "bash scripts/render-business-english.sh"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.513",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.513"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.27",
+    "@types/react-dom": "18.3.7",
+    "typescript": "5.9.3"
+  }
+}

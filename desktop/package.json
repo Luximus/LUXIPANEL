@@ -1,0 +1,110 @@
+{
+  "name": "luxipanel-desktop",
+  "private": true,
+  "version": "2.0.1",
+  "description": "LUXIPANEL Desktop",
+  "author": {
+    "name": "Luxisoft",
+    "email": "support@luxisoft.com"
+  },
+  "homepage": "https://luxipanel.com",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5180 && electron .\"",
+    "dev:web": "vite",
+    "dev:electron": "wait-on http://localhost:5180 && electron .",
+    "build": "node scripts/check-build-env.mjs && tsc -b && vite build",
+    "release:patch": "node scripts/bump-version.js",
+    "dist": "pnpm run build && electron-builder",
+    "dist:win": "pnpm run build && electron-builder --win",
+    "dist:mac": "pnpm run build && electron-builder --mac",
+    "dist:linux": "pnpm run build && electron-builder --linux",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "firebase": "^10.7.0",
+    "flag-icons": "^7.5.0",
+    "gsap": "^3.15.0",
+    "html-to-image": "^1.11.13",
+    "lucide-react": "^1.14.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "@tolqia/client": "file:vendor/tolqia-client-1.2.0.tgz",
+    "@tolqia/contracts": "file:vendor/tolqia-contracts-1.2.0.tgz"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "daisyui": "^5.5.20",
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "happy-dom": "^20.10.2",
+    "tailwindcss": "^4.3.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.8",
+    "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "com.example.luxipanel.desktop",
+    "productName": "LUXIPANEL Desktop",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/icon.ico",
+      "public/icon.png",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "public/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "El asistente IA del panel usa el micrófono para dictar mensajes por voz."
+      }
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "maintainer": "Luxisoft <support@luxisoft.com>"
+    }
+  },
+  "license": "AGPL-3.0-only"
+}

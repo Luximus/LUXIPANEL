@@ -1,0 +1,40 @@
+.subtitle {
+  color: var(--lp-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.checkboxLabel {
+  cursor: pointer;
+}
+
+.checkboxInput {
+  accent-color: var(--lp-brand);
+}
+
+.checkboxSpan {
+  flex: 1;
+}
+
+.sshWarning {
+  color: #d97706;
+  margin-top: 0;
+}
+
+.fileNameHint {
+  margin-top: 0;
+}
+
+.summaryBox {
+  border-color: var(--lp-border);
+  background: var(--lp-ink-1);
+}
+
+.summaryTitle {
+  margin-bottom: 0.4rem;
+}
+
+.summaryList {
+  font-size: 0.85rem;
+  color: var(--lp-text);
+}

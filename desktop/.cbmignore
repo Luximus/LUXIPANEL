@@ -1,0 +1,7 @@
+release/
+out/
+*.exe
+*.dmg
+*.AppImage
+*.asar
+*.map

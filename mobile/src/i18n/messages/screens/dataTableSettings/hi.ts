@@ -1,0 +1,125 @@
+import type { DataTableSettingsMessages } from "./es";
+import { catalogEn } from "./catalog";
+
+export const hi: DataTableSettingsMessages = {
+    "accordion": {
+      "form": "पंजीकरण फ़ॉर्म",
+      "records": "रिकॉर्ड तालिका"
+    },
+    "titleConfigure": "टेबल कॉन्फ़िगर करें",
+    "closeAria": "बंद करें",
+    "closeButton": "बंद करें",
+    "tabs": {
+      "chat": "Chat",
+      "columns": "कॉलम",
+      "categories": "कैटेगरीज़",
+      "tags": "टैग",
+      "sshKeys": "SSH कीज़",
+      "integrations": "इंटीग्रेशन",
+      "api": "API"
+    },
+    "subTables": {
+      "nameHeader": "नाम",
+      "tagsHeader": "टैग",
+      "categoryHeader": "कैटेगरी",
+      "sshUserHeader": "SSH यूज़र",
+      "fingerprintHeader": "फ़िंगरप्रिंट",
+      "panelsHeader": "पैनल",
+      "providerHeader": "प्रोवाइडर",
+      "statusHeader": "स्टेटस",
+      "accountHeader": "अकाउंट",
+      "searchCategory": "कैटेगरी खोजें…",
+      "searchTag": "टैग खोजें…",
+      "searchKey": "की खोजें…",
+      "changeSshUser": "SSH यूज़र बदलें"
+    },
+    "columnsTab": {
+      "visibleAndOrder": "दिखने वाले कॉलम और क्रम",
+      "pageSize": "प्रति पेज परिणाम",
+      "moveUpAria": "ऊपर ले जाएं",
+      "moveDownAria": "नीचे ले जाएं"
+    },
+    "categoriesTab": {
+      "heading": "कैटेगरीज़",
+      "help": "अपने अकाउंट की कैटेगरीज़ और हर कैटेगरी में कितने टैग हैं, यह मैनेज करें।",
+      "newPlaceholder": "नई कैटेगरी...",
+      "create": "कैटेगरी बनाएं",
+      "confirmDelete": "कैटेगरी हटाएं? जुड़े हुए पैनल अपनी कैटेगरी और टैग खो देंगे।",
+      "tableTitle": "कैटेगरीज़"
+    },
+    "tagsTab": {
+      "heading": "टैग",
+      "help": "हर कैटेगरी के अंदर टैग बनाएं और एडिट करें।",
+      "newPlaceholder": "नया टैग...",
+      "create": "टैग बनाएं",
+      "confirmDelete": "टैग हटाएं?",
+      "noCategories": "कोई कैटेगरी नहीं",
+      "tableTitle": "टैग"
+    },
+    "sshKeysTab": {
+      "heading": "SSH की वॉल्ट (.pem)",
+      "help": "एक की को सिर्फ़ एक बार रजिस्टर करें और SSH यूज़र के हिसाब से कई पैनलों को असाइन करें। SSH यूज़र वह Linux यूज़र है जिसके पास उस की का एक्सेस है।",
+      "docsLink": "डॉक्युमेंटेशन देखें →",
+      "sshUserPlaceholder": "SSH यूज़र (root, ubuntu, deploy...)",
+      "register": "की रजिस्टर करें",
+      "keyPlaceholder": "-----BEGIN OPENSSH PRIVATE KEY----- ...",
+      "assignToPanels": "मौजूदा पैनलों को असाइन करें (वैकल्पिक)",
+      "missingFields": "SSH यूज़र और प्राइवेट की भरें।",
+      "confirmDelete": "SSH की हटाएं?",
+      "tableTitle": "SSH कीज़",
+      "fallbackUser": "(कोई यूज़र नहीं)"
+    },
+    "integrationsTab": {
+      "catalog": catalogEn,
+      "heading": "Google Cloud",
+      "help": "डैशबोर्ड से सीधे VPS लिस्ट करने और रजिस्टर करने के लिए Google Cloud Service Account कनेक्ट करें।",
+      "docsLink": "डॉक्युमेंटेशन देखें →",
+      "configuredWith": "{email} के साथ इंटीग्रेशन कॉन्फ़िगर किया गया।",
+      "notConfigured": "कोई इंटीग्रेशन कॉन्फ़िगर नहीं है।",
+      "clientEmailLabel": "Client Email (Service Account)",
+      "privateKeyLabel": "Private Key",
+      "replaceHint": "अगर आप नए डेटा के साथ दोबारा सहेजते हैं, तो मौजूदा इंटीग्रेशन बदल जाएगा।",
+      "save": "इंटीग्रेशन सहेजें",
+      "missingFields": "client email और private key भरें।",
+      "saved": "इंटीग्रेशन सफलतापूर्वक सहेजा गया।",
+      "confirmDelete": "Google Cloud इंटीग्रेशन हटाएं?",
+      "providerLabel": "Google Cloud",
+      "statusConfigured": "कॉन्फ़िगर किया गया",
+      "statusUnconfigured": "कॉन्फ़िगर नहीं",
+      "serviceAccountFallback": "(service account)",
+      "tableTitle": "इंटीग्रेशन",
+      "connectionTab": "कनेक्शन",
+      "helpTab": "सहायता",
+      "helpDocsLink": "आधिकारिक दस्तावेज़ →",
+      "helpEmpty": "इस प्रदाता के लिए कोई सहायता उपलब्ध नहीं है।"
+    },
+    "apiTab": {
+      "heading": "सर्वर API",
+      "helpBefore": "अपने पैनल, कैटेगरीज़, टैग और SSH कीज़ को कोड से मैनेज करें। इस टोकन और अपने ईमेल का इस्तेमाल करके Bearer JWT पाएँ —",
+      "helpAfter": ".",
+      "docsLink": "डॉक्युमेंटेशन देखें →",
+      "tokenLabel": "API Token",
+      "tokenActive": "Token एक्टिव है। Bearer token पाने के लिए इसे अपने ईमेल के साथ इस्तेमाल करें।",
+      "loadingState": "टोकन का स्टेटस लोड हो रहा है…",
+      "lastUsedPrefix": "आख़िरी इस्तेमाल:",
+      "notUsedYet": "अभी तक इस्तेमाल नहीं हुआ।",
+      "createdAt": "बनाया गया:",
+      "onlyShownNow": "यह सिर्फ़ अभी दिखाया जा रहा है।",
+      "saveSafely": "इसे किसी सुरक्षित जगह सहेजें — दोबारा नहीं दिखाया जाएगा।",
+      "copy": "कॉपी करें",
+      "copyPrefix": "प्रीफ़िक्स कॉपी करें",
+      "copied": "कॉपी हो गया",
+      "copyError": "त्रुटि",
+      "currentToken": "मौजूदा Token",
+      "registeredEmail": "रजिस्टर्ड ईमेल",
+      "registeredEmailHelp": "Bearer token माँगते समय इसे \"email\" के तौर पर इस्तेमाल करें।",
+      "endpoint": "Bearer token के लिए Endpoint",
+      "endpointHelpBefore": "POST के साथ",
+      "endpointHelpMid": "+",
+      "endpointHelpAfter": "JSON body में।",
+      "rotate": "Token रोटेट करें",
+      "rotateConfirm": "रोटेट करने पर मौजूदा एक्टिव token की जगह नया token आ जाएगा। जारी रखें?",
+      "rotated": "Token रोटेट हो गया। अभी कॉपी करें — दोबारा नहीं दिखाया जाएगा।",
+      "autoGenerated": "Token अपने आप जनरेट हुआ। अभी कॉपी करें — दोबारा नहीं दिखाया जाएगा।"
+    }
+};

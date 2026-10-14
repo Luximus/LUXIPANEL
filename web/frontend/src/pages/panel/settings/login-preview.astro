@@ -1,0 +1,69 @@
+---
+// An authenticated, inert rendering of the login screen for the background editor.
+import AuthLayout from "@/layouts/AuthLayout.astro";
+import { getPageMessages } from "@/pages/_page-context";
+import { LOGIN_EFFECTS } from "@/lib/login-effects/registry";
+import { scopedStorageKey } from "@/lib/login-effects/coerce";
+
+const t = await getPageMessages(Astro, ["login"]);
+const allowedKeys = new Set([
+  "layout_login_background_enabled",
+  "layout_login_background_fallback_color",
+  "layout_login_background_type",
+  ...LOGIN_EFFECTS.flatMap((effect) => effect.props.map((prop) => scopedStorageKey(prop.storageKey, "login"))),
+]);
+const previewSettings: Record<string, string> = {};
+for (const [key, value] of Astro.url.searchParams) {
+  if (allowedKeys.has(key) && value.length <= 1500) previewSettings[key] = value;
+}
+---
+
+<AuthLayout
+  title={t.login.pageTitle}
+  shellId="login-preview-shell"
+  asideId="login-preview-aside"
+  stageId="login-preview-stage"
+  pageVariant="login"
+  previewSettings={previewSettings}
+>
+  <div class="w-full max-w-xl rounded-2xl border border-border bg-card/80 p-5 shadow-xl">
+    <div class="mb-5 flex items-center gap-2 text-base font-semibold">
+      <i class="ti ti-lock text-primary" aria-hidden="true"></i>
+      <span>{t.login.pageTitle}</span>
+    </div>
+    <p class="mb-5 text-xs text-muted-foreground">{t.login.panelSubtitle}</p>
+    <div class="mb-5 flex gap-1 rounded-xl border border-border bg-muted/30 p-1 text-center text-[10px] font-medium">
+      <span class="flex-1 rounded-lg px-1 py-2 text-muted-foreground"><i class="ti ti-fingerprint mr-1" aria-hidden="true"></i>{t.login.tabs.passkey}</span>
+      <span class="flex-1 rounded-lg bg-background px-1 py-2 text-foreground shadow-sm"><i class="ti ti-lock mr-1" aria-hidden="true"></i>{t.login.tabs.password}</span>
+      <span class="flex-1 rounded-lg px-1 py-2 text-muted-foreground"><i class="ti ti-shield-check mr-1" aria-hidden="true"></i>{t.login.tabs.recovery}</span>
+    </div>
+    <div class="space-y-4" aria-hidden="true">
+      <div class="space-y-1.5">
+        <span class="text-xs font-medium">{t.login.labels.user}</span>
+        <div class="flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-3 text-xs text-muted-foreground">
+          <i class="ti ti-user" aria-hidden="true"></i>{t.login.placeholders.user}
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <span class="text-xs font-medium">{t.login.labels.password}</span>
+        <div class="flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-3 text-xs text-muted-foreground">
+          <i class="ti ti-lock" aria-hidden="true"></i>{t.login.placeholders.password}
+        </div>
+      </div>
+      <div class="flex h-10 items-center justify-center rounded-lg bg-primary text-xs font-medium text-primary-foreground">
+        {t.login.text.signIn}
+      </div>
+    </div>
+  </div>
+</AuthLayout>
+
+<style is:global>
+  html:has(#login-preview-shell),
+  html:has(#login-preview-shell) body { overflow: hidden; }
+  #login-preview-shell { grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 100vh; }
+  #login-preview-aside { position: relative; inset: auto; order: 2; z-index: auto; padding: 1rem; }
+  #login-preview-aside > .relative { display: flex; }
+  #login-preview-stage { order: 1; z-index: auto; min-height: 100vh; padding: 1rem; background: var(--background); }
+  #login-preview-aside .h-40.w-40 { width: 6rem; height: 6rem; padding: 1rem; }
+  #login-preview-aside [id$="-footer"] { display: none; }
+</style>

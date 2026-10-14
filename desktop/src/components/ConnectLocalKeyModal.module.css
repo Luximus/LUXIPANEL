@@ -1,0 +1,50 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hint {
+  color: var(--lp-text);
+  font-size: 0.85rem;
+}
+
+.labelCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.textarea {
+  font-family: monospace;
+  font-size: 0.78rem;
+  resize: vertical;
+}
+
+.fileHidden {
+  display: none;
+}
+
+.passphraseWrap {
+  position: relative;
+}
+
+.passphraseInput {
+  padding-right: 2.5rem;
+}
+
+.revealBtn {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--lp-text-muted);
+  cursor: var(--reveal-cursor, pointer);
+}

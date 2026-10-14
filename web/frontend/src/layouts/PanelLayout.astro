@@ -1,0 +1,1015 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * PanelLayout Ã¢â‚¬â€ main dashboard layout with sidebar navigation.
+ * Requires authentication (middleware ensures user is set in locals).
+ */
+
+import InternalModuleHost from "@/components/workspace/InternalModuleHost";
+import { moduleHostLabels } from "@/components/workspace/module-host-labels";
+import BaseLayout from "./BaseLayout.astro";
+// Reestilo global: convierte los <dialog> nativos del panel en drawer lateral
+// izquierdo (opt-out con `data-lxp-modal-keep`). 100% presentacional.
+import "@/styles/motion.css";
+import "@/styles/modal-drawer.css";
+import "@/styles/reactbits-kit.css";
+import DbLogo from "@/components/layout/DbLogo.astro";
+import { getInitials, canSeeSidebar as canSeeSidebarItem, hasAction } from "@/lib/auth";
+import { getMessages } from '@/i18n';
+import { localeFromRequest } from '@/i18n/server';
+import { LOCALES } from '@/i18n/config';
+import ConfirmModal from "@/components/ui/ConfirmModal.astro";
+import ModalNavbar from "@/components/ui/ModalNavbar.astro";
+import { DIALOG_CHROME } from "@/lib/ui-classes";
+import FloatingTerminal from "@/components/floating-terminal/FloatingTerminal.astro";
+import FloatingAssistant from "@/components/floating-assistant/FloatingAssistant.astro";
+import ReleaseBanner from "@/components/panel-releases/ReleaseBanner";
+import InstallationApiKey from "@/components/layout/InstallationApiKey";
+import AssistantView from "@/components/floating-assistant/AssistantView";
+import ServerRailLive from "@/components/layout/ServerRailLive";
+import "@/styles/panel-workspace.css";
+import "@/styles/settings-credentials.css";
+import { loadLayoutRuntimeContext, parseLayoutBoolean } from "@/lib/layout-context";
+import { SERVER_SWITCHER_ID, ATTR_CURRENT_TARGET_ID, ATTR_CURRENT_BRIDGE_SESSION_ID, LOCAL_TARGET_SCOPE } from "@/lib/api-client";
+import { DEFAULT_LOGIN_EFFECT_ID } from "@/lib/login-effects/registry";
+import { pathIsTerminalView } from "@/lib/panel-routes";
+import LoginEffectIsland from "@/components/login-effects/LoginEffectIsland.tsx";
+import { resolveLoginEffect } from "@/lib/login-effects/resolve";
+
+interface Props {
+  title: string;
+  activeModule?: string;
+  /** The named title-actions slot renders its own title beside its controls. */
+  titleInActions?: boolean;
+  /**
+   * Full-bleed content: quita el `p-5` del `<main>` para que la página llene
+   * todo el área de contenido sin margen (conserva la holgura inferior móvil
+   * `pb-14` para no quedar bajo la barra de navegación fija). Lo usa el Terminal.
+   */
+  fullBleed?: boolean;
+  /**
+   * Como `fullBleed` pero TAMBIÉN elimina la holgura inferior (`max-lg:pb-14` y
+   * el padding-bottom que la CSS de webview reinyecta), para que la página llene
+   * el 100% del alto del contenedor SIN padding ni margen inferior. Lo usa la
+   * vista del Asistente IA (que tiene su propia barra inferior). Implica
+   * `fullBleed`. En webview sólo conserva el safe-area-inset (gesture bar).
+   */
+  flush?: boolean;
+}
+
+const { title, activeModule: requestedActiveModule, titleInActions = false, fullBleed = false, flush = false } = Astro.props;
+// Embed mode (`?embed=1`): render only the page content — no sidebar, no
+// topbar. Used to show a full panel page (e.g. the mailbox) inside an iframe
+// hosted in a left drawer. Chrome is hidden via the inline style block below.
+const embed = false;
+const activeModule = "assistant";
+// El drawer de módulos carga Terminal en un iframe `?embed=1`. Esa vista
+// necesita sus assets y listeners aunque el resto del chrome siga oculto.
+const terminalModuleEmbed = embed && pathIsTerminalView(Astro.url.pathname) && !Astro.url.searchParams.has("settingsOverlay");
+// `flush` implica contenido full-bleed.
+const bleed = fullBleed || flush;
+const user = Astro.locals.user;
+const initials = user ? getInitials(user) : "?";
+const canSee = (item: string): boolean => (user ? canSeeSidebarItem(user, item) : false);
+const canAccessSettings = canSee("settings");
+const canAccessUsers = canSee("users");
+// Shell features now gatable per group (admins/sudo pass via canSeeSidebar).
+const canSeeNotifications = canSee("notifications");
+const canSeeSearch = canSee("search");
+const canSeeServerSwitcher = canSee("server-switcher");
+// Conmutado a un target remoto (≠ "local"/vacío): el selector se OCULTA (no se
+// puede conmutar remoto→remoto desde la UI) y aparece el botón "Regresar" (vuelve
+// a la sesión local). El script runtime mantiene ambos estados sincronizados tras
+// cada navegación SPA.
+const isRemoteTarget = Boolean(user?.targetId && user.targetId !== LOCAL_TARGET_SCOPE);
+// Floating terminal button: gated by the per-group "terminal" permission
+// (admins always pass via the terminal.* wildcard in their matrix).
+const canSeeTerminal = user ? hasAction(user, "terminal.open") && (user.kind === "admin" || (user.hostingPolicy?.runtime && user.hostingPolicy.state === "ready" && user.hostingPolicy.security?.shell === "jailed")) : false;
+const canLoadInstalledModules = Boolean(user);
+
+// Server selector: show the SUBDOMAIN of the current panel host (easy to
+// identify) instead of the cryptic license name (targetName, e.g. "LXP-…").
+// Mirrors extractSubdomain() in server-switcher.ts for the other options.
+const subdomainOf = (host: string | null | undefined): string | null => {
+  if (!host) return null;
+  const first = String(host).trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0]?.split(":")[0] ?? "";
+  if (!first) return null;
+  return first.split(".").filter(Boolean)[0] ?? first;
+};
+const currentHost = Astro.request.headers.get("x-forwarded-host") ?? Astro.request.headers.get("host") ?? "";
+// Prefer the SUBDOMAIN saved in LP's DB (`accessSubdomain`/custom domain,
+// carried as `targetHost`) over the request host — the latter is the dynamic,
+// rotating SSO login-link subdomain (a cryptic throwaway token), not the
+// server the user registered. Fall back to the request host, then targetName.
+const currentServerLabel = subdomainOf(user?.targetHost) || subdomainOf(currentHost) || user?.targetName || "";
+const sidebarPermissions = user?.permissions?.sidebar ?? [];
+const isAdminUser = user?.kind === "admin";
+const showTitleSettingsAction = Boolean(activeModule) && !["assistant", "settings", "preferences", "repository-store"].includes(activeModule ?? "");
+// Each route owns its title and settings controls. Recreate the topbar when
+// either the route or locale changes so a persisted header cannot show the
+// previous page's title or drawer trigger.
+const locale = localeFromRequest(Astro.request);
+const topbarPersistKey = `topbar-v3-${activeModule ?? "default"}-${locale}-${Astro.url.pathname}`;
+// Detección del slot `title-actions`. Astro 6 `.slots.has()` puede devolver
+// `false` si el slot va envuelto en `<div slot="…">`, así que verificamos
+// también si Astro renderizó contenido para ese slot (`Astro.slots.render()`
+// devuelve "" cuando el slot está vacío). Si AMBAS fallan, un cliente-side
+// fallback (más abajo) oculta el link por CSS para que no se vea duplicado.
+let hasTitleActionsSlot = false;
+try {
+  hasTitleActionsSlot = Astro.slots.has("title-actions");
+} catch {
+  hasTitleActionsSlot = false;
+}
+if (!hasTitleActionsSlot) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const renderedSlot = await (Astro.slots as any).render("title-actions");
+    if (typeof renderedSlot === "string" && renderedSlot.trim().length > 0) {
+      hasTitleActionsSlot = true;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+const t = await getMessages(locale, ['panelLayout', 'common', 'components']);
+// LUXIPANEL is standalone: logout always returns to this panel's own /login.
+const directSession = Boolean(user?.direct);
+const canUseAssistant = canSee("assistant");
+// One panel shell for every user. Groups decide which content can be opened.
+const workspaceShell = !embed;
+const moduleDrawerOpen = false;
+const initialConversationId = Astro.url.searchParams.get("c");
+const initialProviderId = Astro.url.searchParams.get("provider");
+const assistantInitialOpen = initialConversationId && /^[A-Za-z0-9_-]{1,128}$/.test(initialConversationId)
+  ? { conversationId: initialConversationId, provider: initialProviderId && /^[a-z0-9-]{1,32}$/.test(initialProviderId) ? initialProviderId : null }
+  : null;
+
+// ── Panel (app) background effect (registry-driven, scope="panel") ──────────
+// Configured in Settings → Diseño → "Fondo del panel". Off by default; when on,
+// a fixed react-bits layer is rendered behind the whole shell (sidebar/topbar
+// are already translucent so it shows through). Mirrors AuthLayout's login
+// background but reads the independent `layout_panel_*` settings family.
+const { layoutSettings } = await loadLayoutRuntimeContext(Astro.request, Astro.locals.uiBootstrap);
+const panelBackgroundEnabled = parseLayoutBoolean(layoutSettings.layout_panel_background_enabled, false);
+const panelBackgroundFallbackColor = layoutSettings.layout_panel_background_fallback_color || "";
+const { effect: panelEffect, props: panelEffectProps } = resolveLoginEffect(layoutSettings, "panel");
+const showPanelBackground = panelBackgroundEnabled && Boolean(panelEffect);
+
+// Sidebar is now two-section: "Módulos" (injected at runtime from the
+// enabled module catalog by PanelLayout-define-vars-script1.ts) and
+// "Herramientas". Dashboard, Usuarios and the other dedicated entries used
+// to live in their own groups; they're catalog modules now and surface in
+// the Módulos group when enabled.
+// Home = módulo Agentes IA (`/panel` == `/`). Se renderiza en SSR como primer
+// ítem del grupo "Módulos" para que exista y esté resaltado desde el primer
+// byte, sin depender del fetch a /api/modules/installed ni de la versión
+// cacheada del script del layout. El resto de módulos los inyecta el script
+// dentro de este mismo grupo (`data-injected`), y `updateActiveNav()` sigue
+// siendo la fuente de verdad tras los swaps SPA (transition:persist).
+const showHomeModuleLink = canLoadInstalledModules;
+const homeLinkClass = [
+  "sidebar-mod-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+  activeModule === "assistant" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+].join(" ");
+const navGroups = [
+  {
+    label: t.panelLayout.groups.tools,
+    items: [
+      ...(canSee("modules")
+        ? [{ icon: "ti-puzzle", label: t.panelLayout.nav.modules, href: "/modules", module: "modules" }]
+        : []),
+      ...(canAccessSettings
+        ? [{ icon: "ti-settings", label: t.panelLayout.nav.settings, href: "/settings", module: "settings" }]
+        : []),
+    ],
+  },
+];
+const workspaceToolGroups = navGroups.map((group) => ({
+  ...group,
+  items: group.items.filter((item) => item.module !== "settings"),
+})).filter((group) => group.items.length > 0);
+---
+
+<BaseLayout title={title} includeClientRouter={true}>
+  {Astro.locals.uiBootstrap && <script type="application/json" id="lxp-ui-bootstrap" set:html={JSON.stringify(Astro.locals.uiBootstrap).replace(/</g, "\\u003c")} />}
+  <script>import "@/lib/ui-events";</script>
+  {!embed && showPanelBackground && (
+    <div
+      id="panel-bg-layer"
+      class="fixed inset-0 z-0 pointer-events-none"
+      style={panelBackgroundFallbackColor ? `background:${panelBackgroundFallbackColor}` : undefined}
+      aria-hidden="true"
+    >
+      <LoginEffectIsland client:load effectId={panelEffect?.id ?? DEFAULT_LOGIN_EFFECT_ID} effectProps={panelEffectProps} />
+    </div>
+  )}
+{embed && (
+    <style is:inline set:html={"[data-embed] #sidebar,[data-embed] #sidebar-mobile{display:none !important}[data-embed] [data-panel-topbar]{display:flex !important;position:relative !important;inset:auto !important;z-index:1 !important;flex:none !important;height:auto !important;min-height:3.25rem;padding:.45rem .85rem;border-top:0 !important;border-bottom:1px solid var(--border);background:var(--card)}[data-embed] [data-panel-topbar]:has(>div:first-of-type>h1:only-child){display:none !important}[data-embed] [data-panel-topbar]>button,[data-embed] [data-panel-topbar]>div:not(:first-of-type),[data-embed] #panel-topbar-title{display:none !important}[data-embed] [data-panel-topbar]>div:first-of-type{display:flex;flex-wrap:wrap;gap:.5rem}[data-embed] [data-panel-content]{padding:0 !important;min-height:0;height:auto !important;overflow:auto !important}[data-embed] [data-panel-content]>:first-child{min-height:100%}"} />
+  )}
+  <div data-embed={embed ? "" : undefined} data-workspace-shell={workspaceShell ? "" : undefined} data-workspace-assistant={workspaceShell ? String(canUseAssistant) : undefined} data-user-initials={initials} data-workspace-admin={workspaceShell ? String(isAdminUser) : undefined} data-workspace-security-audit={workspaceShell ? String(canSee("security-audit")) : undefined} data-workspace-local={workspaceShell ? String(!user?.targetId || user.targetId === "local") : undefined} class={`flex h-screen overflow-hidden ${showPanelBackground ? "relative z-10 bg-transparent" : "bg-background"}`}>
+
+    <!-- Ã¢â€â‚¬Ã¢â€â‚¬ Sidebar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
+    {!embed && <aside
+      id="sidebar"
+      transition:persist="sidebar"
+      class:list={["hidden lg:flex shrink-0 flex-col border-r border-border bg-card/50 backdrop-blur-sm transition-[width,opacity,border-color] duration-200 ease-out", workspaceShell ? "lxp-workspace-modules" : "w-60"]}
+    >
+      <!-- Logo + fecha/hora del servidor conectado -->
+      <div class:list={["flex min-h-14 items-center gap-3 border-b border-border px-4 py-2", workspaceShell && "lxp-workspace-modules-heading"]}>
+        {workspaceShell && <div class="lxp-workspace-modules-controls ml-auto flex items-center gap-1" data-hide-in-desktop>
+          <button type="button" class="lxp-modules-theme-control" aria-label={t.panelLayout.actions.switchTheme} title={t.panelLayout.actions.switchTheme}>
+            <i class="ti ti-sun text-base lxp-modules-theme-sun" aria-hidden="true"></i>
+            <i class="ti ti-moon text-base lxp-modules-theme-moon" aria-hidden="true"></i>
+          </button>
+          <label class="lxp-modules-language-control" aria-label={t.common.language}>
+            <select id="workspace-language-select" aria-label={t.common.language}>
+              {LOCALES.map((entry) => <option value={entry.code} selected={locale === entry.code}>{entry.label}</option>)}
+            </select>
+            <i class="ti ti-chevron-down text-xs" aria-hidden="true"></i>
+          </label>
+        </div>}
+        {!workspaceShell && <>
+        <DbLogo role="sidebar" alt={t.panelLayout.logoAlt ?? t.components?.logoAlt ?? "LUXIPANEL"} class="h-8 w-auto shrink-0 object-contain" />
+        <div
+          id="sidebar-server-clock"
+          class="flex min-w-0 flex-col text-[11px] leading-tight text-muted-foreground"
+          title={t.panelLayout.clock.serverTimeTitle}
+          aria-live="polite"
+        >
+          <span class="truncate font-medium text-foreground" data-clock-date>--</span>
+          <span class="truncate tabular-nums">
+            <span data-clock-time class="font-mono">--:--:--</span>
+            <span data-clock-tz class="ml-1 text-muted-foreground/80"></span>
+          </span>
+        </div>
+        </>}
+      </div>
+
+      <!-- Navigation -->
+      <nav class="flex-1 overflow-y-auto p-2 space-y-4" aria-label={t.panelLayout.groups.modules}>
+        {(showHomeModuleLink || workspaceShell) && (
+          <div id="nav-modules-group">
+            {!workspaceShell && <p class="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{t.panelLayout.groups.modules}</p>}
+            <div class="space-y-0.5">
+              {!workspaceShell && <a href="/panel" data-module="assistant" data-home-link aria-current={activeModule === "assistant" ? "page" : undefined} title={t.panelLayout.nav.assistant} class={homeLinkClass}>
+                <span class="lxp-workspace-nav-icon"><i class="ti ti-robot text-base"></i></span>
+                <span>{t.panelLayout.nav.assistant}</span>
+              </a>}
+            </div>
+          </div>
+        )}
+        {!workspaceShell && navGroups.filter((group) => group.items.length > 0).map((group) => (
+          <div>
+            <p class="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+              {group.label}
+            </p>
+            <div class="space-y-0.5">
+              {group.items.map((item) => (
+                <a
+                  href={item.href}
+                  aria-current={activeModule === item.module ? "page" : undefined}
+                  class:list={[
+                    "sidebar-mod-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                    activeModule === item.module
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  ]}
+                >
+                  <span class="lxp-workspace-nav-icon"><i class={`ti ${item.icon} text-base`}></i></span>
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {workspaceShell && canSee("monitor") && <div class="lxp-modules-usage">
+        <ServerRailLive client:only="react" />
+        <div id="server-rail-network"></div>
+        <div id="server-cli-usage"></div>
+      </div>}
+
+      {workspaceShell && workspaceToolGroups.map((group) => (
+        <section class="lxp-workspace-tools" aria-label={group.label}>
+          <div class="space-y-0.5">
+            {group.items.map((item) => (
+              <a href={item.href} data-module={item.module} aria-current={activeModule === item.module ? "page" : undefined} title={item.label} class:list={["sidebar-mod-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150", activeModule === item.module ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"]}>
+                <span class="lxp-workspace-nav-icon"><i class={`ti ${item.icon} text-base`}></i></span>
+                <span>{item.label}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <!-- Footer: server selector + logout -->
+      <div id="workspace-relocatable-footer" class:list={["border-t border-border p-3 space-y-2", workspaceShell && "lxp-workspace-modules-footer"]}>
+        {canSeeServerSwitcher && (
+          <label id="server-switcher-wrap" class:list={["block", isRemoteTarget && "hidden"]}>
+            <span class="sr-only">{t.panelLayout.serverSwitcher.label}</span>
+            <div class="relative">
+              <i class="ti ti-server-2 absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none"></i>
+              <select
+                id={SERVER_SWITCHER_ID}
+                {...{ [ATTR_CURRENT_TARGET_ID]: user?.targetId ?? "" }}
+                {...{ [ATTR_CURRENT_BRIDGE_SESSION_ID]: user?.bridgeSessionId ?? "" }}
+                disabled={isRemoteTarget}
+                aria-disabled={isRemoteTarget}
+                class="w-full truncate rounded-lg border border-border bg-background pl-8 pr-2 py-2 text-xs font-medium text-foreground outline-none hover:bg-accent cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                title={t.panelLayout.serverSwitcher.title}
+              >
+                {user?.targetId ? (
+                  <Fragment>
+                    { /* Conectado a un target remoto: la semilla seleccionada ES el
+                         target activo (su label real, NO disfrazado de "Local"), y
+                         se añade la opción "Local (este servidor)" para poder volver.
+                         El script eager reemplaza esta lista con el contrato completo. */ }
+                    <option value={user.targetId} selected>{currentServerLabel || user?.targetName || user.targetId}</option>
+                    <option value="__local__">{t.panelLayout.serverSwitcher.localOption}</option>
+                  </Fragment>
+                ) : (
+                  <option value="__local__" selected>{t.panelLayout.serverSwitcher.localOption}</option>
+                )}
+              </select>
+            </div>
+          </label>
+        )}
+        {canSeeServerSwitcher && (
+          <button
+            id="server-return-local"
+            data-server-return
+            class:list={[
+              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-foreground",
+              !isRemoteTarget && "hidden",
+            ]}
+            title={t.panelLayout.serverSwitcher.returnTitle}
+          >
+            <i class="ti ti-arrow-back-up text-base"></i>
+            <span>{t.panelLayout.serverSwitcher.returnButton}</span>
+          </button>
+        )}
+        <div class:list={["lxp-session-actions", workspaceShell && "lxp-session-actions-workspace"]}>
+          {workspaceShell && canAccessSettings && (
+            <a href="/settings" class="lxp-session-settings" aria-label={t.panelLayout.nav.settings} title={t.panelLayout.nav.settings}>
+              <i class="ti ti-settings text-base" aria-hidden="true"></i>
+            </a>
+          )}
+          <button
+            id="logout-btn"
+            class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-destructive/10 hover:text-destructive"
+          >
+            <i class="ti ti-logout text-base"></i>
+            <span>{t.panelLayout.actions.closeSession}</span>
+          </button>
+        </div>
+      </div>
+    </aside>}
+
+    <!-- Ã¢â€â‚¬Ã¢â€â‚¬ Main content Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ -->
+    {workspaceShell && <aside id="server-context-rail" transition:persist="server-context-rail" class="lxp-workspace-server-rail hidden lg:flex shrink-0 flex-col border-r border-border bg-card/90 backdrop-blur-sm">
+      <div class="flex min-h-14 items-center gap-3 border-b border-border px-4 py-2">
+        <DbLogo role="sidebar" alt={t.panelLayout.logoAlt ?? t.components?.logoAlt ?? "LUXIPANEL"} class="h-8 w-auto shrink-0 object-contain" />
+        <div id="sidebar-server-clock" class="flex min-w-0 flex-col text-[11px] leading-tight text-muted-foreground" title={t.panelLayout.clock.serverTimeTitle} aria-live="polite">
+          <span class="truncate font-medium text-foreground" data-clock-date>--</span>
+          <span class="truncate tabular-nums"><span data-clock-time class="font-mono">--:--:--</span><span data-clock-tz class="ml-1 text-muted-foreground/80"></span></span>
+        </div>
+        <span id="workspace-rail-header-actions" class="lxp-rail-header-actions"></span>
+      </div>
+      <div class="lxp-server-rail-stack min-h-0 flex-1">
+        <div id="server-rail-assistant-nav" class="min-h-0 flex-1"></div>
+      </div>
+      <div id="server-rail-footer"></div>
+    </aside>}
+
+    {workspaceShell && <button type="button" class="lxp-server-rail-backdrop" aria-label={t.panelLayout.workspace.closeHistory} onclick="window.dispatchEvent(new CustomEvent('lxp:workspace:toggle-server'))"></button>}
+
+    {workspaceShell && canUseAssistant && <div id="persistent-assistant-workspace" role={moduleDrawerOpen ? undefined : "main"} transition:persist="persistent-assistant-workspace" class="lxp-workspace-chat min-w-0 flex-1 overflow-hidden">
+      <AssistantView client:only="react" locale={locale} initialOpen={assistantInitialOpen} />
+    </div>}
+
+    {moduleDrawerOpen && <a href="/panel" class="lxp-workspace-drawer-backdrop" aria-label={t.panelLayout.workspace.closeModuleBackToChat}></a>}
+
+    {workspaceShell && user && <InternalModuleHost client:only="react" user={user} locale={locale} labels={{
+      module: t.panelLayout.workspace.module,
+      loadingModule: t.panelLayout.workspace.loadingModule,
+      close: t.panelLayout.actions.close,
+      settings: t.panelLayout.actions.settings,
+      ...moduleHostLabels(locale),
+    }} />}
+
+    {workspaceShell && <script is:inline>
+      (() => {
+        // React hydrates the module host after the shell. Keep early menu clicks
+        // in this document instead of navigating to a second full panel page.
+        let pending = null;
+        let fallback;
+        const stop = () => {
+          document.removeEventListener("click", capture, true);
+          window.removeEventListener("lxp:internal-modules:ready", ready);
+          if (fallback) clearTimeout(fallback);
+        };
+        const ready = () => {
+          stop();
+          if (pending?.isConnected) pending.click();
+        };
+        const capture = (event) => {
+          if (window.__lxpInternalModules) { stop(); return; }
+          if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          const link = event.target?.closest?.("#sidebar a[data-module], #sidebar-mobile a[data-module], #panel-home-module-links a[href]");
+          if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+          const url = new URL(link.href, location.href);
+          if (url.origin !== location.origin || !url.pathname.startsWith("/panel/")) return;
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          pending = link;
+          if (fallback) clearTimeout(fallback);
+          fallback = setTimeout(() => {
+            stop();
+            if (pending?.isConnected) location.assign(pending.href);
+          }, 12000);
+        };
+        document.addEventListener("click", capture, true);
+        window.addEventListener("lxp:internal-modules:ready", ready);
+      })();
+    </script>}
+
+    <div data-module-drawer={moduleDrawerOpen ? "open" : "closed"} class:list={["flex flex-1 flex-col overflow-hidden min-w-0", workspaceShell && canUseAssistant && "lxp-workspace-module-drawer", workspaceShell && !canUseAssistant && "lxp-workspace-route"]}>
+
+      <!-- Topbar. En el WebView de la app MÓVIL se oculta por completo
+           (data-hide-in-webview): la navegación, búsqueda y notificaciones las
+           provee el contenedor nativo. En navegador normal se muestra igual. -->
+      <header data-panel-topbar data-assistant-topbar={activeModule === "assistant" && !moduleDrawerOpen ? "" : undefined} data-hide-in-webview transition:persist={topbarPersistKey} class="flex h-14 items-center gap-3 bg-card/30 px-4 backdrop-blur-sm fixed bottom-0 left-0 right-0 z-30 border-t border-border lg:static lg:shrink-0 lg:border-b lg:border-t-0">
+        {moduleDrawerOpen && <a href="/panel" class="lxp-workspace-drawer-close inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-accent" aria-label={t.panelLayout.actions.close}><i class="ti ti-x text-lg" aria-hidden="true"></i></a>}
+        <!-- Mobile menu toggle -->
+        {!workspaceShell && <button
+          id="sidebar-toggle"
+          class="lg:hidden rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label={t.panelLayout.actions.openMenu}
+        >
+          <i class="ti ti-menu-2 text-xl"></i>
+        </button>}
+
+        {!embed && <button
+          id="sidebar-desktop-toggle"
+          class="hidden lg:inline-flex rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label={t.panelLayout.actions.openMenu}
+          aria-controls="sidebar"
+          aria-expanded="true"
+          title={t.panelLayout.actions.openMenu}
+        >
+          <span id="sidebar-desktop-icon-collapse" class="inline-flex">
+            <i class="ti ti-chevron-left text-lg"></i>
+          </span>
+          <span id="sidebar-desktop-icon-expand" class="hidden">
+            <i class="ti ti-chevron-right text-lg"></i>
+          </span>
+        </button>}
+
+        <div class="flex min-w-0 items-center gap-2">
+          {!titleInActions && <h1 id="panel-topbar-title" data-panel-title class="shrink-0 text-base font-semibold">{title}</h1>}
+          {showTitleSettingsAction && !hasTitleActionsSlot && (
+            String(activeModule) === "mail" ? (
+              <button
+                type="button"
+                id="mail-settings-modal-trigger"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                aria-label={t.panelLayout.actions.settings}
+                title={t.panelLayout.actions.settings}
+              >
+                <i class="ti ti-settings text-sm"></i>
+                <span class="hidden sm:inline">{t.panelLayout.actions.settings}</span>
+              </button>
+            ) : (
+              <a
+                id="panel-title-settings-link"
+                href="/settings"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                aria-label={t.panelLayout.actions.settings}
+                title={t.panelLayout.actions.settings}
+              >
+                <i class="ti ti-settings text-sm"></i>
+                <span class="hidden sm:inline">{t.panelLayout.actions.settings}</span>
+              </a>
+            )
+          )}
+          <slot name="title-actions" />
+        </div>
+        {moduleDrawerOpen && <span class="lxp-workspace-drawer-settings" data-module-header-settings></span>}
+
+        {workspaceShell && !moduleDrawerOpen && <button
+          id="workspace-history-toggle"
+          type="button"
+          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 lg:hidden"
+          aria-label={t.panelLayout.actions.openHistory}
+          title={t.panelLayout.actions.openHistory}
+          aria-controls="server-context-rail"
+          aria-expanded="false"
+          onclick="window.dispatchEvent(new CustomEvent('lxp:workspace:toggle-server'))"
+        ><i class="ti ti-history text-xl" aria-hidden="true"></i></button>}
+
+        {workspaceShell && !moduleDrawerOpen && <span id="workspace-chat-navbar-controls" class="lxp-chat-navbar-controls"></span>}
+        {workspaceShell && !moduleDrawerOpen && <ReleaseBanner client:load isAdmin={isAdminUser} labels={t.panelLayout.community} />}
+        {workspaceShell && !moduleDrawerOpen && <span id="workspace-chat-server-controls" class="lxp-chat-server-controls"></span>}
+        {workspaceShell && !moduleDrawerOpen && <div id="workspace-chat-cli" class="lxp-chat-cli"></div>}
+
+        <!-- Super buscador: campo a ancho completo entre el título y los
+             botones de la derecha (flex-1). En <sm el topbar es la barra
+             inferior fija: queda como icono compacto. Abre el drawer derecho
+             #super-search (layouts/super-search.ts). Atajo ⌘K / Ctrl+K. -->
+        {!embed && canSeeSearch && (
+          <div class:list={["flex min-w-0 flex-1 items-center justify-center px-1 sm:px-2", activeModule === "assistant" && !moduleDrawerOpen && "lxp-assistant-topbar-search"]}>
+            <button
+              id="cmd-trigger"
+              type="button"
+              class="flex w-auto max-w-3xl items-center gap-2 rounded-lg border border-border bg-muted/30 px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors duration-200 ease-out hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:w-full sm:px-3"
+              aria-label={`${t.panelLayout.superSearch.placeholder} ⌘K`}
+              title={t.panelLayout.superSearch.triggerLabel}
+            >
+              <i class="ti ti-search shrink-0 text-sm"></i>
+              <span class="hidden flex-1 truncate sm:inline">{t.panelLayout.superSearch.placeholder}</span>
+              <kbd aria-hidden="true" class="ml-auto hidden rounded border border-border px-1 py-0.5 text-[10px] font-medium md:inline">⌘K</kbd>
+            </button>
+          </div>
+        )}
+
+        {!embed && <div class:list={["flex items-center gap-2", !canSeeSearch && "ml-auto"]}>
+          {isAdminUser && <InstallationApiKey client:load />}
+          <!-- Theme toggle (oculto en webview de app desktop: el tema lo
+               controla la app nativa y lo sincroniza al webview) -->
+          <button
+            id="theme-btn"
+            data-hide-in-desktop
+            class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label={t.panelLayout.actions.switchTheme}
+          >
+            <span id="icon-sun" class="inline-flex">
+              <i class="ti ti-sun text-lg"></i>
+            </span>
+            <span id="icon-moon" class="hidden">
+              <i class="ti ti-moon text-lg"></i>
+            </span>
+          </button>
+
+          <!-- Language selector. Oculto en webview de app DESKTOP (el idioma lo
+               gobierna la app nativa). En el webview de la app MÓVIL sí se
+               muestra (data-show-in-webview) y es bidireccional con la app. En
+               navegador normal se mantiene el responsive `hidden lg:flex`. -->
+          <label data-hide-in-desktop data-show-in-webview class:list={["relative hidden lg:flex items-center", workspaceShell && "lxp-workspace-language"]} aria-label={t.common.language}>
+            <select
+              id="language-select"
+              class="cursor-pointer appearance-none rounded-lg border border-border bg-muted/30 py-1.5 pl-2 pr-8 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none"
+            >
+              {LOCALES.map((entry) => (
+                <option value={entry.code} selected={locale === entry.code}>{entry.label}</option>
+              ))}
+            </select>
+            {/* Flecha propia a la derecha (appearance-none quita la nativa), con
+                pr-8 en el select para que el texto no quede pegado al borde. */}
+            <i class="ti ti-chevron-down text-xs text-muted-foreground absolute right-2.5 pointer-events-none" aria-hidden="true"></i>
+          </label>
+
+          <!-- Notifications: botón con texto (como Ajustes) + DRAWER lateral derecho.
+               El <dialog> se convierte en drawer derecho por modal-drawer.css y
+               cierra animado por dialog-motion.ts; notifications.js lo abre con
+               showModal() y cierra con close(). -->
+          {canSeeNotifications && (
+          <>
+            <button
+              id="notifications-btn"
+              type="button"
+              class="relative flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-1.5 py-1.5 sm:px-3 text-xs text-muted-foreground hover:bg-accent transition-colors"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="notifications-drawer"
+            >
+              <i class="ti ti-bell text-sm"></i>
+              <span class="sr-only">{t.panelLayout.actions.notifications}</span><span aria-hidden="true" class="hidden sm:inline">{t.panelLayout.actions.notifications}</span>
+              <span
+                id="notifications-badge"
+                class="lxp-notifications-badge absolute -top-1.5 -right-1.5 hidden min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+                aria-live="polite"
+              >0</span>
+            </button>
+
+            <dialog
+              id="notifications-drawer"
+              aria-labelledby="notifications-title"
+              class={`w-full max-w-md ${DIALOG_CHROME}`}
+            >
+              <ModalNavbar
+                title={t.panelLayout.notificationsPanel.title}
+                titleId="notifications-title"
+                description={t.panelLayout.notificationsPanel.subtitle}
+                icon="ti-bell"
+                closeId="notifications-close"
+                closeLabel={t.panelLayout.actions.close}
+              >
+                <button
+                  slot="actions"
+                  id="notifications-mark-all"
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                  title={t.panelLayout.notificationsPanel.markAllTitle}
+                >
+                  <i class="ti ti-checks text-sm"></i>
+                  <span class="hidden sm:inline">{t.panelLayout.notificationsPanel.markAllTitle}</span>
+                </button>
+              </ModalNavbar>
+
+              <div class="flex min-h-0 flex-1 flex-col">
+                <p class="px-4 pt-3 text-[11px] text-muted-foreground" id="notifications-subtitle">{t.panelLayout.notificationsPanel.subtitle}</p>
+                <div class="flex flex-wrap gap-1 border-b border-border px-2 pt-2">
+                  <button data-filter="all" type="button" class="notifications-filter rounded-md px-2.5 py-1 text-[11px] font-medium text-primary border-b-2 border-primary">{t.panelLayout.notificationsPanel.filters.all}</button>
+                  <button data-filter="system" type="button" class="notifications-filter rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground border-b-2 border-transparent hover:text-foreground">{t.panelLayout.notificationsPanel.filters.system}</button>
+                  <button data-filter="module" type="button" class="notifications-filter rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground border-b-2 border-transparent hover:text-foreground">{t.panelLayout.notificationsPanel.filters.module}</button>
+                  <button data-filter="ai" type="button" class="notifications-filter rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground border-b-2 border-transparent hover:text-foreground">{t.panelLayout.notificationsPanel.filters.ai}</button>
+                  <button data-filter="security" type="button" class="notifications-filter rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground border-b-2 border-transparent hover:text-foreground">{t.panelLayout.notificationsPanel.filters.security}</button>
+                  <button data-filter="user" type="button" class="notifications-filter rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground border-b-2 border-transparent hover:text-foreground">{t.panelLayout.notificationsPanel.filters.user}</button>
+                </div>
+
+                <ul id="notifications-list" class="min-h-0 flex-1 overflow-y-auto py-1" role="list">
+                  <li class="px-4 py-6 text-center text-xs text-muted-foreground" data-loading>
+                    <i class="ti ti-loader-2 animate-spin"></i> {t.panelLayout.notificationsPanel.loading}
+                  </li>
+                </ul>
+              </div>
+
+              <div class="flex items-center justify-between border-t border-border px-4 py-2 text-[11px]">
+                <button id="notifications-clear-all" type="button" class="text-muted-foreground hover:text-destructive transition-colors">
+                  <i class="ti ti-trash text-xs"></i> {t.panelLayout.notificationsPanel.clearAll}
+                </button>
+                <span class="text-muted-foreground" id="notifications-conn">
+                  <i class="ti ti-plug text-xs"></i> {t.panelLayout.notificationsPanel.connecting}
+                </span>
+              </div>
+            </dialog>
+          </>
+          )}
+
+          <!-- Internal chat: go straight to the full messenger screen. -->
+          {user && (
+            <a
+              id="messenger-link"
+              href="/panel/chat"
+              data-me={user.username}
+              class="relative flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-1.5 py-1.5 sm:px-3 text-xs text-muted-foreground hover:bg-accent transition-colors"
+              aria-label={t.panelLayout.actions.chat}
+            >
+              <i class="ti ti-messages text-sm"></i>
+              <span class="hidden sm:inline">{t.panelLayout.actions.chat}</span>
+              <span
+                id="chat-badge"
+                class="lxp-notifications-badge absolute -top-1.5 -right-1.5 hidden min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+                aria-live="polite"
+              >0</span>
+            </a>
+          )}
+
+        </div>}
+        {workspaceShell && <button id="sidebar-toggle" class="lg:hidden rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={t.panelLayout.groups.modules} aria-controls="sidebar-mobile"><i class="ti ti-layout-grid text-xl" aria-hidden="true"></i></button>}
+      </header>
+
+      <!-- Page content -->
+      <main
+        data-panel-content
+        data-flush={flush ? "" : undefined}
+        class={
+          bleed
+            ? `flex-1 min-h-0 overflow-hidden ${flush ? "" : "max-lg:pb-14"}`
+            : "flex-1 overflow-y-auto p-5 max-lg:pb-14"
+        }
+      >
+        <slot />
+      </main>
+      {moduleDrawerOpen && <footer id="lxp-native-module-footer" class="lxp-native-module-footer"></footer>}
+    </div>
+  </div>
+
+  <!-- ── Super buscador (drawer derecho: modal-drawer.css ancla todo <dialog>
+       a la derecha con animación; dialog-motion.ts anima el cierre) ── -->
+  {!embed && <dialog
+    id="super-search"
+    transition:persist="super-search"
+    class={`w-full max-w-xl ${DIALOG_CHROME}`}
+    aria-label={t.panelLayout.superSearch.triggerLabel}
+  >
+    <div class="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+      <i class="ti ti-search shrink-0 text-lg text-muted-foreground"></i>
+      <input
+        id="super-search-input"
+        type="search"
+        placeholder={t.panelLayout.superSearch.placeholder}
+        class="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+        autocomplete="off"
+        spellcheck="false"
+        enterkeyhint="go"
+        aria-controls="super-search-results"
+      />
+      <button
+        id="super-search-close"
+        type="button"
+        class="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        aria-label={t.panelLayout.actions.close}
+        title={t.panelLayout.actions.close}
+      >
+        <i class="ti ti-x text-base"></i>
+      </button>
+    </div>
+    <p class="shrink-0 px-4 pt-2 text-[11px] text-muted-foreground">{t.panelLayout.superSearch.hint}</p>
+    <ul id="super-search-results" class="min-h-0 flex-1 overflow-y-auto py-2" role="listbox"></ul>
+    <div class="mt-auto flex shrink-0 items-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+      <span><kbd class="mr-1 rounded border border-border px-1 py-0.5">↑↓</kbd>{t.panelLayout.actions.navigate}</span>
+      <span><kbd class="mr-1 rounded border border-border px-1 py-0.5">↵</kbd>{t.panelLayout.actions.open}</span>
+      <span><kbd class="mr-1 rounded border border-border px-1 py-0.5">Esc</kbd>{t.panelLayout.actions.close}</span>
+    </div>
+  </dialog>}
+  {!embed && <script
+    type="application/json"
+    id="super-search-config"
+    set:html={JSON.stringify({ locale, sidebarPermissions, isAdminUser, canAccessSettings, canAccessUsers })}
+  ></script>}
+
+  <!-- Confirm Modal (global) -->
+  <ConfirmModal />
+
+  <!-- Mobile sidebar overlay -->
+  {!embed && <div
+    id="sidebar-overlay"
+    transition:persist="sidebar-overlay"
+    data-open="false"
+    class="lxp-fade fixed inset-0 z-40 bg-black/50 backdrop-blur-sm hidden lg:hidden"
+  ></div>}
+
+  <!-- Stack unificado de botones flotantes (abajo-derecha). Un unico contenedor
+       flex evita que los FAB se solapen en movil (incluido el boton de pestanas
+       de la app nativa). Orden visual arriba->abajo: asistente, terminal, pestanas.
+       Los elementos no-visuales de cada wrapper (pocket fixed, dialog cerrado,
+       link/script) no aportan caja flex, asi que el stack solo coloca los FAB. -->
+  {(!embed || terminalModuleEmbed) && <div id="lxp-fab-stack" data-hide-in-webview class="fixed right-4 sm:right-5 z-40 flex flex-col items-center gap-3 bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(22vh+env(safe-area-inset-bottom,0px))]">
+    <!-- Asistente IA (chat, proveedores, modulos, accesos, diagnostico). Atajo
+         Ctrl/Cmd+J. Solo con permiso al modulo "assistant" (admin incluido). -->
+    {!workspaceShell && !embed && canSee("assistant") && <FloatingAssistant locale={locale} />}
+
+    <!-- Terminal (consola, snippets, historial, configuracion). Persistente entre
+         navegaciones; las sesiones xterm sobreviven al cierre del drawer. En la
+         app nativa (WebView) incluye debajo el boton de pestanas. -->
+    {(!embed || terminalModuleEmbed) && canSeeTerminal && <FloatingTerminal />}
+  </div>}
+
+  <!-- Mobile sidebar (positioned absolutely) -->
+  {!embed && <aside
+    id="sidebar-mobile"
+    transition:persist="sidebar-mobile"
+    data-open="false"
+    class="lxp-slide-x fixed inset-y-0 left-0 z-50 hidden w-60 flex-col border-r border-border bg-card shadow-2xl lg:hidden"
+  >
+    <div class="flex min-h-14 items-center gap-3 border-b border-border px-4 py-2">
+      {workspaceShell ? <span class="flex-1 text-sm font-semibold">{t.panelLayout.groups.modules}</span> : <>
+      <DbLogo role="sidebar" alt={t.panelLayout.logoAlt ?? "LUXIPANEL"} class="h-8 w-auto shrink-0 object-contain" />
+      <div
+        id="sidebar-mobile-server-clock"
+        class="flex min-w-0 flex-1 flex-col text-[11px] leading-tight text-muted-foreground"
+        title={t.panelLayout.clock.serverTimeTitle}
+        aria-live="polite"
+      >
+        <span class="truncate font-medium text-foreground" data-clock-date>--</span>
+        <span class="truncate tabular-nums">
+          <span data-clock-time class="font-mono">--:--:--</span>
+          <span data-clock-tz class="ml-1 text-muted-foreground/80"></span>
+        </span>
+      </div>
+      </>}
+      {workspaceShell && <div class="lxp-workspace-modules-controls flex items-center gap-1" data-hide-in-desktop>
+        <button type="button" class="lxp-modules-theme-control" aria-label={t.panelLayout.actions.switchTheme} title={t.panelLayout.actions.switchTheme}>
+          <i class="ti ti-sun text-base lxp-modules-theme-sun" aria-hidden="true"></i>
+          <i class="ti ti-moon text-base lxp-modules-theme-moon" aria-hidden="true"></i>
+        </button>
+        <label class="lxp-modules-language-control" aria-label={t.common.language}>
+          <select id="workspace-mobile-language-select" aria-label={t.common.language}>
+            {LOCALES.map((entry) => <option value={entry.code} selected={locale === entry.code}>{entry.label}</option>)}
+          </select>
+          <i class="ti ti-chevron-down text-xs" aria-hidden="true"></i>
+        </label>
+      </div>}
+      {workspaceShell && <a id="workspace-mobile-profile" class="lxp-mobile-profile" href="/panel/preferences#pref-profile" aria-label={t.panelLayout.nav.preferences} title={t.panelLayout.nav.preferences}><span aria-hidden="true">{initials}</span></a>}
+    </div>
+    <nav class="flex flex-1 flex-col justify-end overflow-y-auto p-2 space-y-4 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      {(showHomeModuleLink || workspaceShell) && (
+        <div id="nav-modules-group">
+          {!workspaceShell && <p class="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">{t.panelLayout.groups.modules}</p>}
+          <div class="space-y-0.5">
+            {!workspaceShell && <a href="/panel" data-module="assistant" data-home-link aria-current={activeModule === "assistant" ? "page" : undefined} class={homeLinkClass}>
+              <span class="lxp-workspace-nav-icon"><i class="ti ti-robot text-base"></i></span>
+              <span>{t.panelLayout.nav.assistant}</span>
+            </a>}
+          </div>
+        </div>
+      )}
+      {navGroups.map((group) => (
+        <div class:list={[workspaceShell && "lxp-workspace-tools"]}>
+          <p class="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+            {group.label}
+          </p>
+          <div class="space-y-0.5">
+            {group.items.map((item) => (
+              <a
+                href={item.href}
+                aria-current={activeModule === item.module ? "page" : undefined}
+                class:list={[
+                  "sidebar-mod-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                  activeModule === item.module
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                ]}
+              >
+                <span class="lxp-workspace-nav-icon"><i class={`ti ${item.icon} text-base`}></i></span>
+                <span>{item.label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+    {canSeeServerSwitcher && (
+      <div class="border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <button
+          id="server-return-local-mobile"
+          data-server-return
+          class:list={[
+            "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground",
+            !isRemoteTarget && "hidden",
+          ]}
+          title={t.panelLayout.serverSwitcher.returnTitle}
+        >
+          <i class="ti ti-arrow-back-up text-base"></i>
+          <span>{t.panelLayout.serverSwitcher.returnButton}</span>
+        </button>
+      </div>
+    )}
+  </aside>}
+
+  {!embed && <div
+    id="server-switch-overlay"
+    class="fixed inset-0 z-[70] hidden items-center justify-center bg-black/60 px-4"
+    aria-hidden="true"
+  >
+    <div class="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+      <div class="flex items-center gap-3">
+        <i class="ti ti-loader-2 animate-spin text-xl text-primary"></i>
+        <div>
+          <p class="text-sm font-semibold">{t.panelLayout.serverSwitcher.connectingTitle}</p>
+          <p id="server-switch-status" class="text-xs text-muted-foreground">{t.panelLayout.serverSwitcher.connectingStatus}</p>
+        </div>
+      </div>
+    </div>
+  </div>}
+  {!embed && <script type="module" src="/scripts/extracted/lib/reactbits-kit.js?v=20260826a"></script>}
+</BaseLayout>
+
+{!embed && <script
+  type="module"
+  define:vars={{ locale, canLoadInstalledModules, canAccessSettings, canAccessUsers, sidebarPermissions, isAdminUser, directSession, workspaceShell }}
+>
+  import initScript from "/scripts/extracted/layouts/PanelLayout-define-vars-script1.js?v=dev-fixed-20261013";
+  if (workspaceShell) await Promise.all([
+    import("/scripts/extracted/layouts/workspace-module-nav.js?v=20260929-drawer-speed-v2"),
+  ]);
+  void initScript({ locale, canLoadInstalledModules, canAccessSettings, canAccessUsers, sidebarPermissions, isAdminUser, directSession });
+</script>}
+
+{workspaceShell && <script type="application/json" id="workspace-views-i18n" set:html={JSON.stringify(t.panelLayout.workspaceViews)}></script>}
+
+<script is:inline>
+  if (document.querySelector('[data-embed]')) {
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('a[href]');
+      if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target === '_blank' || link.hasAttribute('download')) return;
+      const url = new URL(link.href, location.href);
+      if (url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/assets/')) return;
+      url.searchParams.set('embed', '1');
+      link.href = url.href;
+    }, true);
+  }
+</script>
+
+{!embed && <script type="application/json" id="notifications-i18n" set:html={JSON.stringify(t.panelLayout.notificationsPanel)}></script>}
+{!embed && <script type="module">
+  import "/scripts/extracted/layouts/notifications.js?v=20261003-startup-v3";
+</script>}
+
+{!embed && <script type="application/json" id="chat-i18n" set:html={JSON.stringify(t.panelLayout.chatPanel)}></script>}
+{!embed && <script type="module">
+  import "/scripts/extracted/layouts/chat.js?v=20261003-startup-v3";
+</script>}
+
+{!embed && <script type="application/json" id="server-switcher-i18n" set:html={JSON.stringify(t.panelLayout.serverSwitcher)}></script>}
+<script type="application/json" id="install-modal-i18n" set:html={JSON.stringify(t.components.installModal)}></script>
+{!embed && <script type="module" src="/scripts/extracted/layouts/server-switcher.js?v=20261003-startup-v3"></script>}
+{!embed && <script type="module" src="/scripts/extracted/layouts/server-clock.js?v=20261003-startup-v3"></script>}
+{!embed && <script is:inline>
+  (() => {
+    const arrange = () => {
+      const shell = document.querySelector('[data-workspace-shell]');
+      document.documentElement.toggleAttribute('data-lxp-workspace-shell', Boolean(shell));
+      if (!shell) return;
+      const footer = document.getElementById('workspace-relocatable-footer');
+      const target = document.getElementById('server-rail-footer');
+      if (footer && target && footer.parentElement !== target) target.appendChild(footer);
+    };
+    arrange();
+    if (!window.__lxpWorkspaceArrangeInstalled) {
+      window.__lxpWorkspaceArrangeInstalled = true;
+      document.addEventListener('astro:page-load', arrange);
+      document.addEventListener('astro:after-swap', arrange);
+      // The rail belongs to the panel shell for every group, including when
+      // the assistant is mounted in the workspace.
+      window.addEventListener('lxp:workspace:toggle-server', () => {
+        const open = document.documentElement.toggleAttribute('data-lxp-server-open');
+        document.getElementById('workspace-history-toggle')?.setAttribute('aria-expanded', String(open));
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && document.documentElement.hasAttribute('data-lxp-server-open')) {
+          document.documentElement.removeAttribute('data-lxp-server-open');
+          document.getElementById('workspace-history-toggle')?.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+  })();
+</script>}
+<!-- Cierre animado de todos los <dialog> nativos (modal-drawer.css + motion.css). -->
+{!embed && <script type="module" src="/scripts/chat-mobile-refine.20261004-1.js"></script>}
+{!embed && <script type="module" src="/scripts/terminal-mobile-fullwidth.20261004-2.js"></script>}
+<script type="module" src="/scripts/extracted/layouts/dialog-motion.js?v=20260930-fast-close"></script>
+{!embed && <script type="module" src="/scripts/extracted/layouts/super-search.js?v=20260928-prompt-create"></script>}
+
+<!-- En la app nativa (WebView RN) los FAB suben para librar la barra inferior
+     del contenedor nativo. La clase la marca el script de detección de abajo. -->
+<style is:global>
+  @import "../styles/extracted/layouts/PanelLayout-style1.css";
+
+  /* Colapso del sidebar de escritorio = REFERENCIA de movimiento del panel
+     (tokens en styles/motion.css: 200ms ease-out). */
+  @media (min-width: 1025px) {
+    #sidebar {
+      transition-duration: var(--lxp-motion-duration, 200ms);
+      transition-timing-function: var(--lxp-motion-ease, ease-out);
+    }
+    html[data-panel-sidebar-collapsed="true"] #sidebar {
+      width: 0;
+      min-width: 0;
+      border-right-color: transparent;
+      opacity: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+  }
+</style>
+
+<!-- Detección de WebView (misma heurística que FloatingTerminalDrawer): marca
+     <html> con .lxp-webview. is:inline para correr temprano; se re-aplica en
+     cada navegación SPA vía astro:page-load (los <script type=module> no se
+     re-evalúan en swaps). El <html> persiste entre swaps, pero re-aplicar es
+     idempotente y cubre cualquier reset. -->
+<script is:inline>
+  (function () {
+    // App desktop (webview Electron): UA "LPSDesktopWebFrame…"/"electron",
+    // window.electronApi, o ?lxp_source=desktop|webframe (lo añade la app al
+    // cargar la URL). Una vez detectado se memoiza: tras navegación SPA el query
+    // param puede perderse, pero la UA es estable. Misma heurística que
+    // ui-sync.js (detectUiClientSource).
+    function isDesktopApp() {
+      if (window.__lxpDesktopApp) return true;
+      try {
+        var ua = navigator.userAgent || "";
+        var qp = "";
+        try {
+          var sp = new URLSearchParams(location.search);
+          qp = (sp.get("lxp_source") || sp.get("source") || sp.get("clientSource") || "").toLowerCase();
+        } catch (e) { /* no-op */ }
+        var hit =
+          /lpsdesktopwebframe|electron/i.test(ua) ||
+          !!window.electronApi ||
+          qp === "desktop" ||
+          qp === "webframe";
+        if (hit) window.__lxpDesktopApp = true;
+        return hit;
+      } catch (e) { return false; }
+    }
+    function applyClientClasses() {
+      try {
+        var wv = /ReactNativeWebView/i.test(navigator.userAgent) || !!window.ReactNativeWebView;
+        document.documentElement.classList.toggle("lxp-webview", wv);
+        document.documentElement.classList.toggle("lxp-desktop-app", isDesktopApp());
+      } catch (e) { /* no-op */ }
+    }
+    applyClientClasses();
+    if (!window.__lxpWebviewClassWired) {
+      window.__lxpWebviewClassWired = true;
+      document.addEventListener("astro:page-load", applyClientClasses);
+    }
+  })();
+
+</script>

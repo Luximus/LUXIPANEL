@@ -1,0 +1,287 @@
+/* Lector de blog (tab "Blog" del lateral, BlogReaderTab). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ── Lector de blog (tab "Blog" del lateral, BlogReaderTab) ───────────────── */
+.lp-blog-cover {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 0.9rem;
+  border: 1px solid var(--lp-border);
+  display: block;
+}
+
+.lp-blog-thumb {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 0.7rem;
+  border: 1px solid var(--lp-border);
+}
+
+/* Timeline de las últimas publicaciones (daisyUI `timeline` vertical/compact,
+   mismo patrón que el timeline del ticket). Cada caja es clicable y abre el
+   detalle del post. */
+.lp-blog-timeline {
+  margin-top: 4px;
+  /* Holgura a la izquierda para que el overflow del panel (`dashboard-panel__scroll`
+     → overflow-x calcula a `auto`) no recorte los círculos ni su halo: la línea
+     del timeline queda pegada al borde y el contenedor cortaba los dots. */
+  padding-inline-start: 14px;
+}
+
+/* Conector "beaded": en vez de una línea sólida pintamos una columna de puntos
+   pequeños (radial-gradient repetido en vertical) → se ven más dots y queda más
+   bonito. daisyUI da al hr vertical `height: 100%`; NO lo tocamos (antes lo
+   reducíamos a 2px y casi no se veía el conector). */
+.lp-blog-timeline hr {
+  border: 0;
+  background-color: transparent;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--lp-brand-light) 55%, transparent) 1.4px,
+    transparent 1.7px
+  );
+  background-size: 3px 8px;
+  background-repeat: repeat-y;
+  background-position: center top;
+}
+
+.lp-blog-timeline .timeline-middle {
+  display: inline-flex;
+  align-items: center;
+}
+
+.lp-blog-timeline-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  background: var(--lp-brand-light);
+  border: 2px solid var(--lp-brand-dim);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-brand-light) 20%, transparent);
+}
+
+/* Imagen de portada del post: lateral DERECHO de la nota (texto a la izquierda),
+   todo en una sola fila. Se estira a la altura del bloque de texto y recorta con
+   object-fit. */
+.lp-blog-timeline-cover {
+  width: 120px;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-height: 96px;
+  object-fit: cover;
+  border-radius: 0.6rem;
+  border: 1px solid var(--lp-border);
+  display: block;
+}
+
+.lp-blog-timeline-box {
+  /* La caja ES el grid-item `.timeline-end`. daisyUI le pone
+     `place-self: center flex-start` (no estira). Con `justify-self: stretch`
+     llena la celda y el margen izquierdo SE DESCUENTA del ancho → sin overflow
+     en X (antes `width:100%` + `margin-inline-start` desbordaba por el margen). */
+  justify-self: stretch;
+  min-width: 0;
+  margin-inline-start: 0.6rem;
+  margin-block: 0.3rem;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.75rem;
+  text-align: start;
+  border: 1px solid var(--lp-border);
+  background: var(--lp-card-solid);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+/* Columna de textos (izquierda) de la nota; la imagen va a la derecha. */
+.lp-blog-timeline-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lp-blog-timeline-box:hover {
+  border-color: var(--lp-border-brand);
+  background: color-mix(in srgb, var(--lp-brand-dim) 30%, var(--lp-card-solid));
+}
+
+.lp-blog-timeline-box:focus-visible {
+  outline: 2px solid var(--lp-border-brand);
+  outline-offset: 2px;
+}
+
+.lp-blog-timeline-date {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--lp-brand-light);
+}
+
+/* Cuerpo HTML del post (ya saneado en backend). Estilos de lectura básicos. */
+.lp-blog-content {
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--lp-text);
+  word-break: break-word;
+}
+
+.lp-blog-content :where(h1, h2, h3, h4) {
+  color: var(--lp-heading);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.1em 0 0.5em;
+}
+
+.lp-blog-content :where(h1) { font-size: 1.4rem; }
+.lp-blog-content :where(h2) { font-size: 1.2rem; }
+.lp-blog-content :where(h3) { font-size: 1.05rem; }
+
+.lp-blog-content :where(p, ul, ol, blockquote) {
+  margin: 0 0 0.85em;
+}
+
+.lp-blog-content :where(ul, ol) {
+  padding-inline-start: 1.4em;
+}
+
+.lp-blog-content :where(li) {
+  margin: 0.25em 0;
+}
+
+.lp-blog-content :where(a) {
+  color: var(--lp-brand-light);
+  text-decoration: underline;
+}
+
+.lp-blog-content :where(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.7rem;
+  margin: 0.6em 0;
+}
+
+/* Embeds de video (YouTube/Vimeo): responsive 16:9 dentro del lector. */
+.lp-blog-content :where(iframe) {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 0;
+  border-radius: 0.7rem;
+  margin: 0.8em 0;
+}
+
+/* Fila categoría + tags y separador título/descripción del lector de blog. */
+.lp-blog-taxo { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.lp-blog-tag {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  color: var(--lp-text-sub);
+  background: color-mix(in srgb, var(--lp-text) 7%, transparent);
+  border: 1px solid var(--lp-border);
+}
+.lp-blog-sep {
+  border: none;
+  border-top: 1px solid var(--lp-border);
+  margin: 0.5rem 0;
+}
+
+.lp-blog-content :where(blockquote) {
+  border-inline-start: 3px solid var(--lp-border-brand);
+  padding-inline-start: 0.9em;
+  color: var(--lp-text-muted);
+  font-style: italic;
+}
+
+.lp-blog-content :where(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--lp-text) 8%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 0.35rem;
+}
+
+.lp-blog-content :where(pre) {
+  background: color-mix(in srgb, var(--lp-text) 8%, transparent);
+  padding: 0.85em 1em;
+  border-radius: 0.6rem;
+  overflow-x: auto;
+}
+
+.lp-blog-content :where(pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+.dashboard-split__aside {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--lp-card);
+  border: 1px solid var(--lp-border);
+  border-radius: 1.25rem;
+  padding: 1rem;
+  box-shadow: var(--lp-shadow-xl);
+  backdrop-filter: blur(6px);
+  overflow-y: auto;
+  /* El panel lateral nunca debe scrollar en X al redimensionar la ventana. */
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+.dashboard-aside-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.dashboard-aside-title {
+  font-size: clamp(1.5rem, 2.4vw, 2rem) !important;
+  line-height: 1.05 !important;
+}
+
+.dashboard-aside-glance {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: grid;
+  gap: 0.6rem;
+}
+
+.dashboard-aside-glance .glance-card {
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.9rem;
+}
+
+.dashboard-aside-glance .glance-card__value {
+  font-size: 1.4rem;
+}
+
+.panel-card {
+  background: var(--lp-card);
+  border: 1px solid var(--lp-border);
+  border-radius: 1.1rem;
+  padding: 1rem 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: var(--lp-shadow);
+  transition: transform .12s, border-color .18s, box-shadow .18s;
+}
+
+.panel-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--lp-border-brand);
+  box-shadow: var(--lp-shadow-xl);
+}
+
+

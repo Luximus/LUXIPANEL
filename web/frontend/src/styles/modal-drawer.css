@@ -1,0 +1,378 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 LUXISOFT */
+
+/*
+ * modal-drawer.css — Convierte TODOS los <dialog> nativos del panel (abiertos
+ * con .showModal()) en un drawer lateral DERECHO, de forma 100% presentacional.
+ *
+ * - NO se toca la lógica de apertura/cierre (scripts extraídos / confirm.ts).
+ * - Opt-out: cualquier <dialog data-lxp-modal-keep> conserva el estilo centrado
+ *   original (p. ej. el visor de media/imagen full-bleed de Files).
+ *
+ * Anclaje a la DERECHA: inset 0 0 0 auto, slide-in desde la derecha
+ * (translateX(100%)→0), sombra proyectada hacia la IZQUIERDA y radio solo
+ * en las esquinas interiores del lateral izquierdo.
+ *
+ * Esqueleto vertical (header fijo / body scrolleable / footer anclado abajo):
+ * el drawer es un `flex column` a toda la altura; la fila de botones (footer)
+ * se pega al fondo con `margin-top:auto`, el body llena y desplaza, y el header
+ * (ModalNavbar) no se encoge. Ver las reglas de §Esqueleto más abajo.
+ *
+ * Especificidad: usamos `body dialog[open]:not([data-lxp-modal-keep])`
+ * (≈ 0,2,2) para ganarle a las utilidades Tailwind inline de cada dialog
+ * (`w-full`, `max-w-sm`, `rounded-2xl`, `fixed`, `-translate-*`, `max-h-[80vh]`…
+ * todas 0,1,0) sin recurrir a `!important`. Los estilos de UA (`dialog:modal`)
+ * pertenecen al origen de menor prioridad, así que un selector de autor siempre
+ * los supera.
+ */
+
+body dialog[open]:not([data-lxp-modal-keep]) {
+  /* Anclaje al borde derecho, a toda la altura del viewport. */
+  position: fixed;
+  inset: 0 0 0 auto; /* top:0 right:0 bottom:0 left:auto */
+  margin: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+  /* Ancho responsive: móvil 100vw → tablet 60vw → desktop 40vw. */
+  width: 100vw;
+  max-width: none;
+  /* Esqueleto: pila vertical (header / body / footer). El propio dialog puede
+     desplazarse como fallback; el body interior tiene su propio scroll. */
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Container query root: los grids internos (@xl:, @2xl:, …) responden al
+     ancho REAL del drawer (40vw/60vw/100vw), no al viewport. */
+  container-type: inline-size;
+  /* En móvil el drawer ocupa todo el viewport y no lleva radio. */
+  border-radius: 0 !important;
+  /* Anula cualquier transform inline de centrado (p. ej. -translate-x-1/2). */
+  transform: none;
+  /* Borde solo en el lado izquierdo + sombra proyectada hacia la izquierda. */
+  border-top: 0;
+  border-bottom: 0;
+  border-right: 0;
+  box-shadow: -8px 0 32px -8px rgb(0 0 0 / 0.45);
+  /* Apertura: tokens de motion.css (misma receta que el colapso del sidebar). */
+  animation: lxpDrawerIn var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+}
+
+/* Cierre animado (lo orquesta layouts/dialog-motion.ts: parchea
+   HTMLDialogElement.prototype.close → marca `data-lxp-closing`, espera al
+   `animationend` y entonces cierra de verdad). El dialog sigue `[open]` durante
+   la salida, por eso el selector apila el atributo sobre el de apertura. */
+body dialog[open][data-lxp-closing]:not([data-lxp-modal-keep]) {
+  --lxp-motion-duration: 100ms;
+  animation: lxpDrawerOut var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+  pointer-events: none;
+}
+
+/* Tablet: 60vw; el borde derecho pegado al viewport permanece recto. */
+@media (min-width: 640px) {
+  body dialog[open]:not([data-lxp-modal-keep]) {
+    width: 60vw;
+    /* Starwind aplica un radio global a dialog con !important. */
+    border-radius: .3rem 0 0 .3rem !important;
+  }
+}
+
+/* Desktop: 40vw. */
+@media (min-width: 1025px) {
+  body dialog[open]:not([data-lxp-modal-keep]) {
+    width: 40vw;
+  }
+}
+
+/* Backdrop con fade (mismo tono que ya usan los dialogs). */
+body dialog[open]:not([data-lxp-modal-keep])::backdrop {
+  animation: lxpBackdropIn var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+}
+body dialog[open][data-lxp-closing]:not([data-lxp-modal-keep])::backdrop {
+  animation: lxpBackdropOut var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+}
+
+/* Dialogs centrados (opt-out `data-lxp-modal-keep`, p. ej. el visor de media de
+   Files): fundido + escala suave, entrada y salida simétricas, mismos tokens. */
+body dialog[open][data-lxp-modal-keep] {
+  animation: lxpModalIn var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+}
+body dialog[open][data-lxp-modal-keep]::backdrop {
+  animation: lxpBackdropIn var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+}
+body dialog[open][data-lxp-modal-keep][data-lxp-closing] {
+  --lxp-motion-duration: 100ms;
+  animation: lxpModalOut var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+  pointer-events: none;
+}
+body dialog[open][data-lxp-modal-keep][data-lxp-closing]::backdrop {
+  animation: lxpBackdropOut var(--lxp-motion-duration, 200ms) var(--lxp-motion-ease, ease-out) both;
+}
+
+/*
+ * Neutraliza los `max-w-*` que algunos dialogs aplican a contenedores internos
+ * para que el contenido llene el ancho del drawer. Solo afecta al hijo directo
+ * de contenido, no rompe grids/tablas internas (que definen su propio layout).
+ */
+body dialog[open]:not([data-lxp-modal-keep]) > form,
+body dialog[open]:not([data-lxp-modal-keep]) > div {
+  max-width: none;
+  width: 100%;
+}
+
+/* ── Esqueleto header / body / footer ──────────────────────────────────────
+ *
+ * Estructuras reales de los dialogs del panel (todas empiezan por el header
+ * <ModalNavbar/> = un único <div class="… h-14 border-b …">):
+ *
+ *   A) <dialog>[ nav, body-div, footer-div.border-t ]      (ConfirmModal, alert,
+ *                                                           validate, replace…)
+ *   B) <dialog><form>[ nav, body-div, footer-div.border-t ]</form>  (prompt)
+ *   C) <dialog>[ nav, <form> ]  con el footer (fila de botones) DENTRO del form
+ *                               (users/mail create·edit·role…)
+ *   D) <dialog>[ nav, <div> ]   body único como último hijo, footer dentro
+ *                               (user-key, ssh-keys, folder-picker, git…)
+ *
+ * Reglas conservadoras: solo dimensionamos el body/último-hijo y anclamos
+ * footers reconocibles; nunca empujamos un body que no es footer.
+ */
+
+/* Header (ModalNavbar u otro primer hijo que NO sea el form-cuerpo): fijo. */
+body dialog[open]:not([data-lxp-modal-keep]) > :not(form):first-child {
+  flex-shrink: 0;
+}
+
+/* Body-form que ES el cuerpo (único, último hijo): llena la altura, se
+   desplaza y es columna flex para que su fila final de botones se ancle abajo.
+   (No afecta a forms que son solo una sección superior —replace/compare—: esos
+   no son :last-child.) */
+body dialog[open]:not([data-lxp-modal-keep]) > form:last-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none; /* neutraliza max-h-[80vh]; el drawer ya acota a 100dvh */
+  overflow-y: auto;
+}
+
+/* Body-div único (último hijo que NO es una fila-footer con border-t): llena la
+   altura y se desplaza, sin alterar su layout interno (grid/space-y intactos). */
+body dialog[open]:not([data-lxp-modal-keep]) > div:last-child:not([class*="border-t"]) {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+/* En el selector de bases de datos, el cuerpo ocupa la altura disponible y
+   delega el desplazamiento a la lista; los botones quedan siempre visibles. */
+body dialog#dialog-db-picker[open] > .db-picker-body {
+  overflow: hidden;
+}
+
+/* Expo QR: equal space above and below keeps the QR centered in the body. */
+body dialog#dlg-expo-qr[open] > div:nth-child(2) {
+  flex: 1 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
+}
+
+body dialog#dlg-expo-qr[open] #expo-qr-hint {
+  align-self: start;
+}
+
+body dialog#dlg-expo-qr[open] #expo-qr-box {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  justify-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+body dialog#dlg-expo-qr[open] #expo-qr-box > canvas,
+body dialog#dlg-expo-qr[open] #expo-qr-box > span {
+  grid-row: 2;
+}
+
+body dialog#dlg-expo-qr[open] #expo-qr-box canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+body dialog#dlg-expo-qr[open] #expo-qr-box > p {
+  grid-row: 3;
+  align-self: start;
+}
+
+body dialog#dlg-expo-qr[open] #expo-qr-box + div {
+  align-self: end;
+}
+
+/* Footer anclado al fondo:
+   - fila-footer separada con borde superior (ConfirmModal y dialogs de módulo),
+   - o la última fila de botones dentro de un form-cuerpo (prompt, users, mail).
+   margin-top:auto solo actúa cuando hay espacio libre, así que los bodies sin
+   footer (listas dinámicas) no se ven afectados. */
+body dialog[open]:not([data-lxp-modal-keep]) > div[class*="border-t"]:last-child,
+body dialog[open]:not([data-lxp-modal-keep]) > form:last-child > *:last-child {
+  margin-top: auto;
+}
+
+@keyframes lxpDrawerIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes lxpDrawerOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes lxpBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lxpBackdropOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lxpModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes lxpModalOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* Accesibilidad: sin animación si el usuario lo pide. */
+@media (prefers-reduced-motion: reduce) {
+  body dialog[open],
+  body dialog[open]::backdrop {
+    animation: none;
+  }
+}
+
+
+/* LUXIPANEL — drawers "anchos" con menú lateral (Ajustes de correo, etc.):
+   más anchos que el 40vw por defecto para que el DrawerSectionNav (@xl:w-52)
+   muestre etiquetas y el contenido respire. */
+body dialog[open][data-lxp-modal-wide]:not([data-lxp-modal-keep]) {
+  width: 100vw;
+}
+/* Monaco fills the drawer; its AI footer must not inherit the generic
+   "last body div grows" rule used by settings forms. */
+body dialog#files-editor-panel[open] { overflow: hidden; }
+body dialog#files-editor-panel[open] > div.relative { overflow: hidden; }
+body dialog#files-editor-panel[open] > #files-editor-ai { flex: none; overflow: visible; }
+@media (min-width: 640px) {
+  body dialog[open][data-lxp-modal-wide]:not([data-lxp-modal-keep]) {
+    width: 82vw;
+  }
+}
+@media (min-width: 1025px) {
+  body dialog[open][data-lxp-modal-wide]:not([data-lxp-modal-keep]) {
+    width: min(62vw, 960px);
+  }
+}
+
+/* Shared confirmation, alert and input drawers: a centered message area
+   and equal, accessible actions, independent of runtime button classes. */
+body dialog:is(#confirm-modal-wrapper, #alert-modal-wrapper)[open] > div:has(> p[id$="-modal-message"]),
+body dialog#prompt-modal-wrapper[open] > form > div:has(> #prompt-modal-message) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2rem clamp(1.25rem, 5vw, 3rem);
+  text-align: center;
+}
+body dialog:is(#confirm-modal-wrapper, #alert-modal-wrapper)[open] p[id$="-modal-message"] {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 36rem;
+  margin-block: auto;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+body dialog#prompt-modal-wrapper[open] #prompt-modal-message {
+  width: 100%;
+  max-width: 36rem;
+  margin-top: auto;
+  margin-bottom: 1rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+body dialog#prompt-modal-wrapper[open] #prompt-modal-input {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 36rem;
+  min-height: 2.75rem;
+  margin-bottom: auto;
+  text-align: start;
+}
+body dialog:is(#confirm-modal-wrapper, #alert-modal-wrapper)[open] > div:last-child,
+body dialog#prompt-modal-wrapper[open] > form > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+  flex-shrink: 0;
+  padding: 1rem 1.5rem max(1rem, env(safe-area-inset-bottom));
+}
+body dialog#alert-modal-wrapper[open] > div:last-child {
+  grid-template-columns: minmax(0, 1fr);
+}
+body dialog:is(#confirm-modal-wrapper, #alert-modal-wrapper, #prompt-modal-wrapper)[open] button[id$="-modal-ok"],
+body dialog:is(#confirm-modal-wrapper, #prompt-modal-wrapper)[open] button[id$="-modal-cancel"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: .75rem 1rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+#passkeys-settings-list > div { gap: .75rem; }
+#passkeys-settings-list .btn-rename-passkey-settings,
+#passkeys-settings-list .btn-delete-passkey-settings {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}

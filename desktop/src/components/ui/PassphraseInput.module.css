@@ -1,0 +1,22 @@
+.wrapper {
+  position: relative;
+}
+
+.input {
+  padding-inline-end: 2.5rem;
+}
+
+.revealBtn {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 0.5rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--lp-text-muted);
+}

@@ -1,0 +1,31 @@
+/* useDialog — static inline styles extracted to CSS Module */
+
+.modalTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dangerIcon {
+  color: #e11d48;
+  flex-shrink: 0;
+}
+
+.modalBodyInner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.message {
+  color: var(--lp-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.promptLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}

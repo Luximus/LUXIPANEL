@@ -1,0 +1,63 @@
+# pnpm@11 — Configuración de seguridad y resolución.
+
+# === SEGURIDAD ===
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - '@tolqia/client'
+  - '@tolqia/contracts'
+  - '@tolqia/react' # bundled, integrity-pinned SDK snapshots; no registry package
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  '@parcel/watcher': true
+  '@tailwindcss/oxide': true # Tailwind v4 native engine
+  unrs-resolver: true
+  es5-ext: false
+  core-js: false
+  msw: true # service worker installer para tests con mocks
+  ttf2woff2: true # builds binario de conversión de fuentes
+  '@vgpu/adapter-node': false
+  webgpu: false
+
+packageManagerStrict: true
+packageManagerStrictVersion: false
+engineStrict: true
+verifyDepsBeforeRun: warn
+
+# === RESOLUCIÓN ===
+preferFrozenLockfile: true
+autoInstallPeers: true
+strictPeerDependencies: false
+dedupePeerDependents: true
+resolutionMode: highest
+
+# Force vite override declarado en package.json (legacy npm field).
+# pnpm también lo lee desde pnpm.overrides; lo replicamos aquí por claridad.
+overrides:
+  vite: ^8.0.13
+  '@tolqia/contracts': file:vendor/tolqia-contracts-1.0.0.tgz
+  '@tolqia/client': file:vendor/tolqia-client-1.0.0.tgz
+  devalue: '>=5.8.1'
+  qs: '>=6.15.2'
+  tar: '>=7.5.19'
+  fast-uri@>=3 <4: ^3.1.7
+  js-yaml@>=3 <4: ^3.15.2
+  js-yaml@>=4 <5: ^4.3.2
+  nanoid@>=3 <4: ^3.3.18
+  nanoid@>=5 <6: ^5.1.16
+  postcss@>=8 <9: ^8.5.18
+  browserslist: ^4.28.7
+  brace-expansion@>=2 <3: ^2.1.4
+  brace-expansion@>=4 <6: ^5.0.9
+  hono: ^4.12.25
+  ip-address@>=10 <11: ^10.3.1
+  undici@>=6 <7: ^6.28.1
+  node-fetch@>=2 <3: ^2.7.0
+  '@xmldom/xmldom@>=0.9 <0.10': ^0.9.12
+  svgo@>=3 <4: ^3.3.5
+  svgo@>=4 <5: ^4.1.0
+  smol-toml: ^1.7.1
+
+  linkify-it: ^5.0.2
+shamefullyHoist: true

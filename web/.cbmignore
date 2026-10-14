@@ -1,0 +1,14 @@
+# codebase-memory-mcp — exclusiones extra para el grafo de LUXIPANEL (2026-08-25)
+.wt-*/
+.wt-security*/
+security/
+cron/
+test-results/
+playwright-report/
+*.min.js
+*.map
+*.log
+*.db
+*.sqlite
+*.zip
+*.tgz

@@ -1,0 +1,58 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+.env
+
+# Firebase / Google secrets (nunca al repo)
+# google-services.json y GoogleService-Info.plist NO son secretos (van embebidos en cada
+# APK/IPA) y EAS solo sube lo NO ignorado. Se re-incluyen aqui para anular las reglas
+# **/google-services.json y **/GoogleService-Info.plist del .gitignore RAIZ del repo.
+!google-services.json
+!GoogleService-Info.plist
+google-play-service-account.json
+
+# Token EAS local (auth no-interactiva)
+.eas-token
+
+# Credenciales EAS locales (contienen password del cert de firma — NUNCA al repo)
+credentials.json
+credentials/

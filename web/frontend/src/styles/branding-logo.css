@@ -1,0 +1,21 @@
+/* Keep the panel's branded logos in the same circular surface as Chatbox. */
+.lxp-logo-wrap,
+.logo-card :has(> #preview-layout-logo) {
+  aspect-ratio: 1;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--card);
+  box-shadow: 0 8px 22px -14px rgb(15 23 42 / .45);
+}
+
+/* Auto-width logos derive their width from the height of their container. */
+.lxp-logo-wrap.w-auto {
+  width: auto;
+}
+
+/* Login already provides a padded white circle around this component. */
+.lxp-logo-wrap:has(> img[data-lxp-logo-role="login"]) {
+  background: transparent;
+  box-shadow: none;
+}

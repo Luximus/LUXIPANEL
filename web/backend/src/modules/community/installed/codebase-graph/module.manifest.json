@@ -1,0 +1,14 @@
+{
+  "id": "codebase-graph",
+  "name": "Codebase Graph",
+  "description": "Knowledge-graph viewer for the connected server's repo: architecture, routes, imports, call paths and an interactive graph view.",
+  "sdk": "^1.0.0",
+  "category": "developer",
+  "icon": "tabler:binary-tree",
+  "color": "violet",
+  "scope": "local",
+  "min_specs": { "cpu": 1, "ramMb": 512, "diskMb": 200 },
+  "capabilities": ["server.exec"],
+  "pricing": { "model": "free", "tokensPerMonth": 0 },
+  "entry": { "backend": "backend/index.ts" }
+}

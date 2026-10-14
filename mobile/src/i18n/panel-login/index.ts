@@ -1,0 +1,14 @@
+import es from "./es";
+import en from "./en";
+import pt from "./pt";
+import fr from "./fr";
+import de from "./de";
+import it from "./it";
+import ja from "./ja";
+import ko from "./ko";
+import ru from "./ru";
+import ar from "./ar";
+import hi from "./hi";
+import bn from "./bn";
+const messages: Record<string, typeof en> = {es,en,pt,fr,de,it,ja,ko,ru,ar,hi,bn} as unknown as Record<string,typeof en>;
+export const panelLoginMessages = (locale: string) => messages[locale.split("-")[0]] ?? en;

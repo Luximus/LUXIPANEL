@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3300" height="2450" viewBox="0 0 3300 2450" role="img" aria-labelledby="title desc">
+<title id="title">Mapa de archivos y carpetas del proyecto LUXIPANEL</title>
+<desc id="desc">Infografía del árbol real de backend, frontend, módulos, páginas, scripts, documentos y archivos de entrada.</desc>
+<defs>
+  <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#07111d"/><stop offset="1" stop-color="#112238"/></linearGradient>
+  <pattern id="grid" width="55" height="55" patternUnits="userSpaceOnUse"><path d="M55 0H0V55" fill="none" stroke="#223a4e" opacity=".35"/></pattern>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#010714" flood-opacity=".45"/></filter>
+  <style>
+    text{font-family:Inter,Geist,'DejaVu Sans',Arial,sans-serif;fill:#edf4fa}
+    .kicker{font-size:27px;font-weight:800;letter-spacing:5px;fill:#63e0a7}
+    .title{font-size:76px;font-weight:850;letter-spacing:-2px}
+    .subtitle{font-size:29px;fill:#a6b9c8}
+    .section{font-size:44px;font-weight:800}
+    .sectionSub{font-size:27px;fill:#aac0cf}
+    .tree{font-family:'DejaVu Sans Mono',Consolas,monospace;font-size:28px;fill:#e8f1fa}
+    .hint{font-size:25px;fill:#9eafbf}
+    .module{font-family:'DejaVu Sans Mono',Consolas,monospace;font-size:27px;fill:#c9e9da}
+    .smallHead{font-size:31px;font-weight:800}
+    .body{font-size:28px;fill:#e3edf6}
+    .foot{font-size:25px;fill:#98acbf}
+  </style>
+</defs>
+<rect width="3300" height="2450" fill="url(#bg)"/><rect width="3300" height="2450" fill="url(#grid)"/>
+<circle cx="1640" cy="290" r="310" fill="none" stroke="#276148" stroke-width="2" opacity=".5"/>
+
+<text x="78" y="82" class="kicker">MAPA REAL DEL REPOSITORIO · 29 SEP 2026</text>
+<text x="72" y="169" class="title">LUXIPANEL  /  estructura de archivos</text>
+<text x="76" y="229" class="subtitle">Árbol de fuente, puntos de entrada, carpetas compartidas y salidas de build. Pensado para navegar el código fullstack.</text>
+<path d="M1650 326V390M1650 390H842V430M1650 390H2458V430M1650 390V1877M1650 1877H842V1900M1650 1877H2458V1900" fill="none" stroke="#55cba0" stroke-width="6" opacity=".8"/>
+<rect x="1115" y="260" width="1070" height="100" rx="32" fill="#174235" stroke="#5ee6ab" stroke-width="2" filter="url(#shadow)"/>
+<text x="1220" y="325" class="tree" font-size="44">/var/www/LUXIPANEL/</text>
+<rect x="70" y="430" width="1550" height="1410" rx="25" fill="#13253a" stroke="#33516b" stroke-width="2" filter="url(#shadow)"/>
+<rect x="1680" y="430" width="1550" height="1410" rx="25" fill="#13253a" stroke="#33516b" stroke-width="2" filter="url(#shadow)"/>
+<rect x="70" y="430" width="1550" height="12" rx="6" fill="#62dfaa"/>
+<rect x="1680" y="430" width="1550" height="12" rx="6" fill="#76a9ff"/>
+<text x="115" y="510" class="section" fill="#6ae4ae">backend/</text>
+<text x="520" y="507" class="sectionSub">Express + TypeScript  ·  API y servicios</text>
+<text x="1725" y="510" class="section" fill="#87b6ff">frontend/</text>
+<text x="2150" y="507" class="sectionSub">Astro + React  ·  vistas y cliente</text>
+<line x1="115" y1="535" x2="1575" y2="535" stroke="#35536b" stroke-width="2"/>
+<line x1="1725" y1="535" x2="3185" y2="535" stroke="#35536b" stroke-width="2"/>
+<text x="114" y="602" class="tree">backend/</text>
+<text x="114" y="650" class="tree">├─ src/</text>
+<text x="909" y="650" class="hint">fuente principal</text>
+<text x="114" y="698" class="tree">│  ├─ server.ts</text>
+<text x="909" y="698" class="hint">arranque y registro de módulos</text>
+<text x="114" y="746" class="tree">│  ├─ app.ts</text>
+<text x="909" y="746" class="hint">Express y middlewares</text>
+<text x="114" y="794" class="tree">│  ├─ config/</text>
+<text x="909" y="794" class="hint">env, paths, Redis, auth</text>
+<text x="114" y="842" class="tree">│  ├─ shared/</text>
+<text x="909" y="842" class="hint">executor, data-store, WS…</text>
+<text x="114" y="890" class="tree">│  ├─ modules/</text>
+<text x="909" y="890" class="hint">37 carpetas de dominio</text>
+<text x="114" y="938" class="tree">│  ├─ test/</text>
+<text x="909" y="938" class="hint">pruebas de integración</text>
+<text x="114" y="986" class="tree">│  └─ types/</text>
+<text x="909" y="986" class="hint">tipos comunes</text>
+<text x="114" y="1034" class="tree">├─ scripts/</text>
+<text x="909" y="1034" class="hint">operación del backend</text>
+<text x="114" y="1082" class="tree">│  ├─ remote/engines/</text>
+<text x="909" y="1082" class="hint">collectors + worker Python</text>
+<text x="114" y="1130" class="tree">│  ├─ ops/</text>
+<text x="909" y="1130" class="hint">utilidades de mantenimiento</text>
+<text x="114" y="1178" class="tree">│  └─ lib/</text>
+<text x="909" y="1178" class="hint">helpers de shell</text>
+<text x="114" y="1226" class="tree">├─ dist/</text>
+<text x="909" y="1226" class="hint">build compilado</text>
+<text x="114" y="1274" class="tree">└─ package.json</text>
+<text x="909" y="1274" class="hint">deps y comandos</text>
+<text x="1722" y="602" class="tree">frontend/</text>
+<text x="1722" y="647" class="tree">├─ src/</text>
+<text x="2517" y="647" class="hint">fuente principal</text>
+<text x="1722" y="692" class="tree">│  ├─ pages/</text>
+<text x="2517" y="692" class="hint">rutas Astro</text>
+<text x="1722" y="737" class="tree">│  │  ├─ panel/&lt;m&gt;/</text>
+<text x="2517" y="737" class="hint">pantallas por módulo</text>
+<text x="1722" y="782" class="tree">│  │  └─ api/[...path].ts</text>
+<text x="2517" y="782" class="hint">proxy HTTP al backend</text>
+<text x="1722" y="827" class="tree">│  ├─ middleware.ts</text>
+<text x="2517" y="827" class="hint">gate de sesión SSR</text>
+<text x="1722" y="872" class="tree">│  ├─ components/</text>
+<text x="2517" y="872" class="hint">UI React y Astro</text>
+<text x="1722" y="917" class="tree">│  ├─ layouts/</text>
+<text x="2517" y="917" class="hint">Base, Auth, Panel</text>
+<text x="1722" y="962" class="tree">│  ├─ lib/</text>
+<text x="2517" y="962" class="hint">API client, auth, utilidades</text>
+<text x="1722" y="1007" class="tree">│  ├─ scripts/extracted/</text>
+<text x="2517" y="1007" class="hint">lógica cliente por página</text>
+<text x="1722" y="1052" class="tree">│  └─ styles/, i18n/</text>
+<text x="2517" y="1052" class="hint">estilos + idiomas</text>
+<text x="1722" y="1097" class="tree">├─ public/</text>
+<text x="2517" y="1097" class="hint">assets, scripts, fuentes</text>
+<text x="1722" y="1142" class="tree">├─ scripts/</text>
+<text x="2517" y="1142" class="hint">build e i18n</text>
+<text x="1722" y="1187" class="tree">├─ e2e/</text>
+<text x="2517" y="1187" class="hint">Playwright</text>
+<text x="1722" y="1232" class="tree">├─ dist/</text>
+<text x="2517" y="1232" class="hint">salida SSR + client</text>
+<text x="1722" y="1277" class="tree">└─ astro.config.mjs</text>
+<text x="2517" y="1277" class="hint">configuración Astro</text>
+<rect x="104" y="1340" width="1482" height="462" rx="22" fill="#0d1d2e" stroke="#315541" stroke-width="2" filter="url(#shadow)"/>
+<text x="135" y="1391" class="smallHead" fill="#7ceab9">src/modules/   ·   carpetas reales</text>
+<text x="135" y="1431" class="foot">Cada módulo suele separar routes → controllers → services → repositories → models.</text>
+<text x="137" y="1485" class="module" font-size="25">▸ admin/</text>
+<text x="137" y="1516" class="module" font-size="25">▸ ai-assistant/</text>
+<text x="137" y="1547" class="module" font-size="25">▸ auth/</text>
+<text x="137" y="1578" class="module" font-size="25">▸ backup/</text>
+<text x="137" y="1609" class="module" font-size="25">▸ bitninja/</text>
+<text x="137" y="1640" class="module" font-size="25">▸ chat/</text>
+<text x="137" y="1671" class="module" font-size="25">▸ cloudflare/</text>
+<text x="137" y="1702" class="module" font-size="25">▸ codebase-graph/</text>
+<text x="137" y="1733" class="module" font-size="25">▸ community/</text>
+<text x="137" y="1764" class="module" font-size="25">▸ cron/</text>
+<text x="485" y="1485" class="module" font-size="25">▸ dashboard/</text>
+<text x="485" y="1516" class="module" font-size="25">▸ databases/</text>
+<text x="485" y="1547" class="module" font-size="25">▸ expo/</text>
+<text x="485" y="1578" class="module" font-size="25">▸ files/</text>
+<text x="485" y="1609" class="module" font-size="25">▸ firewall/</text>
+<text x="485" y="1640" class="module" font-size="25">▸ hosting/</text>
+<text x="485" y="1671" class="module" font-size="25">▸ jobs/</text>
+<text x="485" y="1702" class="module" font-size="25">▸ license/</text>
+<text x="485" y="1733" class="module" font-size="25">▸ mail/</text>
+<text x="485" y="1764" class="module" font-size="25">▸ mcp/</text>
+<text x="833" y="1485" class="module" font-size="25">▸ module-dev/</text>
+<text x="833" y="1516" class="module" font-size="25">▸ monitor/</text>
+<text x="833" y="1547" class="module" font-size="25">▸ nginx/</text>
+<text x="833" y="1578" class="module" font-size="25">▸ notifications/</text>
+<text x="833" y="1609" class="module" font-size="25">▸ obsidian/</text>
+<text x="833" y="1640" class="module" font-size="25">▸ openclaw/</text>
+<text x="833" y="1671" class="module" font-size="25">▸ search/</text>
+<text x="833" y="1702" class="module" font-size="25">▸ secret-rotation/</text>
+<text x="833" y="1733" class="module" font-size="25">▸ security-audit/</text>
+<text x="833" y="1764" class="module" font-size="25">▸ server-alerts/</text>
+<text x="1180" y="1485" class="module" font-size="25">▸ servers/</text>
+<text x="1180" y="1516" class="module" font-size="25">▸ sudo/</text>
+<text x="1180" y="1547" class="module" font-size="25">▸ system-deps/</text>
+<text x="1180" y="1578" class="module" font-size="25">▸ terminal/</text>
+<text x="1180" y="1609" class="module" font-size="25">▸ terminal-cli/</text>
+<text x="1180" y="1640" class="module" font-size="25">▸ users/</text>
+<text x="1180" y="1671" class="module" font-size="25">▸ webhooks/</text>
+<rect x="1714" y="1340" width="1482" height="462" rx="22" fill="#0d1d2e" stroke="#3a5584" stroke-width="2" filter="url(#shadow)"/>
+<text x="1745" y="1391" class="smallHead" fill="#9bc2ff">src/pages/panel/   ·   carpetas de vistas</text>
+<text x="1745" y="1431" class="foot">Rutas del panel; sus componentes y scripts pueden vivir en carpetas separadas.</text>
+<text x="1747" y="1485" class="module" font-size="26">▸ assistant/</text>
+<text x="1747" y="1523" class="module" font-size="26">▸ backups/</text>
+<text x="1747" y="1561" class="module" font-size="26">▸ bitninja/</text>
+<text x="1747" y="1599" class="module" font-size="26">▸ chat/</text>
+<text x="1747" y="1637" class="module" font-size="26">▸ cloudflare/</text>
+<text x="1747" y="1675" class="module" font-size="26">▸ codebase-graph/</text>
+<text x="1747" y="1713" class="module" font-size="26">▸ cron/</text>
+<text x="1747" y="1751" class="module" font-size="26">▸ databases/</text>
+<text x="2115" y="1485" class="module" font-size="26">▸ docs/</text>
+<text x="2115" y="1523" class="module" font-size="26">▸ expo/</text>
+<text x="2115" y="1561" class="module" font-size="26">▸ files/</text>
+<text x="2115" y="1599" class="module" font-size="26">▸ firewall/</text>
+<text x="2115" y="1637" class="module" font-size="26">▸ hosting/</text>
+<text x="2115" y="1675" class="module" font-size="26">▸ mail/</text>
+<text x="2115" y="1713" class="module" font-size="26">▸ module-dev/</text>
+<text x="2115" y="1751" class="module" font-size="26">▸ modules/</text>
+<text x="2484" y="1485" class="module" font-size="26">▸ monitor/</text>
+<text x="2484" y="1523" class="module" font-size="26">▸ nginx/</text>
+<text x="2484" y="1561" class="module" font-size="26">▸ obsidian/</text>
+<text x="2484" y="1599" class="module" font-size="26">▸ openclaw/</text>
+<text x="2484" y="1637" class="module" font-size="26">▸ preferences/</text>
+<text x="2484" y="1675" class="module" font-size="26">▸ repository-store/</text>
+<text x="2484" y="1713" class="module" font-size="26">▸ server-alerts/</text>
+<text x="2484" y="1751" class="module" font-size="26">▸ settings/</text>
+<text x="2845" y="1485" class="module" font-size="26">▸ terminal/</text>
+<text x="2845" y="1523" class="module" font-size="26">▸ users/</text>
+<text x="2845" y="1561" class="module" font-size="26">▸ webhooks/</text>
+<rect x="70" y="1900" width="1550" height="430" rx="25" fill="#13253a" stroke="#33516b" stroke-width="2" filter="url(#shadow)"/>
+<rect x="1680" y="1900" width="1550" height="430" rx="25" fill="#13253a" stroke="#33516b" stroke-width="2" filter="url(#shadow)"/>
+<rect x="70" y="1900" width="1550" height="11" rx="5" fill="#f7bd78"/>
+<rect x="1680" y="1900" width="1550" height="11" rx="5" fill="#d8a1f7"/>
+<text x="114" y="1973" class="smallHead">Raíz: despliegue, soporte y documentación</text>
+<text x="116" y="2030" class="tree" font-size="26">▸ ecosystem.config.cjs</text>
+<text x="885" y="2030" class="hint" font-size="24">PM2: backend + frontend</text>
+<text x="116" y="2084" class="tree" font-size="26">▸ install.sh · update.sh · redeploy.sh</text>
+<text x="885" y="2084" class="hint" font-size="24">instalar, actualizar, compilar</text>
+<text x="116" y="2138" class="tree" font-size="26">▸ scripts/ · security/ · cron/</text>
+<text x="885" y="2138" class="hint" font-size="24">helpers, auditorías y planes</text>
+<text x="116" y="2192" class="tree" font-size="26">▸ docs/ · translations/</text>
+<text x="885" y="2192" class="hint" font-size="24">notas y README traducidos</text>
+<text x="116" y="2246" class="tree" font-size="26">▸ README.md · CLAUDE.md · AGENTS.md</text>
+<text x="885" y="2246" class="hint" font-size="24">guías y convenciones</text>
+<text x="1725" y="1973" class="smallHead">Ruta de una funcionalidad fullstack</text>
+<rect x="1724" y="1978" width="1442" height="60" rx="12" fill="#182b42" stroke="#35516b" stroke-width="2" filter="url(#shadow)"/>
+<text x="1750" y="2018" class="body" fill="#d8a1f7" font-size="27" font-weight="700">1  Vista</text>
+<text x="1990" y="2018" class="tree" font-size="25">frontend/src/pages/panel/&lt;m&gt;/</text>
+<rect x="1724" y="2054" width="1442" height="60" rx="12" fill="#182b42" stroke="#35516b" stroke-width="2" filter="url(#shadow)"/>
+<text x="1750" y="2094" class="body" fill="#d8a1f7" font-size="27" font-weight="700">2  Cliente</text>
+<text x="1990" y="2094" class="tree" font-size="25">frontend/src/components/ · lib/ · scripts/</text>
+<rect x="1724" y="2130" width="1442" height="60" rx="12" fill="#182b42" stroke="#35516b" stroke-width="2" filter="url(#shadow)"/>
+<text x="1750" y="2170" class="body" fill="#d8a1f7" font-size="27" font-weight="700">3  API</text>
+<text x="1990" y="2170" class="tree" font-size="25">backend/src/modules/&lt;m&gt;/routes/ → controllers/</text>
+<rect x="1724" y="2206" width="1442" height="60" rx="12" fill="#182b42" stroke="#35516b" stroke-width="2" filter="url(#shadow)"/>
+<text x="1750" y="2246" class="body" fill="#d8a1f7" font-size="27" font-weight="700">4  Lógica/datos</text>
+<text x="1990" y="2246" class="tree" font-size="25">services/ → repositories/ → shared/data-store/</text>
+<text x="76" y="2390" class="foot">Alcance: checkout local; dist/, dist-*/ y .wt-*/ son builds o worktrees, no la estructura fuente canónica.</text>
+<text x="3220" y="2390" class="foot">LUXIPANEL · SOURCE MAP</text>
+</svg>

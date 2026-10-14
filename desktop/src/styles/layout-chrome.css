@@ -1,0 +1,279 @@
+/* Chrome de layout: navbar superior, drawers (asistente/config), reveal del
+   toggle de tema, badges de tabla, titlebar (Electron drag), pill tabs y FABs. */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ─────────── Navbar superior (nivel 2, daisyUI navbar) ───────────
+   Vive fijo bajo la barra de título (`--lp-titlebar-h`). `--lp-navbar-h` es su
+   altura fija: el área de contenido en MainScreen resta (barra de título + esta
+   altura). Reemplaza al antiguo speed-dial del logo y al dock inferior.
+
+   `--lp-titlebar-h` es la altura de la barra de título (nivel 1). Es un único
+   punto de verdad: la barra, el offset del navbar, el offset del contenido y el
+   `top` de los overlays de modales la consumen, así que ajustarla aquí reespacia
+   todo a la vez (el chip de cuenta necesitaba más aire). */
+:root {
+  --lp-navbar-h: 3.25rem;
+  --lp-titlebar-h: 44px;
+}
+
+.lp-navbar {
+  height: var(--lp-navbar-h);
+  min-height: var(--lp-navbar-h);
+  padding-block: 0;
+}
+
+/* ─────────── Drawer del asistente (overlay fijo, no envuelve contenido) ──
+   Panel `fixed` hermano del workspace. Se desliza desde el borde inicial
+   (izquierda en LTR). */
+.lp-assistant-drawer {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 1305;
+  width: min(24rem, calc(100vw - 2rem));
+  transform: translateX(-100%);
+  transition: transform 0.3s ease-out;
+}
+[dir="rtl"] .lp-assistant-drawer {
+  transform: translateX(100%);
+}
+.lp-assistant-drawer.is-open {
+  transform: translateX(0);
+}
+
+/* Drawer lateral derecho de configuración de servidores (mismo patrón que el
+   asistente, pero más ancho para alojar las tablas de SSH/Categorías/etc.). */
+.lp-config-drawer {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 1305;
+  width: min(calc(100vw - 2rem), clamp(34rem, 48vw, 60rem));
+  transform: translateX(100%);
+  transition: transform 0.3s ease-out;
+}
+[dir="rtl"] .lp-config-drawer {
+  transform: translateX(-100%);
+}
+.lp-config-drawer.is-open {
+  transform: translateX(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-config-drawer {
+    transition: none;
+  }
+}
+
+/* Layout de una sola columna: la lista de servidores ocupa todo el ancho; la
+   configuración se abre bajo demanda en `.lp-config-drawer`. */
+.dashboard-single {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+@media (min-width: 1100px) {
+  .dashboard-single {
+    height: 100%;
+  }
+}
+.dashboard-single > .dashboard-split__main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ── Theme toggle: circular reveal via View Transitions API ───────── */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+  animation: lp-theme-reveal 0.5s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+@keyframes lp-theme-reveal {
+  from {
+    clip-path: circle(0% at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
+  to {
+    clip-path: circle(150% at var(--theme-x, 50%) var(--theme-y, 50%));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+.dt-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 0.62rem;
+  border-radius: 9999px;
+  height: 1.55rem;
+  min-height: 1.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  border-width: 1px;
+  border-style: solid;
+  border-color: transparent;
+}
+
+[data-theme="dark"] .btn {
+  color: #fff;
+}
+
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-no-drag * {
+  -webkit-app-region: no-drag;
+}
+
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .lp-tab-active-primary {
+  border-color: #818cf8;
+  background-color: #818cf8;
+  color: #ffffff;
+}
+
+[data-theme="light"] .lp-tab-active-primary {
+  background-color: #818cf8 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .lp-tab-active-primary {
+  background-color: #14191f !important;
+  color: #ffffff !important;
+  border-color: #474747 !important;
+}
+
+/* Segmented pill tabs (Payments) — active state uses the brand color so it is
+   clearly distinguishable in both dark and light (btn-primary renders identical
+   to btn-outline in dark mode, which hid the active tab). */
+.lp-seg-tab.is-active {
+  border-color: var(--lp-brand) !important;
+  background-color: var(--lp-brand) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px var(--lp-brand-glow);
+}
+
+.lp-seg-tab.is-active:hover {
+  border-color: var(--lp-brand-light) !important;
+  background-color: var(--lp-brand-light) !important;
+}
+
+.lp-seg-tab.is-active svg {
+  color: #ffffff !important;
+}
+
+/* Floating refresh button (FAB) — Payments screen */
+.lp-fab {
+  position: fixed;
+  inset-inline-end: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--lp-brand);
+  background: var(--lp-brand);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 0 12px 30px -8px var(--lp-brand-glow), 0 4px 14px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s, opacity 0.15s;
+}
+
+.lp-fab:hover:not(:disabled) {
+  background: var(--lp-brand-light);
+  border-color: var(--lp-brand-light);
+  transform: translateY(-2px);
+}
+
+.lp-fab:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.lp-fab svg {
+  color: #ffffff;
+}
+
+/* Floating support-assistant button (FAB) — moved out of the navbar to mirror
+   /app and /web. Fixed bottom-right pill with icon + text; sits above content
+   (z-index) and is DISABLED (not hidden) when the account has no data left. */
+.lp-support-fab {
+  position: fixed;
+  inset-inline-end: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.15rem;
+  border-radius: 999px;
+  border: 1px solid var(--lp-brand);
+  background: var(--lp-brand);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 0 12px 30px -8px var(--lp-brand-glow), 0 4px 14px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s, opacity 0.15s;
+}
+
+.lp-support-fab:hover:not(.is-disabled) {
+  background: var(--lp-brand-light);
+  border-color: var(--lp-brand-light);
+  transform: translateY(-2px);
+}
+
+/* Sin datos: color sólido atenuado (SIN transparencia). No usamos el atributo
+   `disabled` (quitaría el hover y con él el tooltip daisyUI `data-tip`); solo la
+   clase `.is-disabled` + aria-disabled, y el onClick se bloquea en el componente. */
+.lp-support-fab.is-disabled {
+  background: #64748b;
+  border-color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.lp-support-fab svg {
+  color: #ffffff;
+}
+
+/* Avatar redondeado del asistente activo dentro del FAB (reemplaza el icono). */
+.lp-support-fab__avatar {
+  width: 1.85rem;
+  height: 1.85rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+.lp-support-fab__label {
+  white-space: nowrap;
+}
+

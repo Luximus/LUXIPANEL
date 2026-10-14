@@ -1,0 +1,12 @@
+.dangerIcon {
+  display: inline;
+  vertical-align: -2px;
+  margin-inline-end: 0.4rem;
+  color: var(--lp-danger, #f43f5e);
+}
+
+.messageText {
+  color: var(--lp-text);
+  font-size: 0.9rem;
+  margin: 0;
+}

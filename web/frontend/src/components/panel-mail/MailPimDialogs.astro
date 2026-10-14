@@ -1,0 +1,265 @@
+---
+import ModalNavbar from "@/components/ui/ModalNavbar.astro";
+import DataTable from "@/components/ui/DataTable";
+const {
+  t, dataTableI18n,
+  MAIL_CONTACTS_COLUMNS, MAIL_CONTACTS_FILTERS, MAIL_CONTACTS_ROW_ACTIONS,
+  MAIL_CALENDARS_COLUMNS, MAIL_CALENDARS_FILTERS, MAIL_CALENDARS_ROW_ACTIONS, MAIL_CALENDARS_VALUE_BADGES,
+  MAIL_FILTERS_COLUMNS, MAIL_FILTERS_FILTERS, MAIL_FILTERS_ROW_ACTIONS, MAIL_FILTERS_VALUE_BADGES,
+} = Astro.props;
+import { DIALOG_CHROME } from "@/lib/ui-classes";
+---
+<!-- ── Contacts Dialog ───────────────────────────────────── -->
+<dialog
+  id="dialog-contacts"
+  class={`w-full max-w-3xl ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.contactsDialog.title} closeId="contacts-dialog-close" />
+  <p id="contacts-account-label" class="px-6 pt-4 text-xs text-muted-foreground"></p>
+
+  <div class="grid grid-cols-1 gap-4 px-6 py-5 lg:grid-cols-[1fr_1fr]">
+    <div class="rounded-xl border border-border">
+      <div class="border-b border-border bg-muted/30 px-4 py-2 text-sm font-medium">{t.mail.contactsDialog.savedContactsHeader}</div>
+      <div class="max-h-[460px] overflow-auto p-3">
+        <DataTable
+          i18n={dataTableI18n}
+          client:load
+          tableId="mail-contacts-table"
+          title={t.mail.dataTableTitles.contacts}
+          columns={MAIL_CONTACTS_COLUMNS}
+          data={[]}
+          filters={MAIL_CONTACTS_FILTERS}
+          rowActions={MAIL_CONTACTS_ROW_ACTIONS}
+        />
+      </div>
+    </div>
+
+    <form id="contacts-form" class="space-y-3 rounded-xl border border-border p-4">
+      <input id="contacts-edit-id" type="hidden" />
+      <div id="contacts-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+      <div class="space-y-1.5">
+        <label for="contacts-email" class="text-sm font-medium">{t.mail.contactsDialog.labelEmail}</label>
+        <input id="contacts-email" type="email" required class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+      <div class="space-y-1.5">
+        <label for="contacts-name" class="text-sm font-medium">{t.mail.contactsDialog.labelName}</label>
+        <input id="contacts-name" type="text" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+      <div class="flex gap-3">
+        <button type="button" id="contacts-new" class="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">{t.mail.contactsDialog.btnNew}</button>
+        <button type="button" id="contacts-cancel" class="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">{t.mail.contactsDialog.btnClose}</button>
+        <button type="submit" class="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90">{t.mail.contactsDialog.btnSave}</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- ── Calendars Dialog ───────────────────────────────────── -->
+<dialog
+  id="dialog-calendars"
+  class={`w-full max-w-4xl ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.calendarsDialog.title} closeId="calendars-dialog-close" />
+  <p id="calendars-account-label" class="px-6 pt-4 text-xs text-muted-foreground"></p>
+
+  <div class="grid grid-cols-1 gap-4 px-6 py-5 lg:grid-cols-[1.1fr_1fr]">
+    <div class="rounded-xl border border-border">
+      <div class="border-b border-border bg-muted/30 px-4 py-2 text-sm font-medium">{t.mail.calendarsDialog.savedCalendarsHeader}</div>
+      <div class="max-h-[460px] overflow-auto p-3">
+        <DataTable
+          i18n={dataTableI18n}
+          client:load
+          tableId="mail-calendars-table"
+          title={t.mail.dataTableTitles.calendars}
+          columns={MAIL_CALENDARS_COLUMNS}
+          data={[]}
+          filters={MAIL_CALENDARS_FILTERS}
+          rowActions={MAIL_CALENDARS_ROW_ACTIONS}
+          valueBadges={MAIL_CALENDARS_VALUE_BADGES}
+        />
+      </div>
+    </div>
+
+    <form id="calendars-form" class="space-y-3 rounded-xl border border-border p-4">
+      <input id="calendars-edit-id" type="hidden" />
+      <div id="calendars-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+      <div class="space-y-1.5">
+        <label for="calendars-name" class="text-sm font-medium">{t.mail.calendarsDialog.labelName}</label>
+        <input id="calendars-name" type="text" required class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+      <div class="space-y-1.5">
+        <label for="calendars-description" class="text-sm font-medium">{t.mail.calendarsDialog.labelDescription}</label>
+        <textarea id="calendars-description" rows="3" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"></textarea>
+      </div>
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div class="space-y-1.5">
+          <label for="calendars-color" class="text-sm font-medium">{t.mail.calendarsDialog.labelColor}</label>
+          <input id="calendars-color" type="color" class="h-10 w-full rounded-lg border border-input bg-background px-2" value="#3b82f6" />
+        </div>
+        <div class="space-y-1.5">
+          <label for="calendars-timezone" class="text-sm font-medium">{t.mail.calendarsDialog.labelTimezone}</label>
+          <input id="calendars-timezone" type="text" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" value="UTC" />
+        </div>
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input id="calendars-enabled" type="checkbox" class="h-4 w-4 rounded border-input" checked />
+        {t.mail.calendarsDialog.labelEnabled}
+      </label>
+      <div class="flex gap-3">
+        <button type="button" id="calendars-new" class="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">{t.mail.calendarsDialog.btnNew}</button>
+        <button type="button" id="calendars-cancel" class="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">{t.mail.calendarsDialog.btnClose}</button>
+        <button type="submit" class="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90">{t.mail.calendarsDialog.btnSave}</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- ── Autoresponder Dialog ─────────────────────────────────── -->
+<dialog
+  id="dialog-autoresponder"
+  class={`w-full max-w-4xl ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.autoresponderDialog.title} closeId="autoresponder-dialog-close" />
+  <p id="autoresponder-account-label" class="px-6 pt-4 text-xs text-muted-foreground"></p>
+
+  <form id="autoresponder-form" class="space-y-4 px-6 py-5">
+    <div id="autoresponder-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr] md:items-center">
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input id="autoresponder-enabled" type="checkbox" class="h-4 w-4 rounded border-input" checked />
+        {t.mail.autoresponderDialog.labelEnabled}
+      </label>
+      <div class="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+        {t.mail.autoresponderDialog.tagsNote}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div class="space-y-1.5">
+        <label for="autoresponder-charset" class="text-sm font-medium">{t.mail.autoresponderDialog.labelCharset}</label>
+        <select id="autoresponder-charset" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"></select>
+      </div>
+      <div class="space-y-1.5">
+        <label for="autoresponder-interval" class="text-sm font-medium">{t.mail.autoresponderDialog.labelInterval}</label>
+        <input id="autoresponder-interval" type="number" min="0" max="8760" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" value="24" />
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1.3fr]">
+      <div class="space-y-1.5">
+        <label for="autoresponder-local" class="text-sm font-medium">{t.mail.autoresponderDialog.labelEmailLocal}</label>
+        <input id="autoresponder-local" type="text" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+      <div class="space-y-1.5">
+        <label for="autoresponder-domain" class="text-sm font-medium">{t.mail.autoresponderDialog.labelDomain}</label>
+        <select id="autoresponder-domain" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"></select>
+      </div>
+    </div>
+
+    <div class="space-y-1.5">
+      <label for="autoresponder-from" class="text-sm font-medium">{t.mail.autoresponderDialog.labelFrom}</label>
+      <input id="autoresponder-from" type="text" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.autoresponderDialog.placeholderFrom} />
+    </div>
+
+    <div class="space-y-1.5">
+      <label for="autoresponder-subject" class="text-sm font-medium">{t.mail.autoresponderDialog.labelSubject}</label>
+      <input id="autoresponder-subject" type="text" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" required />
+    </div>
+
+    <label class="inline-flex items-center gap-2 text-sm">
+      <input id="autoresponder-is-html" type="checkbox" class="h-4 w-4 rounded border-input" />
+      {t.mail.autoresponderDialog.labelIsHtml}
+    </label>
+
+    <div class="space-y-1.5">
+      <label for="autoresponder-body" class="text-sm font-medium">{t.mail.autoresponderDialog.labelBody}</label>
+      <textarea id="autoresponder-body" rows="8" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"></textarea>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div class="space-y-1.5">
+        <label for="autoresponder-start" class="text-sm font-medium">{t.mail.autoresponderDialog.labelStart}</label>
+        <input id="autoresponder-start" type="datetime-local" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+      <div class="space-y-1.5">
+        <label for="autoresponder-stop" class="text-sm font-medium">{t.mail.autoresponderDialog.labelStop}</label>
+        <input id="autoresponder-stop" type="datetime-local" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+      <button type="button" id="autoresponder-delete" class="rounded-lg border border-destructive/40 px-4 py-2 text-sm text-destructive hover:bg-destructive/10">{t.mail.autoresponderDialog.btnDelete}</button>
+      <button type="button" id="autoresponder-cancel" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t.mail.autoresponderDialog.btnCancel}</button>
+      <button type="submit" id="autoresponder-save" class="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90">{t.mail.autoresponderDialog.btnSave}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Mail Filters Dialog ───────────────────────────────────── -->
+<dialog
+  id="dialog-filters"
+  class={`w-full max-w-6xl ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.filtersDialog.title} closeId="filters-dialog-close" />
+  <p id="filters-account-label" class="px-6 pt-4 text-xs text-muted-foreground"></p>
+
+  <div class="grid grid-cols-1 gap-4 px-6 py-5 xl:grid-cols-[360px_1fr]">
+    <div class="rounded-xl border border-border">
+      <div class="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-2">
+        <p class="text-sm font-medium">{t.mail.filtersDialog.savedFiltersHeader}</p>
+        <button id="filters-new" class="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t.mail.filtersDialog.btnNew}</button>
+      </div>
+      <div class="max-h-[520px] overflow-auto p-3">
+        <DataTable
+          i18n={dataTableI18n}
+          client:load
+          tableId="mail-filters-table"
+          title={t.mail.dataTableTitles.filters}
+          columns={MAIL_FILTERS_COLUMNS}
+          data={[]}
+          filters={MAIL_FILTERS_FILTERS}
+          rowActions={MAIL_FILTERS_ROW_ACTIONS}
+          valueBadges={MAIL_FILTERS_VALUE_BADGES}
+        />
+      </div>
+    </div>
+
+    <form id="filters-form" class="space-y-4 rounded-xl border border-border p-4">
+      <input id="filters-edit-id" type="hidden" />
+      <div id="filters-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
+        <div class="space-y-1.5">
+          <label for="filters-name" class="text-sm font-medium">{t.mail.filtersDialog.labelFilterName}</label>
+          <input id="filters-name" type="text" required class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.filtersDialog.placeholderFilterName} />
+        </div>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input id="filters-enabled" type="checkbox" class="h-4 w-4 rounded border-input" checked />
+          {t.mail.filtersDialog.labelEnabled}
+        </label>
+      </div>
+
+      <div class="rounded-xl border border-border p-3">
+        <div class="mb-2 flex items-center justify-between">
+          <p class="text-sm font-semibold">{t.mail.filtersDialog.rulesTitle}</p>
+          <button type="button" id="filters-add-rule" class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent">{t.mail.filtersDialog.btnAddRule}</button>
+        </div>
+        <div id="filters-rules-list" class="space-y-2"></div>
+      </div>
+
+      <div class="rounded-xl border border-border p-3">
+        <div class="mb-2 flex items-center justify-between">
+          <p class="text-sm font-semibold">{t.mail.filtersDialog.actionsTitle}</p>
+          <button type="button" id="filters-add-action" class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent">{t.mail.filtersDialog.btnAddAction}</button>
+        </div>
+        <div id="filters-actions-list" class="space-y-2"></div>
+      </div>
+
+      <div class="flex gap-3">
+        <button type="button" id="filters-cancel" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t.mail.filtersDialog.btnCancel}</button>
+        <button type="submit" id="filters-save" class="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90">{t.mail.filtersDialog.btnSave}</button>
+      </div>
+    </form>
+  </div>
+</dialog>

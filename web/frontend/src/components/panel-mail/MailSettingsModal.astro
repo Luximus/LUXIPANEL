@@ -1,0 +1,439 @@
+---
+import ViewSettingsModal from "@/components/ui/ViewSettingsModal.astro";
+import DataTable from "@/components/ui/DataTable";
+const {
+  t, dataTableI18n,
+  MAIL_REDIRECT_COLUMNS, MAIL_REDIRECT_FILTERS, MAIL_REDIRECT_ROW_ACTIONS,
+  MAIL_ENCRYPTION_COLUMNS, MAIL_ENCRYPTION_FILTERS, MAIL_ENCRYPTION_ROW_ACTIONS,
+  MAIL_ACCOUNTS_ROW_ACTIONS = [],
+} = Astro.props;
+
+// Left-nav sections for the settings drawer (reemplaza el antiguo menú de cards).
+const settingsNav = [
+  { view: "table", icon: "ti-table", label: t.mail.settingsModal.tableLabel },
+  { view: "routing", icon: "ti-route", label: t.mail.settingsModal.routingCard.label },
+  { view: "domain-redirect", icon: "ti-send", label: t.mail.settingsModal.domainRedirectCard.label },
+  { view: "encryption", icon: "ti-key", label: t.mail.settingsModal.encryptionCard.label },
+  { view: "archive", icon: "ti-archive", label: t.mail.settingsModal.archiveCard.label },
+  { view: "default-address", icon: "ti-mail-question", label: t.mail.settingsModal.defaultAddressCard.label },
+  { view: "outbound", icon: "ti-mail-forward", label: t.mail.outbound.cardTitle },
+];
+const pageSizes = [10, 25, 50, 100];
+---
+    <ViewSettingsModal
+      id="mail-settings-modal"
+      title={t.mail.settingsModal.title}
+      buttonLabel={t.mail.settingsModal.buttonLabel}
+      description={t.mail.settingsModal.description}
+      hideTrigger={true}
+      hideFooter={true}
+      variant="drawer"
+    >
+      <div class="flex h-full min-h-0 w-full @container">
+        <!-- Menú lateral izquierdo (estilo Agentes IA / DrawerSectionNav). -->
+        <nav class="flex w-14 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-muted/20 p-2 @xl:w-52">
+          {settingsNav.map((item) => (
+            <button
+              type="button"
+              data-mail-settings-open={item.view}
+              data-mail-settings-nav={item.view}
+              title={item.label}
+              class="flex items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-muted-foreground transition-colors duration-200 ease-out hover:bg-accent hover:text-foreground @xl:justify-start"
+            >
+              <i class={`ti ${item.icon} shrink-0 text-lg`} aria-hidden></i>
+              <span class="hidden truncate @xl:inline">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <!-- Columna de contenido: cada vista se muestra/oculta por el script. -->
+        <div class="min-w-0 flex-1 overflow-y-auto px-5 py-5">
+
+      <section data-mail-settings-view="table" class="mt-0 space-y-5">
+        <div>
+          <h4 class="text-sm font-semibold">Paginación</h4>
+          <p class="mt-1 text-xs text-muted-foreground">Filas por página en la tabla de cuentas.</p>
+          <div class="mt-3 inline-flex rounded-lg border border-border p-1">
+            {pageSizes.map((n) => (
+              <button
+                type="button"
+                data-mail-pagesize={String(n)}
+                class="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
+              >{n}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center justify-between">
+            <h4 class="text-sm font-semibold">Acciones a mostrar</h4>
+            <div class="flex items-center gap-3 text-xs">
+              <button type="button" data-mail-actions-all="show" class="font-medium text-primary hover:underline">Mostrar todas</button>
+              <span class="text-muted-foreground">·</span>
+              <button type="button" data-mail-actions-all="hide" class="font-medium text-muted-foreground hover:underline">Ocultar todas</button>
+            </div>
+          </div>
+          <p class="mt-1 text-xs text-muted-foreground">Elige qué acciones aparecen en el menú «···» de cada fila.</p>
+          <div class="mt-3 space-y-1">
+            {MAIL_ACCOUNTS_ROW_ACTIONS.map((a: any) => (
+              <label class="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-accent/50">
+                <input type="checkbox" data-mail-action-toggle={a.id} class="h-4 w-4" checked />
+                <i class={`ti ${a.icon ?? "ti-dots"} text-base text-muted-foreground`} aria-hidden></i>
+                <span class="truncate">{a.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section data-mail-settings-view="outbound" class="hidden mt-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-sm font-semibold">{t.mail.outbound.cardTitle}</h4>
+          <button type="button" data-mail-settings-back class="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent">
+            <i class="ti ti-arrow-left text-sm"></i> {t.mail.outbound.back}
+          </button>
+        </div>
+        <div class="rounded-xl border border-border bg-background p-4 space-y-4">
+          <p class="text-xs text-muted-foreground">{t.mail.outbound.intro}</p>
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium" for="mail-outbound-mode">{t.mail.outbound.modeLabel}</label>
+            <select id="mail-outbound-mode" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none">
+              <option value="disabled">{t.mail.outbound.modeDisabled}</option>
+              <option value="account">{t.mail.outbound.modeAccount}</option>
+              <option value="external">{t.mail.outbound.modeExternal}</option>
+            </select>
+          </div>
+
+          <div id="mail-outbound-account-box" class="hidden space-y-1.5">
+            <label class="text-sm font-medium" for="mail-outbound-account">{t.mail.outbound.accountLabel}</label>
+            <select id="mail-outbound-account" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"></select>
+            <p class="text-xs text-muted-foreground">{t.mail.outbound.accountHint}</p>
+          </div>
+
+          <div id="mail-outbound-external-box" class="hidden space-y-3">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div class="space-y-1.5 md:col-span-2">
+                <label class="text-sm font-medium" for="mail-outbound-host">{t.mail.outbound.hostLabel}</label>
+                <input id="mail-outbound-host" type="text" placeholder={t.mail.outbound.hostPlaceholder} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium" for="mail-outbound-port">{t.mail.outbound.portLabel}</label>
+                <input id="mail-outbound-port" type="number" value="587" min="1" max="65535" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+              </div>
+            </div>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium" for="mail-outbound-user">{t.mail.outbound.userLabel}</label>
+                <input id="mail-outbound-user" type="text" autocomplete="off" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium" for="mail-outbound-pass">{t.mail.outbound.passLabel}</label>
+                <input id="mail-outbound-pass" type="password" autocomplete="new-password" placeholder={t.mail.outbound.passPlaceholder} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+              </div>
+            </div>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium" for="mail-outbound-from">{t.mail.outbound.fromLabel}</label>
+                <input id="mail-outbound-from" type="email" placeholder={t.mail.outbound.fromPlaceholder} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium" for="mail-outbound-fromname">{t.mail.outbound.fromNameLabel}</label>
+                <input id="mail-outbound-fromname" type="text" placeholder={t.mail.outbound.fromNamePlaceholder} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+              </div>
+            </div>
+            <label class="inline-flex items-center gap-2 text-sm">
+              <input id="mail-outbound-secure" type="checkbox" class="h-4 w-4 rounded border-input" /> {t.mail.outbound.secureLabel}
+            </label>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+            <button id="mail-outbound-save" type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">{t.mail.outbound.save}</button>
+            <input id="mail-outbound-test-to" type="email" placeholder={t.mail.outbound.testPlaceholder} class="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+            <button id="mail-outbound-test" type="button" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t.mail.outbound.test}</button>
+            <span id="mail-outbound-msg" class="text-xs text-muted-foreground"></span>
+          </div>
+        </div>
+      </section>
+
+      <section data-mail-settings-view="routing" class="hidden mt-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.routing.sectionTitle}</h4>
+          <button type="button" data-mail-settings-back class="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent">
+            <i class="ti ti-arrow-left text-sm"></i>
+            {t.mail.settingsModal.backToMenu}
+          </button>
+        </div>
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.routing.configTitle}</h4>
+          <p class="mt-1 text-xs text-muted-foreground">
+            {t.mail.settingsModal.routing.configDescription}
+          </p>
+
+          <div class="mt-3 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
+            {t.mail.settingsModal.routing.mxNote}
+          </div>
+
+          <div id="mail-routing-error" class="mt-3 hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+
+          <div class="mt-4 space-y-1.5">
+            <label for="mail-routing-domain" class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.settingsModal.routing.labelDomain}</label>
+            <select id="mail-routing-domain" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+              <option value="">{t.mail.settingsModal.routing.selectDomain}</option>
+            </select>
+          </div>
+
+          <div class="mt-4 space-y-2">
+            <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.settingsModal.routing.configureLabel}</p>
+            <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+              <input id="mail-routing-mode-auto" type="radio" name="mail-routing-mode" value="auto_remote" class="mt-0.5 h-4 w-4" checked />
+              <span>
+                <span class="font-medium">{t.mail.settingsModal.routing.modeAutoLabel}</span>
+                <span class="block text-xs text-muted-foreground">{t.mail.settingsModal.routing.modeAutoDesc}</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+              <input id="mail-routing-mode-local" type="radio" name="mail-routing-mode" value="local" class="mt-0.5 h-4 w-4" />
+              <span>
+                <span class="font-medium">{t.mail.settingsModal.routing.modeLocalLabel}</span>
+                <span class="block text-xs text-muted-foreground">{t.mail.settingsModal.routing.modeLocalDesc}</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+              <input id="mail-routing-mode-backup" type="radio" name="mail-routing-mode" value="backup" class="mt-0.5 h-4 w-4" />
+              <span>
+                <span class="font-medium">{t.mail.settingsModal.routing.modeBackupLabel}</span>
+                <span class="block text-xs text-muted-foreground">{t.mail.settingsModal.routing.modeBackupDesc}</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+              <input id="mail-routing-mode-remote" type="radio" name="mail-routing-mode" value="remote" class="mt-0.5 h-4 w-4" />
+              <span>
+                <span class="font-medium">{t.mail.settingsModal.routing.modeRemoteLabel}</span>
+                <span class="block text-xs text-muted-foreground">{t.mail.settingsModal.routing.modeRemoteDesc}</span>
+              </span>
+            </label>
+          </div>
+
+          <div class="mt-4 flex items-center gap-2">
+            <button type="button" id="mail-routing-save" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              {t.mail.settingsModal.routing.btnSave}
+            </button>
+            <p id="mail-routing-current" class="text-xs text-muted-foreground"></p>
+          </div>
+        </div>
+      </section>
+
+      <section data-mail-settings-view="domain-redirect" class="hidden mt-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.domainRedirect.sectionTitle}</h4>
+          <button type="button" data-mail-settings-back class="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent">
+            <i class="ti ti-arrow-left text-sm"></i>
+            {t.mail.settingsModal.backToMenu}
+          </button>
+        </div>
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.domainRedirect.configTitle}</h4>
+          <p class="mt-1 text-xs text-muted-foreground">
+            {t.mail.settingsModal.domainRedirect.configDescription}
+          </p>
+
+          <div id="mail-domain-redirect-error" class="mt-3 hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+
+          <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
+            <div class="space-y-1.5">
+              <label for="mail-domain-redirect-domain" class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.settingsModal.domainRedirect.labelDomain}</label>
+              <select id="mail-domain-redirect-domain" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+                <option value="">{t.mail.settingsModal.domainRedirect.selectDomain}</option>
+              </select>
+            </div>
+            <div class="flex items-end">
+              <button type="button" id="mail-domain-redirect-add-destination" class="h-10 rounded-lg border border-border px-3 text-sm hover:bg-accent">
+                {t.mail.settingsModal.domainRedirect.btnAddDestination}
+              </button>
+            </div>
+          </div>
+
+          <div id="mail-domain-redirect-destinations" class="mt-3 space-y-2"></div>
+
+          <div class="mt-4 flex gap-2">
+            <button type="button" id="mail-domain-redirect-save" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              {t.mail.settingsModal.domainRedirect.btnSave}
+            </button>
+            <button type="button" id="mail-domain-redirect-reset" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">
+              {t.mail.settingsModal.domainRedirect.btnReset}
+            </button>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-background overflow-hidden">
+          <div class="border-b border-border bg-muted/30 px-4 py-2 text-sm font-medium">{t.mail.settingsModal.domainRedirect.tableHeader}</div>
+          <div class="p-3">
+            <DataTable
+              i18n={dataTableI18n}
+              client:load
+              tableId="mail-redirect-table"
+              title={t.mail.dataTableTitles.rules}
+              columns={MAIL_REDIRECT_COLUMNS}
+              data={[]}
+              filters={MAIL_REDIRECT_FILTERS}
+              rowActions={MAIL_REDIRECT_ROW_ACTIONS}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section data-mail-settings-view="default-address" class="hidden mt-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.defaultAddress.sectionTitle}</h4>
+          <button type="button" data-mail-settings-back class="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent">
+            <i class="ti ti-arrow-left text-sm"></i>
+            {t.mail.settingsModal.backToMenu}
+          </button>
+        </div>
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.defaultAddress.configTitle}</h4>
+          <p class="mt-1 text-xs text-muted-foreground">
+            {t.mail.settingsModal.defaultAddress.configDescription}
+          </p>
+
+          <div id="mail-default-address-error" class="mt-3 hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+
+          <div class="mt-4 space-y-1.5">
+            <label for="mail-default-address-domain" class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.mail.settingsModal.defaultAddress.labelDomain}</label>
+            <select id="mail-default-address-domain" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+              <option value="">{t.mail.settingsModal.defaultAddress.selectDomain}</option>
+            </select>
+          </div>
+
+          <p id="mail-default-address-current" class="mt-2 text-xs text-muted-foreground"></p>
+
+          <div class="mt-3 space-y-3">
+            <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+              <input id="mail-default-address-mode-fail" type="radio" name="mail-default-address-mode" value="fail" class="mt-0.5 h-4 w-4" checked />
+              <span class="flex-1">
+                <span class="font-medium">{t.mail.settingsModal.defaultAddress.modeFailLabel}</span>
+                <span class="mt-2 block text-xs text-muted-foreground">{t.mail.settingsModal.defaultAddress.modeFailMsgLabel}</span>
+                <input id="mail-default-address-failure-message" type="text" class="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm" value={t.mail.defaultAddress.defaultFailMessage} />
+              </span>
+            </label>
+
+            <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+              <input id="mail-default-address-mode-forward" type="radio" name="mail-default-address-mode" value="forward" class="mt-0.5 h-4 w-4" />
+              <span class="flex-1">
+                <span class="font-medium">{t.mail.settingsModal.defaultAddress.modeForwardLabel}</span>
+                <span class="mt-2 block text-xs text-muted-foreground">{t.mail.settingsModal.defaultAddress.modeForwardAddressLabel}</span>
+                <input id="mail-default-address-forward-to" type="email" class="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm" placeholder={t.mail.settingsModal.defaultAddress.placeholderForwardTo} />
+              </span>
+            </label>
+          </div>
+
+          <div class="mt-4">
+            <button type="button" id="mail-default-address-save" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              {t.mail.settingsModal.defaultAddress.btnSave}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section data-mail-settings-view="encryption" class="hidden mt-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.encryption.sectionTitle}</h4>
+          <button type="button" data-mail-settings-back class="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent"><i class="ti ti-arrow-left text-sm"></i>{t.mail.settingsModal.backToMenu}</button>
+        </div>
+
+        <div class="rounded-xl border border-border bg-background p-4 space-y-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.encryption.createKeyTitle}</h4>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <input id="mail-encryption-name" class="h-10 rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.settingsModal.encryption.placeholderName} />
+            <input id="mail-encryption-email" class="h-10 rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.settingsModal.encryption.placeholderEmail} />
+            <input id="mail-encryption-comment" class="h-10 rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.settingsModal.encryption.placeholderComment} />
+            <input id="mail-encryption-pass" type="password" minlength="12" autocomplete="new-password" class="h-10 rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.settingsModal.encryption.placeholderPass} />
+            <input id="mail-encryption-pass-confirm" type="password" class="h-10 rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.settingsModal.encryption.placeholderPassConfirm} />
+            <div></div>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-[120px_140px_auto] md:items-end">
+            <input id="mail-encryption-expire-value" type="number" min="1" max="100" value="1" class="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
+            <select id="mail-encryption-expire-unit" class="h-10 rounded-lg border border-input bg-background px-3 text-sm">
+              <option value="d">{t.mail.settingsModal.encryption.expireDays}</option><option value="w">{t.mail.settingsModal.encryption.expireWeeks}</option><option value="m">{t.mail.settingsModal.encryption.expireMonths}</option><option selected value="y">{t.mail.settingsModal.encryption.expireYears}</option>
+            </select>
+            <label class="inline-flex items-center gap-2 text-sm"><input id="mail-encryption-no-expire" type="checkbox" class="h-4 w-4" /> {t.mail.settingsModal.encryption.noExpireLabel}</label>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-muted-foreground">{t.mail.settingsModal.encryption.keySizeLabel}</label>
+            <select id="mail-encryption-keysize" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
+              <option selected value="3072">3072</option><option value="4096">4096</option>
+            </select>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="mail-encryption-generate" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">{t.mail.settingsModal.encryption.btnGenerate}</button>
+            <button type="button" id="mail-encryption-import-open" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t.mail.settingsModal.encryption.btnImportOpen}</button>
+          </div>
+          <div id="mail-encryption-import-wrap" class="hidden space-y-2">
+            <textarea id="mail-encryption-import-text" class="min-h-[140px] w-full rounded-lg border border-input bg-background px-3 py-2 text-xs" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"></textarea>
+            <button type="button" id="mail-encryption-import-save" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t.mail.settingsModal.encryption.btnImport}</button>
+          </div>
+          <div class="space-y-2 border-t border-border pt-3">
+            <p class="text-xs font-medium">{t.mail.settingsModal.encryption.importProtectedPrivateKey}</p>
+            <textarea id="mail-encryption-private-import-text" class="min-h-[100px] w-full rounded-lg border border-input bg-background px-3 py-2 text-xs" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"></textarea>
+            <input id="mail-encryption-private-import-pass" type="password" autocomplete="off" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" placeholder={t.mail.settingsModal.encryption.privateKeyPassphrase} />
+            <button type="button" id="mail-encryption-private-import-save" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t.mail.settingsModal.encryption.importPrivateKey}</button>
+          </div>
+          <p id="mail-encryption-error" role="status" class="hidden text-sm text-destructive"></p>
+          <p id="mail-encryption-warning" class="hidden text-xs text-amber-500"></p>
+        </div>
+
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.encryption.publicKeysTitle}</h4>
+          <div class="mt-2"><DataTable client:load tableId="mail-encryption-public-table" title={t.mail.dataTableTitles.publicKeys} columns={MAIL_ENCRYPTION_COLUMNS} data={[]} filters={MAIL_ENCRYPTION_FILTERS} rowActions={MAIL_ENCRYPTION_ROW_ACTIONS} i18n={dataTableI18n} /></div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.encryption.privateKeysTitle}</h4>
+          <div class="mt-2"><DataTable client:load tableId="mail-encryption-private-table" title={t.mail.dataTableTitles.privateKeys} columns={MAIL_ENCRYPTION_COLUMNS} data={[]} filters={MAIL_ENCRYPTION_FILTERS} rowActions={MAIL_ENCRYPTION_ROW_ACTIONS} i18n={dataTableI18n} /></div>
+        </div>
+
+        <div id="mail-encryption-view-wrap" class="hidden rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.encryption.viewKeyTitle}</h4>
+          <textarea id="mail-encryption-view-text" readonly class="mt-2 min-h-[220px] w-full rounded-lg border border-input bg-background px-3 py-2 text-xs"></textarea>
+        </div>
+      </section>
+
+      <section data-mail-settings-view="archive" class="hidden mt-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.archive.sectionTitle}</h4>
+          <button type="button" data-mail-settings-back class="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent">
+            <i class="ti ti-arrow-left text-sm"></i>
+            {t.mail.settingsModal.backToMenu}
+          </button>
+        </div>
+        <p id="mail-archive-status" role="status" class="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"></p>
+
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.archive.defaultConfigTitle}</h4>
+          <p class="mt-1 text-xs text-muted-foreground">{t.mail.settingsModal.archive.defaultConfigDesc}</p>
+          <div class="mt-3 space-y-2 text-sm">
+            <label class="flex items-center gap-2"><input id="mail-archive-default-incoming" type="checkbox" class="h-4 w-4" /> {t.mail.settingsModal.archive.incomingLabel}</label>
+            <label class="flex items-center gap-2"><input id="mail-archive-default-outgoing-list" type="checkbox" class="h-4 w-4" /> {t.mail.settingsModal.archive.outgoingListLabel}</label>
+            <label class="flex items-center gap-2"><input id="mail-archive-default-outgoing" type="checkbox" class="h-4 w-4" /> {t.mail.settingsModal.archive.outgoingLabel}</label>
+          </div>
+          <button type="button" id="mail-archive-default-save" class="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">{t.mail.settingsModal.archive.btnApplyAll}</button>
+        </div>
+
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.archive.manageTitle}</h4>
+          <div class="mt-3 grid gap-2" id="mail-archive-domain-rows"></div>
+        </div>
+        <div class="rounded-xl border border-border bg-background p-4">
+          <h4 class="text-sm font-semibold">{t.mail.settingsModal.archive.browseArchive}</h4>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <label for="mail-archive-browse-domain" class="sr-only">{t.mail.settingsModal.archive.domainLabel}</label>
+            <select id="mail-archive-browse-domain" class="h-9 rounded-md border border-input bg-background px-2 text-sm"></select>
+            <label for="mail-archive-browse-direction" class="sr-only">{t.mail.settingsModal.archive.directionLabel}</label>
+            <select id="mail-archive-browse-direction" class="h-9 rounded-md border border-input bg-background px-2 text-sm"><option value="incoming">{t.mail.settingsModal.archive.incomingOption}</option><option value="outgoing">{t.mail.settingsModal.archive.outgoingOption}</option></select>
+            <button type="button" id="mail-archive-browse-refresh" class="rounded-md border border-border px-3 py-2 text-xs hover:bg-accent">Actualizar</button>
+          </div>
+          <p id="mail-archive-browse-error" role="alert" class="mt-2 hidden text-xs text-destructive"></p>
+          <div id="mail-archive-message-rows" class="mt-3 max-h-80 space-y-2 overflow-auto"></div>
+        </div>
+      </section>
+        </div><!-- /content column -->
+      </div><!-- /flex nav+content -->
+    </ViewSettingsModal>

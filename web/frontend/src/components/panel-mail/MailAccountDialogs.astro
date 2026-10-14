@@ -1,0 +1,328 @@
+---
+import ModalNavbar from "@/components/ui/ModalNavbar.astro";
+const { t } = Astro.props;
+import { DIALOG_CHROME } from "@/lib/ui-classes";
+---
+<!-- ── Create Account Dialog ──────────────────────────────────── -->
+<dialog
+  id="dialog-create"
+  class={`w-full max-w-md ${DIALOG_CHROME} open:flex open:flex-col`}
+>
+  <ModalNavbar title={t.mail.createDialog.title} closeId="dialog-close" />
+
+  <form id="form-create" class="flex flex-col gap-4 px-6 py-5">
+    <div id="create-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"></div>
+
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="new-local-part">{t.mail.createDialog.labelAccount}</label>
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1.3fr] sm:items-center">
+        <input
+          id="new-local-part"
+          type="text"
+          required
+          autocomplete="username"
+          placeholder={t.mail.createDialog.placeholderUsername}
+          class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        <span class="hidden sm:inline text-center text-sm text-muted-foreground">@</span>
+        <select
+          id="new-domain"
+          required
+          class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:border-primary focus:outline-none"
+        >
+          <option value="">{t.mail.createDialog.selectDomain}</option>
+        </select>
+      </div>
+      <p class="text-xs text-muted-foreground">{t.mail.createDialog.domainsFromDns}</p>
+    </div>
+
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="new-password">{t.mail.createDialog.labelPassword}</label>
+      <div class="relative">
+        <input
+          id="new-password"
+          type="password"
+          required
+          autocomplete="new-password"
+          placeholder={t.mail.createDialog.placeholderPassword}
+          class="h-10 w-full rounded-lg border border-input bg-background px-3 pr-10 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        <button type="button" id="toggle-new-pass" class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+          <i class="ti ti-eye text-base" id="new-pass-icon"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="new-quota">
+        {t.mail.createDialog.labelQuota}
+        <span class="ml-1 text-xs text-muted-foreground">{t.mail.createDialog.quotaUnlimited}</span>
+      </label>
+      <input
+        id="new-quota"
+        type="number"
+        value="1024"
+        min="0"
+        class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+      />
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input id="new-enabled" type="checkbox" checked class="h-4 w-4 rounded border-input bg-background text-primary focus:ring-2 focus:ring-primary/20" />
+      <label for="new-enabled" class="text-sm">{t.mail.createDialog.labelEnabled}</label>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">{t.mail.createDialog.labelForwards}</label>
+        <button
+          type="button"
+          id="new-add-forward"
+          class="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          {t.mail.createDialog.btnAddForward}
+        </button>
+      </div>
+      <div id="new-forwards-list" class="space-y-2"></div>
+      <p class="text-xs text-muted-foreground">{t.mail.createDialog.optionalForwardsNote}</p>
+    </div>
+
+    <div class="flex gap-3 pt-1">
+      <button
+        type="button"
+        id="dialog-cancel"
+        class="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+      >
+        {t.mail.createDialog.btnCancel}
+      </button>
+      <button
+        type="submit"
+        id="btn-create-submit"
+        class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:bg-primary/90 disabled:opacity-50"
+      >
+        <span id="create-btn-text">{t.mail.createDialog.btnCreate}</span>
+        <span id="create-btn-spinner" class="hidden">
+          <svg class="mx-auto h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+        </span>
+      </button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Edit Account Dialog ─────────────────────────────────────── -->
+<dialog
+  id="dialog-edit"
+  class={`w-full max-w-xl ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.editDialog.title} closeId="edit-dialog-close" />
+  <form id="form-edit" class="flex flex-col gap-4 px-6 py-5">
+    <p id="edit-account-original" class="text-sm text-muted-foreground"></p>
+    <div id="edit-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"></div>
+
+    <div class="space-y-1.5">
+      <label class="text-sm font-medium" for="edit-local-part">{t.mail.editDialog.labelUsername}</label>
+      <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <input
+          id="edit-local-part"
+          type="text"
+          required
+          placeholder={t.mail.editDialog.placeholderUsername}
+          class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        <span class="text-center text-sm text-muted-foreground">@</span>
+        <input
+          id="edit-domain"
+          type="text"
+          readonly
+          class="h-10 w-full rounded-lg border border-input bg-muted/30 px-3 text-sm text-muted-foreground"
+        />
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-border p-3">
+      <p class="mb-3 text-sm font-semibold">{t.mail.editDialog.restrictionsTitle}</p>
+
+      <div class="mb-3 space-y-1">
+        <p class="text-xs font-medium text-muted-foreground">{t.mail.editDialog.incomingTitle}</p>
+        <div class="flex flex-wrap gap-3 text-sm">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="edit-incoming-mode" value="allow" checked class="h-4 w-4" /> {t.mail.editDialog.allow}</label>
+          <label class="inline-flex items-center gap-2"><input type="radio" name="edit-incoming-mode" value="suspend" class="h-4 w-4" /> {t.mail.editDialog.suspend}</label>
+        </div>
+      </div>
+
+      <div class="mb-3 space-y-1">
+        <p class="text-xs font-medium text-muted-foreground">{t.mail.editDialog.outgoingTitle}</p>
+        <div class="flex flex-wrap gap-3 text-sm">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="edit-outgoing-mode" value="allow" checked class="h-4 w-4" /> {t.mail.editDialog.allow}</label>
+          <label class="inline-flex items-center gap-2"><input type="radio" name="edit-outgoing-mode" value="suspend" class="h-4 w-4" /> {t.mail.editDialog.suspend}</label>
+          <label class="inline-flex items-center gap-2"><input type="radio" name="edit-outgoing-mode" value="hold" class="h-4 w-4" /> {t.mail.editDialog.hold}</label>
+        </div>
+      </div>
+
+      <div class="space-y-1">
+        <p class="text-xs font-medium text-muted-foreground">{t.mail.editDialog.loginTitle}</p>
+        <div class="flex flex-wrap gap-3 text-sm">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="edit-login-mode" value="allow" checked class="h-4 w-4" /> {t.mail.editDialog.allow}</label>
+          <label class="inline-flex items-center gap-2"><input type="radio" name="edit-login-mode" value="suspend" class="h-4 w-4" /> {t.mail.editDialog.suspend}</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-border p-3">
+      <p class="mb-1 text-sm font-semibold">{t.mail.editDialog.plusAddressingTitle}</p>
+      <p class="mb-2 text-xs text-muted-foreground">
+        {t.mail.editDialog.plusAddressingDescription}
+      </p>
+      <div class="flex flex-wrap gap-3 text-sm">
+        <label class="inline-flex items-center gap-2"><input type="radio" name="edit-plus-autofolder" value="yes" checked class="h-4 w-4" /> {t.mail.editDialog.plusAddressingAutoCreate}</label>
+        <label class="inline-flex items-center gap-2"><input type="radio" name="edit-plus-autofolder" value="no" class="h-4 w-4" /> {t.mail.editDialog.plusAddressingNoAutoCreate}</label>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">{t.mail.editDialog.labelForwards}</label>
+        <button
+          type="button"
+          id="edit-add-forward"
+          class="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          {t.mail.editDialog.btnAddForward}
+        </button>
+      </div>
+      <div id="edit-forwards-list" class="space-y-2"></div>
+      <p class="text-xs text-muted-foreground">{t.mail.editDialog.forwardsApplyNote}</p>
+    </div>
+
+    <div class="flex gap-3">
+      <button type="button" id="edit-cancel" class="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent">{t.mail.editDialog.btnCancel}</button>
+      <button type="submit" id="edit-submit" class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">{t.mail.editDialog.btnSave}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Forwards Dialog (gestionar reenvíos por cuenta) ────── -->
+<dialog
+  id="dialog-forwards"
+  class={`w-full max-w-3xl ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.forwardsDialog.title} closeId="forwards-dialog-close" />
+  <p id="forwards-account-label" class="px-6 pt-4 text-xs text-muted-foreground"></p>
+
+  <div class="space-y-4 px-6 py-5">
+    <form id="forwards-form" class="space-y-3 rounded-xl border border-border p-4">
+      <p class="text-sm font-medium">{t.mail.forwardsDialog.addEditTitle}</p>
+      <input id="forwards-edit-idx" type="hidden" />
+      <div id="forwards-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+      <div class="space-y-1.5">
+        <label for="forwards-dest" class="text-sm font-medium">{t.mail.forwardsDialog.labelDest}</label>
+        <input id="forwards-dest" type="email" required placeholder={t.mail.forwardsDialog.placeholderDest} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input id="forwards-keepcopy" type="checkbox" checked class="h-4 w-4 rounded border-input" />
+        {t.mail.forwardsDialog.labelKeepCopy}
+      </label>
+      <div class="flex gap-3">
+        <button type="button" id="forwards-new" class="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">{t.mail.forwardsDialog.btnNew}</button>
+        <button type="button" id="forwards-cancel" class="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">{t.mail.forwardsDialog.btnClose}</button>
+        <button type="submit" class="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90">{t.mail.forwardsDialog.btnSave}</button>
+      </div>
+      <p class="text-xs text-muted-foreground">{t.mail.forwardsDialog.immediateNote} <code class="text-[11px]">/etc/postfix/virtual</code> {t.mail.forwardsDialog.immediateSuffix}</p>
+    </form>
+
+    <div class="rounded-xl border border-border">
+      <div class="border-b border-border bg-muted/30 px-4 py-2 text-sm font-medium">{t.mail.forwardsDialog.tableHeader}</div>
+      <div class="max-h-[420px] overflow-auto">
+        <table class="w-full text-sm">
+          <thead class="sticky top-0 bg-card">
+            <tr class="border-b border-border text-left text-xs text-muted-foreground">
+              <th class="px-4 py-2 font-medium">{t.mail.forwardsDialog.colForwardsTo}</th>
+              <th class="px-4 py-2 font-medium">{t.mail.forwardsDialog.colKeepsCopy}</th>
+              <th class="px-4 py-2 text-right font-medium">{t.mail.forwardsDialog.colActions}</th>
+            </tr>
+          </thead>
+          <tbody id="forwards-tbody"></tbody>
+        </table>
+        <p id="forwards-empty" class="hidden px-4 py-6 text-center text-sm text-muted-foreground">
+          {t.mail.forwardsDialog.emptyState}
+        </p>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<!-- ── Clonar correo (copia todas las carpetas/correos a otra cuenta) ── -->
+<dialog
+  id="dialog-clone"
+  class={`w-full max-w-md ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.cloneDialog.title} closeId="clone-dialog-close" />
+  <p id="clone-source-label" class="px-6 pt-4 text-xs text-muted-foreground"></p>
+
+  <form id="form-clone" onsubmit="return false" class="space-y-4 px-6 py-5">
+    <input id="clone-new-username" type="text" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true" value="" readonly />
+    <div id="clone-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+
+    <p class="text-xs text-muted-foreground">
+      {t.mail.cloneDialog.description} <span class="font-medium text-foreground">{t.mail.cloneDialog.descriptionBold}</span> {t.mail.cloneDialog.descriptionSuffix} <code class="text-[11px]">Message-ID</code>{t.mail.cloneDialog.descriptionSafe}
+    </p>
+
+    <div class="flex gap-4 text-sm">
+      <label class="inline-flex items-center gap-2">
+        <input type="radio" name="clone-mode" value="existing" checked class="h-4 w-4" /> {t.mail.cloneDialog.modeExisting}
+      </label>
+      <label class="inline-flex items-center gap-2">
+        <input type="radio" name="clone-mode" value="new" class="h-4 w-4" /> {t.mail.cloneDialog.modeNew}
+      </label>
+    </div>
+
+    <div id="clone-existing-block" class="space-y-1.5">
+      <label for="clone-dest-account" class="text-sm font-medium">{t.mail.cloneDialog.labelDestAccount}</label>
+      <select id="clone-dest-account" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"></select>
+    </div>
+
+    <div id="clone-new-block" class="hidden space-y-3">
+      <div class="flex gap-2">
+        <div class="flex-1 space-y-1.5">
+          <label for="clone-new-local" class="text-sm font-medium">{t.mail.cloneDialog.labelLocalPart}</label>
+          <input id="clone-new-local" type="text" autocomplete="username" placeholder={t.mail.cloneDialog.placeholderLocal} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+        </div>
+        <div class="flex-1 space-y-1.5">
+          <label for="clone-new-domain" class="text-sm font-medium">{t.mail.cloneDialog.labelDomain}</label>
+          <select id="clone-new-domain" class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"></select>
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <label for="clone-new-password" class="text-sm font-medium">{t.mail.cloneDialog.labelPassword}</label>
+        <input id="clone-new-password" type="password" autocomplete="new-password" placeholder={t.mail.cloneDialog.placeholderPassword} class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+      </div>
+    </div>
+
+    <div id="clone-result" class="hidden rounded-lg border border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground"></div>
+
+    <div class="flex justify-end gap-3 pt-1">
+      <button type="button" id="clone-cancel" class="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">{t.mail.cloneDialog.btnCancel}</button>
+      <button type="button" id="clone-submit" class="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{t.mail.cloneDialog.btnClone}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ── Input Dialog (reemplaza window.prompt en acciones en lote) ── -->
+<dialog
+  id="dialog-input"
+  class={`w-full max-w-sm ${DIALOG_CHROME}`}
+>
+  <ModalNavbar title={t.mail.inputDialog.defaultTitle} titleId="input-dialog-title" closeId="input-dialog-close" />
+  <form id="form-input" class="flex flex-col gap-4 px-6 py-5">
+    <label id="input-dialog-label" class="text-sm font-medium" for="input-dialog-field"></label>
+    <input
+      id="input-dialog-field"
+      type="text"
+      class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+    />
+    <div class="flex gap-3">
+      <button type="button" id="input-dialog-cancel" class="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent">{t.mail.inputDialog.btnCancel}</button>
+      <button type="submit" id="input-dialog-ok" class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">{t.mail.inputDialog.btnOk}</button>
+    </div>
+  </form>
+</dialog>

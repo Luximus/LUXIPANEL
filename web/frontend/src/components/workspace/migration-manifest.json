@@ -1,0 +1,348 @@
+[
+  {
+    "id": "backups",
+    "route": "/panel/backups",
+    "namespaces": [
+      "components",
+      "common",
+      "backups",
+      "deps"
+    ],
+    "view": "pages_panel_backups_index",
+    "scripts": 2
+  },
+  {
+    "id": "bitninja",
+    "route": "/panel/bitninja",
+    "namespaces": [
+      "components",
+      "common",
+      "bitninja"
+    ],
+    "view": "pages_panel_bitninja_index",
+    "scripts": 2
+  },
+  {
+    "id": "chat",
+    "route": "/panel/chat",
+    "namespaces": [
+      "components",
+      "common",
+      "chat"
+    ],
+    "view": "pages_panel_chat_index",
+    "scripts": 0
+  },
+  {
+    "id": "cloudflare",
+    "route": "/panel/cloudflare",
+    "namespaces": [
+      "components",
+      "common",
+      "cloudflare",
+      "settings"
+    ],
+    "view": "pages_panel_cloudflare_index",
+    "scripts": 3
+  },
+  {
+    "id": "codebase-graph",
+    "route": "/panel/codebase-graph",
+    "namespaces": [
+      "components",
+      "common",
+      "codebaseGraph"
+    ],
+    "view": "pages_panel_codebase_graph_index",
+    "scripts": 2
+  },
+  {
+    "id": "cron",
+    "route": "/panel/cron",
+    "namespaces": [
+      "components",
+      "common",
+      "cron",
+      "deps"
+    ],
+    "view": "pages_panel_cron_index",
+    "scripts": 2
+  },
+  {
+    "id": "databases",
+    "route": "/panel/databases",
+    "namespaces": [
+      "components",
+      "common",
+      "databases",
+      "deps"
+    ],
+    "view": "pages_panel_databases_index",
+    "scripts": 3
+  },
+  {
+    "id": "expo",
+    "route": "/panel/expo",
+    "namespaces": [
+      "components",
+      "common",
+      "expo",
+      "settings"
+    ],
+    "view": "pages_panel_expo_index",
+    "scripts": 3
+  },
+  {
+    "id": "files",
+    "route": "/panel/files",
+    "namespaces": [
+      "components",
+      "common",
+      "files",
+      "deps"
+    ],
+    "view": "pages_panel_files_index",
+    "scripts": 2
+  },
+  {
+    "id": "firewall",
+    "route": "/panel/firewall",
+    "namespaces": [
+      "components",
+      "common",
+      "firewall"
+    ],
+    "view": "pages_panel_firewall_index",
+    "scripts": 2
+  },
+  {
+    "id": "hosting",
+    "route": "/panel/hosting",
+    "namespaces": [
+      "components",
+      "common",
+      "hosting",
+      "permissions"
+    ],
+    "view": "pages_panel_hosting_index",
+    "scripts": 3
+  },
+  {
+    "id": "mail",
+    "route": "/panel/mail",
+    "namespaces": [
+      "components",
+      "common",
+      "mail",
+      "deps"
+    ],
+    "view": "pages_panel_mail_index",
+    "scripts": 2
+  },
+  {
+    "id": "module-dev",
+    "route": "/panel/module-dev",
+    "namespaces": [
+      "components",
+      "common",
+      "moduleDev"
+    ],
+    "view": "pages_panel_module_dev_index",
+    "scripts": 3
+  },
+  {
+    "id": "modules",
+    "route": "/panel/modules",
+    "namespaces": [
+      "components",
+      "common",
+      "modules",
+      "moduleCatalog"
+    ],
+    "view": "pages_panel_modules_index",
+    "scripts": 1
+  },
+  {
+    "id": "monitor",
+    "route": "/panel/monitor",
+    "namespaces": [
+      "components",
+      "common",
+      "monitor"
+    ],
+    "view": "pages_panel_monitor_index",
+    "scripts": 3
+  },
+  {
+    "id": "nginx",
+    "route": "/panel/nginx",
+    "namespaces": [
+      "components",
+      "common",
+      "nginx",
+      "deps"
+    ],
+    "view": "pages_panel_nginx_index",
+    "scripts": 2
+  },
+  {
+    "id": "obsidian",
+    "route": "/panel/obsidian",
+    "namespaces": [
+      "components",
+      "common",
+      "obsidian"
+    ],
+    "view": "pages_panel_obsidian_index",
+    "scripts": 2
+  },
+  {
+    "id": "openclaw",
+    "route": "/panel/openclaw",
+    "namespaces": [
+      "components",
+      "common",
+      "openclaw",
+      "settings"
+    ],
+    "view": "pages_panel_openclaw_index",
+    "scripts": 1
+  },
+  {
+    "id": "preferences",
+    "route": "/panel/preferences",
+    "namespaces": [
+      "components",
+      "common",
+      "preferences"
+    ],
+    "view": "pages_panel_preferences_index",
+    "scripts": 1
+  },
+  {
+    "id": "project-map",
+    "route": "/panel/project-map",
+    "namespaces": [
+      "components",
+      "common",
+      "projectMap"
+    ],
+    "view": "pages_panel_project_map_index",
+    "scripts": 1
+  },
+  {
+    "id": "repository-store",
+    "route": "/panel/repository-store",
+    "namespaces": [
+      "components",
+      "common",
+      "repositoryStore",
+      "settings"
+    ],
+    "view": "pages_panel_repository_store_index",
+    "scripts": 5
+  },
+  {
+    "id": "server-alerts",
+    "route": "/panel/server-alerts",
+    "namespaces": [
+      "components",
+      "common",
+      "serverAlerts"
+    ],
+    "view": "pages_panel_server_alerts_index",
+    "scripts": 2
+  },
+  {
+    "id": "settings",
+    "route": "/panel/settings",
+    "namespaces": [
+      "components",
+      "common",
+      "settings",
+      "files",
+      "repositoryStore",
+      "servers"
+    ],
+    "view": "pages_panel_settings_index",
+    "scripts": 2
+  },
+  {
+    "id": "terminal",
+    "route": "/panel/terminal",
+    "namespaces": [
+      "components",
+      "common",
+      "terminal"
+    ],
+    "view": "pages_panel_terminal_index",
+    "scripts": 0
+  },
+  {
+    "id": "users",
+    "route": "/panel/users",
+    "namespaces": [
+      "components",
+      "common",
+      "users",
+      "permissions"
+    ],
+    "view": "pages_panel_users_index",
+    "scripts": 2
+  },
+  {
+    "id": "webhooks",
+    "route": "/panel/webhooks",
+    "namespaces": [
+      "components",
+      "common",
+      "webhooks"
+    ],
+    "view": "pages_panel_webhooks_index",
+    "scripts": 3
+  },
+  {
+    "id": "mail/[id]/inbox",
+    "route": "/panel/mail/[id]/inbox",
+    "namespaces": [
+      "components",
+      "common",
+      "mail"
+    ],
+    "view": "pages_panel_mail__id__inbox",
+    "scripts": 1
+  },
+  {
+    "id": "mail/compose",
+    "route": "/panel/mail/compose",
+    "namespaces": [
+      "components",
+      "common",
+      "mail"
+    ],
+    "view": "pages_panel_mail_compose",
+    "scripts": 1
+  },
+  {
+    "id": "repository-store/[owner]/[repo]",
+    "route": "/panel/repository-store/[owner]/[repo]",
+    "namespaces": [
+      "components",
+      "common",
+      "repositoryStore"
+    ],
+    "view": "pages_panel_repository_store__owner___repo_",
+    "scripts": 4
+  },
+  {
+    "id": "docs/hosting-api",
+    "route": "/panel/docs/hosting-api",
+    "namespaces": [
+      "components",
+      "common",
+      "hosting"
+    ],
+    "view": "pages_panel_docs_hosting_api",
+    "scripts": 0
+  }
+]

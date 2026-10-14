@@ -1,0 +1,44 @@
+.labelCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}
+
+.noCatalog {
+  color: var(--lp-text-muted);
+  font-size: 0.85rem;
+}
+
+.permGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.categoryLabel {
+  font-weight: 600;
+  font-size: 0.8rem;
+  margin-bottom: 0.35rem;
+  color: var(--lp-text);
+}
+
+.permGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.35rem;
+}
+
+.permItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  opacity: var(--perm-opacity, 1);
+}

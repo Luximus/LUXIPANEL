@@ -1,0 +1,31 @@
+import React from 'react';
+import {act,create,type ReactTestRenderer} from 'react-test-renderer';
+import {afterEach,expect,it,vi} from 'vitest';
+vi.mock('react-native',()=>({View:'View',Text:'Text',Pressable:'Pressable',ScrollView:'ScrollView'}));
+vi.mock('../../../components/ui/FormDrawer',()=>({FormDrawer:({children,footer,...props}:any)=>React.createElement('drawer',props,children,footer)}));
+vi.mock('../../../components/server/Form',()=>({Field:({children,...p}:any)=>React.createElement('field',p,children),Checkbox:'checkbox',DialogFooter:'footer'}));
+vi.mock('../../../components/ui/Input',()=>({Input:'input'}));
+vi.mock('../../../theme/colors',()=>({getThemeTokens:()=>({}),withAlpha:()=>''}));
+vi.mock('../../../hooks/useTheme',()=>({useTheme:()=>({theme:'dark'})}));
+vi.mock('../../../lib/session-state',()=>({loadSessionState:()=>({language:'es'})}));
+import {UserDialog} from './UserDialog';
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+let tree:ReactTestRenderer;
+afterEach(async()=>{if(tree)await act(async()=>tree.unmount());});
+it('retains the edit draft after a rejected save and retries without duplicate submissions',async()=>{
+ const close=vi.fn();let reject!:(e:Error)=>void;const save=vi.fn().mockImplementationOnce(()=>new Promise((_r,j)=>{reject=j;})).mockResolvedValue(true);
+ await act(async()=>{tree=create(<UserDialog visible mode="edit" initial={{id:1001,username:'linux'}} roles={[]} onClose={close} onSave={save}/>);});
+ await act(async()=>tree.root.findAllByType('input' as any)[1].props.onChangeText('New Name'));
+ await act(async()=>{tree.root.findByType('footer' as any).props.onSubmit();tree.root.findByType('footer' as any).props.onSubmit();});
+ expect(save).toHaveBeenCalledTimes(1);await act(async()=>tree.root.findByType('drawer' as any).props.onClose());expect(close).not.toHaveBeenCalled();
+ await act(async()=>reject(new Error('Acceso denegado')));
+ expect(JSON.stringify(tree.toJSON())).toContain('No tienes permiso para realizar esta operación.');expect(tree.root.findAllByType('input' as any)[1].props.value).toBe('New Name');expect(tree.root.findByType('footer' as any).props.submitting).toBe(false);
+ await act(async()=>tree.root.findByType('footer' as any).props.onSubmit());expect(close).toHaveBeenCalledTimes(1);expect(save).toHaveBeenLastCalledWith(expect.objectContaining({username:'linux',displayName:'New Name',password:undefined}));
+});
+it('requires a password for creation and sends it only for the creation form',async()=>{
+ const save=vi.fn().mockResolvedValue(true);const close=vi.fn();await act(async()=>{tree=create(<UserDialog visible mode="create" roles={[]} onClose={close} onSave={save}/>);});
+ await act(async()=>tree.root.findAllByType('input' as any)[0].props.onChangeText('new-user'));
+ await act(async()=>tree.root.findByType('footer' as any).props.onSubmit());expect(save).not.toHaveBeenCalled();
+ await act(async()=>tree.root.findAllByType('input' as any)[3].props.onChangeText('fixture-password'));
+ await act(async()=>tree.root.findByType('footer' as any).props.onSubmit());expect(save).toHaveBeenCalledWith(expect.objectContaining({username:'new-user',password:'fixture-password'}));expect(close).toHaveBeenCalledOnce();
+});

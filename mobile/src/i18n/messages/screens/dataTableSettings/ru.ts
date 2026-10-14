@@ -1,0 +1,125 @@
+import type { DataTableSettingsMessages } from "./es";
+import { catalogEn } from "./catalog";
+
+export const ru: DataTableSettingsMessages = {
+    "accordion": {
+      "form": "Форма регистрации",
+      "records": "Таблица записей"
+    },
+    "titleConfigure": "Настроить таблицу",
+    "closeAria": "Закрыть",
+    "closeButton": "Закрыть",
+    "tabs": {
+      "chat": "Chat",
+      "columns": "Столбцы",
+      "categories": "Категории",
+      "tags": "Теги",
+      "sshKeys": "SSH Keys",
+      "integrations": "Интеграции",
+      "api": "API"
+    },
+    "subTables": {
+      "nameHeader": "Имя",
+      "tagsHeader": "Теги",
+      "categoryHeader": "Категория",
+      "sshUserHeader": "Пользователь SSH",
+      "fingerprintHeader": "Отпечаток",
+      "panelsHeader": "Панели",
+      "providerHeader": "Провайдер",
+      "statusHeader": "Статус",
+      "accountHeader": "Аккаунт",
+      "searchCategory": "Поиск категории…",
+      "searchTag": "Поиск тега…",
+      "searchKey": "Поиск ключа…",
+      "changeSshUser": "Сменить пользователя SSH"
+    },
+    "columnsTab": {
+      "visibleAndOrder": "Видимые столбцы и порядок",
+      "pageSize": "Результатов на странице",
+      "moveUpAria": "Переместить вверх",
+      "moveDownAria": "Переместить вниз"
+    },
+    "categoriesTab": {
+      "heading": "Категории",
+      "help": "Управляйте собственными категориями и количеством тегов в каждой.",
+      "newPlaceholder": "Новая категория...",
+      "create": "Создать категорию",
+      "confirmDelete": "Удалить категорию? Связанные панели потеряют категорию и теги.",
+      "tableTitle": "категории"
+    },
+    "tagsTab": {
+      "heading": "Теги",
+      "help": "Создавайте и редактируйте теги внутри каждой категории.",
+      "newPlaceholder": "Новый тег...",
+      "create": "Создать тег",
+      "confirmDelete": "Удалить тег?",
+      "noCategories": "Нет категорий",
+      "tableTitle": "теги"
+    },
+    "sshKeysTab": {
+      "heading": "Хранилище SSH-ключей (.pem)",
+      "help": "Зарегистрируйте ключ один раз и назначьте его на несколько панелей по пользователю SSH. Пользователь SSH — это пользователь Linux с доступом к этому ключу.",
+      "docsLink": "Открыть документацию →",
+      "sshUserPlaceholder": "Пользователь SSH (root, ubuntu, deploy...)",
+      "register": "Зарегистрировать ключ",
+      "keyPlaceholder": "-----BEGIN OPENSSH PRIVATE KEY----- ...",
+      "assignToPanels": "Назначить существующим панелям (необязательно)",
+      "missingFields": "Укажите пользователя SSH и приватный ключ.",
+      "confirmDelete": "Удалить ключ SSH?",
+      "tableTitle": "SSH-ключи",
+      "fallbackUser": "(без пользователя)"
+    },
+    "integrationsTab": {
+      "catalog": catalogEn,
+      "heading": "Google Cloud",
+      "help": "Подключите Service Account Google Cloud, чтобы получать список и регистрировать VPS прямо из панели.",
+      "docsLink": "Открыть документацию →",
+      "configuredWith": "Интеграция настроена для {email}.",
+      "notConfigured": "Интеграция не настроена.",
+      "clientEmailLabel": "Client Email (Service Account)",
+      "privateKeyLabel": "Private Key",
+      "replaceHint": "При повторном сохранении с новыми данными текущая интеграция будет заменена.",
+      "save": "Сохранить интеграцию",
+      "missingFields": "Укажите client email и private key.",
+      "saved": "Интеграция сохранена.",
+      "confirmDelete": "Удалить интеграцию Google Cloud?",
+      "providerLabel": "Google Cloud",
+      "statusConfigured": "Настроено",
+      "statusUnconfigured": "Не настроено",
+      "serviceAccountFallback": "(service account)",
+      "tableTitle": "интеграции",
+      "connectionTab": "Подключение",
+      "helpTab": "Помощь",
+      "helpDocsLink": "Официальная документация →",
+      "helpEmpty": "Для этого провайдера нет справки."
+    },
+    "apiTab": {
+      "heading": "API серверов",
+      "helpBefore": "Управляйте панелями, категориями, тегами и SSH-ключами через код. Используйте этот токен и свой email, чтобы получить Bearer JWT по адресу",
+      "helpAfter": ".",
+      "docsLink": "Открыть документацию →",
+      "tokenLabel": "API Token",
+      "tokenActive": "Токен активен. Используйте его вместе со своим email, чтобы получить Bearer token.",
+      "loadingState": "Загрузка состояния токена…",
+      "lastUsedPrefix": "Последнее использование:",
+      "notUsedYet": "Ещё не использовался.",
+      "createdAt": "Создан:",
+      "onlyShownNow": "Отображается только один раз.",
+      "saveSafely": "Сохраните в надёжном месте: повторно посмотреть его будет нельзя.",
+      "copy": "Копировать",
+      "copyPrefix": "Копировать префикс",
+      "copied": "Скопировано",
+      "copyError": "Ошибка",
+      "currentToken": "Текущий токен",
+      "registeredEmail": "Зарегистрированный email",
+      "registeredEmailHelp": "Используется как \"email\" при запросе Bearer token.",
+      "endpoint": "Endpoint для получения Bearer token",
+      "endpointHelpBefore": "POST с",
+      "endpointHelpMid": "+",
+      "endpointHelpAfter": "в теле JSON.",
+      "rotate": "Обновить токен",
+      "rotateConfirm": "Активный токен будет заменён новым. Продолжить?",
+      "rotated": "Токен обновлён. Скопируйте его сейчас — он больше не будет показан.",
+      "autoGenerated": "Токен сгенерирован автоматически. Скопируйте его сейчас — он больше не будет показан."
+    }
+};

@@ -1,0 +1,1 @@
+Describe the concrete problem and resulting behavior. Mention affected client/module, tests and any migration requirement. Remove raw logs, credentials and generated artifacts. Module contributions target `modules` and stay within `web/modules/<id>/`; core/client changes target `main`.

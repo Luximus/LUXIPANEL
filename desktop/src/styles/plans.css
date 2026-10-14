@@ -1,0 +1,227 @@
+/* Planes de pago (réplica del PricingSection del frontend). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ── Planes de pago (réplica del PricingSection del frontend) ─────────── */
+.lp-plan-tabs {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+  background: var(--lp-card-solid);
+  border: 1px solid var(--lp-border);
+  margin-bottom: 1.5rem;
+}
+
+.lp-plan-tab {
+  flex: 1;
+  text-align: center;
+  padding: 0.6rem 1.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--lp-text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.lp-plan-tab.is-active {
+  background: var(--lp-brand);
+  color: #ffffff;
+  box-shadow: 0 2px 8px var(--lp-brand-glow);
+}
+
+.lp-plan-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.lp-plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 280px;
+  flex: 1 1 240px;
+  padding: 1.75rem;
+  border-radius: 1rem;
+  border: 1px solid var(--lp-border);
+  background: var(--lp-card);
+  transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+}
+
+.lp-plan-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--lp-border-brand);
+  box-shadow: 0 0 0 1px var(--lp-border-brand), 0 22px 48px -28px var(--lp-brand-glow);
+}
+
+.lp-plan-card--highlight {
+  border-color: var(--lp-border-brand);
+  box-shadow: 0 0 0 1px var(--lp-border-brand), 0 22px 48px -28px var(--lp-brand-glow);
+}
+
+.lp-plan-card__logo {
+  width: 2.5rem;
+  height: 2.5rem;
+  object-fit: contain;
+  border-radius: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.lp-plan-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: var(--lp-brand-dim);
+  color: var(--lp-brand-light);
+}
+
+.lp-plan-card__badge::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--lp-brand);
+}
+
+.lp-plan-card__name {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: var(--lp-heading);
+  margin: 0.9rem 0 0.15rem;
+}
+
+.lp-plan-card__tagline {
+  font-size: 0.85rem;
+  color: var(--lp-text-muted);
+  margin: 0;
+}
+
+.lp-plan-card__price-wrap {
+  margin: 1.4rem 0;
+}
+
+.lp-plan-card__discount-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.lp-plan-card__discount {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+[data-theme="dark"] .lp-plan-card__discount {
+  color: #fbbf24;
+}
+
+.lp-plan-card__strike {
+  font-size: 0.72rem;
+  text-decoration: line-through;
+  color: var(--lp-text-muted);
+  opacity: 0.7;
+}
+
+.lp-plan-card__price-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+
+.lp-plan-card__price {
+  font-size: 2rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--lp-heading);
+}
+
+.lp-plan-card__sub {
+  font-size: 0.72rem;
+  color: var(--lp-text-muted);
+  margin: 0;
+}
+
+.lp-plan-card__features {
+  list-style: none;
+  margin: 0 0 1.4rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  flex: 1;
+}
+
+.lp-plan-card__feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--lp-text-secondary);
+}
+
+.lp-plan-card__feature svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--lp-brand);
+}
+
+.lp-plan-card__buy {
+  margin-top: auto;
+}
+
+.panel-invite-banner {
+  border: 1px solid var(--lp-border-brand);
+  background: var(--lp-brand-dim);
+  border-radius: 0.9rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.panel-invite-banner__title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--lp-heading);
+  margin-bottom: 0.5rem;
+}
+
+.panel-invite-banner__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.panel-invite-banner__row + .panel-invite-banner__row {
+  margin-top: 0.4rem;
+}
+
+.panel-invite-banner__label {
+  color: var(--lp-text);
+  font-size: 0.88rem;
+}
+
+

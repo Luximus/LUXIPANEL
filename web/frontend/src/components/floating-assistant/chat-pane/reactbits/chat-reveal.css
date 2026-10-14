@@ -1,0 +1,30 @@
+.lxp-greeting-pending { visibility: hidden; }
+.lxp-greeting-caret { box-shadow: 2px 0 0 currentColor; }
+.lxp-greeting-gradient { color: var(--primary); }
+.lxp-tool-call-chip { max-width: min(100%, 25rem); }
+.lxp-tool-call-chip .call-chip__name, .lxp-tool-call-chip .call-chip__arg { overflow: hidden; text-overflow: ellipsis; }
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .lxp-greeting-gradient {
+    background-image: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--primary) 45%, white), var(--primary));
+    background-size: 300% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: lxp-greeting-gradient 8s ease-in-out infinite alternate;
+  }
+}
+@keyframes lxp-greeting-gradient { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+@media (prefers-reduced-motion: reduce) {
+  .lxp-greeting-pending { visibility: visible; }
+  .lxp-greeting-caret { box-shadow: none; }
+  .lxp-greeting-gradient { animation: none; }
+  .lxp-chat-scroll-reveal [data-scroll-reveal-word] { opacity: 1 !important; filter: none !important; }
+}
+@media (forced-colors: active) { .lxp-greeting-gradient { background: none; color: CanvasText; animation: none; } }
+
+/* Text stays readable while the browser schedules viewport entry. */
+.lxp-chat-scroll-reveal .lxp-reveal-entered:not(.lxp-reveal-words) { animation: lxp-reveal-block 420ms ease-out both; }
+.lxp-chat-scroll-reveal .lxp-reveal-entered.lxp-reveal-words [data-scroll-reveal-word] { animation: lxp-reveal-word 420ms ease-out var(--reveal-delay, 0ms) both; }
+@keyframes lxp-reveal-block { from { opacity: .7; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes lxp-reveal-word { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lxp-chat-scroll-reveal .lxp-reveal-entered, .lxp-chat-scroll-reveal [data-scroll-reveal-word] { animation: none !important; } }

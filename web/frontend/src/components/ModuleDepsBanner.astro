@@ -1,0 +1,86 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * ModuleDepsBanner — generic "required components not detected" banner for
+ * module pages, mirroring the firewall `#fw-not-installed` pattern.
+ *
+ * Markup only. Drive it from the page script with the shared helper:
+ *   import { initModuleDeps } from "/scripts/extracted/lib/module-deps.js";
+ *   initModuleDeps({ module: "mail", onReady: loadEverything });
+ *
+ * The page loads the `deps` i18n namespace and passes it down:
+ *   const t = await getMessages(locale, ["deps", ...]);
+ *   <ModuleDepsBanner module="mail" t={t.deps} />
+ *
+ * Element id contract (derived from `module`):
+ *   #deps-banner-<module>         root warning card (hidden by default)
+ *   #deps-banner-title-<module>   heading (script swaps it in one-of mode)
+ *   #deps-banner-desc-<module>    description (script swaps it in one-of mode)
+ *   #deps-list-<module>           list of required deps (filled by the script;
+ *                                 in requiresOneOf mode: the one-of candidates)
+ *   #deps-install-<module>        "Install now" button
+ *   #deps-optional-<module>       optional-components card (hidden by default)
+ *   #deps-optional-list-<module>  list of optional deps (filled by the script)
+ *   <InstallModal id=`deps-<module>`> shared install dialog
+ *
+ * Runtime texts the script needs are exposed as data-txt-* attributes on the
+ * root so no client-side i18n is required.
+ */
+import InstallModal from "@/components/InstallModal.astro";
+import type { Messages } from "@/i18n";
+
+interface Props {
+  module: string;
+  t: Messages["deps"];
+}
+const { module, t } = Astro.props;
+---
+
+<!-- Required components warning (hidden until the status check says otherwise) -->
+<div
+  id={`deps-banner-${module}`}
+  class="hidden mb-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-700 dark:text-yellow-400"
+  data-module={module}
+  data-txt-installing={t.banner.installing}
+  data-txt-success={t.banner.success}
+  data-txt-status-installed={t.banner.statusInstalled}
+  data-txt-status-missing={t.banner.statusMissing}
+  data-txt-status-optional={t.banner.statusOptional}
+  data-txt-btn-install={t.banner.btnInstall}
+  data-txt-check-error={t.banner.checkError}
+  data-txt-one-of-title={t.banner.oneOfTitle}
+  data-txt-one-of-description={t.banner.oneOfDescription}
+>
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex-1">
+      <p class="font-semibold flex items-center gap-2">
+        <i class="ti ti-alert-triangle"></i>
+        <span id={`deps-banner-title-${module}`}>{t.banner.title}</span>
+      </p>
+      <p class="mt-1" id={`deps-banner-desc-${module}`}>{t.banner.description}</p>
+      <div id={`deps-list-${module}`} class="mt-3 space-y-1.5"></div>
+    </div>
+    <button
+      id={`deps-install-${module}`}
+      class="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+    >
+      <i class="ti ti-download"></i><span>{t.banner.btnInstall}</span>
+    </button>
+  </div>
+</div>
+
+<!-- Optional components (shown standalone when all required deps are present) -->
+<div
+  id={`deps-optional-${module}`}
+  class="hidden mb-6 rounded-xl border border-border bg-card p-4 text-sm"
+>
+  <p class="font-semibold flex items-center gap-2">
+    <i class="ti ti-puzzle text-primary"></i>
+    <span>{t.banner.optionalTitle}</span>
+  </p>
+  <p class="mt-1 text-muted-foreground">{t.banner.optionalDescription}</p>
+  <div id={`deps-optional-list-${module}`} class="mt-3 space-y-1.5"></div>
+</div>
+
+<InstallModal id={`deps-${module}`} title={t.banner.modalTitle} description={t.banner.modalDescription} />

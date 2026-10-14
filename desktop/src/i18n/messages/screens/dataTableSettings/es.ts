@@ -1,0 +1,138 @@
+import type { Widen } from "../../_shared";
+
+import { catalogEs } from "./catalog";
+
+// Spanish is the source of truth; every other locale is checked against
+// its widened shape, so missing/extra keys per screen surface as TS errors.
+export const es = {
+  "titleConfigure": "Configurar tabla",
+  "closeAria": "Cerrar",
+  "closeButton": "Cerrar",
+  "tabs": {
+    "columns": "Columnas",
+    "categories": "Categorías",
+    "tags": "Tags",
+    "sshKeys": "SSH Keys",
+    "blog": "Blog",
+    "integrations": "Integraciones",
+    "api": "API"
+  },
+  "accordion": {
+    "form": "Formulario de registro",
+    "records": "Tabla de registros",
+    "registerCategoryTags": "Registrar categoría y tags",
+    "registerSshKey": "Registrar llave SSH",
+    "viewCategories": "Ver categorías",
+    "viewTags": "Ver tags",
+    "viewSshKeys": "Ver llaves SSH"
+  },
+  "subTables": {
+    "nameHeader": "Nombre",
+    "tagsHeader": "Tags",
+    "categoryHeader": "Categoría",
+    "sshUserHeader": "Usuario SSH",
+    "fingerprintHeader": "Huella",
+    "panelsHeader": "Paneles",
+    "providerHeader": "Proveedor",
+    "statusHeader": "Estado",
+    "accountHeader": "Cuenta",
+    "searchCategory": "Buscar categoría…",
+    "searchTag": "Buscar tag…",
+    "searchKey": "Buscar key…",
+    "changeSshUser": "Cambiar usuario SSH",
+    "fieldRequired": "Este campo es obligatorio."
+  },
+  "columnsTab": {
+    "visibleAndOrder": "Columnas visibles y orden",
+    "pageSize": "Resultados por página",
+    "moveUpAria": "Mover arriba",
+    "moveDownAria": "Mover abajo"
+  },
+  "categoriesTab": {
+    "heading": "Categorías",
+    "help": "Gestiona categorías propias de tu usuario y cuántos tags contiene cada una.",
+    "newPlaceholder": "Nueva categoría...",
+    "create": "Crear categoría",
+    "confirmDelete": "¿Eliminar categoría? Los paneles asociados perderán categoría y tags.",
+    "tableTitle": "categorías"
+  },
+  "tagsTab": {
+    "heading": "Tags",
+    "help": "Crea y edita tags dentro de cada categoría.",
+    "newPlaceholder": "Nuevo tag...",
+    "create": "Crear tag",
+    "confirmDelete": "¿Eliminar tag?",
+    "noCategories": "Sin categorías",
+    "tableTitle": "tags"
+  },
+  "sshKeysTab": {
+    "heading": "Bóveda de llaves SSH (.pem)",
+    "help": "Registra una llave una sola vez y asígnala a múltiples paneles por usuario SSH. El usuario SSH es el usuario Linux con acceso a esa llave.",
+    "docsLink": "Ver documentación →",
+    "sshUserPlaceholder": "Usuario SSH (root, ubuntu, deploy...)",
+    "register": "Registrar key",
+    "keyPlaceholder": "-----BEGIN OPENSSH PRIVATE KEY----- ...",
+    "assignToPanels": "Asignar a paneles existentes (opcional)",
+    "missingFields": "Completa usuario SSH y la llave privada.",
+    "missingFieldsNamed": "Completa los campos faltantes: {fields}",
+    "fieldPrivateKey": "Llave privada",
+    "confirmDelete": "¿Eliminar key SSH?",
+    "tableTitle": "keys SSH",
+    "fallbackUser": "(sin usuario)"
+  },
+  "integrationsTab": {
+    "catalog": catalogEs,
+    "heading": "Google Cloud",
+    "help": "Conecta una Service Account de Google Cloud para listar y registrar VPS directamente desde el dashboard.",
+    "docsLink": "Ver documentación →",
+    "configuredWith": "Integración configurada con {email}.",
+    "notConfigured": "No hay integración configurada.",
+    "clientEmailLabel": "Client Email (Service Account)",
+    "privateKeyLabel": "Private Key",
+    "replaceHint": "Si guardas de nuevo con nuevos datos, se reemplaza la integración actual.",
+    "save": "Guardar integración",
+    "missingFields": "Completa client email y private key.",
+    "saved": "Integración guardada correctamente.",
+    "confirmDelete": "¿Eliminar la integración Google Cloud?",
+    "providerLabel": "Google Cloud",
+    "statusConfigured": "Configurada",
+    "statusUnconfigured": "Sin configurar",
+    "serviceAccountFallback": "(service account)",
+    "tableTitle": "integraciones",
+    "connectionTab": "Conexión",
+    "helpTab": "Ayuda",
+    "helpDocsLink": "Documentación oficial →",
+    "helpEmpty": "No hay ayuda disponible para este proveedor."
+  },
+  "apiTab": {
+    "heading": "API de servidores",
+    "helpBefore": "Gestiona tus paneles, categorías, tags y llaves SSH por código. Usa este token + tu correo para obtener un Bearer JWT en",
+    "helpAfter": ".",
+    "docsLink": "Ver documentación →",
+    "tokenLabel": "API Token",
+    "tokenActive": "Token activo. Úsalo junto con tu correo para obtener un Bearer token.",
+    "loadingState": "Cargando estado del token…",
+    "lastUsedPrefix": "Último uso:",
+    "notUsedYet": "Aún no se ha utilizado.",
+    "createdAt": "Creado:",
+    "onlyShownNow": "Solo se muestra ahora.",
+    "saveSafely": "Guárdalo en un lugar seguro: no podrás volver a verlo.",
+    "copy": "Copiar",
+    "copyPrefix": "Copiar prefijo",
+    "copied": "Copiado",
+    "copyError": "Error",
+    "currentToken": "Token actual",
+    "registeredEmail": "Correo registrado",
+    "registeredEmailHelp": "Lo usas como \"email\" al pedir el Bearer token.",
+    "endpoint": "Endpoint para Bearer token",
+    "endpointHelpBefore": "POST con",
+    "endpointHelpMid": "+",
+    "endpointHelpAfter": "en el body JSON.",
+    "rotate": "Rotar token",
+    "rotateConfirm": "Rotar reemplaza el token activo por uno nuevo. ¿Continuar?",
+    "rotated": "Token rotado. Cópialo ahora; no se mostrará otra vez.",
+    "autoGenerated": "Token generado automáticamente. Cópialo ahora; no se mostrará otra vez."
+  }
+} as const;
+
+export type DataTableSettingsMessages = Widen<typeof es>;

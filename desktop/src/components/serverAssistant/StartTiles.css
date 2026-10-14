@@ -1,0 +1,90 @@
+/* Estado vacío "puntos de partida" del asistente de servidor (DOM). Hereda las
+   variables de tema `--sa-*` de `.server-assistant`; colores neutros con buen
+   contraste en claro/oscuro. */
+.sast-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 1.25rem 0.75rem;
+}
+.sast-inner {
+  width: 100%;
+  max-width: 640px;
+}
+.sast-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--sa-text, inherit);
+}
+.sast-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--sa-text-muted, #6b7280);
+}
+.sast-divider {
+  height: 1px;
+  margin: 0.85rem 0;
+  background: var(--sa-border, rgba(120, 120, 120, 0.25));
+}
+.sast-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+@media (min-width: 560px) {
+  .sast-grid { grid-template-columns: 1fr 1fr; }
+}
+.sast-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.7rem 0.75rem;
+  text-align: left;
+  border: 1px solid var(--sa-border, rgba(120, 120, 120, 0.25));
+  border-radius: 0.7rem;
+  background: var(--sa-card, transparent);
+  color: var(--sa-text, inherit);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.sast-card:hover {
+  border-color: var(--sa-accent, #6366f1);
+  background: color-mix(in srgb, var(--sa-accent, #6366f1) 6%, transparent);
+}
+.sast-card-tile {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 0.55rem;
+  color: #fff;
+}
+.sast-card-text {
+  flex: 1;
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+.sast-card-arrow {
+  flex-shrink: 0;
+  opacity: 0;
+  color: var(--sa-text-muted, #6b7280);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.sast-card:hover .sast-card-arrow {
+  opacity: 1;
+  transform: translateX(2px);
+}
+.sast-type-below {
+  display: block;
+  margin: 0.9rem auto 0;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.78rem;
+  color: var(--sa-accent, #6366f1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

@@ -1,0 +1,234 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+//
+// Entrada de invitado a un panel WHM/cPanel EXTERNO enmascarado por subdominio.
+// El invitado escribe el código de acceso (= subdominio), ve una tarjeta con la
+// info del panel (nombre/categoría/etiqueta) y "Entrar" lo lleva al /login del
+// WHM a través del subdominio enmascarado `<accessCode>.<root>`.
+//
+// Pública (ver PUBLIC_PATHS en middleware.ts): no requiere sesión previa.
+import AuthLayout from "@/layouts/AuthLayout.astro";
+import { getPageMessages } from "@/pages/_page-context";
+
+// Permite prefijar el código por querystring: /enter?code=xxxx
+const presetCode = (Astro.url.searchParams.get("code") ?? "").trim();
+
+const t = await getPageMessages(Astro, ['components', 'enter']);
+const enterCopy = t.components.enterPage;
+const enterScriptI18n = t.enter;
+---
+
+<AuthLayout title={enterCopy.pageTitle} shellId="enter-shell" asideId="enter-aside" stageId="enter-stage" logoId="enter-logo" footerId="enter-footer">
+  <div class="w-full max-w-xl space-y-6">
+    <!-- Paso 1: código -->
+    <div id="enter-code-card" class="rounded-2xl border border-border bg-card/80 p-8 shadow-xl space-y-5">
+      <div class="space-y-1">
+        <h2 class="text-lg font-semibold flex items-center gap-2">
+          <i class="ti ti-key text-primary"></i>
+          {enterCopy.heading}
+        </h2>
+        <p class="text-sm text-muted-foreground">
+          {enterCopy.subtitle}
+        </p>
+      </div>
+
+      <div id="enter-error" class="setup-alert setup-alert--error hidden rounded-lg px-4 py-3 text-sm"></div>
+
+      <form id="enter-code-form" class="space-y-4">
+        <div class="space-y-1.5">
+          <label for="enter-code" class="text-sm font-medium">{enterCopy.codeLabel}</label>
+          <input
+            id="enter-code"
+            name="code"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            value={presetCode}
+            placeholder={enterCopy.codePlaceholder}
+            class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-mono tracking-wide focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          id="enter-code-submit"
+          class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+        >
+          <i class="ti ti-arrow-right"></i>
+          {enterCopy.continue}
+        </button>
+      </form>
+    </div>
+
+    <!-- Paso 2: tarjeta del panel (carrusel de un solo elemento) -->
+    <div id="enter-panel-card" class="hidden rounded-2xl border border-border bg-card/80 p-8 shadow-xl space-y-5">
+      <div class="flex items-start justify-between gap-3">
+        <div class="space-y-1">
+          <h2 id="enter-panel-name" class="text-lg font-semibold flex items-center gap-2">
+            <i class="ti ti-server text-primary"></i>
+            <span></span>
+          </h2>
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span id="enter-panel-category" class="hidden rounded-full bg-muted px-2.5 py-1 text-muted-foreground"></span>
+            <span id="enter-panel-tag" class="hidden rounded-full bg-primary/10 px-2.5 py-1 text-primary"></span>
+          </div>
+        </div>
+        <button type="button" id="enter-panel-back" class="text-sm text-muted-foreground hover:text-foreground" title={enterCopy.useAnotherCode}>
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+
+      <dl class="grid grid-cols-3 gap-3 text-sm">
+        <div class="space-y-0.5">
+          <dt class="text-xs text-muted-foreground">{enterCopy.codeShort}</dt>
+          <dd id="enter-panel-code" class="font-mono"></dd>
+        </div>
+        <div class="space-y-0.5">
+          <dt class="text-xs text-muted-foreground">{enterCopy.terminalAi}</dt>
+          <dd id="enter-panel-features"></dd>
+        </div>
+      </dl>
+
+      <button
+        type="button"
+        id="enter-panel-go"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+      >
+        <i class="ti ti-login-2"></i>
+        {enterCopy.enter}
+      </button>
+      <p class="text-center text-xs text-muted-foreground">
+        {enterCopy.willBeRedirected}
+      </p>
+    </div>
+  </div>
+
+  <script type="application/json" id="enter-i18n" set:html={JSON.stringify(enterScriptI18n)}></script>
+</AuthLayout>
+
+<script>
+  type ResolveData = {
+    accessCode: string;
+    displayName: string;
+    category: string | null;
+    tag: string | null;
+    hasSsh: boolean;
+  };
+
+  // i18n inyectado por la página (enter-i18n viene de t.components.enterPage).
+  // Sin fallback duro: si la página no inyecta, queda cadena vacía (no español
+  // silencioso en otros locales).
+  const I18N = (() => {
+    const empty = {
+      featuresAvailable: "",
+      featuresUnavailable: "",
+      invalidCode: "",
+      verifyError: "",
+      networkError: "",
+      guestSessionError: "",
+    };
+    try {
+      const el = document.getElementById("enter-i18n");
+      if (el?.textContent) return { ...empty, ...JSON.parse(el.textContent) };
+    } catch {
+      /* usa el empty */
+    }
+    return empty;
+  })();
+
+  const $ = (id: string) => document.getElementById(id)!;
+  const codeCard = $("enter-code-card");
+  const panelCard = $("enter-panel-card");
+  const errorBox = $("enter-error");
+  const form = $("enter-code-form") as HTMLFormElement;
+  const codeInput = $("enter-code") as HTMLInputElement;
+  const submitBtn = $("enter-code-submit") as HTMLButtonElement;
+  const goBtn = $("enter-panel-go") as HTMLButtonElement;
+
+  let current: ResolveData | null = null;
+
+  function showError(msg: string) {
+    errorBox.textContent = msg;
+    errorBox.classList.remove("hidden");
+  }
+  function clearError() {
+    errorBox.textContent = "";
+    errorBox.classList.add("hidden");
+  }
+
+  function renderPanel(data: ResolveData) {
+    current = data;
+    ($("enter-panel-name").querySelector("span") as HTMLSpanElement).textContent = data.displayName;
+    $("enter-panel-code").textContent = data.accessCode;
+    $("enter-panel-features").textContent = data.hasSsh ? I18N.featuresAvailable : I18N.featuresUnavailable;
+
+    const cat = $("enter-panel-category");
+    if (data.category) { cat.textContent = data.category; cat.classList.remove("hidden"); }
+    else cat.classList.add("hidden");
+
+    const tag = $("enter-panel-tag");
+    if (data.tag) { tag.textContent = data.tag; tag.classList.remove("hidden"); }
+    else tag.classList.add("hidden");
+
+    codeCard.classList.add("hidden");
+    panelCard.classList.remove("hidden");
+  }
+
+  async function resolveCode(code: string) {
+    clearError();
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/external-panels/resolve?code=${encodeURIComponent(code)}`);
+      if (res.status === 404) { showError(I18N.invalidCode); return; }
+      if (!res.ok) { showError(I18N.verifyError); return; }
+      const json = await res.json();
+      if (!json?.ok || !json.data) { showError(I18N.invalidCode); return; }
+      renderPanel(json.data as ResolveData);
+    } catch {
+      showError(I18N.networkError);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const code = codeInput.value.trim();
+    if (code) void resolveCode(code);
+  });
+
+  $("enter-panel-back").addEventListener("click", () => {
+    current = null;
+    panelCard.classList.add("hidden");
+    codeCard.classList.remove("hidden");
+  });
+
+  goBtn.addEventListener("click", async () => {
+    if (!current) return;
+    goBtn.disabled = true;
+    clearError();
+    try {
+      const res = await fetch("/api/external-panels/enter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: current.accessCode }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok || !json.data?.entryUrl) {
+        showError(I18N.guestSessionError);
+        goBtn.disabled = false;
+        return;
+      }
+      // La cookie de sesión `external-guest` quedó seteada; vamos al WHM.
+      window.location.href = json.data.entryUrl as string;
+    } catch {
+      showError(I18N.networkError);
+      goBtn.disabled = false;
+    }
+  });
+
+  // Auto-resolver si vino ?code= en la URL.
+  if (codeInput.value.trim()) void resolveCode(codeInput.value.trim());
+</script>

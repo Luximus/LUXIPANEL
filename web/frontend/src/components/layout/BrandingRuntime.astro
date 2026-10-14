@@ -1,0 +1,16 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+interface Props {
+  layoutCss: string;
+  layoutLogoMap: Record<string, string>;
+}
+
+const { layoutCss, layoutLogoMap } = Astro.props;
+const logoMapJson = JSON.stringify(layoutLogoMap).replace(/</g, "\\u003c");
+---
+
+<script is:inline src="/scripts/extracted/theme-init.js?v=20260511a"></script>
+<style is:inline set:html={layoutCss}></style>
+<script id="lxp-layout-logo-map" type="application/json" set:html={logoMapJson}></script>
+<script type="module" src="/scripts/extracted/layouts/branding-runtime.js?v=20260930serverbranding"></script>

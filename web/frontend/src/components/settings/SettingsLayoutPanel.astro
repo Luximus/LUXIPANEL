@@ -1,0 +1,410 @@
+---
+import LoginEffectsConfig from '@/components/settings/LoginEffectsConfig.astro';
+import { LAYOUT_COLOR_KEYS, DEFAULT_CUSTOM_LAYOUT_COLOR, DEFAULT_LAYOUT_PALETTE_ID } from '@/lib/layout-palettes';
+const { t, panelBgCopy, paletteCards, customPalettePreview, paletteJson } = Astro.props;
+---
+      <div id="panel-layout" class="tab-panel hidden space-y-5">
+        <div class="grid gap-4" data-lxp-collapse-group>
+            <!-- Branding logos (sección colapsable; cabecera con toggle + acciones hermanas) -->
+            <div class="rounded-xl border border-border bg-card overflow-hidden" data-lxp-collapse>
+              <div class="group flex items-center gap-x-4 px-5 py-4 transition-colors hover:bg-muted/40">
+                <button type="button" data-lxp-collapse-toggle aria-expanded="false"
+                  class="peer flex min-w-0 flex-1 items-center gap-x-4 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500/30">
+                  <span class="flex size-11 flex-none items-center justify-center rounded-lg bg-muted/60 transition-colors group-hover:bg-muted">
+                    <i class="ti ti-photo text-lg text-muted-foreground transition-colors group-hover:text-foreground"></i>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-sm font-semibold text-foreground">{t.settings.layout.branding.groupTitle}</span>
+                    <span class="mt-0.5 block text-xs text-muted-foreground">{t.settings.layout.branding.groupDesc}</span>
+                  </span>
+                </button>
+                <div class="flex shrink-0 items-center gap-2">
+                  <button id="btn-reset-layout" type="button"
+                    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-fuchsia-500/40 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500/30">
+                    <i class="ti ti-rotate-2 text-sm"></i>
+                    <span>{t.settings.layout.resetButton}</span>
+                  </button>
+                  <button id="btn-restore-logos" type="button"
+                    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-fuchsia-500/40 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500/30">
+                    <i class="ti ti-photo-cog text-sm"></i>
+                    <span>{t.settings.layout.branding.restoreLogos}</span>
+                  </button>
+                </div>
+                <!-- Chevron como último hermano (borde derecho, tras los botones). El
+                     script rota vía `trigger.querySelector` sólo cuando el chevron va
+                     dentro del toggle; aquí va fuera, así que la rotación la conduce
+                     Tailwind `peer-aria-expanded` reaccionando al aria-expanded que el
+                     script fija en el botón (marcado `peer`). Script sin tocar. -->
+                <i class="ti ti-chevron-down shrink-0 text-base text-muted-foreground transition-transform duration-200 peer-aria-expanded:rotate-180" data-lxp-collapse-chevron></i>
+              </div>
+
+              <!-- Single logo applied to all surfaces (primary, sidebar, login, footer) and favicon -->
+              <div class="m-4 overflow-hidden rounded-xl bg-muted/30 p-4">
+              <div class="grid gap-4">
+                <div class="logo-card rounded-xl border border-border bg-background/40 p-4 space-y-3">
+                  <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t.settings.layout.branding.labelLogoUrl}</label>
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-border bg-card overflow-hidden">
+                      <img id="preview-layout-logo" alt="" class="logo-preview h-full w-full object-contain" />
+                      <i class="logo-preview-fallback ti ti-photo text-muted-foreground/40 text-xl"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 space-y-1.5">
+                      <input id="s-layout-logo" type="text" placeholder={t.settings.placeholders.logoUrl}
+                        class="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-mono focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      <div class="flex flex-wrap gap-1.5">
+                        <button type="button" data-upload-target="s-layout-logo"
+                          class="btn-logo-upload inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors">
+                          <i class="ti ti-upload text-sm"></i>{t.settings.layout.branding.btnUpload}
+                        </button>
+                        <button type="button" data-pick-target="s-layout-logo"
+                          class="btn-logo-pick inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors">
+                          <i class="ti ti-photo text-sm"></i>{t.settings.layout.branding.btnPick}
+                        </button>
+                        <button type="button" data-clear-target="s-layout-logo" data-default="/panel/logo_300.webp"
+                          class="btn-logo-default inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors text-muted-foreground">
+                          <i class="ti ti-rotate text-sm"></i>{t.settings.layout.branding.btnDefault}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="text-[11px] text-muted-foreground">{t.settings.layout.branding.logoUrlHelp}</p>
+                </div>
+              </div>
+              </div>
+
+            </div>
+
+            <!-- Login background effects -->
+            <div class="rounded-xl border border-border bg-card overflow-hidden" data-lxp-collapse>
+              <button type="button" data-lxp-collapse-toggle aria-expanded="false"
+                class="group flex w-full cursor-pointer select-none items-center gap-x-4 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30">
+                <span class="flex size-11 flex-none items-center justify-center rounded-lg bg-muted/60 transition-colors group-hover:bg-muted">
+                  <i class="ti ti-photo-scan text-lg text-muted-foreground transition-colors group-hover:text-foreground"></i>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold text-foreground">{t.settings.layout.loginBg.groupTitle}</span>
+                  <span class="mt-0.5 block text-xs text-muted-foreground">{t.settings.layout.loginBg.groupDesc}</span>
+                </span>
+                <i class="ti ti-chevron-down shrink-0 text-base text-muted-foreground transition-transform duration-200" data-lxp-collapse-chevron></i>
+              </button>
+              <div class="m-4 overflow-hidden rounded-xl bg-muted/30 p-4 space-y-4">
+                <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  <input id="s-layout-login-background-enabled" type="checkbox" class="layout-login-bg-field h-4 w-4 accent-primary" />
+                  {t.settings.layout.loginBg.enableLabel}
+                </label>
+
+                <div id="layout-login-fallback-color-settings" class="hidden space-y-1.5">
+                  <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t.settings.layout.loginBg.labelFallbackColor}</label>
+                  <input id="s-layout-login-background-fallback-color" type="color"
+                    class="layout-login-bg-field h-9 w-full cursor-pointer rounded-lg border border-input bg-background p-1" />
+                </div>
+
+                <div id="layout-login-background-settings" class="space-y-4">
+                <LoginEffectsConfig scope="login" activeEffectLabel={t.settings.layout.loginBg.labelActiveEffect} />
+                </div>
+
+                <div class="space-y-2 border-t border-border/70 pt-4">
+                  <div class="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <i class="ti ti-eye text-base text-primary" aria-hidden="true"></i>
+                    <span>{t.settings.layout.loginBg.previewTitle ?? "Vista previa del acceso"}</span>
+                  </div>
+                  <div class="aspect-[16/9] min-h-56 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+                    <iframe
+                      id="layout-login-preview"
+                      title={t.settings.layout.loginBg.previewTitle ?? "Vista previa del acceso"}
+                      src="/settings/login-preview"
+                      loading="lazy"
+                      class="h-full w-full border-0"
+                    ></iframe>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel (app) background effects -->
+            <div class="rounded-xl border border-border bg-card overflow-hidden" data-lxp-collapse>
+              <button type="button" data-lxp-collapse-toggle aria-expanded="false"
+                class="group flex w-full cursor-pointer select-none items-center gap-x-4 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30">
+                <span class="flex size-11 flex-none items-center justify-center rounded-lg bg-muted/60 transition-colors group-hover:bg-muted">
+                  <i class="ti ti-wallpaper text-lg text-muted-foreground transition-colors group-hover:text-foreground"></i>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold text-foreground">{panelBgCopy.groupTitle}</span>
+                  <span class="mt-0.5 block text-xs text-muted-foreground">{t.settings.layout.panelBg?.groupDesc ?? t.settings.layout.loginBg.groupDesc}</span>
+                </span>
+                <i class="ti ti-chevron-down shrink-0 text-base text-muted-foreground transition-transform duration-200" data-lxp-collapse-chevron></i>
+              </button>
+              <div class="m-4 overflow-hidden rounded-xl bg-muted/30 p-4 space-y-4">
+                <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  <input id="s-layout-panel-background-enabled" type="checkbox" class="h-4 w-4 accent-primary" />
+                  {panelBgCopy.enableLabel}
+                </label>
+
+                <div id="layout-panel-fallback-color-settings" class="space-y-1.5">
+                  <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{panelBgCopy.labelFallbackColor}</label>
+                  <input id="s-layout-panel-background-fallback-color" type="color"
+                    class="h-9 w-full cursor-pointer rounded-lg border border-input bg-background p-1" />
+                </div>
+
+                <div id="layout-panel-background-settings" class="hidden space-y-4">
+                <LoginEffectsConfig scope="panel" activeEffectLabel={panelBgCopy.labelActiveEffect} />
+                </div>
+              </div>
+            </div>
+
+            <!-- Forma y sombras -->
+            <div class="rounded-xl border border-border bg-card overflow-hidden" data-lxp-collapse>
+              <button type="button" data-lxp-collapse-toggle aria-expanded="false"
+                class="group flex w-full cursor-pointer select-none items-center gap-x-4 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30">
+                <span class="flex size-11 flex-none items-center justify-center rounded-lg bg-muted/60 transition-colors group-hover:bg-muted">
+                  <i class="ti ti-box-padding text-lg text-muted-foreground transition-colors group-hover:text-foreground"></i>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold text-foreground">{t.settings.layout.shape.groupTitle}</span>
+                  <span class="mt-0.5 block text-xs text-muted-foreground">{t.settings.layout.shape.groupDesc}</span>
+                </span>
+                <i class="ti ti-chevron-down shrink-0 text-base text-muted-foreground transition-transform duration-200" data-lxp-collapse-chevron></i>
+              </button>
+              <div class="m-4 overflow-hidden rounded-xl bg-muted/30 p-4">
+              <div class="grid gap-4 sm:grid-cols-3">
+                <div class="space-y-1.5">
+                  <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t.settings.layout.shape.labelRadius} <output class="text-[11px] text-muted-foreground tabular-nums" data-radius-output></output></label>
+                  <input id="s-layout-radius" type="hidden" />
+                  <input type="range" min="0" max="2" step="0.05" data-radius-range
+                    class="w-full accent-primary" />
+                  <p class="text-[11px] text-muted-foreground">{t.settings.layout.shape.radiusHelp}</p>
+                </div>
+                <div class="space-y-1.5 sm:col-span-2">
+                  <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t.settings.layout.shape.labelShadow}</label>
+                  <input id="s-layout-shadow" type="hidden" />
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-lg border border-border p-3 space-y-2">
+                      <p class="text-xs font-medium text-foreground/90">{t.settings.layout.shape.layer1}</p>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">X <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="0" data-shadow-part="x" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Y <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="0" data-shadow-part="y" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Blur <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="0" max="100" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="0" data-shadow-part="blur" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Spread <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="0" data-shadow-part="spread" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">{t.settings.layout.shape.labelColor}</label>
+                        <input type="color" data-shadow-target="s-layout-shadow" data-shadow-layer="0" data-shadow-part="color" class="h-9 w-full cursor-pointer rounded-lg border border-input bg-background p-1" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Alpha <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="0" max="1" step="0.01" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="0" data-shadow-part="alpha" class="w-full accent-primary" />
+                      </div>
+                    </div>
+                    <div class="rounded-lg border border-border p-3 space-y-2">
+                      <p class="text-xs font-medium text-foreground/90">{t.settings.layout.shape.layer2}</p>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">X <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="1" data-shadow-part="x" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Y <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="1" data-shadow-part="y" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Blur <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="0" max="100" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="1" data-shadow-part="blur" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Spread <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="1" data-shadow-part="spread" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">{t.settings.layout.shape.labelColor}</label>
+                        <input type="color" data-shadow-target="s-layout-shadow" data-shadow-layer="1" data-shadow-part="color" class="h-9 w-full cursor-pointer rounded-lg border border-input bg-background p-1" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Alpha <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="0" max="1" step="0.01" data-range-readout data-shadow-target="s-layout-shadow" data-shadow-layer="1" data-shadow-part="alpha" class="w-full accent-primary" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-1.5 sm:col-span-2">
+                  <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t.settings.layout.shape.labelModalShadow}</label>
+                  <input id="s-layout-modal-shadow" type="hidden" />
+                  <div class="rounded-lg border border-border p-3 space-y-2">
+                    <p class="text-xs font-medium text-foreground/90">{t.settings.layout.shape.labelShadowSingle}</p>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">X <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-modal-shadow" data-shadow-layer="0" data-shadow-part="x" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Y <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-modal-shadow" data-shadow-layer="0" data-shadow-part="y" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Blur <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="0" max="100" step="1" data-range-readout data-shadow-target="s-layout-modal-shadow" data-shadow-layer="0" data-shadow-part="blur" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Spread <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="-50" max="50" step="1" data-range-readout data-shadow-target="s-layout-modal-shadow" data-shadow-layer="0" data-shadow-part="spread" class="w-full accent-primary" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">{t.settings.layout.shape.labelColor}</label>
+                        <input type="color" data-shadow-target="s-layout-modal-shadow" data-shadow-layer="0" data-shadow-part="color" class="h-9 w-full cursor-pointer rounded-lg border border-input bg-background p-1" />
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-xs text-muted-foreground">Alpha <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                        <input type="range" min="0" max="1" step="0.01" data-range-readout data-shadow-target="s-layout-modal-shadow" data-shadow-layer="0" data-shadow-part="alpha" class="w-full accent-primary" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-1.5">
+                  <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t.settings.layout.shape.labelModalBackdrop}</label>
+                  <input id="s-layout-modal-backdrop" type="hidden" />
+                  <div class="rounded-lg border border-border p-3 space-y-2">
+                    <p class="text-xs font-medium text-foreground/90">{t.settings.layout.shape.labelColor}</p>
+                    <div class="space-y-1">
+                      <label class="text-xs text-muted-foreground">{t.settings.layout.shape.labelColor}</label>
+                      <input type="color" data-shadow-target="s-layout-modal-backdrop" data-shadow-part="color" class="h-9 w-full cursor-pointer rounded-lg border border-input bg-background p-1" />
+                    </div>
+                    <div class="space-y-1">
+                      <label class="text-xs text-muted-foreground">Alpha <output class="text-[11px] text-muted-foreground tabular-nums" data-range-output></output></label>
+                      <input type="range" min="0" max="1" step="0.01" data-range-readout data-shadow-target="s-layout-modal-backdrop" data-shadow-part="alpha" class="w-full accent-primary" />
+                    </div>
+                  </div>
+                  <p class="text-[11px] text-muted-foreground">{t.settings.layout.shape.backdropHelp}</p>
+                </div>
+              </div>
+              </div>
+            </div>
+
+            <!-- Color palettes (predefined layouts: pick one → re-themes the whole site) -->
+            <div class="rounded-xl border border-border bg-card overflow-hidden" data-lxp-collapse>
+              <button type="button" data-lxp-collapse-toggle aria-expanded="false"
+                class="group flex w-full cursor-pointer select-none items-center gap-x-4 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30">
+                <span class="flex size-11 flex-none items-center justify-center rounded-lg bg-muted/60 transition-colors group-hover:bg-muted">
+                  <i class="ti ti-palette text-lg text-muted-foreground transition-colors group-hover:text-foreground"></i>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold text-foreground">{t.settings.layout.palettes.title}</span>
+                  <span class="mt-0.5 block text-xs text-muted-foreground">{t.settings.layout.palettes.subtitle}</span>
+                </span>
+                <i class="ti ti-chevron-down shrink-0 text-base text-muted-foreground transition-transform duration-200" data-lxp-collapse-chevron></i>
+              </button>
+
+              <div class="m-4 overflow-hidden rounded-xl bg-muted/30 p-4">
+              <div id="layout-palette-grid" class="grid gap-4 lg:grid-cols-2">
+                {paletteCards.map((p) => (
+                  <div class="layout-palette-item flex flex-col gap-2">
+                  <div data-palette-id={p.id} tabindex="0" role="button" aria-pressed="false"
+                    class="layout-palette-card group relative flex h-full flex-col gap-3 rounded-xl border-2 border-border bg-background/60 p-3 text-left transition-all hover:border-primary/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+                    <span class="palette-check absolute right-2.5 top-2.5 hidden h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                      <i class="ti ti-check text-[12px]"></i>
+                    </span>
+                    <div class="flex items-start gap-2 pr-6">
+                      <span class="h-4 w-4 shrink-0 rounded-full ring-2 ring-black/5 dark:ring-white/10" style={`background:${p.preview.light.primary}`}></span>
+                      <div class="min-w-0 flex-1">
+                        <div class="min-w-0">
+                          <div class="min-w-0">
+                            <p class="text-sm font-semibold leading-tight truncate">{p.name}</p>
+                            <p class="text-[11px] text-muted-foreground leading-tight truncate">{p.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="rounded-lg border border-border bg-background/55 p-3">
+                      <div class="flex flex-col gap-3">
+                        {p.id === "custom" && (
+                          <div class="space-y-2">
+                            <label class="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t.settings.palettes.custom.baseColor}</label>
+                            <div class="flex items-center gap-1 rounded-md border border-border bg-background/70 px-1.5 py-1">
+                              <input
+                                id="s-layout-palette-custom-color-picker"
+                                type="color"
+                                value={customPalettePreview.light.primary}
+                                aria-label={t.settings.palettes.custom.baseColorAria}
+                                class="h-7 w-8 cursor-pointer rounded border-0 bg-transparent p-0" />
+                              <input
+                                id="s-layout-palette-custom-color-text"
+                                type="text"
+                                value={customPalettePreview.light.primary}
+                                inputmode="text"
+                                spellcheck="false"
+                                aria-label={t.settings.palettes.custom.hexAria}
+                                class="h-7 flex-1 rounded-md border border-input bg-background px-2 text-[10px] uppercase focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                            </div>
+                          </div>
+                        )}
+                        {p.id === "prisma" && (
+                          <div class="space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                              <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t.settings.palettes.prisma.colors}</span>
+                              <label
+                                for="s-layout-palette-tornasol-color-picker"
+                                class="relative inline-flex h-7 cursor-pointer items-center justify-center gap-1 rounded-md border border-border px-2 text-[11px] font-semibold text-foreground transition hover:border-primary/50 hover:text-primary"
+                                aria-label={t.settings.palettes.prisma.addColorAria}>
+                                <i class="ti ti-plus text-[12px]" aria-hidden="true"></i>
+                                <span>{t.settings.palettes.prisma.addColorButton}</span>
+                                <input
+                                  id="s-layout-palette-tornasol-color-picker"
+                                  type="color"
+                                  value={DEFAULT_CUSTOM_LAYOUT_COLOR}
+                                  aria-label={t.settings.palettes.prisma.addColorInputAria}
+                                  class="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                              </label>
+                            </div>
+                            <div
+                              id="s-layout-palette-tornasol-colors"
+                              class="flex min-h-20 flex-col gap-1.5 rounded-lg border border-dashed border-border/80 bg-background/40 p-2"></div>
+                            <p class="text-[10px] leading-tight text-muted-foreground">
+                              {t.settings.palettes.prisma.helpText}
+                            </p>
+                          </div>
+                        )}
+                        <div class="space-y-1">
+                          <label class="block text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t.settings.layout.palettes.intensity}</label>
+                          <div class="flex items-center gap-1.5">
+                            <i class="ti ti-sun text-[12px] text-muted-foreground/70" aria-hidden="true"></i>
+                            <input type="range" min="0" max="100" step="1" value="50"
+                              data-palette-intensity data-palette-id={p.id}
+                              aria-label={t.settings.layout.palettes.intensity}
+                              class="layout-palette-intensity h-1.5 flex-1 cursor-pointer accent-primary" />
+                            <i class="ti ti-moon text-[12px] text-muted-foreground/70" aria-hidden="true"></i>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  </div>
+                ))}
+              </div>
+              </div>
+
+              {/* Hidden inputs hold the per-color values so save/load stays unchanged. */}
+              <div class="hidden" aria-hidden="true">
+                <input type="hidden" id="s-layout-palette-id" value={DEFAULT_LAYOUT_PALETTE_ID} />
+                <input type="hidden" id="s-layout-palette-custom-color" value={DEFAULT_CUSTOM_LAYOUT_COLOR} />
+                <input type="hidden" id="s-layout-tornasol-color" value={DEFAULT_CUSTOM_LAYOUT_COLOR} />
+                <input type="hidden" id="s-layout-tornasol-colors" value='["#7c3aed","#06b6d4","#f59e0b"]' />
+                <input type="hidden" id="s-layout-tornasol-intensity" value="50" />
+                {(["light", "dark"] as const).map((mode) => (
+                  LAYOUT_COLOR_KEYS.map((key) => (
+                    <input type="hidden" id={`s-layout-${mode}-${key.replace(/_/g, '-')}`} />
+                  ))
+                ))}
+              </div>
+
+              <script id="lxp-layout-palettes" type="application/json" set:html={paletteJson}></script>
+            </div>
+
+        </div>
+      </div>

@@ -1,0 +1,62 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 LUXISOFT
+ *
+ * ReactBits-inspired UI/UX kit (shared, panel-wide). Subtle, admin-appropriate,
+ * performant. Effects are opt-in via classes/attributes the kit script sets;
+ * everything degrades gracefully and honors prefers-reduced-motion.
+ *   .lxp-card-glow      cursor-follow spotlight on card surfaces (SpotlightCard)
+ *   [data-countup]      number reveal (handled by JS; no CSS needed)
+ *   .lxp-spark-canvas   fixed overlay canvas for click sparks (ClickSpark)
+ */
+
+/* ── Card spotlight (SpotlightCard) ─────────────────────────────────────── */
+.lxp-card-glow {
+  position: relative;
+  transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
+}
+.lxp-card-glow:hover {
+  border-color: color-mix(in srgb, var(--primary, oklch(0.6 0.2 265)) 35%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, oklch(0.6 0.2 265)) 12%, transparent);
+}
+.lxp-card-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  background: radial-gradient(
+    260px circle at var(--lxp-mx, 50%) var(--lxp-my, 0%),
+    color-mix(in srgb, var(--primary, oklch(0.6 0.2 265)) 18%, transparent),
+    transparent 62%
+  );
+  z-index: 0;
+}
+.lxp-card-glow:hover::after {
+  opacity: 1;
+}
+/* Keep the card's own children above the glow layer. */
+.lxp-card-glow > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Click sparks (ClickSpark) ──────────────────────────────────────────── */
+.lxp-spark-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lxp-card-glow::after {
+    transition: none;
+  }
+  .lxp-spark-canvas {
+    display: none;
+  }
+}

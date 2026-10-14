@@ -1,0 +1,111 @@
+/* File tree adaptation of React Bits Branched Menu (MIT + Commons Clause).
+ * https://www.reactbits.dev/micro/branched-menu
+ * The source menu has one child level; these rails follow the lazy, nested tree.
+ */
+#files-tree.lxp-branched-tree {
+  --files-branch-line: color-mix(in srgb, var(--border) 72%, var(--foreground) 28%);
+  --files-branch-accent: var(--primary);
+  --files-branch-width: 1.5px;
+  --files-branch-ease: cubic-bezier(.23, 1, .32, 1);
+  position: relative;
+  overflow-anchor: none;
+}
+
+#files-tree.lxp-branched-tree::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: var(--files-branch-marker-top, 0px);
+  left: 0;
+  width: 3px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--files-branch-accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: top 220ms var(--files-branch-ease), opacity 150ms ease;
+}
+
+#files-tree.lxp-branched-tree[data-marker-on]::before { opacity: 1; }
+
+#files-tree.lxp-branched-tree .tree-node { position: relative; }
+
+#files-tree.lxp-branched-tree .tree-row {
+  position: relative;
+  min-height: 32px;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+#files-tree.lxp-branched-tree .tree-row:focus-visible {
+  outline: 2px solid var(--files-branch-accent);
+  outline-offset: -2px;
+}
+
+/* Each loaded sibling list owns one continuous trunk. JS measures the final
+ * direct child, so expanded grandchildren cannot make the rail too long. */
+#files-tree.lxp-branched-tree .tree-children {
+  position: relative;
+}
+
+#files-tree.lxp-branched-tree .tree-children::before,
+#files-tree.lxp-branched-tree .tree-children::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--files-branch-x, 12px);
+  width: var(--files-branch-width);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+#files-tree.lxp-branched-tree .tree-children::before {
+  height: var(--files-branch-end, 0px);
+  background: var(--files-branch-line);
+}
+
+#files-tree.lxp-branched-tree .tree-children::after {
+  height: var(--files-branch-reach, 0px);
+  background: var(--files-branch-accent);
+  transition: height 400ms var(--files-branch-ease);
+}
+
+/* Curved elbow from the trunk to each child row, matching Branched Menu's
+ * rounded SVG branches while allowing arbitrary nesting and lazy children. */
+#files-tree.lxp-branched-tree .tree-node:not([data-depth="0"]) > .tree-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--files-branch-x, 12px);
+  width: 12px;
+  height: 50%;
+  border-left: var(--files-branch-width) solid var(--files-branch-line);
+  border-bottom: var(--files-branch-width) solid var(--files-branch-line);
+  border-bottom-left-radius: 9px;
+  pointer-events: none;
+}
+
+#files-tree.lxp-branched-tree .tree-node[data-branch-active] > .tree-row::before {
+  border-color: var(--files-branch-accent);
+}
+
+#files-tree.lxp-branched-tree .tree-row[aria-selected="true"] {
+  background: color-mix(in srgb, var(--files-branch-accent) 10%, transparent);
+  color: var(--files-branch-accent);
+  font-weight: 600;
+}
+
+#files-tree.lxp-branched-tree [data-tree-toggle] {
+  border-radius: 5px;
+  transition: background-color 150ms ease;
+}
+
+#files-tree.lxp-branched-tree [data-tree-toggle]:hover {
+  background: color-mix(in srgb, var(--files-branch-accent) 12%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #files-tree.lxp-branched-tree::before,
+  #files-tree.lxp-branched-tree .tree-children::after,
+  #files-tree.lxp-branched-tree .tree-row,
+  #files-tree.lxp-branched-tree [data-tree-toggle] { transition: none; }
+}

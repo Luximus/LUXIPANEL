@@ -1,0 +1,83 @@
+/* Focus is neutral and independent of the panel's brand colour. */
+:root {
+  --focus-indicator:#64748b;
+  --focus-halo:rgb(100 116 139 / .12);
+  --ring:var(--focus-indicator) !important;
+  --sidebar-ring:var(--focus-indicator) !important;
+}
+.dark,
+html:not(.dark) [data-workspace-shell] .lxp-workspace-server-rail {
+  --focus-indicator:#94a3b8;
+  --focus-halo:rgb(148 163 184 / .12);
+}
+
+/* One crisp keyboard outline replaces stacked brand-coloured rings.
+   Keep each component's offset so inset outlines still fit compact toolbars. */
+:is(button, a, [role='button'], [tabindex], input[type='button'], input[type='submit'], input[type='reset'], input[type='file']):focus-visible {
+  outline:2px solid var(--focus-indicator) !important;
+  --tw-ring-color:transparent !important;
+  --tw-ring-shadow:0 0 #0000 !important;
+}
+:where(button, a, [role='button'], input[type='button'], input[type='submit'], input[type='reset'], input[type='file']):focus-visible { outline-offset:2px; }
+
+:is(
+  input:not([type]), input[type='text'], input[type='email'], input[type='url'],
+  input[type='password'], input[type='number'], input[type='date'],
+  input[type='datetime-local'], input[type='month'], input[type='search'],
+  input[type='tel'], input[type='time'], input[type='week'],
+  textarea, select, .form-input, .form-textarea, .form-select, .form-multiselect
+):focus:not([aria-invalid='true']):not(.prompt-bar__input, .monaco-editor *, .xterm *, .ql-editor *) {
+  border-color:var(--focus-indicator) !important;
+  outline:none !important;
+  --tw-ring-color:var(--focus-halo) !important;
+  box-shadow:0 0 0 3px var(--focus-halo) !important;
+}
+:is(input[type='checkbox'], input[type='radio'], .form-checkbox, .form-radio):focus-visible {
+  outline:2px solid var(--focus-indicator) !important;
+  outline-offset:2px;
+  --tw-ring-color:transparent !important;
+  --tw-ring-shadow:0 0 #0000 !important;
+}
+:is(input, textarea, select)[aria-invalid='true']:focus {
+  border-color:var(--destructive) !important;
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--destructive) 12%, transparent) !important;
+}
+
+/* Login's branded surfaces set their borders with ID selectors. */
+#login-stage :is(input:not([type='checkbox']):not([type='radio']), textarea, select):focus:not([aria-invalid='true']) {
+  border-color:var(--focus-indicator) !important;
+}
+#login-stage input:-webkit-autofill:focus:not([aria-invalid='true']) {
+  border-color:var(--focus-indicator) !important;
+  box-shadow:0 0 0 1000px var(--auth-right-input-bg) inset, 0 0 0 3px var(--focus-halo) !important;
+}
+#login-stage .remember-toggle:focus-visible + .remember-indicator { outline:2px solid var(--focus-indicator) !important; outline-offset:2px; }
+
+/* The borderless chat textarea shares its focus surface with the composer. */
+.prompt-bar .prompt-bar__input:focus {
+  outline:none !important;
+  border-color:transparent !important;
+  box-shadow:none !important;
+}
+.prompt-bar__field:has(.prompt-bar__input:focus) {
+  box-shadow:0 0 0 1px var(--focus-indicator), 0 0 0 4px var(--focus-halo) !important;
+}
+@media (max-width:1024px) {
+  html[data-lxp-chat-mobile-layout] .lxp-chat-prompt .prompt-bar__field:has(.prompt-bar__input:focus) { box-shadow:none !important; }
+  html[data-lxp-chat-mobile-layout] .lxp-chat-prompt .prompt-bar__input-row:focus-within {
+    border-color:var(--focus-indicator) !important;
+    box-shadow:0 0 0 3px var(--focus-halo) !important;
+  }
+}
+@media (forced-colors:active) {
+  :is(button, a, [role='button'], [tabindex], input, textarea, select):focus-visible { outline:2px solid Highlight !important; }
+  :is(input, textarea, select):focus { outline:2px solid Highlight !important; }
+  :is(
+    input:not([type]), input[type='text'], input[type='email'], input[type='url'],
+    input[type='password'], input[type='number'], input[type='date'],
+    input[type='datetime-local'], input[type='month'], input[type='search'],
+    input[type='tel'], input[type='time'], input[type='week'],
+    textarea, select, .form-input, .form-textarea, .form-select, .form-multiselect
+  ):focus:not([aria-invalid='true']):not(.prompt-bar__input, .monaco-editor *, .xterm *, .ql-editor *) { outline:2px solid Highlight !important; }
+  .prompt-bar .prompt-bar__input:focus { outline:2px solid Highlight !important; }
+}

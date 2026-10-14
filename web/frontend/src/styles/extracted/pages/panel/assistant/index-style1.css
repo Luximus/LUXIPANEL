@@ -1,0 +1,50 @@
+    /* Markdown inside AI bubbles */
+    .md-content h1,.md-content h2,.md-content h3 { font-weight:600; margin:.75em 0 .4em }
+    .md-content h1 { font-size:1.15em } .md-content h2 { font-size:1.05em } .md-content h3 { font-size:.95em }
+    .md-content p  { margin:.4em 0; line-height:1.6 }
+    .md-content ul,.md-content ol { padding-left:1.3em; margin:.4em 0 }
+    .md-content li { margin:.15em 0 }
+    .md-content blockquote { border-left:3px solid var(--border-brand); padding-left:.75em; margin:.5em 0; color:var(--text-sub); opacity:.9 }
+    .md-content a { color:var(--brand-light); text-decoration:underline }
+    .md-content strong { font-weight:600 } .md-content em { font-style:italic }
+    .md-content code:not(pre code) {
+      font-family:ui-monospace,SFMono-Regular,monospace; font-size:.82em;
+      background:var(--brand-dim); color:var(--brand-light);
+      padding:.1em .35em; border-radius:.25em
+    }
+    .md-content pre {
+      position:relative;
+      background:color-mix(in srgb, var(--ink-1, var(--card)) 86%, #000 14%);
+      border:1px solid color-mix(in srgb, var(--border) 72%, var(--brand) 28%);
+      border-radius:.5em;
+      padding:.85em 1em; margin:.6em 0; overflow-x:auto
+    }
+    .md-content pre code { font-family:ui-monospace,SFMono-Regular,monospace; font-size:.8em; background:none; color:var(--text); padding:0 }
+    .md-content table { width:100%; border-collapse:collapse; font-size:.85em; margin:.5em 0 }
+    .md-content th,.md-content td { border:1px solid var(--border); padding:.3em .6em; text-align:left }
+    .md-content th { background:color-mix(in srgb, var(--ink-2) 82%, transparent); font-weight:600 }
+    .md-content hr { border:none; border-top:1px solid var(--border); margin:.75em 0 }
+
+    /* Copy button */
+    .code-copy-btn {
+      position:absolute; top:.4rem; right:.4rem;
+      display:flex; align-items:center; gap:.25rem;
+      padding:.2rem .45rem; border-radius:.3rem; font-size:.7rem;
+      background:color-mix(in srgb, var(--card) 72%, #000 28%);
+      color:var(--text-muted);
+      border:1px solid var(--border);
+      cursor:pointer;
+      opacity:0; transition:opacity .15s
+    }
+    .md-content pre:hover .code-copy-btn { opacity:1 }
+    .code-copy-btn:hover { background:var(--brand-dim); color:var(--brand-light); border-color:var(--border-brand) }
+
+    /* Streaming cursor */
+    .stream-cursor { display:inline-block; animation:blink .9s step-end infinite }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* Tool call block */
+    .tool-block { font-family:ui-monospace,SFMono-Regular,monospace; font-size:.78em }
+    .tool-output { max-height:12rem; overflow-y:auto }
+    .tool-output::-webkit-scrollbar { width:4px }
+    .tool-output::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--muted-foreground) 30%, transparent); border-radius:2px }

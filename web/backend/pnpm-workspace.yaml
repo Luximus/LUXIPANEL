@@ -1,0 +1,36 @@
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude: []
+allowBuilds:
+  node-pty: true
+  ssh2: true
+  cpu-features: true
+  esbuild: true
+  es5-ext: false
+  protobufjs: false
+  '@scarf/scarf': false
+packageManagerStrict: true
+packageManagerStrictVersion: false
+engineStrict: true
+verifyDepsBeforeRun: warn
+overrides:
+  uuid: '>=11.1.1'
+  qs: '>=6.15.2'
+  ws: '>=8.20.1'
+  fast-uri@>=3 <4: ^3.1.7
+  js-yaml@>=3 <4: ^3.15.2
+  js-yaml@>=4 <5: ^4.3.2
+  nanoid@>=3 <4: ^3.3.18
+  nanoid@>=5 <6: ^5.1.16
+  postcss@>=8 <9: ^8.5.18
+  browserslist: ^4.28.7
+  brace-expansion@>=2 <3: ^2.1.4
+  brace-expansion@>=4 <6: ^5.0.9
+  hono: ^4.12.25
+  ip-address@>=10 <11: ^10.3.1
+  linkify-it: ^5.0.2
+  nodemailer: ^10.0.2
+  vitest@>=3 <4: ^3.2.6
+  vite@>=7 <8: ^7.3.5
+  brace-expansion@>=1 <2: ^1.1.18
+  form-data@>=4 <5: ^4.0.6
+shamefullyHoist: true

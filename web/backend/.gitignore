@@ -1,0 +1,4 @@
+
+# limpieza 2026-07-23
+.env.bak.*
+__pycache__/

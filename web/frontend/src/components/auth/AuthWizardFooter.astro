@@ -1,0 +1,84 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+import { getMessages } from '@/i18n';
+import { LOCALES } from '@/i18n/config';
+import type { LocaleCode as Locale } from '@/i18n/config';
+import { siteUrl, luxisoftUrl } from '@/lib/server-env';
+
+interface FooterCopy {
+  rights: string;
+  madeBy: string;
+  termsAndConditions: string;
+  privacyPolicy: string;
+  documentation: string;
+  refundPolicy: string;
+}
+
+interface Props {
+  locale: Locale;
+  footerCopy: FooterCopy;
+  /** When true, the theme/language toggle row is hidden — used on login when
+   *  the page is rendered inside the desktop or mobile-app wrapper, which
+   *  exposes its own theme/language controls, AND on the mobile login card
+   *  where those controls are rendered separately at the top of the form. */
+  hideControls?: boolean;
+}
+
+const { locale, footerCopy, hideControls = false } = Astro.props;
+const footerMessages = await getMessages(locale, ['panelLayout', 'common']);
+const themeCopy = footerMessages.panelLayout.actions;
+const languageLabel = footerMessages.common.language;
+
+// Los enlaces/textos del footer van como "chips" con el MISMO estilo que los
+// botones de tema/idioma (borde + bg-background) para que no se mezclen con el
+// fondo animado del login (que es traslúcido).
+const footerChip =
+  "inline-flex items-center justify-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground transition-colors hover:border-primary/30 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
+---
+
+<div class="mt-6 border-t border-border/60 pt-4 text-center">
+  <div class="flex flex-col items-center gap-3">
+    {!hideControls && (
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          class="setup-theme-toggle inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground transition-colors hover:border-primary/30 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          aria-label={themeCopy.switchTheme}
+          title={themeCopy.switchTheme}
+          data-theme-label-light={themeCopy.lightMode}
+          data-theme-label-dark={themeCopy.darkMode}
+        >
+          <i class="setup-theme-toggle__icon ti ti-sun text-base" aria-hidden="true"></i>
+          <span class="setup-theme-toggle__label">{themeCopy.switchTheme}</span>
+        </button>
+
+        <select
+          class="setup-language-selector h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          aria-label={languageLabel}
+          title={languageLabel}
+        >
+          {LOCALES.map((l) => (
+            <option value={l.code} selected={locale === l.code}>{l.label}</option>
+          ))}
+        </select>
+      </div>
+    )}
+
+    <div class="flex flex-wrap items-center justify-center gap-2">
+      <a href={siteUrl("/terms-and-conditions")} target="_blank" rel="noopener noreferrer" data-lxp-external-link class={footerChip}>{footerCopy.termsAndConditions}</a>
+      <a href={siteUrl("/privacy-policy")} target="_blank" rel="noopener noreferrer" data-lxp-external-link class={footerChip}>{footerCopy.privacyPolicy}</a>
+      <a href={siteUrl("/documentation")} target="_blank" rel="noopener noreferrer" data-lxp-external-link class={footerChip}>{footerCopy.documentation}</a>
+      <a href={siteUrl("/refund-policy")} target="_blank" rel="noopener noreferrer" data-lxp-external-link class={footerChip}>{footerCopy.refundPolicy}</a>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-center gap-2">
+      <span class={footerChip}>&copy; {new Date().getFullYear()} LUXIPANEL. {footerCopy.rights}</span>
+      <a href={luxisoftUrl("/en/")} target="_blank" rel="noopener noreferrer" data-lxp-external-link class={footerChip}>{footerCopy.madeBy}</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import "/scripts/extracted/lib/external-link-bridge.js?v=20260510a";
+</script>

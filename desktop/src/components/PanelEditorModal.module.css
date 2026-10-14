@@ -1,0 +1,41 @@
+/* PanelEditorModal — static styles extracted from inline style={{}} */
+
+/* IP / Port row: 2-column grid (la URL de acceso va en fila propia debajo) */
+.gridIpRow {
+  grid-template-columns: minmax(0, 1fr) 7rem;
+}
+
+/* Fila "URL de acceso a LUXIPANEL" (customDomain, URL completa) */
+.accessUrlRow {
+  margin-top: 0.75rem;
+}
+
+/* Category + Tags section top spacing */
+.categorySection {
+  margin-top: 0.75rem;
+}
+
+/* Toggle rows top spacing */
+.toggleSection {
+  margin-top: 0.75rem;
+}
+
+/* Label inside toggle row: no extra margin (overrides lp-modal-label default) */
+.toggleLabel {
+  margin: 0;
+}
+
+/* SSH keys hint: small bottom gap before the key list */
+.keysHint {
+  margin-bottom: 4px;
+}
+
+/* "Manage SSH keys" button: prevent shrink in flex row */
+.manageSshBtn {
+  flex-shrink: 0;
+}
+
+/* Delete button: push to the inline-start, away from the cancel/save buttons */
+.deleteBtn {
+  margin-inline-end: auto;
+}

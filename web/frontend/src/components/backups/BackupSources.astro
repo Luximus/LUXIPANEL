@@ -1,0 +1,100 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * BackupSources — reusable source selector for the "Backup now" and "Schedule"
+ * dialogs. `prefix` namespaces every element id so two instances can coexist on
+ * the same page (e.g. "bk" and "sch"). Wired client-side by setupBackupSources().
+ */
+interface Props {
+  prefix: string;
+  s: {
+    title: string;
+    scopeFull: string;
+    scopeFullHint: string;
+    scopeCustom: string;
+    labelDatabases: string;
+    dbAll: string;
+    dbPick: string;
+    dbChoose: string;
+    dbNone: string;
+    labelMail: string;
+    labelPanelConfig: string;
+    foldersTitle: string;
+    addFolder: string;
+    noFolders: string;
+  };
+}
+const { prefix, s } = Astro.props;
+---
+
+<div class="space-y-3" data-sources={prefix}>
+  <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{s.title}</p>
+
+  <!-- Scope: full server vs custom -->
+  <div class="grid gap-2">
+    <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 hover:bg-accent/50">
+      <input type="radio" name={`${prefix}-scope`} value="full" class="mt-0.5 h-4 w-4 border-input text-primary" data-scope />
+      <span>
+        <span class="block text-sm font-medium">{s.scopeFull}</span>
+        <span class="block text-xs text-muted-foreground">{s.scopeFullHint}</span>
+      </span>
+    </label>
+    <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 hover:bg-accent/50">
+      <input type="radio" name={`${prefix}-scope`} value="custom" checked class="mt-0.5 h-4 w-4 border-input text-primary" data-scope />
+      <span class="block text-sm font-medium">{s.scopeCustom}</span>
+    </label>
+  </div>
+
+  <!-- Custom panel -->
+  <div id={`${prefix}-custom`} class="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+    <!-- Databases -->
+    <div class="space-y-2">
+      <div class="flex items-center gap-2">
+        <input id={`${prefix}-db`} type="checkbox" checked class="h-4 w-4 rounded border-input text-primary" data-db-toggle />
+        <label for={`${prefix}-db`} class="text-sm font-medium">{s.labelDatabases}</label>
+      </div>
+      <div id={`${prefix}-db-detail`} class="space-y-1.5 pl-6">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="radio" name={`${prefix}-db-mode`} value="all" checked class="h-4 w-4 border-input text-primary" data-db-mode />
+          {s.dbAll}
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="radio" name={`${prefix}-db-mode`} value="pick" class="h-4 w-4 border-input text-primary" data-db-mode />
+          {s.dbPick}
+        </label>
+        <div id={`${prefix}-db-pick`} class="hidden space-y-1.5 pt-1">
+          <button type="button" id={`${prefix}-db-choose`}
+            class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent">
+            <i class="ti ti-database-cog text-sm"></i>{s.dbChoose}
+          </button>
+          <div id={`${prefix}-db-chips`} class="flex flex-wrap gap-1 text-xs text-muted-foreground">{s.dbNone}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mail -->
+    <div class="flex items-center gap-2">
+      <input id={`${prefix}-mail`} type="checkbox" class="h-4 w-4 rounded border-input text-primary" data-mail />
+      <label for={`${prefix}-mail`} class="text-sm">{s.labelMail}</label>
+    </div>
+
+    <!-- Panel config -->
+    <div class="flex items-center gap-2">
+      <input id={`${prefix}-panel`} type="checkbox" checked class="h-4 w-4 rounded border-input text-primary" data-panel />
+      <label for={`${prefix}-panel`} class="text-sm">{s.labelPanelConfig}</label>
+    </div>
+
+    <!-- Folders -->
+    <div class="space-y-1.5">
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium">{s.foldersTitle}</span>
+        <button type="button" id={`${prefix}-add-folder`}
+          class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent">
+          <i class="ti ti-folder-plus text-sm"></i>{s.addFolder}
+        </button>
+      </div>
+      <div id={`${prefix}-folders`} class="flex flex-wrap gap-1 text-xs text-muted-foreground" data-no-folders={s.noFolders}>{s.noFolders}</div>
+    </div>
+  </div>
+</div>

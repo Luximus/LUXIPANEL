@@ -1,0 +1,124 @@
+# /etc/sudoers.d/luxipanel-modules
+#
+# Passwordless sudo for the LUXIPANEL service user. Required by modules
+# that shell out to system binaries (firewall, SSL, ClamAV, security
+# audit, etc.). Without these rules, the panel returns
+# "sudo: a password is required" when the user clicks Install/Refresh
+# Signatures/Toggle Daemon/etc.
+#
+# ⚠️ SECURITY MODEL — READ THIS. These rules grant the panel user
+# ROOT-EQUIVALENT access: `apt-get`/`dnf`/`pacman`, bare `systemctl`/
+# `journalctl`, `openssl` and `certbot` (pre-hooks) are each a trivial
+# root shell (GTFOBins) for any process running AS the panel user, WITHOUT
+# knowing the sudo password. The per-command constraints below (chmod modes,
+# rm/kill scoping) reduce blast radius for those SPECIFIC verbs but do NOT
+# contain the panel user overall. Treat code-exec as the panel user as
+# equivalent to root on the box.
+# NOTE: sudo matches command-argument globs with fnmatch WITHOUT FNM_PATHNAME,
+# so `*` also matches `/` and `..` is NOT canonicalized — e.g.
+# `chmod 0644 /etc/luxipanel/../../etc/shadow` would still match a `chmod
+# 0[6-7][0-7][0-7] /etc/luxipanel/*` rule. This CANNOT be closed with a glob
+# (fnmatch has no way to forbid a `..` component anywhere in the path).
+# HARDENED (W1 A6): the destructive `chmod`/`rm -rf` NOPASSWD globs were REMOVED
+# — they were traversal-uncontainable AND unused (no panel code path relied on
+# them: legitimate root writes go through worker.py's realpath-contained
+# write-behind path, or the panel's own sudo-PASSWORD path, neither of which
+# needs a NOPASSWD chmod/rm). Removing them shuts the highest-value escalations
+# (chmod 0644 /etc/shadow → world-readable creds; `rm -rf` outside its scope).
+# RESIDUAL (tracked in cron/daily_work_plan, needs the ~4-6h per-arg-allowlist pass):
+# the read-only `cat`/`du`/`find` and the `mkdir -p` globs are STILL traversal-
+# prone. They are kept because `cat` is actively used (nginx/webhooks/login-acl
+# read root-owned configs) and their blast radius is lower (info disclosure /
+# root-owned empty dirs, not arbitrary chmod/delete). The real fix is to pin
+# each to a per-argument allowlist or a validating wrapper, not a glob.
+# FOLLOW-UP (tracked in cron/daily_work_plan): shrink this surface further — drop
+# blanket apt/openssl/certbot NOPASSWD, pin systemctl to explicit units, and
+# replace the remaining traversal-prone read globs with non-crossing paths.
+#
+# Installation is handled automatically by `install.sh` (setup_modules_sudoers):
+# it substitutes the `__LUXIPANEL_PM2_USER__` placeholder below with the pm2
+# service user (${SUDO_USER}), runs `visudo -cf`, and REFUSES to install if the
+# placeholder was left unresolved. Do NOT ship this file with a real account in
+# the alias — an as-shipped hardcoded user would grant that developer NOPASSWD
+# root on every customer box.
+#
+# Manual install (only if not using install.sh):
+#   sed 's/__LUXIPANEL_PM2_USER__/YOURUSER/' luxipanel-modules.sudoers >/tmp/lm
+#   sudo visudo -cf /tmp/lm && sudo install -m 0440 /tmp/lm /etc/sudoers.d/luxipanel-modules
+
+User_Alias LUXIPANEL_USERS = __LUXIPANEL_PM2_USER__
+
+# ---- Package managers (used by the shared installer) ----
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/apt-get
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/apt
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/dnf
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/yum
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /sbin/apk
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/apk
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/pacman
+
+# ---- systemd (enable/disable/start/stop services) ----
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /bin/systemctl
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/systemctl
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /bin/journalctl
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/journalctl
+
+# ---- mkdir / cat / kill / du (scan run-dir + quarantine + mail quota) ----
+# Constrained to the directories the panel legitimately touches — no blanket
+# NOPASSWD: /bin/cat, /bin/rm, /bin/chmod (those are root-equivalent primitives).
+# HARDENED (W1 A6): the `chmod 0[6-7][0-7][0-7] /dir/*` and `rm -rf /dir/*` rules
+# that used to live here were REMOVED. They were traversal-uncontainable
+# (`chmod 0644 /etc/luxipanel/../../etc/shadow`, `rm -rf /var/vmail/../../`) and
+# unused — no panel code path invokes a NOPASSWD chmod/rm on these paths (root
+# writes go via worker.py's realpath-contained queue or the panel sudo-password
+# path). See the header for the residual read-only globs still pending.
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /bin/mkdir -p /var/lib/luxipanel/* /etc/luxipanel/* /var/log/luxipanel/* /var/spool/cron/* /var/spool/exim4/* /var/run/luxipanel/*
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/mkdir -p /var/lib/luxipanel/* /etc/luxipanel/* /var/log/luxipanel/* /var/spool/cron/* /var/spool/exim4/* /var/run/luxipanel/*
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /bin/cat /etc/luxipanel/* /etc/nginx/* /etc/postfix/* /etc/dovecot/* /etc/fail2ban/* /etc/clamav/* /var/log/luxipanel/* /var/log/nginx/* /var/log/mail.log /var/log/syslog /var/log/auth.log /var/spool/cron/* /var/lib/luxipanel/* /var/vmail/* /var/lib/clamav/* /var/lib/fail2ban/*
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/cat /etc/luxipanel/* /etc/nginx/* /etc/postfix/* /etc/dovecot/* /etc/fail2ban/* /etc/clamav/* /var/log/luxipanel/* /var/log/nginx/* /var/log/mail.log /var/log/syslog /var/log/auth.log /var/spool/cron/* /var/lib/luxipanel/* /var/vmail/* /var/lib/clamav/* /var/lib/fail2ban/*
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/find /var/lib/luxipanel/* /etc/luxipanel/* /var/log/luxipanel/* /var/spool/cron/* /var/spool/exim4/* /var/run/luxipanel/* /var/vmail/* -type f -print
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /bin/find /var/lib/luxipanel/* /etc/luxipanel/* /var/log/luxipanel/* /var/spool/cron/* /var/spool/exim4/* /var/run/luxipanel/* /var/vmail/* -type f -print
+# kill: graceful SIGTERM to a specific pid only — not an arbitrary signal to an
+# arbitrary target (e.g. `kill -KILL -1` / signalling init).
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /bin/kill -TERM [0-9]*
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/kill -TERM [0-9]*
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/du -sh /var/lib/luxipanel/* /etc/luxipanel/* /var/log/luxipanel/* /var/spool/cron/* /var/vmail/* /var/lib/clamav/* /var/lib/fail2ban/*
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /bin/du -sh /var/lib/luxipanel/* /etc/luxipanel/* /var/log/luxipanel/* /var/spool/cron/* /var/vmail/* /var/lib/clamav/* /var/lib/fail2ban/*
+
+# ---- Dovecot admin (mail quota reporting) ----
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/doveadm
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/sbin/doveadm
+
+# ---- ClamAV ----
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/clamscan
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/clamdscan
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/freshclam
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/sigtool
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /sbin/clamscan
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /sbin/clamdscan
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /sbin/freshclam
+
+# ---- Firewall ----
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/sbin/ufw
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /sbin/ufw
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/fail2ban-client
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/iptables
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /sbin/iptables
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/sbin/iptables
+
+# ---- SSL / Certbot ----
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/certbot
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /snap/bin/certbot
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/openssl
+
+# ---- Security audit scanners ----
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/lynis
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/sbin/lynis
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/rkhunter
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/sbin/rkhunter
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/sbin/chkrootkit
+LUXIPANEL_USERS ALL=(root) NOPASSWD: /usr/bin/chkrootkit
+
+# Allow these env vars through sudo so non-interactive package installers
+# don't prompt or break under set -e.
+Defaults!LUXIPANEL_USERS env_keep += "DEBIAN_FRONTEND APT_LISTCHANGES_FRONTEND APT_LISTBUGS_FRONTEND NEEDRESTART_MODE NEEDRESTART_SUSPEND"

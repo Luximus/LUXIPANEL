@@ -1,0 +1,59 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+/**
+ * Action buttons for standalone error pages (404 + `error/ErrorPage`).
+ *
+ * Branches on the embedded source of the request (UA), so the buttons match
+ * the wrapper the page is rendered inside:
+ *  - "app"  (React Native mobile WebView): the web redirect buttons
+ *    ("Go to Home" / "Go back") would navigate the WebView and break the
+ *    native flow. Instead we show a SINGLE button that posts a native message
+ *    (`lxp-go-carousel`) so the app returns to its server carousel screen
+ *    (handled in LP-LICENSE-SERVER/app/src/screens/SshScreen.tsx → onRequestBack).
+ *  - "webframe" (desktop nested webframe): hide all — the desktop chrome owns
+ *    navigation (same as the previous `isDesktopWebframeUA` behaviour).
+ *  - "web" / "desktop": the normal web buttons (Go to Home / Go back).
+ */
+import { getMessages } from "@/i18n";
+import { localeFromRequest } from "@/i18n/server";
+import { detectEmbeddedSourceFromUA } from "@/lib/embedded-source";
+
+const source = detectEmbeddedSourceFromUA(Astro.request.headers.get("user-agent"));
+const locale = localeFromRequest(Astro.request);
+const t = await getMessages(locale, ["errors"]);
+const e = t.errors;
+---
+
+{source === "app" ? (
+  <div class="flex justify-center pt-2">
+    <button type="button" data-error-action="carousel"
+      class="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90 transition-all">
+      <i class="ti ti-layout-grid text-base"></i>
+      {e.backToServers}
+    </button>
+  </div>
+  <script is:inline>
+    document.querySelector('[data-error-action="carousel"]')?.addEventListener("click", function () {
+      try {
+        window.ReactNativeWebView &&
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: "lxp-go-carousel" }));
+      } catch (err) {
+        /* fuera del WebView: no-op */
+      }
+    });
+  </script>
+) : source === "webframe" ? null : (
+  <div class="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+    <a href="/"
+      class="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90 transition-all">
+      <i class="ti ti-home text-base"></i>
+      {e.home}
+    </a>
+    <button onclick="history.back()"
+      class="inline-flex items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm font-medium hover:bg-accent transition-colors">
+      <i class="ti ti-arrow-left text-base"></i>
+      {e.back}
+    </button>
+  </div>
+)}

@@ -1,0 +1,49 @@
+---
+import ReleaseSettings from "@/components/panel-releases/ReleaseSettings";
+const { t } = Astro.props;
+---
+      <div id="panel-system" class="tab-panel hidden space-y-5">
+        <ReleaseSettings client:load />
+        <!-- Factory reset -->
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <div class="p-5">
+            <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-5 flex items-start gap-3">
+              <i class="ti ti-alert-triangle text-amber-500 mt-0.5 shrink-0"></i>
+              <div class="text-sm">
+                <p class="font-medium text-amber-500 mb-0.5">{t.settings.system.factoryReset.warningTitle}</p>
+                <p class="text-muted-foreground">{t.settings.system.factoryReset.warningBefore}<strong>{t.settings.system.factoryReset.warningAllSettings}</strong>{t.settings.system.factoryReset.warningMiddle}<strong>{t.settings.system.factoryReset.warningNotDeleted}</strong>{t.settings.system.factoryReset.warningAfter}</p>
+              </div>
+            </div>
+            <button id="btn-factory-reset"
+              class="inline-flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-500/20 transition-colors">
+              <i class="ti ti-refresh text-base"></i>
+              {t.settings.system.factoryReset.btnReset}
+            </button>
+          </div>
+        </div>
+
+        <!-- Backup restore (only shown if backup module installed) -->
+        <div id="backup-restore-section" class="rounded-xl border border-border bg-card overflow-hidden hidden">
+          <div class="p-5">
+            <div id="backup-list" class="space-y-2 mb-4">
+              <p class="text-sm text-muted-foreground">{t.settings.system.backupRestore.loading}</p>
+            </div>
+            <button id="btn-restore-backup" disabled
+              class="inline-flex items-center gap-2 rounded-xl bg-blue-500/10 px-4 py-2.5 text-sm font-medium text-blue-500 hover:bg-blue-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-blue-500/30">
+              <i class="ti ti-database-import text-base"></i>
+              {t.settings.system.backupRestore.btnRestore}
+            </button>
+          </div>
+        </div>
+
+        <!-- No backup module notice -->
+        <div id="no-backup-notice" class="rounded-xl border border-border bg-card p-5 flex items-center gap-4">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <i class="ti ti-database text-muted-foreground"></i>
+          </div>
+          <div>
+            <p class="text-sm font-medium">{t.settings.system.noBackup.title}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{t.settings.system.noBackup.descBefore}<strong>{t.settings.system.noBackup.backupsModule}</strong>{t.settings.system.noBackup.descAfter}</p>
+          </div>
+        </div>
+      </div>

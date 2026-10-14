@@ -1,0 +1,78 @@
+import React from "react";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+const mocks = vi.hoisted(() => ({ register: vi.fn(), unregister: vi.fn(), saved: vi.fn(), handoff: vi.fn(), persist: vi.fn() }));
+vi.mock("react-native", () => ({ View: "View", Text: "Text", TextInput: "Input", Pressable: "Pressable", ActivityIndicator: "Spinner", BackHandler: { addEventListener: () => ({ remove() {} }) } }));
+vi.mock("../../../hooks/useTheme", () => ({ useTheme: () => ({ theme: "dark" }) }));
+vi.mock("../../../theme/colors", () => ({ getThemeTokens: () => ({}), withAlpha: () => "" }));
+vi.mock("../../../i18n", () => ({ getMessages: () => ({ serverStandalone: {}, modules: { labels: {} } }), formatMessage: () => "" }));
+vi.mock("../../../lib/session-state", () => ({ loadSessionState: () => ({ language: "en" }) }));
+vi.mock("../../../components/server/ServerModuleScreen", () => ({ ServerModuleScreen: (p: any) => React.createElement("screen", {}, p.children) }));
+vi.mock("../../../components/server/Form", () => ({ Field: "Field", Checkbox: "Checkbox", InfoBox: "InfoBox", DialogFooter: "Footer" }));
+vi.mock("../../../features/app/tabler-icons", () => ({ TablerServer: "Icon" }));
+vi.mock("../../../features/app/luxipanel-modules", () => ({ LUX_MODULES: [], CORE_MODULES: [], TOOL_MODULES: [] }));
+vi.mock("../../../api/serverApi", () => ({ registerDirectServer: mocks.register, unregisterDirectServer: mocks.unregister, getDirectSessionRevision: () => 0 }));
+vi.mock("../../../api/panelHandoff", () => ({ connectWithSavedPanelCredentials: mocks.handoff }));
+vi.mock("../../../lib/notifications", () => ({ registerForPanelPushNotifications: vi.fn() }));
+vi.mock("../../../api/directAuth", () => ({ normalizeBaseUrl: (s: string) => s, reloginStandalone: vi.fn(), loginStandalone: vi.fn(), verifyStandaloneTotp: vi.fn() }));
+vi.mock("../../../storage/directPanelSession", () => ({ getDirectPanelSession: mocks.saved, getDirectPanelUsername: vi.fn(), getDirectPanelPassword: vi.fn(), setDirectPanelSession: mocks.persist, setDirectPanelUsername: vi.fn(), setDirectPanelPassword: vi.fn() }));
+vi.mock("../../../features/app/utils", () => ({ getPanelDisplayName: () => "Box" }));
+vi.mock("../../main/PersistentNativeModules", () => ({ PersistentNativeModules: () => null }));
+vi.mock("../../main/native-module-context", () => ({ dismissNativeModuleDialog: vi.fn() }));
+vi.mock("../../main/shell-types", () => ({ NATIVE_MODULE_IDS: new Set(["terminal"]) }));
+vi.mock("../native-module-access", () => ({ fetchNativeModuleAccess: async () => new Set(["terminal"]) }));
+import { DirectPanelConnectScreen } from "./DirectPanelConnectScreen";
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+let tree: ReactTestRenderer | undefined;
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.handoff.mockReset().mockResolvedValue(null);
+  mocks.saved.mockResolvedValue({ jwt: "box-session", csrf: null, exp: Date.now() + 600_000 });
+});
+afterEach(async () => { if (tree) await act(async () => tree!.unmount()); tree = undefined; });
+const panel = { id: "box-a", customDomain: "https://box.example" } as any;
+it("hands an authenticated target to the console and preserves it when login closes", async () => {
+  const authenticated = vi.fn(() => expect(mocks.register).toHaveBeenCalledWith("box-a", expect.objectContaining({ jwt: "box-session" })));
+  await act(async () => { tree = create(<DirectPanelConnectScreen panel={panel} initialModuleId="terminal" onClose={() => {}} onAuthenticated={authenticated} />); });
+  expect(authenticated).toHaveBeenCalledTimes(1);
+  await act(async () => tree!.unmount()); tree = undefined;
+  expect(mocks.unregister).not.toHaveBeenCalled();
+});
+it("still releases a normal module connection when its overlay closes", async () => {
+  await act(async () => { tree = create(<DirectPanelConnectScreen panel={panel} initialModuleId="terminal" onClose={() => {}} />); });
+  await act(async () => tree!.unmount()); tree = undefined;
+  expect(mocks.unregister).toHaveBeenCalledWith("box-a");
+});
+it("opens the requested console with the existing LP credentials without displaying a login form", async () => {
+  mocks.saved.mockResolvedValue(null);
+  mocks.handoff.mockResolvedValue({ jwt: "vault-session", csrf: null, exp: Date.now() + 600_000 });
+  const authenticated = vi.fn();
+  await act(async () => { tree = create(<DirectPanelConnectScreen panel={panel} portalToken="portal-session" initialModuleId="terminal" onClose={() => {}} onAuthenticated={authenticated} />); });
+  expect(mocks.handoff).toHaveBeenCalledWith("box-a", "portal-session", "https://box.example", undefined, expect.any(Function));
+  expect(mocks.register).toHaveBeenCalledWith("box-a", expect.objectContaining({ jwt: "vault-session" }));
+  expect(authenticated).toHaveBeenCalledTimes(1);
+  expect(tree!.root.findAllByType("Input" as any)).toHaveLength(0);
+  expect(mocks.persist).toHaveBeenCalledWith("box-a", expect.objectContaining({ jwt: "vault-session" }));
+});
+it("does not restore a target when the user cancels while LP is connecting", async () => {
+  mocks.saved.mockResolvedValue(null);
+  let resolve!: (session: any) => void;
+  mocks.handoff.mockImplementation(() => new Promise(r => { resolve = r; }));
+  await act(async () => { tree = create(<DirectPanelConnectScreen panel={panel} portalToken="portal-session" initialModuleId="terminal" onClose={() => {}} />); });
+  await act(async () => tree!.unmount()); tree = undefined;
+  await act(async () => resolve({ jwt: "late-session", csrf: null, exp: Date.now() + 600_000 }));
+  expect(mocks.register).not.toHaveBeenCalled();
+  expect(mocks.persist).not.toHaveBeenCalled();
+});
+it("retries saved credentials after a failure without asking for username or password", async () => {
+  mocks.saved.mockResolvedValue(null);
+  const authenticated = vi.fn();
+  await act(async () => { tree = create(<DirectPanelConnectScreen panel={panel} portalToken="portal-session" initialModuleId="terminal" onClose={() => {}} onAuthenticated={authenticated} />); });
+  expect(authenticated).not.toHaveBeenCalled();
+  expect(tree!.root.findAllByType("Input" as any)).toHaveLength(0);
+  mocks.handoff.mockResolvedValue({ jwt: "retry-session", csrf: null, exp: Date.now() + 600_000 });
+  await act(async () => tree!.root.findByType("Footer" as any).props.onSubmit());
+  expect(mocks.handoff).toHaveBeenCalledTimes(2);
+  expect(authenticated).toHaveBeenCalledTimes(1);
+  expect(mocks.register).toHaveBeenCalledWith("box-a", expect.objectContaining({ jwt: "retry-session" }));
+});

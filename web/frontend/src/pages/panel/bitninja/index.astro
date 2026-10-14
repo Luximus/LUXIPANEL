@@ -1,0 +1,8 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Internal route: the workspace lazily renders this module without page loading.
+import PanelLayout from "@/layouts/PanelLayout.astro";
+import { getPageMessages } from "@/pages/_page-context";
+const t = await getPageMessages(Astro, ['panelLayout']);
+---
+<PanelLayout title={t.panelLayout.nav.assistant} activeModule="assistant" flush />

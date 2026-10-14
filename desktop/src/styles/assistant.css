@@ -1,0 +1,78 @@
+/* Asistente IA embebido (consola; claro en light, oscuro en dark). */
+/* Extraído de index.css (partial global; clases .lp-* globales, mismos tokens --lp-*). */
+
+/* ── Asistente IA embebido (consola; claro en light, oscuro en dark) ─────── */
+.server-assistant {
+  /* Paleta LIGHT por defecto (consola clara). El override dark va más abajo. */
+  --sa-bg: #f4f6fa;
+  --sa-bar: #eaeef4;
+  --sa-border: #d6dde7;
+  --sa-text: #28303c;
+  --sa-muted: #64707f;
+  --sa-btn-bg: #ffffff;
+  --sa-input-bg: #ffffff;
+  --sa-msg-bg: #ffffff;
+  --sa-msg-border: #dde4ee;
+  --sa-msg-text: #28303c;
+  --sa-chip-bg: #eef2f8;
+  --sa-conv-hover: #e7ecf3;
+  --sa-conv-active-bg: #e3ecf7;
+  --sa-conv-active-border: #9cc0e6;
+  --sa-accent: #0e7490;
+  /* Burbuja del usuario (índigo, como LUXIPANEL: indigo-100/indigo-900 en light). */
+  --sa-user-bg: #e0e7ff;
+  --sa-user-text: #312e81;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 9rem;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--sa-border);
+  border-radius: 0.7rem;
+  background: var(--sa-bg);
+  color: var(--sa-text);
+  overflow: hidden;
+}
+[data-theme="dark"] .server-assistant {
+  --sa-bg: #0b0f15;
+  --sa-bar: #0e141d;
+  --sa-border: #1f2733;
+  --sa-text: #d7dde6;
+  --sa-muted: #8b97a7;
+  --sa-btn-bg: #131a24;
+  --sa-input-bg: #0b0f15;
+  --sa-msg-bg: #161d27;
+  --sa-msg-border: #232c38;
+  --sa-msg-text: #d7dde6;
+  --sa-chip-bg: #1b2430;
+  --sa-conv-hover: #131a24;
+  --sa-conv-active-bg: #16202c;
+  --sa-conv-active-border: #2b4a63;
+  --sa-accent: #7dd3fc;
+  --sa-user-bg: #4f46e5;
+  --sa-user-text: #eef2ff;
+}
+
+/* Estado "sin datos": reemplaza el asistente + las métricas de la window cuando
+   la cuenta se quedó sin saldo. Centrado a lo alto y ancho (icono + texto). */
+.server-assistant-nodata {
+  flex: 1 1 auto;
+  min-height: 16rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  text-align: center;
+  padding: 1.5rem;
+  border: 1px solid var(--lp-border);
+  border-radius: 0.7rem;
+  background: var(--lp-card);
+  color: var(--lp-text-muted);
+}
+.server-assistant-nodata__icon { color: var(--lp-text-muted); opacity: 0.85; }
+.server-assistant-nodata__title { margin: 0; font-weight: 700; font-size: 0.95rem; color: var(--lp-heading); }
+.server-assistant-nodata__body { margin: 0; max-width: 30rem; font-size: 0.82rem; line-height: 1.5; }
+.server-assistant__hbtn { color: var(--sa-muted); border-color: var(--sa-border); background: var(--sa-btn-bg); }
+.server-assistant__hbtn.is-active { color: var(--sa-accent); border-color: var(--sa-conv-active-border); }
+

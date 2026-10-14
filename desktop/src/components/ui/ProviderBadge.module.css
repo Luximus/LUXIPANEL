@@ -1,0 +1,23 @@
+.spacer {
+  display: block;
+  flex-shrink: 0;
+  width: var(--badge-size);
+}
+
+.badge {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  width: var(--badge-size);
+  height: var(--badge-size);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-size);
+  height: var(--icon-size);
+}

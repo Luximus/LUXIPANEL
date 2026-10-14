@@ -1,0 +1,59 @@
+---
+import ModalNavbar from "@/components/ui/ModalNavbar.astro";
+const { t, view } = Astro.props;
+import { DIALOG_CHROME } from "@/lib/ui-classes";
+---
+  {(!view || view === "track-delivery") && <dialog
+    id="mail-track-delivery-detail-dialog"
+    class={`w-full max-w-2xl ${DIALOG_CHROME}`}
+  >
+    <ModalNavbar title={t.mail.trackDelivery.dialogTitle} closeId="mail-track-delivery-detail-close" />
+    <div class="space-y-2 px-4 py-3">
+      <p id="mail-track-delivery-detail-meta" class="text-xs text-muted-foreground"></p>
+      <pre id="mail-track-delivery-detail-raw" class="max-h-80 overflow-auto rounded-lg border border-border bg-background p-3 text-[11px] leading-relaxed text-foreground"></pre>
+    </div>
+  </dialog>}
+
+  {(!view || view === "global-filters") && <dialog
+    id="mail-global-filter-dialog"
+    class={`w-full max-w-5xl ${DIALOG_CHROME}`}
+  >
+    <ModalNavbar title={t.mail.globalFilters.dialogTitle} titleId="mail-global-filter-dialog-title" closeId="mail-global-filter-dialog-close" />
+    <form id="mail-global-filter-form" class="space-y-4 px-4 py-4">
+      <input id="mail-global-filter-id" type="hidden" />
+      <div id="mail-global-filter-form-error" class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"></div>
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
+        <div class="space-y-1.5">
+          <label for="mail-global-filter-name" class="text-sm font-medium">{t.mail.globalFilters.labelFilterName}</label>
+          <input id="mail-global-filter-name" type="text" required class="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+        </div>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input id="mail-global-filter-enabled" type="checkbox" class="h-4 w-4 rounded border-input" checked />
+          {t.mail.globalFilters.labelEnabled}
+        </label>
+      </div>
+
+      <div class="rounded-xl border border-border p-3">
+        <div class="mb-2 flex items-center justify-between">
+          <p class="text-sm font-semibold">{t.mail.globalFilters.rulesTitle}</p>
+          <button type="button" id="mail-global-filter-add-rule" class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent">{t.mail.globalFilters.btnAddRule}</button>
+        </div>
+        <div id="mail-global-filter-rules-list" class="space-y-2"></div>
+      </div>
+
+      <div class="rounded-xl border border-border p-3">
+        <div class="mb-2 flex items-center justify-between">
+          <p class="text-sm font-semibold">{t.mail.globalFilters.actionsTitle}</p>
+          <button type="button" id="mail-global-filter-add-action" class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent">{t.mail.globalFilters.btnAddAction}</button>
+        </div>
+        <div id="mail-global-filter-actions-list" class="space-y-2"></div>
+      </div>
+
+      <div class="flex gap-3 pb-1">
+        <button type="button" id="mail-global-filter-cancel" class="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent">{t.mail.globalFilters.btnCancel}</button>
+        <button type="submit" id="mail-global-filter-save" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+          {t.mail.globalFilters.btnSave}
+        </button>
+      </div>
+    </form>
+  </dialog>}

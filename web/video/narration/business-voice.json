@@ -1,0 +1,36 @@
+{
+  "model": "eleven_multilingual_v2",
+  "voices": {
+    "es": { "id": "XrExE9yKIg1WjnnlVkGX", "name": "Matilda", "delivery": "professional, upbeat, warm" },
+    "en": { "id": "XrExE9yKIg1WjnnlVkGX", "name": "Matilda", "delivery": "professional, upbeat, warm" }
+  },
+  "voiceSettings": { "stability": 0.42, "similarity_boost": 0.8, "style": 0.2, "use_speaker_boost": true, "speed": 1.06 },
+  "duration": 45,
+  "sourceVideoSha256": "74da46a5e3ffc393a6c6c7baf728e67341dd9b559b84bbb00c600023dbae41b5",
+  "segments": [
+    { "scene": "hook", "start": 0.15, "end": 3.80,
+      "es": "Tu web. Tu app. Sin saber programar.",
+      "en": "Your website. Your app. No coding skills needed." },
+    { "scene": "idea", "start": 4.18, "end": 10.75,
+      "es": "Solo cuenta tu idea. Quiero una web para mi restaurante, con pedidos por WhatsApp.",
+      "en": "Just tell Luxi your idea. A website for my restaurant, with a menu and WhatsApp orders." },
+    { "scene": "creation", "start": 11.25, "end": 18.70,
+      "es": "Luxi le da forma a tu negocio. Tus fotos, tu catálogo y tu estilo, en una web.",
+      "en": "Watch your idea take shape. Your photos, your catalog, your style. A website for your business." },
+    { "scene": "changes", "start": 19.18, "end": 24.72,
+      "es": "Cambia el diseño hablando. Sin escribir código y sin contratar un desarrollador.",
+      "en": "Change your design by chatting. No code to write. No developer to hire." },
+    { "scene": "orders", "start": 25.18, "end": 30.72,
+      "es": "Comparte tu enlace. Tus clientes ven el menú y te escriben para pedir.",
+      "en": "Share your link. Customers browse your menu, then message you to place an order." },
+    { "scene": "native-app", "start": 31.18, "end": 34.76,
+      "es": "Y lleva tu negocio a una app nativa.",
+      "en": "Your business. In a native app, too." },
+    { "scene": "free-plan", "start": 35.12, "end": 39.82,
+      "es": "Plan gratis, sin mensualidad. Inteligencia artificial por consumo, aparte.",
+      "en": "The Free plan has no monthly fee. AI usage is billed separately." },
+    { "scene": "closing", "start": 40.15, "end": 44.72,
+      "es": "Tu negocio. Tu momento. Empieza gratis en Luxisoft punto com.",
+      "en": "Your business. Your moment. Start free at Luxisoft dot com." }
+  ]
+}

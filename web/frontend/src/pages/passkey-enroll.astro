@@ -1,0 +1,25 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import {getMessages} from '../i18n';
+import {parseLocale} from '../i18n/config';
+const locale=parseLocale(Astro.url.searchParams.get('lang'))??'en';
+const t=(await getMessages(locale,['preferences'])).preferences;
+---
+<BaseLayout title="Passkey — LUXIPANEL" includeClientRouter={false}>
+ <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-5 p-8" lang={locale} dir={locale==='ar'?'rtl':'ltr'}>
+  <h1 class="text-xl font-semibold">Passkey — LUXIPANEL</h1>
+  <p id="enrollment-status" role="status">{t.passkeys.sectionSubtitle}</p>
+  <button id="enrollment-start" type="button" class="rounded-lg bg-indigo-600 p-3 text-white">{t.passkeys.btnAdd}</button>
+  <script id="enrollment-messages" type="application/json" set:html={JSON.stringify({cancelled:t.toasts.registrationCancelled,failed:t.errors.passkeyFinishError,init:t.errors.passkeyInitFailed,complete:t.toasts.passkeyRegistered})}/>
+ </main>
+ <script>
+  import {registrationOptions,serializeRegistrationCredential} from '../lib/webauthn';
+  const messages=JSON.parse(document.getElementById('enrollment-messages')!.textContent!);
+  const status=document.getElementById('enrollment-status')!;
+  const button=document.getElementById('enrollment-start') as HTMLButtonElement;
+  const grant=new URLSearchParams(location.hash.slice(1)).get('grant');
+  history.replaceState(null,'',location.pathname+location.search);
+  const post=async(path:string,body:unknown)=>{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify(body)});const result=await response.json();if(!response.ok||!result.ok)throw new Error(messages.failed);return result.data;};
+  button.addEventListener('click',async()=>{button.disabled=true;try{if(!grant)throw new Error(messages.init);const {options,ceremony,displayName}=await post('/api/auth/passkeys/enrollment-options',{grant});status.textContent=displayName;const credential=await navigator.credentials.create({publicKey:registrationOptions(options)}) as PublicKeyCredential|null;if(!credential)throw new Error(messages.cancelled);await post('/api/auth/passkeys/enrollment-verify',{ceremony,response:serializeRegistrationCredential(credential)});status.textContent=messages.complete;button.hidden=true;}catch(error){status.textContent=error instanceof DOMException&&error.name==='NotAllowedError'?messages.cancelled:messages.failed;button.hidden=true;}});
+ </script>
+</BaseLayout>

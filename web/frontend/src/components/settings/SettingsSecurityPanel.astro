@@ -1,0 +1,109 @@
+---
+const { t } = Astro.props;
+---
+      <div id="panel-security" class="tab-panel hidden">
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <div class="p-5 grid gap-5 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                {t.settings.security.loginMethodsTitle}
+              </p>
+              <p class="text-xs text-muted-foreground mb-4">
+                {t.settings.security.loginMethodsDesc}
+              </p>
+              <div class="grid gap-3 sm:grid-cols-3">
+                <!-- Passkey -->
+                <label class="login-method-card flex items-start gap-3 rounded-xl border-2 border-border p-4 cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
+                  <input type="checkbox" id="s-login-allow-passkey" class="login-method-check mt-0.5 h-4 w-4 accent-primary" checked />
+                  <div>
+                    <div class="flex items-center gap-2 mb-1">
+                      <i class="ti ti-fingerprint text-sm text-blue-500"></i>
+                      <p class="text-sm font-medium">{t.settings.security.passkey.name}</p>
+                    </div>
+                    <p class="text-xs text-muted-foreground">{t.settings.security.passkey.desc}</p>
+                    <span id="passkey-status-badge" class="inline-flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                      <i class="ti ti-info-circle text-xs"></i> <span id="passkey-status-text">{t.settings.security.passkey.verifying}</span>
+                    </span>
+                    <div class="mt-3">
+                      <button id="btn-manage-passkeys" type="button"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+                        <i class="ti ti-settings text-sm"></i>
+                        {t.settings.security.passkey.btnManage}
+                      </button>
+                    </div>
+                  </div>
+                </label>
+                <!-- Contraseña -->
+                <label class="login-method-card flex items-start gap-3 rounded-xl border-2 border-border p-4 cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
+                  <input type="checkbox" id="s-login-allow-password" class="login-method-check mt-0.5 h-4 w-4 accent-primary" checked />
+                  <div>
+                    <div class="flex items-center gap-2 mb-1">
+                      <i class="ti ti-lock text-sm text-primary"></i>
+                      <p class="text-sm font-medium">{t.settings.security.password.name}</p>
+                    </div>
+                    <p class="text-xs text-muted-foreground">{t.settings.security.password.desc}</p>
+                    <span class="inline-flex items-center gap-1 mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                      <i class="ti ti-circle-check text-xs"></i> {t.settings.security.password.configured}
+                    </span>
+                  </div>
+                </label>
+                <!-- Recuperación -->
+                <label class="login-method-card flex items-start gap-3 rounded-xl border-2 border-border p-4 cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
+                  <input type="checkbox" id="s-login-allow-recovery" class="login-method-check mt-0.5 h-4 w-4 accent-primary" />
+                  <div>
+                    <div class="flex items-center gap-2 mb-1">
+                      <i class="ti ti-shield-check text-sm text-amber-500"></i>
+                      <p class="text-sm font-medium">{t.settings.security.recovery.name}</p>
+                    </div>
+                    <p class="text-xs text-muted-foreground">{t.settings.security.recovery.desc}</p>
+                    <span id="recovery-status-badge" class="inline-flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                      <i class="ti ti-info-circle text-xs"></i> <span id="recovery-status-text">{t.settings.security.recovery.verifying}</span>
+                    </span>
+                    <div class="mt-3">
+                      <button id="btn-manage-recovery" type="button"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+                        <i class="ti ti-settings text-sm"></i>
+                        {t.settings.security.recovery.btnManage}
+                      </button>
+                    </div>
+                  </div>
+                </label>
+              </div>
+              <!-- Aviso de mínimo 1 activo -->
+              <p id="login-methods-warning" class="hidden mt-3 text-xs text-destructive">
+                <i class="ti ti-alert-triangle mr-1"></i>
+                {t.settings.security.loginMethodsWarning}
+              </p>
+            </div>
+            <div class="sm:col-span-2 border-t border-border pt-4">
+              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                {t.settings.security.twoFaStatus.groupTitle}
+              </p>
+              <div class="rounded-xl border border-border bg-background p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <span id="s-self-2fa-badge" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-muted text-muted-foreground">
+                    <i class="ti ti-circle-x text-sm"></i>{t.settings.security.twoFaStatus.badgeDisabled}
+                  </span>
+                  <p id="s-self-2fa-text" class="text-xs text-muted-foreground mt-2">
+                    {t.settings.security.twoFaStatus.promptText}
+                  </p>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btn-setup-2fa-settings" type="button"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <i class="ti ti-plus text-sm"></i>{t.settings.security.twoFaStatus.btnSetup}
+                  </button>
+                  <button id="btn-disable-2fa-settings" type="button"
+                    class="hidden inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors">
+                    <i class="ti ti-trash text-sm"></i>{t.settings.security.twoFaStatus.btnDelete}
+                  </button>
+                  <button id="btn-deactivate-2fa-settings" type="button"
+                    class="hidden inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+                    <i class="ti ti-power text-sm"></i>{t.settings.security.twoFaStatus.btnDisable}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>

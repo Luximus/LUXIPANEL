@@ -1,0 +1,34 @@
+import React from 'react';
+import {act,create,type ReactTestRenderer} from 'react-test-renderer';
+import {afterEach,expect,it,vi} from 'vitest';
+vi.mock('react-native',()=>({View:'View',Pressable:'Pressable',StyleSheet:{create:(v:any)=>v}}));
+vi.mock('react-native-gesture-handler',()=>({ScrollView:'ScrollView'}));
+vi.mock('../ui/ModuleSettingsDrawer',()=>({ModuleSettingsDrawer:({children,footer,...p}:any)=>React.createElement('drawer',p,children,footer)}));
+vi.mock('../ui/PanelText',()=>({PanelText:'Text'}));
+vi.mock('../ui/Button',()=>({Button:'button'}));
+vi.mock('../ui/ConfirmationModal',()=>({ConfirmationModal:'confirm'}));
+vi.mock('../../features/app/tabler-icons',()=>({TablerCheck:'check'}));
+vi.mock('../../hooks/useTheme',()=>({useTheme:()=>({theme:'dark'})}));
+vi.mock('../../theme/colors',()=>({getThemeTokens:()=>({danger:'red'}),withAlpha:()=>''}));
+vi.mock('../../lib/session-state',()=>({loadSessionState:()=>({language:'es'})}));
+import {DialogFooter} from './Form';
+import {FormDrawer} from '../ui/FormDrawer';
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+let tree:ReactTestRenderer;
+afterEach(async()=>{if(tree)await act(async()=>tree.unmount());});
+it('prevents duplicate submission and header/cancel dismissal until the asynchronous save settles',async()=>{
+ let resolve!:()=>void;const save=vi.fn(()=>new Promise<void>(r=>{resolve=r;}));const close=vi.fn();
+ await act(async()=>{tree=create(<FormDrawer visible onClose={close} footer={<DialogFooter onCancel={close} cancelLabel="Cancelar" onSubmit={save} submitLabel="Guardar"/>}/>);});
+ const buttons=()=>tree.root.findAllByType('button' as any);
+ await act(async()=>{buttons()[1].props.onPress();buttons()[1].props.onPress();});expect(save).toHaveBeenCalledOnce();
+ await act(async()=>{tree.root.findByType('drawer' as any).props.onClose();buttons()[0].props.onPress();});expect(close).not.toHaveBeenCalled();expect(buttons()[1].props.loading).toBe(true);
+ await act(async()=>resolve());expect(buttons()[1].props.loading).toBe(false);
+ await act(async()=>tree.root.findByType('drawer' as any).props.onClose());expect(close).toHaveBeenCalledOnce();
+});
+it('shows a rejected save in the active form footer and makes retry available',async()=>{
+ const save=vi.fn().mockRejectedValueOnce(new Error('Sin conexión')).mockResolvedValue(undefined);
+ await act(async()=>{tree=create(<DialogFooter onCancel={()=>{}} cancelLabel="Cancelar" onSubmit={save} submitLabel="Guardar"/>);});
+ const submit=()=>tree.root.findAllByType('button' as any)[1];
+ await act(async()=>submit().props.onPress());expect(JSON.stringify(tree.toJSON())).toContain('Sin conexión');expect(submit().props.loading).toBe(false);
+ await act(async()=>submit().props.onPress());expect(save).toHaveBeenCalledTimes(2);expect(JSON.stringify(tree.toJSON())).not.toContain('Sin conexión');
+});
