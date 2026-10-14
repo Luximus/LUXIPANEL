@@ -1,9 +1,7 @@
 name: Initial public release
 on:
   push:
-    tags: [v2.0.2]
-    branches: [main]
-    paths: [.github/workflows/initial-release.yml]
+    tags: [v2.0.3]
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: v2.0.2
+          ref: v2.0.3
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -47,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: v2.0.2
+          ref: v2.0.3
           persist-credentials: false
       - run: python3 scripts/initial-release.py
         working-directory: web

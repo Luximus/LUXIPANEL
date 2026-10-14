@@ -1,6 +1,6 @@
 {
   "name": "luxipanel-backend",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "LUXIPANEL — Modern server administration panel backend (Modular Monolith)",
   "private": true,
   "license": "AGPL-3.0-only",
