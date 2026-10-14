@@ -188,7 +188,8 @@ class RealGitPipelineTests(unittest.TestCase):
         (self.root / 'web/backend/source.ts').write_text('fixed\n'); self.save('fix: source')
         sha = self.git('rev-parse', 'HEAD'); self.git('push', 'origin', 'developer')
         run = {'id':42, 'html_url':'https://github.com/Luxisoft/LUXIPANEL/actions/runs/42'}
-        with patch.object(pipeline, 'ref', side_effect=self.ref), patch.object(pipeline.prepare, 'api', return_value=[]), patch.object(pipeline, 'artifact_manifest', return_value={'format':1,'modules':[]}), patch.object(pipeline, 'pull') as pull, patch.object(pipeline, 'dispatch') as dispatch:
+        def api(route, *args): return {'tag_name':'v1.0.0'} if route == '/releases/latest' else []
+        with patch.object(pipeline, 'ref', side_effect=self.ref), patch.object(pipeline.prepare, 'api', side_effect=api), patch.object(pipeline, 'artifact_manifest', return_value={'format':1,'modules':[]}), patch.object(pipeline, 'pull') as pull, patch.object(pipeline, 'dispatch') as dispatch:
             pipeline.prepare_snapshot(sha, run, {'modules':[]}, self.root)
             self.assertIn('Developer tested: `' + sha + '`', pull.call_args.args[3])
             dispatch.assert_called_once_with('release-checks.yml', 'lxp/release-next')

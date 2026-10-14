@@ -158,9 +158,11 @@ def module_baseline(main, cwd):
 
 
 def prepare_snapshot(sha, run, approved, cwd):
-    main = ref("main")
-    if ancestor(sha, main, cwd): return
-    if not git("diff", "--name-only", main, sha, cwd=cwd): return
+    # Compare with the published version, not main: bootstrap/workflow changes
+    # may already be on main without belonging to an official release yet.
+    stable = prepare.api("/releases/latest")["tag_name"]
+    if ancestor(sha, stable, cwd): return
+    if not git("diff", "--name-only", stable, sha, cwd=cwd): return
     if prepare.api("/pulls?state=open&base=modules&head=Luxisoft:" + TEMP): return
     # Do not replace an identical snapshot or invalidate its owner's review.
     prs = prepare.api("/pulls?state=open&base=main&head=Luxisoft:" + TEMP)
