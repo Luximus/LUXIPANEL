@@ -17,7 +17,8 @@ const configSchema = z.object({
   effort: z.enum(["low", "medium", "high", "xhigh"]), instructions: z.string().max(12000), approvalMode: z.enum(["auto", "manual"]),
   tokenBudget: z.number().int().min(1000).max(2_000_000), timeoutMinutes: z.number().int().min(1).max(120),
   credentialId: z.string().max(128), baseBranch: z.string().max(128).refine((v) => !v.startsWith("-") && !/[\s\x00-\x1f~^:?*\[\\]/.test(v)), concurrency: z.number().int().min(1).max(4),
-  checks: z.array(z.enum(["backend-types", "backend-tests", "frontend-tests", "frontend-build"])).min(1).max(4),
+  repairTarget: z.enum(["auto", "web", "desktop", "mobile", "developer"]).optional(),
+  checks: z.array(z.enum(["backend-types", "backend-tests", "frontend-tests", "frontend-build", "desktop-types", "desktop-tests", "desktop-build", "mobile-types", "mobile-tests"])).min(1).max(9),
   repairPolicies: z.unknown().optional(), automation: automation.optional(),
 }).strict();
 const incidentId = z.string().regex(/^[a-f0-9]{24}$/);

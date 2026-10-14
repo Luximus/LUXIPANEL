@@ -8,6 +8,8 @@ number = os.environ.get("RELEASE_PR_NUMBER", ""); commit = os.environ.get("RELEA
 if not number.isdigit() or not re.fullmatch(r"[a-f0-9]{40}", commit): raise ValueError("Invalid release identity")
 pull = relay.prepare.api("/pulls/" + number)
 if not pull.get("merged") or pull["merge_commit_sha"] != commit or pull["base"]["ref"] != "main" or pull["head"]["ref"] != "lxp/release-next" or pull["head"]["repo"]["full_name"] != relay.prepare.REPOSITORY or not any(label["name"] == "release" for label in pull["labels"]): raise ValueError("Not a reviewed combined release PR")
+guard_spec = spec_from_file_location("guard", Path(__file__).with_name("release-snapshot-guard.py")); guard = module_from_spec(guard_spec); guard_spec.loader.exec_module(guard)
+guard.check(pull)
 manifest = json.loads(relay.prepare.metadata_root(Path.cwd()).joinpath("release.manifest.json").read_text()); tag = "v" + manifest["version"]
 if not re.fullmatch(r"v\d+\.\d+\.\d+", tag) or manifest["format"] != 1: raise ValueError("Invalid combined release")
 try:

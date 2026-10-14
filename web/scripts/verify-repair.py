@@ -13,6 +13,11 @@ RECIPES = {
     "backend-tests": ["pnpm", "--dir", "backend", "test"],
     "frontend-tests": ["pnpm", "--dir", "frontend", "run", "test:unit"],
     "frontend-build": ["pnpm", "--dir", "frontend", "build"],
+    "desktop-types": ["pnpm", "--dir", "desktop", "run", "typecheck"],
+    "desktop-tests": ["pnpm", "--dir", "desktop", "test"],
+    "desktop-build": ["pnpm", "--dir", "desktop", "build"],
+    "mobile-types": ["pnpm", "--dir", "mobile", "exec", "tsc", "--noEmit"],
+    "mobile-tests": ["pnpm", "--dir", "mobile", "exec", "vitest", "run", "src/screens/server/NativeModuleDevLogScreen.test.tsx", "src/screens/DirectPanelApp.test.tsx", "src/screens/main/workspace-menu.test.ts", "src/screens/main/WorkspaceTopPanels.test.tsx"],
 }
 
 
@@ -50,7 +55,11 @@ def sandbox(cwd, argv, network=False):
 def verify(cwd, check, module=None):
     if check not in RECIPES:
         raise ValueError("Unknown check")
-    areas = [Path("backend"), Path("frontend")]
+    argv = list(RECIPES[check])
+    # Core repairs use the complete monorepo; module jobs keep their web/ scope.
+    if (cwd / "web/backend/package.json").is_file() and argv[2] in ("backend", "frontend"):
+        argv[2] = "web/" + argv[2]
+    areas = [Path(argv[2])]
     if module:
         if not __import__("re").fullmatch(r"[a-z][a-z0-9-]{2,38}", module):
             raise ValueError("Invalid module")
@@ -63,7 +72,6 @@ def verify(cwd, check, module=None):
                                     "--ignore-scripts", "--ignore-pnpmfile", "--registry", "https://registry.npmjs.org"], True)
             if result.returncode:
                 return result
-    argv = RECIPES[check]
     if module:
         directory = Path("modules") / module
         package = json.loads((cwd / directory / "package.json").read_text()) if (cwd / directory / "package.json").exists() else {}

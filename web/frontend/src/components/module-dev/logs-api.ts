@@ -9,7 +9,7 @@ export interface LogConfig {
   enabled: boolean; retentionDays: number; maxStorageMiB: number;
   agentId: string; providerId: string; model: string; effort: string; instructions: string;
   approvalMode: string; tokenBudget: number; timeoutMinutes: number; credentialId: string;
-  baseBranch: string; concurrency: number; checks: string[];
+  baseBranch: string; repairTarget?: "auto" | "web" | "desktop" | "mobile" | "developer"; concurrency: number; checks: string[];
   repairPolicies?: Record<string, { enabled: boolean; severities: string[] }>;
 }
 export interface Setup {

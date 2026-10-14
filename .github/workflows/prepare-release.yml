@@ -3,38 +3,54 @@ on:
   push:
     branches: [main]
   workflow_run:
-    workflows: [Module review relay]
+    workflows: [Module review relay, Client checks, Developer checks]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [auto, bootstrap]
+        default: auto
 permissions:
-  id-token: write
-  contents: write
-  pull-requests: write
-  issues: write
+  contents: read
 concurrency:
   group: combined-release
   cancel-in-progress: false
 jobs:
+  bootstrap:
+    if: github.repository == 'Luxisoft/LUXIPANEL' && github.event_name == 'workflow_dispatch' && inputs.mode == 'bootstrap' && github.ref == 'refs/heads/lxp/release-next'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: python3 web/scripts/combined-release.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIPELINE_MODE: bootstrap
   prepare:
-    if: github.repository == 'Luxisoft/LUXIPANEL' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    if: github.repository == 'Luxisoft/LUXIPANEL' && github.ref == 'refs/heads/main' && inputs.mode != 'bootstrap' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - run: corepack enable && corepack prepare pnpm@11.5.0 --activate
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-        working-directory: web/frontend
       - run: git config credential.helper '!gh auth git-credential'
-        working-directory: web
-      - run: python3 scripts/combined-release.py
-        working-directory: web
+      - run: python3 web/scripts/combined-release.py
         env:
           GH_TOKEN: ${{ github.token }}
           LP_REVIEW_URL: ${{ vars.LP_REVIEW_URL }}

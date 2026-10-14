@@ -69,7 +69,7 @@ def extract_module(root, module, repository=None):
                 target.chmod(member.mode & 0o755)
 
 
-def prepare(root, candidates, bump="auto", offline=False):
+def prepare(root, candidates, bump="auto", offline=False, extract=True):
     metadata = metadata_root(root)
     previous = json.loads((metadata / "release.manifest.json").read_text())
     tags = subprocess.check_output(["git", "tag", "--list", "v*"], cwd=root, text=True).splitlines()
@@ -91,7 +91,7 @@ def prepare(root, candidates, bump="auto", offline=False):
     version = next_version(base, bump)
     contributions = set(previous.get("contributions", []))
     for module in candidates["modules"]:
-        if not offline:
+        if not offline and extract:
             extract_module(root, module)
         source = root / "modules" / module["id"] / "module.manifest.json"
         raw = json.loads(source.read_text())
@@ -104,7 +104,7 @@ def prepare(root, candidates, bump="auto", offline=False):
         commits = subprocess.check_output(["git", "log", "--format=%H", latest_tag + "..HEAD"], cwd=root, text=True).splitlines() if latest_tag in tags else [subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()]
         for commit in commits:
             for pull in api("/commits/" + commit + "/pulls"):
-                if pull.get("merged_at") and pull["base"]["repo"]["full_name"] == REPOSITORY:
+                if pull.get("merged_at") and pull["base"]["repo"]["full_name"] == REPOSITORY and not any(label["name"] in ("baseline", "release", "bootstrap") for label in pull.get("labels", [])):
                     contributions.add(pull["number"])
     for area in ("backend", "frontend"):
         file = root / area / "package.json"

@@ -1,0 +1,28 @@
+name: Branch scope
+on:
+  pull_request_target:
+    branches: [web, desktop, mobile, developer, modules]
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        run: python3 web/scripts/check-branch-scope.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - if: always()
+        run: gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" -f context=branch-scope -f state="$CHECK_STATE" -f description='Canonical contribution scope'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHECK_STATE: ${{ steps.scope.outcome == 'success' && 'success' || 'failure' }}

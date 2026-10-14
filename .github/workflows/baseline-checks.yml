@@ -1,0 +1,20 @@
+name: Baseline checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+jobs:
+  baseline:
+    if: github.repository == 'Luxisoft/LUXIPANEL'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python3 web/scripts/check-baselines.py
+        env:
+          GH_TOKEN: ${{ github.token }}

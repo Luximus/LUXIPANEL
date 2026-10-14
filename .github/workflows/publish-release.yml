@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    if: github.repository == 'Luxisoft/LUXIPANEL' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'lxp/release-next'
+    if: github.repository == 'Luxisoft/LUXIPANEL' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'lxp/release-next' && contains(github.event.pull_request.labels.*.name, 'release')
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -37,6 +37,7 @@ jobs:
       contents: write
       issues: write
       pull-requests: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

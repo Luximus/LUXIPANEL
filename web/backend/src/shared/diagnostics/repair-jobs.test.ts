@@ -19,7 +19,7 @@ const temp = await fs.mkdtemp(path.join(os.tmpdir(), "lxp-repair-job-tests-"));
 const user = { userId: 1, username: "test-admin", displayName: "Test", role: "admin", kind: "admin", local: true, modules: ["module-dev", "ai-assistant"] } as const;
 let sequence = 0; let repo: string; let remote: string; let jobs: InstanceType<typeof RepairJobs>; let incidentId: string;
 let failCheck = false; let failPr = false; let changes = true; let manual = false;
-let missingFork = false; let sourceContent = "export const fixed = true;\n";
+let missingFork = false; let sourceContent = "export const fixed = true;\n"; let writePath = "source.ts";
 let published = false; let runs = 0;
 const apiMock = vi.fn();
 beforeEach(async () => {
@@ -29,8 +29,8 @@ beforeEach(async () => {
   await fs.writeFile(path.join(repo, "source.ts"), "export const broken = true;\n");
   await fs.writeFile(path.join(repo, ".gitignore"), ".lxp/\n");
   await exec("git", ["add", "."], { cwd: repo }); await exec("git", ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "base"], { cwd: repo });
-  await exec("git", ["push", remote, "main"], { cwd: repo });
-  failCheck = failPr = manual = missingFork = false; sourceContent = "export const fixed = true;\n"; changes = true; published = false; runs = 0; apiMock.mockReset();
+  await exec("git", ["push", remote, "main", "HEAD:refs/heads/developer", "HEAD:refs/heads/web", "HEAD:refs/heads/desktop", "HEAD:refs/heads/mobile"], { cwd: repo });
+  failCheck = failPr = manual = missingFork = false; sourceContent = "export const fixed = true;\n"; writePath = "source.ts"; changes = true; published = false; runs = 0; apiMock.mockReset();
   vi.spyOn(localExecutor, "exec").mockImplementation(async (cmd, opts) => {
     if (cmd.startsWith("pnpm ")) return { exitCode: failCheck && cmd.includes("typecheck") ? 1 : 0, stdout: "verified", stderr: "", durationMs: 0 };
     return originalExec(cmd.replace(/https:\/\/github\.com\/(?:Luxisoft|contributor)\/LUXIPANEL\.git/g, remote), opts);
@@ -47,7 +47,7 @@ beforeEach(async () => {
   } }) });
   repairBridge.registerAgent({ options: async () => ({ agents: [{ id: "test-agent", name: "Test", providerId: "claude", model: "test" }], providers: [{ id: "claude", model: "test", ready: true, mode: "api" }] }), run: async () => {
     runs++;
-    if (changes) { const tool = logsRepairTools.find((t) => t.name.endsWith("_write"))!; const result = await tool.handler({ path: "source.ts", content: sourceContent }); if (!result.ok) throw new Error(String(result.output)); }
+    if (changes) { const tool = logsRepairTools.find((t) => t.name.endsWith("_write"))!; const result = await tool.handler({ path: writePath, content: sourceContent }); if (!result.ok) throw new Error(String(result.output)); }
     return { text: "Fixed the source error", tokens: 100 };
   } });
   await diagnosticsStore.saveConfig("job-test", { ...DEFAULT_LOGS_CONFIG, agentId: "test-agent", credentialId: "test-credential", checks: ["backend-types"] });
@@ -60,6 +60,30 @@ afterEach(async () => { await jobs?.shutdown(); });
 const start = () => jobs.create("job-test", incidentId, { ...user, modules: [...user.modules] });
 const settled = async (id: string, state: string) => { await vi.waitFor(async () => expect((await jobs.get("job-test", id)).status).toBe(state), { timeout: 10000, interval: 20 }); return jobs.get("job-test", id); };
 describe("Background Logs repairs (real isolated Git, simulated AI/GitHub)", () => {
+  it("routes native fixes to mobile and verifies a patch replayed on its latest baseline", async () => {
+    writePath = "mobile/src/source.ts";
+    await fs.mkdir(path.dirname(path.join(repo, writePath)), { recursive: true });
+    await fs.writeFile(path.join(repo, writePath), "export const broken = true;\n");
+    await exec("git", ["add", "."], { cwd: repo });
+    await exec("git", ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "native base"], { cwd: repo });
+    await exec("git", ["push", remote, "HEAD:refs/heads/developer"], { cwd: repo });
+    await fs.writeFile(path.join(repo, "mobile/new-baseline.ts"), "export const current = true;\n");
+    await exec("git", ["add", "."], { cwd: repo });
+    await exec("git", ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "new native baseline"], { cwd: repo });
+    await exec("git", ["push", remote, "HEAD:refs/heads/mobile"], { cwd: repo });
+    const job = await start(); const done = await settled(job.id, "pr-created");
+    expect(done.baseBranch).toBe("mobile");
+    expect(done.checks.map(check => check.name)).toContain("mobile-types");
+    expect((await exec("git", ["show", `${done.commit}:mobile/new-baseline.ts`], { cwd: repo })).stdout).toContain("current");
+    const pull = apiMock.mock.calls.find(([method, route]) => method === "POST" && route.endsWith("/pulls"))!;
+    expect(pull[2].base).toBe("mobile");
+  });
+  it("rejects mixed module and core repairs instead of bypassing module review", async () => {
+    writePath = "web/modules/test-module/source.ts";
+    const job = await start(); const failed = await settled(job.id, "failed");
+    expect(failed.error).toContain("separado");
+    expect(failed.pushed).not.toBe(true);
+  });
   it("creates the verified contributor fork on a 404 and attributes its commit to that account", async () => {
     missingFork = true; const job = await start(); const done = await settled(job.id, "pr-created");
     expect(apiMock.mock.calls.some(([method, route]) => method === "POST" && route === "/repos/Luxisoft/LUXIPANEL/forks")).toBe(true);

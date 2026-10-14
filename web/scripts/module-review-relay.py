@@ -40,12 +40,24 @@ if __name__ == "__main__":
         pulls = run.get("pull_requests", []) or prepare.api("/commits/" + run["head_sha"] + "/pulls")
     else:
         number = os.environ.get("MODULE_PR_NUMBER", "")
-        if not number.isdigit():
+        if number.isdigit():
+            pulls = [prepare.api("/pulls/" + number)]
+        elif static and os.environ.get("REVIEW_HEAD_BRANCH") == "lxp/release-next":
+            pulls = prepare.api("/pulls?state=open&base=modules&head=Luxisoft:lxp/release-next")
+            if not pulls: raise ValueError("No internal baseline PR")
+        else:
             raise ValueError("Invalid pull request")
-        pulls = [prepare.api("/pulls/" + number)]
     for short in pulls:
         pull = prepare.api("/pulls/" + str(short["number"]))
         if pull["base"]["repo"]["full_name"] != prepare.REPOSITORY or pull["base"]["ref"] != "modules":
+            continue
+        if pull["head"]["repo"]["full_name"] == prepare.REPOSITORY and pull["head"]["ref"] == "lxp/release-next" and pull["user"]["login"] == "github-actions[bot]":
+            # Internal main baseline is not a module contribution and never registers with LP.
+            scope_spec = spec_from_file_location("scope", Path(__file__).with_name("check-branch-scope.py"))
+            scope = module_from_spec(scope_spec); scope_spec.loader.exec_module(scope)
+            for sha in (pull["base"]["sha"], pull["head"]["sha"]):
+                subprocess.run(["git", "fetch", "--no-tags", "origin", sha], check=True)
+            scope.validate(pull, ["internal-baseline"])
             continue
         if run_id and pull["head"]["sha"] != run["head_sha"]:
             continue

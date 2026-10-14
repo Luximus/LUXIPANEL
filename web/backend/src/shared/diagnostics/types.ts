@@ -1,3 +1,4 @@
+import type { RepairCheck, RepairTarget } from "./repair-target.js";
 export type Severity = "warn" | "error" | "fatal";
 export interface DiagnosticComponent {
   kind: "luxipanel" | "module";
@@ -27,13 +28,14 @@ export interface LogsConfig {
   agentId: string; providerId: string; model: string; effort: "low" | "medium" | "high" | "xhigh";
   instructions: string; approvalMode: "auto" | "manual"; tokenBudget: number; timeoutMinutes: number;
   credentialId: string; baseBranch: string; concurrency: number;
-  checks: ("backend-types" | "backend-tests" | "frontend-tests" | "frontend-build")[];
+  repairTarget?: RepairTarget;
+  checks: RepairCheck[];
   repairPolicies?: Record<string, RepairPolicy>;
 }
 export const DEFAULT_LOGS_CONFIG: LogsConfig = {
   enabled: true, retentionDays: 30, maxStorageMiB: 512,
   agentId: "", providerId: "", model: "", effort: "high", instructions: "",
   approvalMode: "auto", tokenBudget: 400_000, timeoutMinutes: 30,
-  credentialId: "", baseBranch: "", concurrency: 1,
+  credentialId: "", baseBranch: "", repairTarget: "auto", concurrency: 1,
   checks: ["backend-types", "backend-tests", "frontend-tests", "frontend-build"],
 };

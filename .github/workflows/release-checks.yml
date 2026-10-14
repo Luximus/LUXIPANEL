@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   release-checks:
     runs-on: ubuntu-24.04
@@ -13,6 +14,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - run: python3 web/scripts/release-snapshot-guard.py
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Check GitHub API response handling
         run: python3 -m unittest discover -s web/scripts/tests -v
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -29,7 +33,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=2560
       - run: node scripts/build-release-bundle.mjs --verify
         working-directory: web
-      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm run build
+      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm test && pnpm run build
         working-directory: desktop
         env:
           NODE_OPTIONS: --max-old-space-size=2560
