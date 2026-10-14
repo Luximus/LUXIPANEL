@@ -24,6 +24,8 @@ def api(route, method="GET", data=None):
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request("https://api.github.com/repos/" + REPOSITORY + route, headers=headers, method=method, data=json.dumps(data).encode() if data is not None else None)
     with urllib.request.urlopen(request, timeout=30) as response:
+        if response.status == 204:
+            return None
         return json.load(response)
 
 
