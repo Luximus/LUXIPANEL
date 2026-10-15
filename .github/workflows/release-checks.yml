@@ -37,7 +37,7 @@ jobs:
         working-directory: desktop
         env:
           NODE_OPTIONS: --max-old-space-size=2560
-      - run: pnpm install --frozen-lockfile && pnpm exec tsc --noEmit && pnpm exec vitest run src/screens/server/NativeModuleDevLogScreen.test.tsx src/screens/DirectPanelApp.test.tsx src/screens/main/workspace-menu.test.ts src/screens/main/WorkspaceTopPanels.test.tsx
+      - run: pnpm install --frozen-lockfile && pnpm exec tsc --noEmit && pnpm exec vitest run src/screens/server/NativeModuleDevLogScreen.test.tsx src/screens/DirectPanelApp.test.tsx src/screens/main/workspace-menu.test.ts src/screens/main/WorkspaceTopPanels.test.tsx src/i18n/native-text.test.ts
         working-directory: mobile
         env:
           NODE_OPTIONS: --max-old-space-size=2560
