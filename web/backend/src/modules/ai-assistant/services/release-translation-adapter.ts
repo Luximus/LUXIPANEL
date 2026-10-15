@@ -12,7 +12,7 @@ const active = new Set<string>();
 const recent = new Map<string, number[]>();
 
 export function registerReleaseTranslator(): void {
-  releaseTranslationBridge.register((input) => runWithExecutor(input.executor, async () => {
+  releaseTranslationBridge.register((input) => runWithExecutor(input.executor, async (): Promise<ReleaseTranslation> => {
     const original: ReleaseTranslation = { status: "original", texts: input.texts };
     if (input.locale === "en" || input.texts.every(text => !text.trim())) return original;
     // Per-user and target: never borrow another user's credentials or running request.
