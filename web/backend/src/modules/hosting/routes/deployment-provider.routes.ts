@@ -123,6 +123,28 @@ deploymentProviderRouter.post(
     });
   }),
 );
+deploymentProviderRouter.get(
+  base + "/jobs/:job/static/:component",
+  asyncHandler(async (req, res) => {
+    const artifact = await service.staticArtifact(
+      provider(res, "deployments.read"), ...refs(req), String(req.params.job), String(req.params.component),
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Length", artifact.bytes.length);
+    res.setHeader("X-Luxi-Static-Sha256", artifact.sha256);
+    res.send(artifact.bytes);
+  }),
+);
+deploymentProviderRouter.delete(
+  base + "/jobs/:job/static/:component",
+  asyncHandler(async (req, res) => {
+    res.json({ ok: true, data: await service.deleteStaticArtifact(
+      provider(res, "deployments.write"), ...refs(req), String(req.params.job), String(req.params.component),
+    ) });
+  }),
+);
 deploymentProviderRouter.post(
   base + "/jobs/:job/cleanup",
   asyncHandler(async (req, res) => {

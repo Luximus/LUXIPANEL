@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import staticForm from "./__fixtures__/luxisoft-static-form.json";
 const m = vi.hoisted(() => ({
   owned: vi.fn(),
   read: vi.fn(),
@@ -8,6 +9,7 @@ const m = vi.hoisted(() => ({
   unlink: vi.fn(),
   exists: vi.fn(),
   exec: vi.fn(),
+  stat: vi.fn(),
   redis: { set: vi.fn(), eval: vi.fn() },
 }));
 vi.mock("../../../config/paths.js", () => ({
@@ -70,6 +72,7 @@ beforeEach(() => {
     m.unlink,
     m.exists,
     m.exec,
+    m.stat,
     m.redis.set,
     m.redis.eval,
   ])
@@ -88,10 +91,17 @@ beforeEach(() => {
       mkdir: m.mkdir,
       unlink: m.unlink,
       exec: m.exec,
+      stat: m.stat,
     },
   });
 });
 describe("repository provider ownership and immutable snapshots", () => {
+  it("accepts and preserves the actual Luxisoft static form + API deployment contract", async () => {
+    const input = deploymentSnapshotSchema.parse(staticForm);
+    expect(input).toEqual(staticForm);
+    await service.snapshot(provider, account, project, version, input);
+    expect(JSON.parse(m.write.mock.calls[0]![1])).toEqual(staticForm);
+  });
   it("checks provider ownership before creating runtime metadata", async () => {
     m.owned.mockRejectedValue(new Error("foreign account"));
     await expect(service.register(provider, account, project)).rejects.toThrow(
@@ -184,5 +194,63 @@ describe("repository provider ownership and immutable snapshots", () => {
         variables: { EXPO_TOKEN: "private" },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("private static artifact transfer", () => {
+  const bytes = Buffer.from("fixture static ZIP bytes"), sha256 = createHash("sha256").update(bytes).digest("hex");
+  const state = () => ({ status: "finished", result: { components: [
+    { name: "forms", surface: "static", port: null, staticArchive: { sha256, bytes: bytes.length } },
+  ] } });
+  beforeEach(() => {
+    m.exists.mockResolvedValue(true);
+    m.read.mockImplementation(async (file: string) => file.endsWith("state.json") ? JSON.stringify(state()) : bytes);
+    m.stat.mockResolvedValue({ type: "file", size: bytes.length });
+  });
+  it("returns only verified staged bytes and never reads the tenant home", async () => {
+    expect(await service.staticArtifact(provider, account, project, version, "forms")).toEqual({ bytes, sha256 });
+    expect(m.read).toHaveBeenLastCalledWith(expect.stringMatching(/\/jobs\/[a-f0-9-]+\/static\/forms\.zip$/));
+    expect(m.exec).not.toHaveBeenCalled();
+  });
+  it("enforces provider/account ownership before reading", async () => {
+    m.owned.mockRejectedValue(new Error("foreign account"));
+    await expect(service.staticArtifact(provider, account, project, version, "forms")).rejects.toThrow("foreign account");
+    expect(m.read).not.toHaveBeenCalled();
+  });
+  it.each(["../secret", "forms.zip", "/etc/passwd", "a/b"])("rejects path input %s", async component => {
+    await expect(service.staticArtifact(provider, account, project, version, component)).rejects.toThrow();
+    expect(m.owned).not.toHaveBeenCalled();
+  });
+  it.each(["queued", "running", "failed"])("refuses artifacts from %s jobs", async status => {
+    m.read.mockResolvedValue(JSON.stringify({ ...state(), status }));
+    await expect(service.staticArtifact(provider, account, project, version, "forms")).rejects.toThrow("no disponible");
+    expect(m.stat).not.toHaveBeenCalled();
+  });
+  it("does not read another component's artifact", async () => {
+    await expect(service.staticArtifact(provider, account, project, version, "forms-api")).rejects.toThrow("no disponible");
+    expect(m.stat).not.toHaveBeenCalled();
+  });
+  it.each([{ sha256: "bad", bytes: 1 }, { sha256, bytes: 33554433 }, { sha256, bytes: 0 }])("rejects invalid artifact metadata %j", async meta => {
+    const current = state(); current.result.components[0]!.staticArchive = meta;
+    m.read.mockResolvedValue(JSON.stringify(current));
+    await expect(service.staticArtifact(provider, account, project, version, "forms")).rejects.toThrow("no disponible");
+    expect(m.stat).not.toHaveBeenCalled();
+  });
+  it.each([{ type: "symlink", size: bytes.length }, { type: "file", size: 33554433 }])("rejects unsafe staged files %j", async stat => {
+    m.stat.mockResolvedValue(stat);
+    await expect(service.staticArtifact(provider, account, project, version, "forms")).rejects.toThrow("inválido");
+    expect(m.read).toHaveBeenCalledTimes(1);
+  });
+  it("rejects bytes that changed after staging", async () => {
+    m.read.mockImplementation(async (file: string) => file.endsWith("state.json") ? JSON.stringify(state()) : Buffer.alloc(bytes.length));
+    await expect(service.staticArtifact(provider, account, project, version, "forms")).rejects.toThrow("inválido");
+  });
+  it("removes only the requested owned staged artifact, idempotently", async () => {
+    expect(await service.deleteStaticArtifact(provider, account, project, version, "forms")).toEqual({ removed: true });
+    expect(m.unlink).toHaveBeenCalledWith(expect.stringMatching(/\/jobs\/[a-f0-9-]+\/static\/forms\.zip$/));
+    m.unlink.mockClear();
+    m.exists.mockImplementation(async (_e, file: string) => file.endsWith("state.json"));
+    expect(await service.deleteStaticArtifact(provider, account, project, version, "forms")).toEqual({ removed: true });
+    expect(m.unlink).not.toHaveBeenCalled();
   });
 });

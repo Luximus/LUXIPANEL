@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: '22'
       - run: corepack enable && corepack prepare pnpm@11.5.0 --activate
-      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm exec vitest run src/shared/diagnostics src/shared/releases/version.test.ts src/modules/module-dev/services/logs-tools.test.ts src/modules/module-dev/services/community-principal.test.ts && node --test scripts/runtime-assets.test.mjs && pnpm run build
+      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm exec vitest run src/modules/hosting/services/deployment-provider.service.test.ts src/modules/hosting/routes/deployment-provider.routes.test.ts --maxWorkers=1 --minWorkers=1 && pnpm exec vitest run src/shared/diagnostics src/shared/releases/version.test.ts src/modules/module-dev/services/logs-tools.test.ts src/modules/module-dev/services/community-principal.test.ts && node --test scripts/runtime-assets.test.mjs && pnpm run build
         working-directory: web/backend
         env:
           NODE_OPTIONS: --max-old-space-size=2560

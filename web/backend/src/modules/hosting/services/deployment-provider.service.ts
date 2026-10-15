@@ -41,7 +41,7 @@ export const deploymentSnapshotSchema = z
               .object({
                 name,
                 context: relative,
-                surface: z.enum(["http", "worker", "mobile"]),
+                surface: z.enum(["http", "worker", "mobile", "static"]),
                 port: z.number().int().min(1).max(65535),
                 healthPath: z
                   .string()
@@ -195,7 +195,42 @@ async function locked<T>(key: string, fn: () => Promise<T>) {
     );
   }
 }
+/** Only supervisor-staged bytes from a finished, owned job are downloadable.
+ * The caller cannot supply a filesystem path or read a tenant's home. */
+async function staticArtifact(
+  provider: HostingProvider, account: string, project: string, job: string, component: string,
+) {
+  uuid.parse(job);
+  name.parse(component);
+  const c = await context(provider, account, project);
+  const root = path.join(c.root, "jobs", job);
+  const state = await optionalJson(c.executor, path.join(root, "state.json"));
+  if (!state || state.status !== "finished") throw new NotFoundError("Artefacto no disponible");
+  const part = state.result?.components?.find((p: { name: string }) => p.name === component);
+  if (part?.surface !== "static" || part.port !== null ||
+      !/^[a-f0-9]{64}$/.test(part.staticArchive?.sha256 ?? "") ||
+      !Number.isSafeInteger(part.staticArchive?.bytes) ||
+      part.staticArchive.bytes < 1 || part.staticArchive.bytes > 32 * 1024 * 1024)
+    throw new NotFoundError("Artefacto no disponible");
+  return { ...c, file: path.join(root, "static", component + ".zip"), meta: part.staticArchive as { bytes: number; sha256: string } };
+}
 export const deploymentProviderService = {
+  async staticArtifact(provider: HostingProvider, account: string, project: string, job: string, component: string) {
+    const c = await staticArtifact(provider, account, project, job, component);
+    const stat = await c.executor.stat(c.file);
+    if (stat.type !== "file" || stat.size !== c.meta.bytes) throw new ConflictError("Artefacto estático inválido");
+    const bytes = await c.executor.readFile(c.file);
+    if (!Buffer.isBuffer(bytes) || bytes.length !== c.meta.bytes || hash(bytes) !== c.meta.sha256)
+      throw new ConflictError("Artefacto estático inválido");
+    return { bytes, sha256: c.meta.sha256 };
+  },
+  async deleteStaticArtifact(provider: HostingProvider, account: string, project: string, job: string, component: string) {
+    const c = await staticArtifact(provider, account, project, job, component);
+    return locked(c.id, async () => {
+      if (await pathExists(c.executor, c.file)) await c.executor.unlink(c.file);
+      return { removed: true };
+    });
+  },
   async register(provider: HostingProvider, account: string, project: string) {
     const c = await context(provider, account, project);
     await c.executor.mkdir(c.root, { recursive: true });

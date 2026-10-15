@@ -580,6 +580,32 @@ try {
         LUXISOFT_ENVIRONMENT: environment,
       };
     const surface = part.surface === "mobile" ? "http" : part.surface;
+    if (surface === "static") {
+      // Export the immutable image's public tree. No web process or port runs
+      // on BACKEND for a static component.
+      const exportDir = await secureDir(path.join(versionRoot, "static-export-" + part.name + "-" + randomBytes(5).toString("hex")));
+      const container = `luxi-export-${project}-${part.name}-${randomBytes(5).toString("hex")}`;
+      const archiveFile = path.join(versionRoot, `static-${part.name}-${job.requestId}.zip`);
+      const pack = `import hashlib,os,stat,sys,zipfile\nroot,out=sys.argv[1:]\nfiles=[];total=0\nfor base,dirs,names in os.walk(root,followlinks=False):\n for name in dirs+names:\n  p=os.path.join(base,name); s=os.lstat(p)\n  if stat.S_ISLNK(s.st_mode): raise Exception('static_symlink')\n  if not (stat.S_ISDIR(s.st_mode) or stat.S_ISREG(s.st_mode)): raise Exception('static_special_file')\n for name in names:\n  p=os.path.join(base,name); rel=os.path.relpath(p,root).replace(os.sep,'/')\n  if any(part in ('','.','..') for part in rel.split('/')): raise Exception('static_bad_path')\n  size=os.lstat(p).st_size;total+=size\n  if size>16777216 or total>134217728: raise Exception('static_too_large')\n  files.append((p,rel))\n  if len(files)>10000: raise Exception('static_too_many_files')\nif 'index.html' not in [rel for _,rel in files]: raise Exception('static_index_missing')\nwith zipfile.ZipFile(out,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:\n for p,rel in sorted(files,key=lambda x:x[1]): z.write(p,rel)\nif os.path.getsize(out)>33554432: raise Exception('static_archive_too_large')\nprint(hashlib.sha256(open(out,'rb').read()).hexdigest()+' '+str(os.path.getsize(out)))\n`;
+      let summary;
+      try {
+        await command("/usr/bin/podman", ["create", "--name", container, image], { record: false });
+        try {
+          await command("/usr/bin/podman", ["cp", `${container}:/srv/public/.`, exportDir], { record: false, timeout: 120000 });
+        } finally {
+          await command("/usr/bin/podman", ["rm", "--force", container], { record: false }).catch(() => {});
+        }
+        summary = await command("/usr/bin/python3", ["-I", "-c", pack, exportDir, archiveFile], { record: false, timeout: 120000 });
+      } catch (error) {
+        await fs.unlink(archiveFile).catch(() => {});
+        throw error;
+      } finally {
+        await fs.rm(exportDir, { recursive: true, force: true });
+      }
+      const [sha256, bytes] = summary.split(" ");
+      components.push({ name: part.name, port: null, image, surface, staticArchive: { sha256, bytes: Number(bytes) } });
+      continue;
+    }
     const port = await startContainer(unit, image, {
       port: surface === "http" ? part.port : undefined,
       environment: env,
