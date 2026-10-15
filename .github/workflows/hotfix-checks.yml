@@ -1,0 +1,63 @@
+name: Hotfix checks
+run-name: Hotfix checks ${{ inputs.source_branch }} @ ${{ inputs.source_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  hotfix-checks:
+    if: github.repository == 'Luxisoft/LUXIPANEL' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Verify the immutable hotfix source
+        run: python3 web/scripts/verify-hotfix-source.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOTFIX_BRANCH: ${{ inputs.source_branch }}
+          HOTFIX_SHA: ${{ inputs.source_sha }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Check GitHub API response handling
+        run: if [ -d web/scripts/tests ]; then python3 -m unittest discover -s web/scripts/tests -v; fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: corepack enable && corepack prepare pnpm@11.5.0 --activate
+      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm exec vitest run src/shared/diagnostics src/shared/releases/version.test.ts src/modules/admin/services/release-details.service.test.ts src/modules/ai-assistant/services/release-translation-adapter.test.ts src/modules/module-dev/services/logs-tools.test.ts src/modules/module-dev/services/community-principal.test.ts && node --test scripts/runtime-assets.test.mjs && pnpm run build
+        working-directory: web/backend
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560
+      - run: pnpm install --frozen-lockfile && pnpm exec vitest run src/components/module-dev/LogsPanel.test.ts src/components/panel-releases/CommunityActivity.test.ts && pnpm run build
+        working-directory: web/frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560
+      - run: node scripts/build-release-bundle.mjs
+        working-directory: web
+      - run: pnpm install --frozen-lockfile && pnpm run typecheck && pnpm test && pnpm run build
+        working-directory: desktop
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560
+      - run: pnpm install --frozen-lockfile && pnpm exec tsc --noEmit && pnpm exec vitest run src/screens/server/NativeModuleDevLogScreen.test.tsx src/screens/DirectPanelApp.test.tsx src/screens/main/workspace-menu.test.ts src/screens/main/WorkspaceTopPanels.test.tsx
+        working-directory: mobile
+        env:
+          NODE_OPTIONS: --max-old-space-size=2560
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tested-release-manifest
+          path: release.manifest.json
+          retention-days: 30

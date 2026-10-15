@@ -2,6 +2,7 @@
 """Read PR metadata with trusted default-branch code; never execute its head."""
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from importlib.util import spec_from_file_location, module_from_spec
@@ -18,16 +19,9 @@ def validate(pull, files):
     base = pull["base"]["ref"]
     if pull["head"]["repo"]["full_name"] == prepare.REPOSITORY:
         # Only the pipeline may open canonical internal baseline/release PRs.
-        if pull["head"]["ref"] not in (*policy.CLIENTS, "developer", "main", policy.TEMPORARY):
-            raise ValueError("Create contribution branches in your personal fork")
         if pull["user"]["login"] != "github-actions[bot]":
-            raise ValueError("Canonical source branches are reserved for the pipeline")
-        if base in policy.CLIENTS:
-            if pull["head"]["ref"] != "developer":
-                raise ValueError("Client baseline must come from tested developer")
-            subprocess.run(["git", "merge-base", "--is-ancestor", pull["base"]["sha"], pull["head"]["sha"]], check=True)
-            return
-        if base == "modules" and pull["head"]["ref"] == policy.TEMPORARY:
+            raise ValueError("Create contribution branches in your personal fork")
+        if base == "modules" and pull["head"]["ref"] == policy.BASELINE:
             # Main baseline updates must preserve the module source tree exactly.
             before = subprocess.check_output(["git", "ls-tree", pull["base"]["sha"], "web/modules"], text=True).strip()
             after = subprocess.check_output(["git", "ls-tree", pull["head"]["sha"], "web/modules"], text=True).strip()
@@ -55,3 +49,11 @@ if __name__ == "__main__":
     for sha in (pull["head"]["sha"], pull["base"]["sha"]):
         subprocess.run(["git", "fetch", "--no-tags", "origin", sha], check=True)
     validate(pull, files)
+    areas = {"modules" if name.startswith("web/modules/") else "shared" if name.startswith("web/scripts/") or name.split("/")[0] not in policy.CLIENTS else name.split("/")[0] for name in files}
+    desired = {"area:" + area for area in areas}
+    kind = re.match(r"^(fix|feat|docs|test|refactor|chore|perf|ci|build)(?:\([^)]*\))?!?:", pull.get("title", ""))
+    if kind: desired.add("type:" + kind[1])
+    prepare.api("/issues/" + number + "/labels", "POST", {"labels": sorted(desired)})
+    for label in pull.get("labels", []):
+        if label["name"].startswith(("area:", "type:")) and label["name"] not in desired:
+            prepare.api("/issues/" + number + "/labels/" + label["name"], "DELETE")

@@ -28,7 +28,7 @@ const terminal = new Set<RepairStatus>(["pr-created", "failed", "canceled", "int
 export interface RepairJob {
   id: string; scope: string; incidentId: string; userId: number; username: string;
   status: RepairStatus; createdAt: string; updatedAt: string; config: LogsConfig;
-  branch: string; cwd: string; checkoutRoot?: string; baseSha?: string; baseBranch?: string; commit?: string; pushed?: boolean;
+  branch: string; cwd: string; checkoutRoot?: string; baseSha?: string; baseBranch?: string; repairArea?: string; commit?: string; pushed?: boolean;
   moduleSource?: ModuleSource; componentId?: string; automatic?: boolean; incident?: Incident; evidence?: LogEvent[]; githubLogin?: string; githubId?: number; forkRepository?: string;
   publication?: "open" | "changes-requested" | "closed" | "merged" | "release-pending" | "available" | "installed"; releaseTag?: string; issueNumber?: number;
   prUrl?: string; error?: string; result?: string; tokens: number; progress: string[];
@@ -274,7 +274,8 @@ export class RepairJobs {
         const forbidden = /(^|\/)(?:\.env(?:\.|$)|\.git(?:\/|$)|\.lxp(?:\/|$)|node_modules|dist|\.cache|.*\.(?:ndjson|log|pem|key))|git-credentials|evidence-/i;
         if (!files.length || files.some((file) => forbidden.test(file) || (job.componentId && !file.startsWith(`modules/${job.componentId}/`)))) throw new Error("El arreglo no contiene cambios de código válidos o incluye archivos privados/generados.");
         if (!job.componentId) {
-          const target = repairTarget(files, job.config.repairTarget || job.config.baseBranch || "auto");
+          job.repairArea = repairTarget(files, job.config.repairTarget || job.config.baseBranch || "auto");
+          const target = "developer";
           // Replay the patch on the current destination before checks. Only this isolated checkout is reset.
           const patch = path.join(scopeDir(job.scope), `patch-${job.id}`);
           for (const file of files) { try { if ((await fs.lstat(path.join(job.cwd, file))).isSymbolicLink()) throw new Error("El aporte contiene enlaces"); assertPublishableSource(await fs.readFile(path.join(job.cwd, file), "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
@@ -295,7 +296,7 @@ export class RepairJobs {
         const sourceHashes = new Map<string, string | null>();
         for (const file of files) { try { sourceHashes.set(file, createHash("sha256").update(await fs.readFile(path.join(job.cwd, file))).digest("hex")); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; sourceHashes.set(file, null); } }
         await this.update(job, { status: "testing", pendingApproval: undefined }, "Ejecutando las verificaciones configuradas.");
-        for (const name of job.componentId ? ["backend-types", "backend-tests"] : [...new Set([...requiredChecks(job.baseBranch!), ...job.config.checks])]) {
+        for (const name of job.componentId ? ["backend-types", "backend-tests"] : [...new Set([...requiredChecks(job.repairArea || "developer"), ...job.config.checks])]) {
           const check = await this.verifier(this.projectRoot, job.cwd, name, controller.signal, job.componentId);
           job.checks.push({ name, ...check }); await this.update(job, {}, `${name}: ${check.passed ? "correcto" : "falló"}`);
           if (!check.passed) throw new Error(`La verificación ${name} falló. No se publicó el arreglo.`);

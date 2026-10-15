@@ -1,1 +1,8 @@
+# Add trusted maintainers explicitly to the relevant paths as the team grows.
 * @Luximus
+/web/ @Luximus
+/desktop/ @Luximus
+/mobile/ @Luximus
+/web/modules/ @Luximus
+/.github/ @Luximus
+/web/scripts/ @Luximus

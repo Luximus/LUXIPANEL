@@ -29,7 +29,7 @@ beforeEach(async () => {
   await fs.writeFile(path.join(repo, "source.ts"), "export const broken = true;\n");
   await fs.writeFile(path.join(repo, ".gitignore"), ".lxp/\n");
   await exec("git", ["add", "."], { cwd: repo }); await exec("git", ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "base"], { cwd: repo });
-  await exec("git", ["push", remote, "main", "HEAD:refs/heads/developer", "HEAD:refs/heads/web", "HEAD:refs/heads/desktop", "HEAD:refs/heads/mobile"], { cwd: repo });
+  await exec("git", ["push", remote, "main", "HEAD:refs/heads/developer", "HEAD:refs/heads/modules"], { cwd: repo });
   failCheck = failPr = manual = missingFork = false; sourceContent = "export const fixed = true;\n"; writePath = "source.ts"; changes = true; published = false; runs = 0; apiMock.mockReset();
   vi.spyOn(localExecutor, "exec").mockImplementation(async (cmd, opts) => {
     if (cmd.startsWith("pnpm ")) return { exitCode: failCheck && cmd.includes("typecheck") ? 1 : 0, stdout: "verified", stderr: "", durationMs: 0 };
@@ -60,7 +60,7 @@ afterEach(async () => { await jobs?.shutdown(); });
 const start = () => jobs.create("job-test", incidentId, { ...user, modules: [...user.modules] });
 const settled = async (id: string, state: string) => { await vi.waitFor(async () => expect((await jobs.get("job-test", id)).status).toBe(state), { timeout: 10000, interval: 20 }); return jobs.get("job-test", id); };
 describe("Background Logs repairs (real isolated Git, simulated AI/GitHub)", () => {
-  it("routes native fixes to mobile and verifies a patch replayed on its latest baseline", async () => {
+  it("routes native fixes to developer and verifies a patch replayed on its current baseline", async () => {
     writePath = "mobile/src/source.ts";
     await fs.mkdir(path.dirname(path.join(repo, writePath)), { recursive: true });
     await fs.writeFile(path.join(repo, writePath), "export const broken = true;\n");
@@ -70,13 +70,13 @@ describe("Background Logs repairs (real isolated Git, simulated AI/GitHub)", () 
     await fs.writeFile(path.join(repo, "mobile/new-baseline.ts"), "export const current = true;\n");
     await exec("git", ["add", "."], { cwd: repo });
     await exec("git", ["-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "new native baseline"], { cwd: repo });
-    await exec("git", ["push", remote, "HEAD:refs/heads/mobile"], { cwd: repo });
+    await exec("git", ["push", remote, "HEAD:refs/heads/developer"], { cwd: repo });
     const job = await start(); const done = await settled(job.id, "pr-created");
-    expect(done.baseBranch).toBe("mobile");
+    expect(done.baseBranch).toBe("developer"); expect(done.repairArea).toBe("mobile");
     expect(done.checks.map(check => check.name)).toContain("mobile-types");
     expect((await exec("git", ["show", `${done.commit}:mobile/new-baseline.ts`], { cwd: repo })).stdout).toContain("current");
     const pull = apiMock.mock.calls.find(([method, route]) => method === "POST" && route.endsWith("/pulls"))!;
-    expect(pull[2].base).toBe("mobile");
+    expect(pull[2].base).toBe("developer");
   });
   it("rejects mixed module and core repairs instead of bypassing module review", async () => {
     writePath = "web/modules/test-module/source.ts";

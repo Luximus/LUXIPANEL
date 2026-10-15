@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import os
 from unittest.mock import patch
+import urllib.error
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 def load(name):
@@ -50,7 +51,7 @@ class PolicyTests(unittest.TestCase):
     def test_only_fixed_names_exempt_from_creation_restriction(self):
         data = policy.creation_ruleset()
         self.assertEqual(data['rules'], [{'type': 'creation'}])
-        self.assertEqual(set(data['conditions']['ref_name']['exclude']), {'refs/heads/' + name for name in (*policy.PERMANENT, policy.TEMPORARY)})
+        self.assertEqual(set(data['conditions']['ref_name']['exclude']), {'refs/heads/' + name for name in (*policy.PERMANENT, policy.BOOTSTRAP, policy.BASELINE)} | {'refs/heads/release/*','refs/heads/hotfix/*'})
         self.assertEqual(data['bypass_actors'], [])
 
 
@@ -81,19 +82,35 @@ class SnapshotTests(unittest.TestCase):
             root = Path(directory); (root / 'web/modules/unapproved').mkdir(parents=True)
             with self.assertRaises(ValueError): pipeline.assert_module_sources(root, {'modules': []})
 
-    def test_stale_developer_blocks_release(self):
-        pull = {'labels': [{'name': 'release'}], 'body': 'Developer tested: `' + SHA + '`'}
-        with patch.object(guard.prepare, 'api', return_value={'object': {'sha': 'b'*40}}):
-            with self.assertRaisesRegex(ValueError, 'Developer changed'): guard.check(pull)
+    def test_developer_can_advance_without_invalidating_frozen_source(self):
+        provenance = {'format':1,'kind':'release','sourceSha':SHA,'sourceAttempt':1}
+        guard.validate_provenance(provenance, self.run_data(), 'release/1.1.0', '1.1.0')
+        with self.assertRaisesRegex(ValueError, 'frozen source'):
+            guard.validate_provenance(provenance, {**self.run_data(),'head_sha':'b'*40}, 'release/1.1.0', '1.1.0')
 
-    def test_latest_failed_rerun_blocks_release(self):
-        data = self.run_data()
-        with patch.object(guard.prepare, 'api', side_effect=[{'object': {'sha': SHA}}, {'workflow_runs': [{**data, 'id': 1}, {**data, 'id': 2, 'conclusion': 'failure'}]}]):
-            with self.assertRaisesRegex(ValueError, 'integration CI'): guard.check({'labels': [{'name': 'release'}], 'body': 'Developer tested: `' + SHA + '`'})
+    def test_failed_frozen_source_checks_block_publication(self):
+        with self.assertRaisesRegex(ValueError, 'not passed'):
+            guard.validate_provenance({'format':1,'kind':'release','sourceSha':SHA}, {**self.run_data(),'conclusion':'failure'}, 'release/1.0.1', '1.0.1')
+
+    def test_hotfix_checks_are_bound_to_trusted_main_and_exact_source(self):
+        run = {**self.run_data(),'path':'.github/workflows/hotfix-checks.yml','head_branch':'main','display_title':'Hotfix checks hotfix/1.0.1 @ '+SHA}
+        provenance = {'format':1,'kind':'hotfix','sourceSha':SHA}
+        guard.validate_provenance(provenance, run, 'hotfix/1.0.1', '1.0.1')
+        for change in [{'head_branch':'developer'}, {'display_title':'Hotfix checks hotfix/1.0.1 @ '+'b'*40}, {'head_repository':{'full_name':'someone/LUXIPANEL'}}]:
+            with self.assertRaises(ValueError): guard.validate_provenance(provenance, {**run,**change}, 'hotfix/1.0.1', '1.0.1')
 
     def test_bootstrap_is_not_a_release(self):
+        pull = {'base':{'ref':'main'},'head':{'repo':{'full_name':'Luxisoft/LUXIPANEL'},'ref':'lxp/release-next'},'user':{'login':'github-actions[bot]'},'labels':[{'name':'bootstrap'}]}
         with patch.object(guard.prepare, 'api') as api:
-            guard.check({'labels': [{'name': 'bootstrap'}]}); api.assert_not_called()
+            guard.check(pull); api.assert_not_called()
+
+    def test_older_frozen_versions_are_requested_by_id(self):
+        row = {'id':'test-module','versionId':'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','version':'1.0.0','commit':SHA,'manifest':{}}
+        with patch.object(pipeline.relay, 'lp', return_value={'modules':[row]}) as api:
+            self.assertEqual(pipeline.exact_candidates({'modules':[row]})['modules'],[row])
+            self.assertIn('?versionIds='+row['versionId'],api.call_args.args[0])
+        with patch.object(pipeline.relay, 'lp', return_value={'modules':[]}):
+            with self.assertRaises(ValueError): pipeline.exact_candidates({'modules':[row]})
 
 
 class BaselineTests(unittest.TestCase):
@@ -105,7 +122,7 @@ class BaselineTests(unittest.TestCase):
             (root / 'web/modules/test-module/source.ts').write_text('original')
             git('add', '.'); git('commit', '-m', 'module'); old = git('rev-parse', 'HEAD')
             (root / 'readme').write_text('baseline'); git('add', '.'); git('commit', '-m', 'baseline'); new = git('rev-parse', 'HEAD')
-            pull = {'base': {'ref': 'modules', 'sha': old}, 'head': {'ref': 'lxp/release-next', 'sha': new, 'repo': {'full_name': 'Luxisoft/LUXIPANEL'}}, 'user': {'login': 'github-actions[bot]'}}
+            pull = {'base': {'ref': 'modules', 'sha': old}, 'head': {'ref': 'automation/modules-baseline', 'sha': new, 'repo': {'full_name': 'Luxisoft/LUXIPANEL'}}, 'user': {'login': 'github-actions[bot]'}}
             import os
             previous = os.getcwd()
             try:
@@ -166,38 +183,102 @@ class RealGitPipelineTests(unittest.TestCase):
         self.git('add', '.'); self.git('commit', '-m', subject)
 
     def ref(self, branch):
-        return self.git('ls-remote', 'origin', 'refs/heads/' + branch).split()[0]
+        rows = self.git('ls-remote', 'origin', 'refs/heads/' + branch).split()
+        if not rows: raise urllib.error.HTTPError('test',404,'Missing ref',{},None)
+        return rows[0]
 
-    def test_post_merge_client_is_promoted_with_history_and_dispatch(self):
-        self.git('checkout', 'web')
-        (self.root / 'web/backend/source.ts').write_text('fixed\n'); self.save('fix: source')
-        sha = self.git('rev-parse', 'HEAD'); self.git('push', 'origin', 'web')
-        self.git('checkout', 'main')
-        event = self.root.parent / 'event.json'; event.write_text('{"workflow_run":{"id":42}}')
-        run = {'id':42, 'head_sha':sha, 'head_branch':'web', 'head_repository':{'full_name':'Luxisoft/LUXIPANEL'}, 'path':'.github/workflows/client-checks.yml', 'event':'push', 'conclusion':'success'}
-        def api(route, *args):
-            return {'workflow_runs':[run]} if '/actions/workflows/' in route else run
-        with patch.dict(os.environ, {'GITHUB_EVENT_PATH':str(event), 'GITHUB_REF':'refs/heads/main'}), patch.object(pipeline, 'ref', side_effect=self.ref), patch.object(pipeline.prepare, 'api', side_effect=api), patch.object(pipeline.relay, 'lp', return_value={'modules':[]}), patch.object(pipeline, 'dispatch') as dispatch:
-            pipeline.main()
-            dispatch.assert_called_once_with('developer-checks.yml', 'developer')
-        self.assertEqual(self.ref('developer'), sha)
-        self.assertEqual((self.root / 'web/backend/source.ts').read_text(), 'initial\n')
+    def test_accepted_clients_share_one_developer_branch(self):
+        for files in [['web/backend/source.ts'],['mobile/src/a.ts'],['desktop/src/a.ts'],['web/a.ts','mobile/b.ts']]:
+            policy.assert_scope('developer',files)
+        self.assertEqual(policy.PERMANENT,('main','developer','modules'))
 
     def test_release_versions_are_stamped_without_executing_candidate_scripts(self):
         self.git('checkout', 'developer')
         (self.root / 'web/backend/source.ts').write_text('fixed\n'); self.save('fix: source')
         sha = self.git('rev-parse', 'HEAD'); self.git('push', 'origin', 'developer')
-        run = {'id':42, 'html_url':'https://github.com/Luxisoft/LUXIPANEL/actions/runs/42'}
+        run = {'id':42,'run_attempt':1, 'html_url':'https://github.com/Luxisoft/LUXIPANEL/actions/runs/42'}
         def api(route, *args): return {'tag_name':'v1.0.0'} if route == '/releases/latest' else []
         with patch.object(pipeline, 'ref', side_effect=self.ref), patch.object(pipeline.prepare, 'api', side_effect=api), patch.object(pipeline, 'artifact_manifest', return_value={'format':1,'modules':[]}), patch.object(pipeline, 'pull') as pull, patch.object(pipeline, 'dispatch') as dispatch:
             pipeline.prepare_snapshot(sha, run, {'modules':[]}, self.root)
-            self.assertIn('Developer tested: `' + sha + '`', pull.call_args.args[3])
-            dispatch.assert_called_once_with('release-checks.yml', 'lxp/release-next')
+            self.assertIn('Frozen source: `' + sha + '`', pull.call_args.args[3])
+            dispatch.assert_called_once_with('release-checks.yml', 'release/1.0.1')
         self.assertEqual(self.git('rev-parse', 'v1.0.0'), self.base)
         for area in ('web/backend','web/frontend','desktop','mobile'):
             self.assertEqual(json.loads((self.root / area / 'package.json').read_text())['version'], '1.0.1')
         self.assertEqual(self.ref('developer'), sha)
-        self.assertNotEqual(self.ref('lxp/release-next'), sha)
+        self.assertNotEqual(self.ref('release/1.0.1'), sha)
+
+    def test_existing_candidate_is_frozen_while_developer_advances(self):
+        self.git('checkout', 'developer')
+        (self.root / 'mobile/new-feature.ts').write_text('pending feature'); self.save('feat: next feature')
+        sha = self.git('rev-parse','HEAD'); self.git('push','origin','developer')
+        with patch.object(pipeline.prepare,'api',return_value={'tag_name':'v1.0.0'}), patch.object(pipeline,'active_candidates',return_value=[{'html_url':'https://github.com/Luxisoft/LUXIPANEL/pull/99'}]), patch.object(pipeline,'artifact_manifest') as artifact:
+            pipeline.prepare_snapshot(sha,{'id':42},None,self.root)
+            artifact.assert_not_called()
+        self.assertEqual(self.ref('developer'),sha)
+
+    def test_normal_preparation_waits_while_hotfix_source_is_being_tested(self):
+        self.git('checkout', 'developer')
+        (self.root / 'mobile/new-feature.ts').write_text('pending feature'); self.save('feat: next feature')
+        sha = self.git('rev-parse', 'HEAD'); self.git('push', 'origin', 'developer')
+        self.git('push', 'origin', self.base + ':refs/heads/hotfix/1.0.1')
+        with patch.object(pipeline, 'ref', side_effect=self.ref), patch.object(pipeline.prepare, 'api', return_value={'tag_name':'v1.0.0'}), patch.object(pipeline, 'active_candidates', return_value=[]), patch.object(pipeline, 'artifact_manifest') as artifact:
+            pipeline.prepare_snapshot(sha, {'id':42}, None, self.root)
+            artifact.assert_not_called()
+
+    def test_unreviewed_dependency_changes_are_not_version_stamping(self):
+        package = self.root / 'web/backend/package.json'
+        package.write_text(json.dumps({'name':'web/backend','version':'1.0.1','dependencies':{'new-unchecked-dep':'1.0.0'}}))
+        self.save('stamp')
+        with self.assertRaisesRegex(ValueError,'untested dependencies'):
+            guard.metadata_only(self.base,self.git('rev-parse','HEAD'),'1.0.1',self.git)
+
+    def prepare_core_hotfix(self, conflict=False):
+        self.git('checkout','developer')
+        (self.root / 'mobile/pending-feature.ts').write_text('not released')
+        if conflict: (self.root/'web/backend/source.ts').write_text('unreleased dependency\n')
+        self.save('feat: unreleased feature')
+        (self.root/'web/backend/source.ts').write_text('fixed\n'); self.save('fix: production bug')
+        merged = self.git('rev-parse','HEAD'); self.git('push','origin','developer')
+        directory = self.root.parent/'hotfix-source'
+        self.git('worktree','add','--detach',str(directory),'v1.0.0')
+        pr = {'merged':True,'base':{'repo':{'full_name':'Luxisoft/LUXIPANEL'},'ref':'developer'},'merge_commit_sha':merged}
+        def api(route,*args):
+            if route=='/releases/latest': return {'tag_name':'v1.0.0'}
+            if route=='/pulls/42': return pr
+            if route.startswith('/pulls?'): return []
+            raise AssertionError(route)
+        return directory,api
+
+    def test_hotfix_replays_only_the_fix_and_freezes_its_own_successful_checks(self):
+        directory,api = self.prepare_core_hotfix()
+        try:
+            with patch.object(pipeline,'ref',side_effect=self.ref), patch.object(pipeline.prepare,'api',side_effect=api), patch.object(pipeline,'dispatch_hotfix') as dispatch:
+                pipeline.prepare_hotfix(directory,'42')
+                source = self.ref('hotfix/1.0.1')
+                dispatch.assert_called_once_with('hotfix/1.0.1',source)
+                self.assertEqual(self.git('ls-tree',source,'mobile/pending-feature.ts'),'')
+                self.assertEqual(self.git('show',source+':web/backend/source.ts'),'fixed')
+            run={'id':43,'run_attempt':1,'conclusion':'success','path':'.github/workflows/hotfix-checks.yml','event':'workflow_dispatch','head_branch':'main','head_repository':{'full_name':'Luxisoft/LUXIPANEL'},'display_title':'Hotfix checks hotfix/1.0.1 @ '+source}
+            with patch.object(pipeline,'ref',side_effect=self.ref), patch.object(pipeline.prepare,'api',side_effect=lambda route,*args:{'tag_name':'v1.0.0'} if route=='/releases/latest' else []), patch.object(pipeline,'artifact_manifest',return_value={'format':1,'modules':[]}), patch.object(pipeline,'pull'), patch.object(pipeline,'dispatch'):
+                pipeline.prepare_snapshot(source,run,None,directory,'hotfix','hotfix/1.0.1',[42])
+            head=self.ref('hotfix/1.0.1')
+            manifest=json.loads(self.git('show',head+':release.manifest.json'))
+            self.assertEqual(manifest['version'],'1.0.1');self.assertIn(42,manifest['contributions'])
+            provenance=json.loads(self.git('show',head+':release.provenance.json'))
+            guard.validate_provenance(provenance,run,'hotfix/1.0.1','1.0.1')
+            guard.metadata_only(source,head,'1.0.1',self.git)
+            self.assertEqual(self.git('ls-tree',head,'mobile/pending-feature.ts'),'')
+        finally:self.git('worktree','remove','--force',str(directory))
+
+    def test_conflicting_hotfix_does_not_suspend_or_publish_any_candidate(self):
+        directory,api = self.prepare_core_hotfix(conflict=True)
+        try:
+            with patch.object(pipeline,'ref',side_effect=self.ref), patch.object(pipeline.prepare,'api',side_effect=api), patch.object(pipeline,'suspend_normal_candidates') as suspend, patch.object(pipeline,'dispatch_hotfix') as dispatch:
+                with self.assertRaises(subprocess.CalledProcessError):pipeline.prepare_hotfix(directory,'42')
+                suspend.assert_not_called();dispatch.assert_not_called()
+            with self.assertRaises(urllib.error.HTTPError):self.ref('hotfix/1.0.1')
+        finally:self.git('worktree','remove','--force',str(directory))
 
 
 if __name__ == '__main__': unittest.main()

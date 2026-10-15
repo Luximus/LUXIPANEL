@@ -1,0 +1,51 @@
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+vi.mock("@/lib/api-client", () => ({ api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock("@/lib/panel-releases", async importOriginal => ({ ...await importOriginal<object>(), readReleaseDetails: vi.fn(), translateReleaseDetails: vi.fn() }));
+import CommunityActivity from "./CommunityActivity";
+import labels from "@/i18n/en/panelLayout";
+import { api } from "@/lib/api-client";
+import { readReleaseDetails, translateReleaseDetails, type PanelReleaseStatus } from "@/lib/panel-releases";
+let root: Root; let container: HTMLDivElement;
+const details = { tag: "v2.0.4", name: "New release", notes: "Fixed terminal", publishedAt: null, url: "https://github.com/Luxisoft/LUXIPANEL/releases/tag/v2.0.4", commentsUnavailable: false, comments: [{ id: "1", body: "Thanks", author: "user", updatedAt: "2026-10-14", url: "https://github.com/Luxisoft/LUXIPANEL/issues/2#issuecomment-1" }] };
+const status = { currentVersion: "2.0.3", latest: details, releases: [details], updateAvailable: true, operation: null } as PanelReleaseStatus;
+const props = { labels: labels.community, locale: "es", status, installedVersion: "2.0.3", canInstall: false, busy: false, error: "", onInstall: vi.fn() };
+beforeEach(() => {
+  vi.resetAllMocks(); (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); };
+  vi.mocked(api.get).mockResolvedValue({ ok: true, data: { items: [], unread: 0 } });
+  vi.mocked(readReleaseDetails).mockResolvedValue(details);
+  vi.mocked(translateReleaseDetails).mockResolvedValue({ ...details, notes: "Terminal corregida", comments: [{ ...details.comments[0]!, body: "Gracias" }], translation: "translated" });
+});
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+it("shows Git and installed version, notifies about a newer version and opens the existing drawer with translated notes/comments", async () => {
+  await act(async () => root.render(createElement(CommunityActivity, props)));
+  const button = container.querySelector("button")!;
+  expect(button.textContent).toContain("v2.0.3"); expect(button.querySelector(".ti-brand-git")).not.toBeNull();
+  expect(button.querySelector("[data-release-notification]")).not.toBeNull(); expect(translateReleaseDetails).not.toHaveBeenCalled();
+  await act(async () => button.click());
+  expect(container.querySelector("dialog[open]")).not.toBeNull(); expect(container.textContent).toContain("Terminal corregida"); expect(container.textContent).toContain("Gracias");
+  const original = Array.from(container.querySelectorAll("button")).find(button => button.textContent === labels.community.showOriginal)!;
+  await act(async () => original.click()); expect(container.textContent).toContain("Fixed terminal");
+  expect(button.querySelector("[data-release-notification]")).not.toBeNull();
+});
+it("does not flag the installed release as new, and renders GitHub HTML as text", async () => {
+  vi.mocked(readReleaseDetails).mockResolvedValue({ ...details, notes: '<img src=x onerror="alert(1)">' });
+  vi.mocked(translateReleaseDetails).mockRejectedValue(new Error("No provider"));
+  await act(async () => root.render(createElement(CommunityActivity, { ...props, status: { ...status, updateAvailable: false } })));
+  expect(container.querySelector("[data-release-notification]")).toBeNull();
+  await act(async () => container.querySelector("button")!.click());
+  expect(container.querySelector("img")).toBeNull(); expect(container.textContent).toContain('<img src=x'); expect(container.textContent).toContain(labels.community.translationUnavailable);
+});
+it("discards late translations when the selected server changes", async () => {
+  let finish!: (value: typeof details) => void;
+  vi.mocked(translateReleaseDetails).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  await act(async () => root.render(createElement(CommunityActivity, props)));
+  await act(async () => container.querySelector("button")!.click());
+  await act(async () => window.dispatchEvent(new Event("luxipanel:target-changed")));
+  await act(async () => finish({ ...details, notes: "Stale translation" }));
+  expect(container.querySelector("dialog[open]")).toBeNull(); expect(container.textContent).not.toContain("Stale translation");
+});

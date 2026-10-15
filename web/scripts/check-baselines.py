@@ -9,7 +9,7 @@ spec = spec_from_file_location("scope", Path(__file__).with_name("check-branch-s
 scope = module_from_spec(spec); spec.loader.exec_module(scope)
 prepare = scope.prepare
 head = os.environ["GITHUB_REF_NAME"]
-if head not in ("developer", "lxp/release-next"): raise ValueError("Invalid baseline source")
+if head != scope.policy.BASELINE: raise ValueError("Invalid baseline source")
 for pull in prepare.api("/pulls?state=open&head=Luxisoft:" + head):
     if not any(label["name"] == "baseline" for label in pull.get("labels", [])): continue
     for sha in (pull["base"]["sha"], pull["head"]["sha"]):

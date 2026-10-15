@@ -10,7 +10,16 @@ const panelLayout = {
     "installed": "Installée",
     "version": "Version",
     "openGithub": "Ouvrir sur GitHub",
-    "close": "Fermer"
+    "close": "Fermer",
+    "newVersion": "Nouvelle version disponible",
+    "translating": "Traduction par IA…",
+    "showOriginal": "Voir l’original",
+    "showTranslation": "Voir la traduction",
+    "translationUnavailable": "La traduction IA est indisponible. Le texte original est affiché.",
+    "allComments": "Voir tous les commentaires sur GitHub",
+    "activity": "Activité de la communauté",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger ces informations."
 },
   "groups": {
     "main": "Principal",

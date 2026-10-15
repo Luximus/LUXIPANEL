@@ -10,7 +10,16 @@ const panelLayout = {
     "installed": "Установлена",
     "version": "Версия",
     "openGithub": "Открыть на GitHub",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "newVersion": "Доступна новая версия",
+    "translating": "Перевод с помощью ИИ…",
+    "showOriginal": "Показать оригинал",
+    "showTranslation": "Показать перевод",
+    "translationUnavailable": "Перевод ИИ недоступен. Показан исходный текст.",
+    "allComments": "Все комментарии на GitHub",
+    "activity": "Активность сообщества",
+    "loading": "Загрузка…",
+    "loadError": "Не удалось загрузить информацию."
 },
   "groups": {
     "main": "Главное",

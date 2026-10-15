@@ -8,6 +8,7 @@ export interface PanelRelease {
 }
 
 export interface PanelReleaseStatus {
+  canInstall?: boolean;
   currentVersion?: string;
   installed: { tag?: string; commit?: string; path?: string } | null;
   latest: PanelRelease | null;
@@ -27,4 +28,26 @@ export async function readPanelReleases(): Promise<PanelReleaseStatus> {
 export async function installPanelRelease(tag: string): Promise<void> {
   const response = await api.post("/api/admin/system/releases/install", { tag });
   if (!response.ok) throw new Error(response.error || "No se pudo iniciar la instalación.");
+}
+
+export interface PanelReleaseDetails extends PanelRelease {
+  url: string;
+  discussionUrl?: string;
+  comments: { id: string; body: string; author: string; url: string; updatedAt: string }[];
+  commentsUnavailable: boolean;
+  translation?: "translated" | "original" | "unavailable";
+  locale?: string;
+}
+export function versionTag(version: string): string {
+  return `v${version.replace(/^v/i, "")}`;
+}
+export async function readReleaseDetails(tag: string): Promise<PanelReleaseDetails> {
+  const result = await api.get<PanelReleaseDetails>(`/api/ui/releases/${encodeURIComponent(tag)}/details`);
+  if (!result.ok || !result.data) throw new Error(result.error || "Release unavailable");
+  return result.data;
+}
+export async function translateReleaseDetails(tag: string, locale: string): Promise<PanelReleaseDetails> {
+  const result = await api.post<PanelReleaseDetails>(`/api/ui/releases/${encodeURIComponent(tag)}/translate`, { locale });
+  if (!result.ok || !result.data) throw new Error(result.error || "Translation unavailable");
+  return result.data;
 }

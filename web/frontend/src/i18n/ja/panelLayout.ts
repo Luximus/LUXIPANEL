@@ -10,7 +10,16 @@ const panelLayout = {
     "installed": "インストール済み",
     "version": "バージョン",
     "openGithub": "GitHubで開く",
-    "close": "閉じる"
+    "close": "閉じる",
+    "newVersion": "新しいバージョンがあります",
+    "translating": "AIで翻訳中…",
+    "showOriginal": "原文を表示",
+    "showTranslation": "翻訳を表示",
+    "translationUnavailable": "AI翻訳を利用できません。原文を表示しています。",
+    "allComments": "GitHubですべてのコメントを見る",
+    "activity": "コミュニティの活動",
+    "loading": "読み込み中…",
+    "loadError": "情報を読み込めませんでした。"
 },
   "groups": {
     "main": "メイン",

@@ -10,7 +10,16 @@ const panelLayout = {
     "installed": "مثبت",
     "version": "الإصدار",
     "openGithub": "فتح في GitHub",
-    "close": "إغلاق"
+    "close": "إغلاق",
+    "newVersion": "يتوفر إصدار جديد",
+    "translating": "جارٍ الترجمة بالذكاء الاصطناعي…",
+    "showOriginal": "عرض النص الأصلي",
+    "showTranslation": "عرض الترجمة",
+    "translationUnavailable": "الترجمة بالذكاء الاصطناعي غير متاحة. يُعرض النص الأصلي.",
+    "allComments": "عرض جميع التعليقات على GitHub",
+    "activity": "نشاط المجتمع",
+    "loading": "جارٍ التحميل…",
+    "loadError": "تعذر تحميل هذه المعلومات."
 },
   "groups": {
     "main": "الرئيسية",

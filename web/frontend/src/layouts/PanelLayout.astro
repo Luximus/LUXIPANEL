@@ -511,7 +511,7 @@ const workspaceToolGroups = navGroups.map((group) => ({
         ><i class="ti ti-history text-xl" aria-hidden="true"></i></button>}
 
         {workspaceShell && !moduleDrawerOpen && <span id="workspace-chat-navbar-controls" class="lxp-chat-navbar-controls"></span>}
-        {workspaceShell && !moduleDrawerOpen && <ReleaseBanner client:load isAdmin={isAdminUser} labels={t.panelLayout.community} />}
+        {workspaceShell && !moduleDrawerOpen && <ReleaseBanner client:load isAdmin={isAdminUser} locale={locale} labels={t.panelLayout.community} />}
         {workspaceShell && !moduleDrawerOpen && <span id="workspace-chat-server-controls" class="lxp-chat-server-controls"></span>}
         {workspaceShell && !moduleDrawerOpen && <div id="workspace-chat-cli" class="lxp-chat-cli"></div>}
 

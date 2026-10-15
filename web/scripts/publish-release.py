@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
 """Publish exactly the reviewed combined release commit; retrying is idempotent."""
-import json, os, re, urllib.error
+import json, os, re, urllib.error, subprocess
 from pathlib import Path
 from importlib.util import spec_from_file_location, module_from_spec
 spec = spec_from_file_location("relay", Path(__file__).with_name("module-review-relay.py")); relay = module_from_spec(spec); spec.loader.exec_module(relay)
 number = os.environ.get("RELEASE_PR_NUMBER", ""); commit = os.environ.get("RELEASE_COMMIT", "")
 if not number.isdigit() or not re.fullmatch(r"[a-f0-9]{40}", commit): raise ValueError("Invalid release identity")
 pull = relay.prepare.api("/pulls/" + number)
-if not pull.get("merged") or pull["merge_commit_sha"] != commit or pull["base"]["ref"] != "main" or pull["head"]["ref"] != "lxp/release-next" or pull["head"]["repo"]["full_name"] != relay.prepare.REPOSITORY or not any(label["name"] == "release" for label in pull["labels"]): raise ValueError("Not a reviewed combined release PR")
+if not pull.get("merged") or pull["merge_commit_sha"] != commit or pull["base"]["ref"] != "main" or not re.fullmatch(r"(?:release|hotfix)/\d+\.\d+\.\d+", pull["head"]["ref"]) or pull["head"]["repo"]["full_name"] != relay.prepare.REPOSITORY or not any(label["name"] == "release" for label in pull["labels"]): raise ValueError("Not a reviewed combined release PR")
 guard_spec = spec_from_file_location("guard", Path(__file__).with_name("release-snapshot-guard.py")); guard = module_from_spec(guard_spec); guard_spec.loader.exec_module(guard)
 guard.check(pull)
+repository = relay.prepare.metadata_root(Path.cwd())
+subprocess.run(["git", "diff", "--exit-code", commit, pull["head"]["sha"]], cwd=repository, check=True)
+pipeline_spec = spec_from_file_location("pipeline", Path(__file__).with_name("combined-release.py")); pipeline = module_from_spec(pipeline_spec); pipeline_spec.loader.exec_module(pipeline)
+candidates = pipeline.exact_candidates(json.loads((repository / "modules.lock.json").read_text()))
+pipeline.assert_module_sources(repository, candidates)
 manifest = json.loads(relay.prepare.metadata_root(Path.cwd()).joinpath("release.manifest.json").read_text()); tag = "v" + manifest["version"]
 if not re.fullmatch(r"v\d+\.\d+\.\d+", tag) or manifest["format"] != 1: raise ValueError("Invalid combined release")
 try:
     existing = relay.prepare.api("/git/ref/tags/" + tag)
-    if existing["object"]["sha"] != commit: raise ValueError("Release tag already points to a different commit")
+    target = existing["object"]
+    if target["type"] == "tag": target = relay.prepare.api("/git/tags/" + target["sha"])["object"]
+    if target["sha"] != commit: raise ValueError("Release tag already points to a different commit")
 except urllib.error.HTTPError as error:
     if error.code != 404: raise
     relay.prepare.api("/git/refs", "POST", {"ref": "refs/tags/" + tag, "sha": commit})
@@ -32,3 +39,7 @@ announcements = relay.prepare.api("/issues?state=all&labels=" + label)
 if not announcements:
     relay.prepare.api("/issues", "POST", {"title": "LUXIPANEL " + tag + " disponible", "body": "Nueva entrega conjunta del panel y sus módulos aprobados. Consulta las novedades y comenta aquí: " + release["html_url"], "labels": ["announcement", label]})
 print(release["html_url"])
+
+# Delete only the exact branch that was published; preserve any subsequent work.
+head = pipeline.maybe_ref(pull["head"]["ref"])
+if head == pull["head"]["sha"]: pipeline.delete_ref(pull["head"]["ref"], head, repository)

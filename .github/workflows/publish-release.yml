@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    if: github.repository == 'Luxisoft/LUXIPANEL' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'lxp/release-next' && contains(github.event.pull_request.labels.*.name, 'release')
+    if: github.repository == 'Luxisoft/LUXIPANEL' && github.event.pull_request.merged == true && (startsWith(github.event.pull_request.head.ref, 'release/') || startsWith(github.event.pull_request.head.ref, 'hotfix/')) && contains(github.event.pull_request.labels.*.name, 'release')
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -43,6 +43,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
+      - run: git config credential.helper '!gh auth git-credential'
       - run: python3 scripts/publish-release.py
         working-directory: web
         env:

@@ -14,7 +14,7 @@ export const configFields: NativeField[] = [
   {key:"tokenBudget",get label() { return nativeText("Presupuesto de tokens"); },type:"number",min:1000,max:2000000},
   {key:"timeoutMinutes",get label() { return nativeText("Tiempo máximo (minutos)"); },type:"number",min:1,max:120},
   {key:"concurrency",get label() { return nativeText("Reparaciones simultáneas"); },type:"number",min:1,max:4},
-  {key:"credentialId",heading:"GitHub",get label() { return nativeText("Credencial de repositorio"); }}, {key:"repairTarget",get label() { return nativeText("Destino del aporte"); },options:["auto","web","desktop","mobile","developer"].map(key=>({key,label:key}))},
+  {key:"credentialId",heading:"GitHub",get label() { return nativeText("Credencial de repositorio"); }}, {key:"repairTarget",get label() { return nativeText("Área afectada"); },options:["auto","web","desktop","mobile","developer"].map(key=>({key,label:key}))},
   {key:"checks",get label() { return nativeText("Comprobaciones (una por línea)"); },type:"lines",hint:"backend-types, backend-tests, frontend-tests, frontend-build, desktop-types, desktop-tests, desktop-build, mobile-types, mobile-tests"},
   {key:"enabled",get heading() { return nativeText("Captura de diagnósticos"); },get label() { return nativeText("Recopilar diagnósticos"); },type:"boolean"},
   {key:"retentionDays",get label() { return nativeText("Retención (días)"); },type:"number",min:1,max:365},

@@ -2,8 +2,14 @@
 """Shared branch policy. Individual contribution branches belong in forks."""
 import re
 
-PERMANENT = ("main", "developer", "web", "desktop", "mobile", "modules")
-TEMPORARY = "lxp/release-next"
+PERMANENT = ("main", "developer", "modules")
+BOOTSTRAP = "lxp/release-next"
+BASELINE = "automation/modules-baseline"
+TEMPORARY = BOOTSTRAP  # Migration compatibility; retired after PR #4 is merged.
+
+def candidate_version(branch):
+    match = re.fullmatch(r"(?:release|hotfix)/(\d+\.\d+\.\d+)", branch)
+    return match[1] if match else None
 CLIENTS = ("web", "desktop", "mobile")
 
 
@@ -27,14 +33,13 @@ def assert_scope(base, files):
     target = target_for(files)
     if base == "developer" and target != "modules":
         return
-    if target != base:
-        raise ValueError(f"Contribution belongs in {target}, not {base}")
+    if base == "modules" and target == "modules":
+        return
+    raise ValueError("Core/client contributions target developer; module contributions target modules")
 
 
 def protection(branch):
-    checks = {"main": ["release-checks"], "modules": ["static-review", "branch-scope"],
-              "web": ["branch-scope", "client-checks"], "desktop": ["branch-scope", "client-checks"],
-              "mobile": ["branch-scope", "client-checks"]}
+    checks = {"main": ["release-checks"], "modules": ["static-review", "branch-scope"]}
     return {
         "required_status_checks": {"strict": True, "contexts": checks[branch]} if branch in checks else None,
         "enforce_admins": True,
@@ -49,5 +54,5 @@ def protection(branch):
 def creation_ruleset():
     return {"name": "Canonical branches only", "target": "branch", "enforcement": "active",
             "conditions": {"ref_name": {"include": ["~ALL"],
-                            "exclude": ["refs/heads/" + name for name in (*PERMANENT, TEMPORARY)]}},
+                            "exclude": ["refs/heads/" + name for name in (*PERMANENT, BOOTSTRAP, BASELINE)] + ["refs/heads/release/*", "refs/heads/hotfix/*"]}},
             "rules": [{"type": "creation"}], "bypass_actors": []}

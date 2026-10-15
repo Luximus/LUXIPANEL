@@ -57,6 +57,8 @@ router.post("/ui/data/refresh", requireAuth, csrfProtection, liveDataController.
 router.get("/ui/layout", requireAuth, layoutController.read);
 router.get("/ui/layout/asset", requireAuth, layoutController.asset);
 router.get("/ui/releases", requireAuth, releasesController.status);
+router.get("/ui/releases/:tag/details", requireAuth, releasesController.details);
+router.post("/ui/releases/:tag/translate", requireAuth, requireModule("assistant"), csrfProtection, releasesController.translate);
 router.get("/admin/system/releases/preflight", requireAuth, requirePanelAdministrator, releasesController.preflight);
 router.post("/admin/system/releases/install", requireAuth, requirePanelAdministrator, csrfProtection, releasesController.install);
 

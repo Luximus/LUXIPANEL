@@ -29,3 +29,26 @@ El gestor usa un lock para impedir dos operaciones de Release simultáneas.
 Conserva worktrees previos para poder escoger una versión anterior en Ajustes →
 Sistema. La primera versión administrada no borra ni modifica el checkout
 original y permite restaurarlo automáticamente si falla la activación.
+
+
+## Comunidad, notas y traducción
+
+El botón del encabezado muestra el icono de Git y la versión instalada (`vX.Y.Z`).
+Una nueva Release estable activa el indicador hasta que se instale; abrir el
+drawer no descarta ese aviso. El selector permite consultar las notas de cada
+versión publicada y los comentarios recientes de su anuncio en GitHub (etiqueta
+`release:vX.Y.Z`), con enlace a la conversación completa.
+
+`GET /api/ui/releases/:tag/details` entrega contenido de esa Release conocida.
+Al abrir el drawer, `POST /api/ui/releases/:tag/translate` traduce automáticamente
+las notas y los comentarios al idioma del panel mediante el proveedor API de IA
+configurado por el usuario en el servidor seleccionado. Exige autenticación y
+CSRF; el cliente nunca envía texto arbitrario al traductor. La llamada no ejecuta
+herramientas, conserva Markdown/código y registra el consumo real de tokens.
+Las traducciones se guardan en caché por usuario, servidor, contenido e idioma;
+los cambios en notas/comentarios invalidan la caché. Se puede alternar al original.
+Sin proveedor o si falla la traducción, se muestra el original. El contenido de
+GitHub se presenta como texto, sin ejecutar HTML.
+
+El flujo de ramas, candidatas congeladas y hotfix se documenta en
+[CONTRIBUTING.md](../CONTRIBUTING.md).

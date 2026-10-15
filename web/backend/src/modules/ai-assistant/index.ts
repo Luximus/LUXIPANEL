@@ -19,6 +19,7 @@ import {
 } from "./services/turn-queue.service.js";
 import { handleAssistantConnection } from "./controllers/assistant-ws.controller.js";
 import type { WsRouter } from "../../shared/websocket/ws-router.js";
+import { registerReleaseTranslator } from "./services/release-translation-adapter.js";
 import { registerLogsRepairAgent } from "./services/logs-repair-adapter.js";
 
 const log = createModuleLogger("ai-module");
@@ -32,6 +33,7 @@ export {
 
 export function registerAiModule(app: Express): void {
   registerLogsRepairAgent();
+  registerReleaseTranslator();
   // Validate the team-templates seed at boot (cheap O(n) over 10 templates).
   // Fails loudly if the curated content is broken so we catch typos before
   // users hit the wizard.

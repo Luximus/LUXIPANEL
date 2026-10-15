@@ -42,8 +42,8 @@ if __name__ == "__main__":
         number = os.environ.get("MODULE_PR_NUMBER", "")
         if number.isdigit():
             pulls = [prepare.api("/pulls/" + number)]
-        elif static and os.environ.get("REVIEW_HEAD_BRANCH") == "lxp/release-next":
-            pulls = prepare.api("/pulls?state=open&base=modules&head=Luxisoft:lxp/release-next")
+        elif static and os.environ.get("REVIEW_HEAD_BRANCH") == "automation/modules-baseline":
+            pulls = prepare.api("/pulls?state=open&base=modules&head=Luxisoft:automation/modules-baseline")
             if not pulls: raise ValueError("No internal baseline PR")
         else:
             raise ValueError("Invalid pull request")
@@ -51,7 +51,7 @@ if __name__ == "__main__":
         pull = prepare.api("/pulls/" + str(short["number"]))
         if pull["base"]["repo"]["full_name"] != prepare.REPOSITORY or pull["base"]["ref"] != "modules":
             continue
-        if pull["head"]["repo"]["full_name"] == prepare.REPOSITORY and pull["head"]["ref"] == "lxp/release-next" and pull["user"]["login"] == "github-actions[bot]":
+        if pull["head"]["repo"]["full_name"] == prepare.REPOSITORY and pull["head"]["ref"] == "automation/modules-baseline" and pull["user"]["login"] == "github-actions[bot]":
             # Internal main baseline is not a module contribution and never registers with LP.
             scope_spec = spec_from_file_location("scope", Path(__file__).with_name("check-branch-scope.py"))
             scope = module_from_spec(scope_spec); scope_spec.loader.exec_module(scope)

@@ -10,7 +10,16 @@ const panelLayout = {
     "installed": "स्थापित",
     "version": "संस्करण",
     "openGithub": "GitHub पर खोलें",
-    "close": "बंद करें"
+    "close": "बंद करें",
+    "newVersion": "नया संस्करण उपलब्ध है",
+    "translating": "AI से अनुवाद हो रहा है…",
+    "showOriginal": "मूल पाठ देखें",
+    "showTranslation": "अनुवाद देखें",
+    "translationUnavailable": "AI अनुवाद उपलब्ध नहीं है। मूल पाठ दिखाया जा रहा है।",
+    "allComments": "GitHub पर सभी टिप्पणियाँ देखें",
+    "activity": "समुदाय की गतिविधि",
+    "loading": "लोड हो रहा है…",
+    "loadError": "यह जानकारी लोड नहीं हो सकी।"
 },
   "groups": {
     "main": "मुख्य",
