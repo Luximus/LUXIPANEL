@@ -1,5 +1,9 @@
 const panelLayout = {
   "community": {
+    "updateAssistantActive": "アシスタントのタスクが実行中です。完了してから更新してください。",
+    "updatePublicationPending": "完了した変更を送信しています。確認を待ってから更新を再試行してください。",
+    "updateContributionReview": "中断したタスクまたはブロックされた貢献に未処理の変更があります。自動貢献を確認し、復旧を完了してから更新してください。",
+    "updateCheckoutSync": "確認済みの変更を同期しています。しばらくしてから更新を再確認してください。",
     "localChangesBlocked": "まだ統合されていないローカルの変更があります。変更を保持するため、更新は開始されませんでした。",
     "branchNotesUnavailable": "これらの更新の公開説明はまだありません。",
     "branchNotesPartial": "一部の変更には説明がまだありません。",

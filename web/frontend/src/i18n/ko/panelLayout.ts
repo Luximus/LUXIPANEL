@@ -1,5 +1,9 @@
 const panelLayout = {
   "community": {
+    "updateAssistantActive": "어시스턴트 작업이 진행 중입니다. 작업이 끝난 후 업데이트하세요.",
+    "updatePublicationPending": "완료된 변경 사항을 전송하고 있습니다. 확인을 기다린 후 업데이트를 다시 시도하세요.",
+    "updateContributionReview": "중단된 작업이나 차단된 기여에 보류 중인 변경 사항이 있습니다. 자동 기여를 확인하고 복구를 완료한 후 업데이트하세요.",
+    "updateCheckoutSync": "확인된 변경 사항을 동기화하고 있습니다. 잠시 후 업데이트를 다시 확인하세요.",
     "localChangesBlocked": "아직 통합되지 않은 로컬 변경 사항이 있습니다. 이를 보존하기 위해 업데이트를 시작하지 않았습니다.",
     "branchNotesUnavailable": "이 업데이트에 대한 공개 설명은 아직 없습니다.",
     "branchNotesPartial": "일부 변경 사항에는 아직 설명이 없습니다.",

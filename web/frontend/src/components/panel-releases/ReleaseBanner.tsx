@@ -1,7 +1,7 @@
 import CommunityActivity from "./CommunityActivity";
 import { useEffect, useRef, useState } from "react";
 import { version } from "../../../package.json";
-import { readPanelReleasePreflight, installPanelBranch, installPanelRelease, readPanelReleases, type PanelReleaseStatus } from "@/lib/panel-releases";
+import { readPanelReleasePreflight, installPanelBranch, installPanelRelease, readPanelReleases, type PanelReleaseStatus, type PanelReleasePreflight } from "@/lib/panel-releases";
 
 export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: boolean; labels: Record<string, string>; locale: string }) {
   const [status, setStatus] = useState<PanelReleaseStatus | null>(null);
@@ -11,6 +11,10 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
   const [epoch, setEpoch] = useState(0);
   const generation = useRef(0);
   const installing = useRef(false);
+  const blockedMessage = (reason: PanelReleasePreflight["reason"]) => {
+    const keys = { "assistant-active": "updateAssistantActive", "publication-pending": "updatePublicationPending", "contribution-review": "updateContributionReview", "checkout-sync": "updateCheckoutSync", "local-changes": "localChangesBlocked" };
+    return (reason && labels[keys[reason]]) || labels.localChangesBlocked;
+  };
   useEffect(() => {
     const reset = () => { generation.current++; setStatus(null); setError(""); setCatalogError(""); setEpoch(value => value + 1); };
     window.addEventListener("luxipanel:target-changed", reset);
@@ -35,7 +39,7 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     try {
       const readiness = await readPanelReleasePreflight();
       if (current !== generation.current) return;
-      if (!readiness.ok) { setError(labels.localChangesBlocked); return; }
+      if (!readiness.ok) { setError(blockedMessage(readiness.reason)); return; }
       await installPanelRelease(tag);
       if (current !== generation.current) return;
       const next = await readPanelReleases();
@@ -53,7 +57,7 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     try {
       const readiness = await readPanelReleasePreflight();
       if (current !== generation.current) return;
-      if (!readiness.ok) { setError(labels.localChangesBlocked); return; }
+      if (!readiness.ok) { setError(blockedMessage(readiness.reason)); return; }
       await installPanelBranch(branch, commit);
       if (current !== generation.current) return;
       setStatus(prior => prior ? { ...prior, operation: { status: "running", branch, commit, stage: "queued" } } : prior);

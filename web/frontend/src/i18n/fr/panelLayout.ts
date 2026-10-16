@@ -1,5 +1,9 @@
 const panelLayout = {
   "community": {
+    "updateAssistantActive": "Une tâche de l’assistant est en cours. Attendez sa fin avant de mettre à jour.",
+    "updatePublicationPending": "Le panneau envoie les modifications terminées. Attendez la confirmation, puis réessayez la mise à jour.",
+    "updateContributionReview": "Une tâche interrompue ou une contribution bloquée contient des modifications en attente. Consultez Contributions automatiques et terminez sa récupération avant de mettre à jour.",
+    "updateCheckoutSync": "Le panneau synchronise les modifications confirmées. Vérifiez à nouveau les mises à jour dans quelques instants.",
     "localChangesBlocked": "Des modifications locales doivent encore être intégrées. La mise à jour n’a pas démarré afin de les préserver.",
     "branchNotesUnavailable": "La description publique de ces nouveautés n’est pas encore disponible.",
     "branchNotesPartial": "Certains changements n’ont pas encore de notes explicatives.",

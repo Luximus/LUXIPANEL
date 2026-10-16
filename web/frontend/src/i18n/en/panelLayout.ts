@@ -1,5 +1,9 @@
 const panelLayout = {
   "community": {
+    "updateAssistantActive": "An assistant task is running. Wait for it to finish before updating.",
+    "updatePublicationPending": "The panel is sending completed changes. Wait for confirmation, then try updating again.",
+    "updateContributionReview": "An interrupted task or blocked contribution has pending changes. Review Automatic contributions and complete its recovery before updating.",
+    "updateCheckoutSync": "The panel is synchronizing confirmed changes. Check for updates again shortly.",
     "localChangesBlocked": "Local changes still need to be integrated. The update was not started so they remain intact.",
     "branchNotesUnavailable": "A public description of these updates is not available yet.",
     "branchNotesPartial": "Some changes do not have explanatory notes yet.",

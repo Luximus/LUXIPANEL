@@ -211,6 +211,25 @@ it.each(["branch", "release"])("keeps a blocked %s update visible above long not
   expect(container.querySelector('dialog > [role="alert"]')).toBeNull();
 });
 
+it.each([
+  ["assistant-active", "updateAssistantActive"],
+  ["publication-pending", "updatePublicationPending"],
+  ["contribution-review", "updateContributionReview"],
+  ["checkout-sync", "updateCheckoutSync"],
+] as const)("explains %s and allows retry with fresh readiness", async (reason, label) => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: false, reason });
+  await render(); await open(); await selectBranch();
+  await act(async () => branchButton()!.click());
+  expect(container.querySelector('dialog > [role="alert"]')?.textContent).toBe(labels.community[label]);
+  expect(installPanelBranch).not.toHaveBeenCalled();
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: true });
+  await act(async () => branchButton()!.click());
+  expect(installPanelBranch).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('dialog > [role="alert"]')).toBeNull();
+});
+
 it("does not install after a preflight failure and shows its error above the notes", async () => {
   vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
   vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);

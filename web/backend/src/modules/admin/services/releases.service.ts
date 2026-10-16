@@ -11,6 +11,7 @@ import { localExecutor as installationExecutor, quoteArg, type Executor } from "
 import type { Request } from "express";
 import { AppError, ValidationError } from "../../../shared/errors/index.js";
 import { sanitizePublicText } from "../../../shared/diagnostics/sanitize.js";
+import { contributionUpdateBlocker, type ContributionUpdateBlocker } from "../../../shared/github/owner-contributions.js";
 
 export interface GithubRelease {
   tag: string;
@@ -80,12 +81,20 @@ export const releasesService = {
     if (!release) throw new ValidationError("La versión no figura entre las Releases publicadas de GitHub.");
     return { ...release, notes: sanitizePublicText(release.notes) };
   },
-  async preflight() {
+  async preflight(): Promise<{ ok: boolean; changedFiles: string[]; reason?: ContributionUpdateBlocker | "local-changes" }> {
     const root = installationRoot();
-    const result = await installationExecutor.exec("git status --porcelain=v1 --untracked-files=all", { cwd: root, timeoutMs: 10000 });
+    const result = await installationExecutor.exec("git status --porcelain=v1 -z --untracked-files=all", { cwd: root, timeoutMs: 10000 });
     if (result.exitCode !== 0) throw new AppError("La instalación no es un checkout Git válido", 409);
-    const changedFiles = result.stdout.split("\n").filter(Boolean).map((line) => line.slice(3)).filter((file) => !/^(?:\.releases(?:\/|$)|\.lxp(?:\/|$)|(?:web\/)?(?:backend|frontend)\/dist(?:\/|$))/.test(file));
-    return { ok: changedFiles.length === 0, changedFiles };
+    const entries = result.stdout.split("\0"), files: string[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i]; if (!entry) continue;
+      files.push(entry.slice(3));
+      if (/[RC]/.test(entry.slice(0, 2)) && entries[i + 1]) files.push(entries[++i]!);
+    }
+    const changedFiles = [...new Set(files)].filter(file => !/^(?:\.releases(?:\/|$)|\.lxp(?:\/|$)|(?:web\/)?(?:backend|frontend)\/dist(?:\/|$))/.test(file));
+    const blocker = await contributionUpdateBlocker(root, changedFiles);
+    const reason = blocker || (changedFiles.length ? "local-changes" : undefined);
+    return { ok: !reason, changedFiles, ...(reason ? { reason } : {}) };
   },
   async status(_req?: Request) {
     const executor = installationExecutor;
@@ -126,7 +135,16 @@ export const releasesService = {
     if (operation?.status === "running" && (!operation.startedAt || Date.now() - operation.startedAt < 7200000))
       throw new AppError("Ya hay una actualización en curso.", 409);
     const preflight = await this.preflight();
-    if (!preflight.ok) throw new AppError(`Conserva tus cambios locales antes de actualizar: ${preflight.changedFiles.slice(0, 12).join(", ")}`, 409);
+    if (!preflight.ok) {
+      const messages = {
+        "assistant-active": "Hay una tarea del asistente en curso. Espera a que termine antes de actualizar.",
+        "publication-pending": "El panel está enviando los cambios terminados. Espera a que confirme el envío y vuelve a actualizar.",
+        "contribution-review": "Una tarea interrumpida o un aporte bloqueado conserva cambios pendientes. Revisa Aportes automáticos y completa su recuperación antes de actualizar.",
+        "checkout-sync": "El panel está sincronizando los cambios confirmados. Vuelve a comprobar la actualización en unos instantes.",
+        "local-changes": "Hay cambios locales sin integrar. Se conservan y la actualización no se ha iniciado.",
+      };
+      throw new AppError(messages[preflight.reason!], 409);
+    }
     const script = path.join(applicationRoot(root), "scripts", "release-manager.py");
     const log = path.join(root, ".releases", "manager.log");
     const selection = branch ? `--branch ${quoteArg(branch.name)} ${quoteArg(branch.commit)}` : quoteArg(tag);

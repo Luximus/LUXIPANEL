@@ -16,7 +16,7 @@ export const releasesController = {
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, data: await projectContributors() });
   }),
-  preflight: asyncHandler(async (_req, res) => { res.json({ ok: true, data: await releasesService.preflight() }); }),
+  preflight: asyncHandler(async (_req, res) => { res.set("Cache-Control", "no-store"); res.json({ ok: true, data: await releasesService.preflight() }); }),
   status: asyncHandler(async (req: Request, res: Response) => {
     res.set("Cache-Control", "no-store");
     const base = (res.locals.authBaseUser || res.locals.user) as SessionUser | undefined;

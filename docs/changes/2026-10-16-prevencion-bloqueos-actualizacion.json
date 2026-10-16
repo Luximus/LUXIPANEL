@@ -1,0 +1,8 @@
+{
+  "title": "Prevención de bloqueos al actualizar",
+  "changes": [
+    "Las tareas interrumpidas que trabajan solas conservan una instantánea para revisar sus cambios, sin publicarlos como terminados.",
+    "El panel reconoce automáticamente los archivos ya publicados y conserva por separado los cambios locales pendientes.",
+    "Antes de actualizar, el panel distingue tareas activas, envíos pendientes y cambios que requieren revisión, y comprueba el estado actual en cada reintento."
+  ]
+}

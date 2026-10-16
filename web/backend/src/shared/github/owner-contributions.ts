@@ -44,6 +44,8 @@ export interface ContributionJob {
  notes?:PublicChangeNote[];
  /** A batch can publish only after every participant confirms success. */
  batchId?:string; completedAt?:string; succeeded?:boolean; after?:string; includedIn?:string; checkoutAligned?:boolean;
+ /** Evidence for review only; never a publishable patch or a successful outcome. */
+ interruption?:{observedAt:string;patchHash?:string};
  legacyRecovery?:{members:string[];after:string};
  overlapped?:boolean;
 }
@@ -111,7 +113,7 @@ export async function assertCoreDeveloper(user:SessionUser|undefined,cwd:string,
  if(belongsToCore && (!user || !(await githubStatus(user)).canEditCore))
   throw new ForbiddenError("La modificación directa de LUXIPANEL está reservada a Luximus. Utiliza el flujo de módulos y fixes para proponer aportes.");
 }
-let initialized:Promise<ContributionJob[]>|undefined, timer:ReturnType<typeof setInterval>|undefined, draining=false;
+let initialized:Promise<ContributionJob[]>|undefined, timer:ReturnType<typeof setInterval>|undefined, draining=false, drainAgain=false;
 let authorize:((user:SessionUser)=>Promise<SessionUser>)|undefined;
 // Serialize only bookkeeping/snapshots, never the lifetime of an assistant turn.
 // The backend owns one registry; durable job records restore signed CLI runs.
@@ -151,6 +153,11 @@ export function initializeOwnerContributions(check:(user:SessionUser)=>Promise<S
    if(!job.overlapped && !job.isolated)job.batchId??=job.id;
    activeContributions.set(job.id,job);await saveContribution(job);
   }
+  for(const job of tracked.filter(j=>j.status==="interrupted"&&!j.after)){
+   // Only an unambiguous, unchanged task boundary can be observed at startup.
+   if(tracked.some(j=>j.id!==job.id&&j.root===job.root&&j.createdAt>job.createdAt))continue;
+   await preserveInterruptedContribution(job);
+  }
   // Legacy single-writer metadata no longer controls whether a chat can run.
   await fs.rm(path.join(outbox(),"active.json"),{force:true});
   timer=setInterval(()=>void drain(),60000);timer.unref();void drain();
@@ -179,6 +186,9 @@ export async function beginOwnerContribution(user:SessionUser|undefined,conversa
  if(await fs.stat(path.join(outbox(),"maintenance.json")).catch(()=>null))
   throw new Error("Se está sincronizando el código existente. Los cambios están conservados; reintenta esta tarea al finalizar la sincronización.");
  return withContributionState(async()=>{
+  // Reconcile confirmed changes before taking the next turn's baseline. A busy
+  // task, deployment, staged edit or conflicting source still prevents alignment.
+  if(!isolated)await alignRecentPublishedContributions(root);
   const job:ContributionJob={id:randomUUID(),conversationId,root,user:{userId:user.userId,username:user.username,displayName:user.username,kind:user.kind,role:user.role,modules:user.modules},before:"",head:"",...(isolated?{isolated:true,repository:core}:{}),status:"capturing",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   try{
    for(const active of activeContributions.values()){
@@ -236,7 +246,7 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
   if(!job)return null;
   try{
    job.completedAt=new Date().toISOString();job.succeeded=success;
-   if(!success){job.status="interrupted";await saveContribution(job);await sealBatch(job.batchId);return null;}
+   if(!success){job.status="interrupted";await saveContribution(job);await preserveInterruptedContribution(job);await sealBatch(job.batchId);return null;}
    if(job.overlapped && !job.batchId){
     job.status="blocked";job.error="Hubo tareas simultáneas en el mismo repositorio. Los cambios se conservan y requieren revisión antes de publicarse.";
     await saveContribution(job);return null;
@@ -257,6 +267,55 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
 async function readContributionJobs():Promise<ContributionJob[]>{
  const rows=await fs.readdir(outbox(),{withFileTypes:true}).catch(()=>[]);
  return Promise.all(rows.filter(e=>e.isDirectory()&&/^[a-f0-9-]{36}$/.test(e.name)).map(async e=>JSON.parse(await fs.readFile(path.join(outbox(),e.name,"job.json"),"utf8")) as ContributionJob));
+}
+
+/** Preserve an interrupted single-writer delta without approving or publishing it. */
+async function preserveInterruptedContribution(job:ContributionJob):Promise<void>{
+ if(!job.before||job.overlapped||job.includedIn||job.isolated||job.after||[...activeContributions.values()].some(j=>j.id!==job.id&&j.root===job.root))return;
+ try{
+  if((await contributionGit(job.root,["branch","--show-current"])).trim()!=="developer" || (await contributionGit(job.root,["rev-parse","HEAD"])).trim()!==job.head)return;
+  const dir=path.join(outbox(),job.id),after=await captureSource(job.root,path.join(dir,"interrupted.index"));
+  await contributionGit(job.root,["update-ref",`refs/luxipanel/snapshots/${job.id}-interrupted`,after]);
+  job.after=after;job.files=(await contributionGit(job.root,["diff","--name-only","-z",job.before,after])).split("\0").filter(Boolean);
+  job.interruption={observedAt:new Date().toISOString()};
+  if(job.files.length){
+   const patch=await contributionGit(job.root,["diff","--no-ext-diff","--full-index","--binary",job.before,after]);
+   validateContributionPatch(patch);
+   await fs.writeFile(path.join(dir,"interrupted.patch"),patch,{mode:0o600});
+   job.interruption.patchHash=createHash("sha256").update(patch).digest("hex");
+   job.error="La tarea se interrumpió con cambios pendientes. Se guardó una instantánea para revisarlos y completar la tarea antes de publicar o actualizar.";
+  }
+ }catch{
+  job.error="La tarea se interrumpió y no se pudo completar su instantánea. El código local se conserva; revisa la tarea antes de publicar o actualizar.";
+ }finally{await saveContribution(job);}
+}
+
+export type ContributionUpdateBlocker="assistant-active"|"publication-pending"|"contribution-review"|"checkout-sync";
+/** Read-only diagnosis. No source is published, discarded, or reset by preflight. */
+export async function contributionUpdateBlocker(root:string,changedFiles:string[]):Promise<ContributionUpdateBlocker|undefined>{
+ if(initialized)await initialized;
+ return withContributionState(async()=>{
+  if([...activeContributions.values()].some(j=>j.root===root))return "assistant-active";
+  if(!changedFiles.length)return undefined;
+  const changed=new Set(changedFiles),jobs=(await readContributionJobs()).filter(j=>j.root===root&&!j.isolated&&!j.includedIn);
+  const head=(await contributionGit(root,["rev-parse","HEAD"])).trim();
+  let pending=false,synchronizing=false;
+  for(const job of jobs){
+   const files=job.files?.filter(f=>changed.has(f))??[];
+   if(!files.length||job.status==="empty"||job.status==="capturing")continue;
+   if(job.status==="pushed"&&job.commit){
+    try{await contributionGit(root,["merge-base","--is-ancestor",job.commit,head]);continue;}catch{/* published, not yet aligned */}
+    synchronizing=true;continue;
+   }
+   // Ignore historical interruptions whose observed edits are already in HEAD.
+   if(job.after){
+    try{if(!(await contributionGit(root,["diff","--name-only",job.after,head,"--",...files])).trim())continue;}catch{/* Missing evidence must be reviewed. */}
+   }
+   if(job.status==="pending"&&job.patchHash){pending=true;continue;}
+   if(job.status==="interrupted"||job.status==="blocked")return "contribution-review";
+  }
+  return pending?"publication-pending":synchronizing?"checkout-sync":undefined;
+ });
 }
 async function prepareContribution(job:ContributionJob,after:string):Promise<boolean>{
    const files=(await contributionGit(job.root,["diff","--name-only","-z",job.before,after])).split("\0").filter(Boolean);
@@ -415,7 +474,7 @@ export async function deliverContribution(job:ContributionJob, remoteUrl = REMOT
 }
 
 
-/** Acknowledge an already published, byte-identical checkout without touching files.
+/** Acknowledge published files without touching source or unrelated local edits.
  * Called under the capture mutex; staging, active turns and deployment locks win.
  */
 export async function alignPublishedContribution(job:ContributionJob):Promise<boolean>{
@@ -434,19 +493,30 @@ export async function alignPublishedContribution(job:ContributionJob):Promise<bo
   await contributionGit(job.root,["diff","--cached","--quiet"]);
   const changed=(await contributionGit(job.root,["diff","--name-only","-z",head,job.commit])).split("\0").filter(Boolean);
   if(changed.some(f=>!publishablePath(f)))return false;
-  const local=await captureSource(job.root,index),opts={GIT_INDEX_FILE:index};
-  await contributionGit(job.root,["read-tree",job.commit],opts);
-  const excluded=(await contributionGit(job.root,["ls-files","-z"],opts)).split("\0").filter(f=>f&&!publishablePath(f));
-  for(let i=0;i<excluded.length;i+=100)await contributionGit(job.root,["update-index","--force-remove","--",...excluded.slice(i,i+100)],opts);
-  if((await contributionGit(job.root,["write-tree"],opts)).trim()!==local)return false;
+  const local=await captureSource(job.root,index);
+  // Unfinished work outside the published delta remains dirty. Every path
+  // advanced in HEAD must match exactly, including additions and deletions.
+  for(let i=0;i<changed.length;i+=100){
+   if((await contributionGit(job.root,["diff","--name-only",local,job.commit,"--",...changed.slice(i,i+100)])).trim())return false;
+  }
   // Mixed reset only advances the same branch and index; it never writes source.
   await contributionGit(job.root,["reset","--mixed",job.commit]);
   job.checkoutAligned=true;await saveContribution(job);return true;
  }catch{return false;}finally{await fs.rm(index,{force:true});releaseBuild?.();releaseManager?.();}
 }
 
+async function alignRecentPublishedContributions(root?:string):Promise<void>{
+ const latest=(await readContributionJobs()).filter(j=>j.status==="pushed"&&!j.includedIn&&!j.isolated&&(!root||j.root===root)).sort((a,b)=>(b.pushedAt??b.updatedAt).localeCompare(a.pushedAt??a.updatedAt));
+ const aligned=new Set<string>();
+ for(const job of latest){
+  if(aligned.has(job.root))continue;
+  if(await alignPublishedContribution(job))aligned.add(job.root);
+ }
+}
+
 async function drain():Promise<void>{
- if(draining||!authorize)return;draining=true;
+ if(!authorize)return;
+ if(draining){drainAgain=true;return;}draining=true;
  let unlock:(()=>void)|undefined;
  try{
   unlock=await publisherLock();
@@ -458,7 +528,6 @@ async function drain():Promise<void>{
    if(!row.isDirectory()||!/^[a-f0-9-]{36}$/.test(row.name))continue;
    const job=JSON.parse(await fs.readFile(path.join(outbox(),row.name,"job.json"),"utf8")) as ContributionJob;
    if(job.status==="pending" && job.patchHash && !job.includedIn)ordered.push(job);
-   if(!job.includedIn && job.status==="pushed" && job.commit && (job.ci===undefined||job.ci==="pending"||job.ci==="missing") && Date.now()-(job.ciCheckedAt||0)>60000)await refreshContributionChecks(job).catch(()=>undefined);
   }
   ordered.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   for(const job of ordered){
@@ -472,12 +541,14 @@ async function drain():Promise<void>{
    }
    await syncBatchMembers(job,await readContributionJobs());
   }
-  await withContributionState(async()=>{
-   const latest=(await readContributionJobs()).filter(j=>j.status==="pushed"&&!j.includedIn&&!j.isolated).sort((a,b)=>(b.pushedAt??b.updatedAt).localeCompare(a.pushedAt??a.updatedAt));
-   const seen=new Set<string>();
-   for(const job of latest){if(seen.has(job.root))continue;seen.add(job.root);await alignPublishedContribution(job);}
-  });
- }catch{log.warn("No se pudo consultar la cola de aportes.");}finally{unlock?.();draining=false;}
+  await withContributionState(()=>alignRecentPublishedContributions());
+  // Slow or unavailable Actions must not delay delivery and local alignment.
+  const checks=(await readContributionJobs()).filter(j=>!j.includedIn&&j.status==="pushed"&&j.commit&&(j.ci===undefined||j.ci==="pending"||j.ci==="missing")&&Date.now()-(j.ciCheckedAt||0)>60000).sort((a,b)=>(a.ciCheckedAt||0)-(b.ciCheckedAt||0));
+  for(const job of checks.slice(0,3))await refreshContributionChecks(job).catch(()=>undefined);
+ }catch{log.warn("No se pudo consultar la cola de aportes.");}finally{
+  unlock?.();draining=false;
+  if(drainAgain){drainAgain=false;queueMicrotask(()=>void drain());}
+ }
 }
 
 /** Kernel lock survives backend crashes and excludes other publisher processes. */

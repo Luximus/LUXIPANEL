@@ -1,5 +1,9 @@
 const panelLayout = {
   "community": {
+    "updateAssistantActive": "Hay una tarea del asistente en curso. Espera a que termine antes de actualizar.",
+    "updatePublicationPending": "El panel está enviando los cambios terminados. Espera la confirmación y vuelve a actualizar.",
+    "updateContributionReview": "Una tarea interrumpida o un aporte bloqueado conserva cambios pendientes. Revisa Aportes automáticos y completa su recuperación antes de actualizar.",
+    "updateCheckoutSync": "El panel está sincronizando los cambios confirmados. Vuelve a comprobar la actualización en unos instantes.",
     "localChangesBlocked": "Hay cambios locales pendientes de integrar. La actualización no se inició para conservarlos.",
     "branchNotesUnavailable": "Todavía no hay una descripción pública de estas novedades.",
     "branchNotesPartial": "Algunos cambios aún no tienen notas explicativas.",

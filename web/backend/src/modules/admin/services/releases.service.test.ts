@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ exec: vi.fn(), state: vi.fn(), build: vi.fn(), branches: vi.fn(), verify: vi.fn(), details: vi.fn() }));
+const mocks = vi.hoisted(() => ({ exec: vi.fn(), state: vi.fn(), build: vi.fn(), branches: vi.fn(), verify: vi.fn(), details: vi.fn(), blocker: vi.fn() }));
+vi.mock("../../../shared/github/owner-contributions.js", () => ({ contributionUpdateBlocker: mocks.blocker }));
 vi.mock("node:fs", () => ({ readFileSync: mocks.build, existsSync: () => false }));
 vi.mock("../../../config/env.js", () => ({ env: { LUXIPANEL_INSTALL_ROOT: "/panel", LOG_LEVEL: "silent", NODE_ENV: "test" } }));
 vi.mock("../../../config/version.js", () => ({ APP_VERSION: "2.0.3" }));
@@ -8,6 +9,7 @@ vi.mock("./release-branches.service.js", () => ({ releaseBranches: mocks.branche
 const built = "a".repeat(40), head = "b".repeat(40);
 beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks();
+  mocks.blocker.mockResolvedValue(undefined);
   mocks.build.mockReturnValue(JSON.stringify({ commit: built })); mocks.state.mockResolvedValue("{}");
   mocks.exec.mockResolvedValue({ exitCode: 0, stdout: `${head}\ndeveloper\n`, stderr: "" });
   mocks.branches.mockResolvedValue({ branches: [] });
@@ -36,8 +38,21 @@ describe("installation status", () => {
   });
   it("preserves source edits while allowing runtime dist symlinks in preflight", async () => {
     const { releasesService } = await import("./releases.service.js");
-    mocks.exec.mockResolvedValue({ exitCode: 0, stdout: "?? web/backend/dist\n?? web/frontend/dist\n M web/frontend/src/source.tsx\n", stderr: "" });
-    expect(await releasesService.preflight()).toEqual({ ok: false, changedFiles: ["web/frontend/src/source.tsx"] });
+    mocks.exec.mockResolvedValue({ exitCode: 0, stdout: "?? web/backend/dist\0?? web/frontend/dist\0 M web/frontend/src/source.tsx\0", stderr: "" });
+    expect(await releasesService.preflight()).toEqual({ ok: false, changedFiles: ["web/frontend/src/source.tsx"], reason: "local-changes" });
+  });
+  it("keeps renamed paths and filenames containing newlines intact", async () => {
+    const { releasesService } = await import("./releases.service.js");
+    mocks.exec.mockResolvedValue({ exitCode: 0, stdout: "R  web/new name.ts\0web/old name.ts\0?? web/new\nfile.ts\0", stderr: "" });
+    expect((await releasesService.preflight()).changedFiles).toEqual(["web/new name.ts", "web/old name.ts", "web/new\nfile.ts"]);
+  });
+  it.each(["assistant-active", "publication-pending", "contribution-review", "checkout-sync"])("reports %s before starting an update", async reason => {
+    const { releasesService } = await import("./releases.service.js");
+    mocks.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+    mocks.blocker.mockResolvedValue(reason);mocks.verify.mockResolvedValue(undefined);mocks.details.mockResolvedValue({ installable: true });
+    expect(await releasesService.preflight()).toEqual({ ok: false, changedFiles: [], reason });
+    await expect(releasesService.start({} as never, "", { name: "developer", commit: head })).rejects.toMatchObject({ statusCode: 409 });
+    expect(mocks.exec.mock.calls.every(call => !String(call[0]).includes("nohup"))).toBe(true);
   });
 });
 

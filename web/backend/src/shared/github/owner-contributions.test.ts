@@ -101,7 +101,15 @@ describe("durable CLI contribution recovery",()=>{
   await api.finishOwnerContribution(resumed,success);
   const dir=path.join(root,"github-users/contributions",ticket!.job.id);
   if(success)expect(await fs.readFile(path.join(dir,"change.patch"),"utf8")).toContain("+export const a=2;");
-  else {expect(JSON.parse(await fs.readFile(path.join(dir,"job.json"),"utf8")).status).toBe("interrupted");await expect(fs.stat(path.join(dir,"change.patch"))).rejects.toThrow();}
+  else {
+   const saved=JSON.parse(await fs.readFile(path.join(dir,"job.json"),"utf8"));
+   expect(saved.status).toBe("interrupted");expect(saved.succeeded).toBe(false);expect(saved.patchHash).toBeUndefined();
+   expect(saved.files).toEqual(["web/src/a.ts"]);expect(saved.interruption.patchHash).toMatch(/^[a-f0-9]{64}$/);
+   expect(await fs.readFile(path.join(dir,"interrupted.patch"),"utf8")).toContain("+export const a=2;");
+   await expect(fs.stat(path.join(dir,"change.patch"))).rejects.toThrow();
+   await expect(api.retryOwnerContribution(user,saved.id)).rejects.toThrow();
+   expect(await api.contributionUpdateBlocker(root,["web/src/a.ts"])).toBe("contribution-review");
+  }
   await expect(fs.stat(lock)).rejects.toThrow();
   // Let the deliberately rejected delivery persist its safe status before cleanup.
   await new Promise(resolve=>setTimeout(resolve,30));
@@ -114,6 +122,24 @@ describe("durable CLI contribution recovery",()=>{
   expect(await api.initializeOwnerContributions(noDelivery,async()=>false)).toEqual([]);
   const saved=JSON.parse(await fs.readFile(path.join(root,"github-users/contributions",ticket!.job.id,"job.json"),"utf8"));
   expect(saved.status).toBe("interrupted");await expect(fs.stat(lock)).rejects.toThrow();
+ });
+ it("preserves an unconfirmed task's current snapshot at restart without publishing it",async()=>{
+  let api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const ticket=await api.beginOwnerContribution(user,"turn",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=7;\n");
+  vi.resetModules();api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery,async()=>false);
+  const dir=path.join(root,"github-users/contributions",ticket!.job.id),saved=JSON.parse(await fs.readFile(path.join(dir,"job.json"),"utf8"));
+  expect(saved.status).toBe("interrupted");expect(saved.succeeded).toBe(false);expect(saved.after).toMatch(/^[a-f0-9]{40}$/);
+  expect(await fs.readFile(path.join(dir,"interrupted.patch"),"utf8")).toContain("+export const a=7;");
+  expect(saved.patchHash).toBeUndefined();
+ });
+ it("blocks updating during a task even before that task changes any source",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const ticket=await api.beginOwnerContribution(user,"turn",root,"local",true);
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  expect(await api.contributionUpdateBlocker(root+"-other",[])).toBeUndefined();
+  await api.finishOwnerContribution(ticket,false);
+  expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
  });
  it("queues overlapping successful turns together, including a third joining later",async()=>{
   const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
@@ -353,17 +379,18 @@ describe("original project contributions and legacy worktree compatibility",()=>
   expect(await fs.readFile(path.join(old!.job.root,"web/src/a.ts"),"utf8")).toContain("a=9");
   await api.finishOwnerContribution(ticket,false);
  });
- it.each(["clean","unfinished","staged","busy","building"])("aligns a published checkout safely with %s state",async state=>{
+ it.each(["clean","unfinished","staged","busy","building","conflicting"])("aligns a published checkout safely with %s state",async state=>{
   const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
   const ticket=await api.beginOwnerContribution(user,"turn",seed,"local",true);
   await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=2;\n");
   await fs.writeFile(path.join(seed,"web/src/new.ts"),"export const added=true;\n");
   await api.finishOwnerContribution(ticket,true);await new Promise(resolve=>setTimeout(resolve,40));
   await api.deliverContribution(ticket!.job,remote,async u=>u);
-  const head=git(seed,"rev-parse","HEAD");
   if(state==="unfinished"||state==="staged")await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const b=9;\n");
+  if(state==="conflicting")await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=99;\n");
   if(state==="staged")git(seed,"add","web/src/b.ts");
   const active=state==="busy"?await api.beginOwnerContribution(user,"next",seed,"local",true):null;
+  const head=git(seed,"rev-parse","HEAD");
   let release:(()=>void)|undefined;
   if(state==="building"){
    await fs.mkdir(path.join(seed,".lxp"),{recursive:true});
@@ -372,16 +399,74 @@ describe("original project contributions and legacy worktree compatibility",()=>
    await new Promise<void>(resolve=>lock.stdout.once("data",()=>resolve()));release=()=>lock.stdin.end();
   }
   const index=await fs.readFile(path.join(seed,".git/index"));
-  expect(await api.alignPublishedContribution(ticket!.job)).toBe(state==="clean");
-  if(state==="clean"){
+  expect(await api.alignPublishedContribution(ticket!.job)).toBe(state==="clean"||state==="unfinished");
+  if(state==="clean"||state==="unfinished"){
    expect(git(seed,"rev-parse","HEAD").trim()).toBe(ticket!.job.commit);
-   expect(git(seed,"status","--porcelain","--","web")).toBe("");
+   expect(git(seed,"status","--porcelain","--","web").trim()).toBe(state==="unfinished"?"M web/src/b.ts":"");
   }else{
    expect(git(seed,"rev-parse","HEAD")).toBe(head);expect(await fs.readFile(path.join(seed,".git/index"))).toEqual(index);
   }
-  expect(await fs.readFile(path.join(seed,"web/src/a.ts"),"utf8")).toContain("a=2");
+  expect(await fs.readFile(path.join(seed,"web/src/a.ts"),"utf8")).toContain(state==="conflicting"?"a=99":"a=2");
   if(state==="unfinished"||state==="staged")expect(await fs.readFile(path.join(seed,"web/src/b.ts"),"utf8")).toContain("b=9");
   release?.();if(active)await api.finishOwnerContribution(active,false);
+ });
+ it("aligns confirmed source before the next task captures its baseline",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const first=await api.beginOwnerContribution(user,"first",seed,"local",true);
+  await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=2;\n");
+  await api.finishOwnerContribution(first,true);await new Promise(resolve=>setTimeout(resolve,40));
+  await api.deliverContribution(first!.job,remote,async u=>u);
+  await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const b=7;\n");
+  const next=await api.beginOwnerContribution(user,"next",seed,"local",true);
+  expect(next!.job.head).toBe(first!.job.commit);
+  expect(git(seed,"show",next!.job.before+":web/src/b.ts")).toContain("b=7");
+  await api.finishOwnerContribution(next,true);await new Promise(resolve=>setTimeout(resolve,40));
+  expect(next!.job.status).toBe("empty");
+  expect(git(seed,"status","--porcelain","--","web").trim()).toBe("M web/src/b.ts");
+ });
+ it("aligns published additions and deletions while preserving an interrupted edit",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const interrupted=await api.beginOwnerContribution(user,"old",seed,"local",true);
+  await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const b=9;\n");await api.finishOwnerContribution(interrupted,false);
+  const ticket=await api.beginOwnerContribution(user,"next",seed,"local",true);
+  await fs.unlink(path.join(seed,"web/src/a.ts"));await fs.writeFile(path.join(seed,"web/src/new.ts"),"export const added=true;\n");
+  await api.finishOwnerContribution(ticket,true);await new Promise(resolve=>setTimeout(resolve,40));
+  await api.deliverContribution(ticket!.job,remote,async u=>u);
+  expect(await api.alignPublishedContribution(ticket!.job)).toBe(true);
+  expect(git(seed,"status","--porcelain","--","web").trim()).toBe("M web/src/b.ts");
+  expect(await api.contributionUpdateBlocker(seed,["web/src/b.ts"])).toBe("contribution-review");
+  expect(interrupted!.job.succeeded).toBe(false);expect(interrupted!.job.status).toBe("interrupted");
+ });
+ it("reports queued work separately and ignores historical interruptions already integrated",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const lock=await api.publisherLock();
+  const ticket=await api.beginOwnerContribution(user,"turn",seed,"local",true);
+  await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=2;\n");
+  await api.finishOwnerContribution(ticket,true);
+  expect(await api.contributionUpdateBlocker(seed,["web/src/a.ts"])).toBe("publication-pending");
+  await api.deliverContribution(ticket!.job,remote,async u=>u);
+  expect(await api.contributionUpdateBlocker(seed,["web/src/a.ts"])).toBe("checkout-sync");
+  expect(await api.alignPublishedContribution(ticket!.job)).toBe(true);
+  ticket!.job.status="interrupted";ticket!.job.succeeded=false;delete ticket!.job.patchHash;await api.saveContribution(ticket!.job);
+  await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=3;\n");
+  expect(await api.contributionUpdateBlocker(seed,["web/src/a.ts"])).toBeUndefined();
+  lock?.();
+ });
+ it("aligns confirmed source before waiting for a slow CI service",async()=>{
+  let api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const ticket=await api.beginOwnerContribution(user,"turn",seed,"local",true);
+  await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=2;\n");
+  await api.finishOwnerContribution(ticket,true);await new Promise(resolve=>setTimeout(resolve,40));
+  await api.deliverContribution(ticket!.job,remote,async u=>u);
+  let entered!:()=>void,release!:()=>void;
+  const started=new Promise<void>(resolve=>{entered=resolve;}),waiting=new Promise<void>(resolve=>{release=resolve;});
+  vi.stubGlobal("fetch",vi.fn(async()=>{entered();await waiting;return {ok:true,json:async()=>({workflow_runs:[{head_sha:ticket!.job.commit,status:"completed",conclusion:"success",run_number:1}]})};}));
+  vi.resetModules();api=await import("./owner-contributions.js");
+  try{
+   await api.initializeOwnerContributions(async u=>u);await started;
+   expect(git(seed,"rev-parse","HEAD").trim()).toBe(ticket!.job.commit);
+   expect(git(seed,"status","--porcelain","--","web")).toBe("");
+  }finally{release();await new Promise(resolve=>setTimeout(resolve,40));}
  });
  it("recovers legacy completed work from immutable boundaries without including a later edit",async()=>{
   const api=await import("./owner-contributions.js");

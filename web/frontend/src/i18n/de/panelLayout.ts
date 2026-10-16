@@ -1,5 +1,9 @@
 const panelLayout = {
   "community": {
+    "updateAssistantActive": "Eine Assistentenaufgabe läuft. Warten Sie vor dem Update auf ihren Abschluss.",
+    "updatePublicationPending": "Das Panel sendet abgeschlossene Änderungen. Warten Sie auf die Bestätigung und versuchen Sie das Update erneut.",
+    "updateContributionReview": "Eine unterbrochene Aufgabe oder ein blockierter Beitrag enthält ausstehende Änderungen. Prüfen Sie Automatische Beiträge und schließen Sie die Wiederherstellung vor dem Update ab.",
+    "updateCheckoutSync": "Das Panel synchronisiert bestätigte Änderungen. Prüfen Sie in Kürze erneut auf Updates.",
     "localChangesBlocked": "Lokale Änderungen müssen noch integriert werden. Zum Schutz dieser Änderungen wurde das Update nicht gestartet.",
     "branchNotesUnavailable": "Eine öffentliche Beschreibung dieser Neuerungen ist noch nicht verfügbar.",
     "branchNotesPartial": "Für einige Änderungen fehlen noch erläuternde Hinweise.",
