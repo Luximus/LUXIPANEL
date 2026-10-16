@@ -88,6 +88,29 @@ try:
             raise RuntimeError('deployment_retired')
         output=json.loads(result.stdout)
         require(output['ok'],'deployment_failed')
+        static_parts=[part for part in output['result']['components'] if part.get('surface')=='static']
+        if static_parts:
+            target=file.parent/'static'
+            target.mkdir(mode=0o700,exist_ok=True)
+            os.chown(target,service.pw_uid,service.pw_gid)
+            for part in static_parts:
+                name=part['name']; meta=part['staticArchive']
+                require(re.fullmatch(r'[a-z][a-z0-9-]{0,29}',name),'invalid_static_component')
+                require(re.fullmatch(r'[a-f0-9]{64}',meta['sha256']),'invalid_static_digest')
+                require(isinstance(meta['bytes'],int) and 0<meta['bytes']<=33554432,'invalid_static_size')
+                source=regular(pathlib.Path(user.pw_dir)/'.luxisoft/deployments'/task['projectId'].replace('-','')/'versions'/task['versionId']/('static-'+name+'-'+task['requestId']+'.zip'),[user.pw_uid])
+                fd=os.open(source,os.O_RDONLY|os.O_NOFOLLOW)
+                try:
+                    info=os.fstat(fd)
+                    require(stat.S_ISREG(info.st_mode) and info.st_uid==user.pw_uid and info.st_size==meta['bytes'],'invalid_static_source')
+                    with os.fdopen(fd,'rb',closefd=False) as stream: data=stream.read(33554433)
+                    require(len(data)==meta['bytes'] and hashlib.sha256(data).hexdigest()==meta['sha256'],'static_digest_mismatch')
+                finally: os.close(fd)
+                destination=target/(name+'.zip')
+                temporary=target/(name+'.tmp')
+                temporary.write_bytes(data);os.chmod(temporary,0o600);os.chown(temporary,service.pw_uid,service.pw_gid)
+                os.replace(temporary,destination)
+                source.unlink()
         save({'status':'finished','result':output['result'],'logs':output.get('logs','')})
     else:
         payload={'operation':operation,'home':user.pw_dir,'username':user.pw_name,'projectId':task['projectId'],'requestId':task.get('id','')}

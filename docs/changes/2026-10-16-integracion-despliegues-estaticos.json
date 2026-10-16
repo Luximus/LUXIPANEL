@@ -1,0 +1,7 @@
+{
+  "title": "Despliegues estáticos completos en desarrollo",
+  "changes": [
+    "Se incorpora la preparación y entrega de archivos estáticos para que las vistas previas puedan recibir el sitio generado.",
+    "Los archivos entregados se comprueban por tamaño e integridad, conservando las mejoras recientes del panel."
+  ]
+}

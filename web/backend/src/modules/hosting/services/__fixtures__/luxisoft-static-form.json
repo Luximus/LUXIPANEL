@@ -1,0 +1,41 @@
+{
+  "sourceDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "manifest": {
+    "schemaVersion": 1,
+    "components": [
+      {
+        "name": "forms",
+        "context": ".",
+        "surface": "static",
+        "port": 8080,
+        "healthPath": "/",
+        "volumes": [],
+        "stack": "vite",
+        "recipe": "FROM docker.io/library/node:22-bookworm-slim AS build\nWORKDIR /app\nCOPY . .\nRUN npm install\nRUN npm run build\nFROM docker.io/library/caddy:2-alpine\nCOPY --from=build /app/dist/ /srv/public/\nCOPY --from=build /app/.luxisoft-runtime/Caddyfile /etc/caddy/Caddyfile\nEXPOSE 8080\n",
+        "generatedFiles": {
+          ".luxisoft-runtime/Caddyfile": ":8080 {\n root * /srv/public\n try_files {path} /index.html\n file_server\n}\n"
+        }
+      },
+      {
+        "name": "forms-api",
+        "context": ".",
+        "surface": "http",
+        "port": 8080,
+        "start": "node api-server.mjs",
+        "healthPath": "/api/health",
+        "routePrefix": "/api",
+        "volumes": [],
+        "stack": "vite",
+        "recipe": "FROM docker.io/library/node:22-bookworm-slim AS build\nWORKDIR /app\nCOPY . .\nRUN npm install\nRUN npm run build\nENV PORT=8080 HOST=0.0.0.0 NODE_ENV=production\nEXPOSE 8080\nCMD [\"sh\",\"-lc\",\"node api-server.mjs\"]\n",
+        "generatedFiles": {}
+      }
+    ],
+    "resources": [
+      {
+        "name": "postgres",
+        "engine": "postgres"
+      }
+    ],
+    "digest": "9ed00c65f4d0aa86a9958051e265582b6e6b53800f464d9f8856a7abf1db7ed3"
+  }
+}
