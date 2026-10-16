@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ exec: vi.fn(), state: vi.fn(), build: vi.fn(), branches: vi.fn(), verify: vi.fn(), details: vi.fn() }));
-vi.mock("node:fs", () => ({ readFileSync: mocks.build }));
+vi.mock("node:fs", () => ({ readFileSync: mocks.build, existsSync: () => false }));
 vi.mock("../../../config/env.js", () => ({ env: { LUXIPANEL_INSTALL_ROOT: "/panel", LOG_LEVEL: "silent", NODE_ENV: "test" } }));
 vi.mock("../../../config/version.js", () => ({ APP_VERSION: "2.0.3" }));
 vi.mock("../../../shared/executor/index.js", () => ({ localExecutor: { exec: mocks.exec, readFile: mocks.state }, quoteArg: (s: string) => `'${s}'` }));
@@ -39,4 +39,23 @@ describe("installation status", () => {
     mocks.exec.mockResolvedValue({ exitCode: 0, stdout: "?? web/backend/dist\n?? web/frontend/dist\n M web/frontend/src/source.tsx\n", stderr: "" });
     expect(await releasesService.preflight()).toEqual({ ok: false, changedFiles: ["web/frontend/src/source.tsx"] });
   });
+});
+
+it("validates branch updates against the installed revision before launching the installer", async () => {
+  mocks.state.mockResolvedValue(JSON.stringify({ installed: { commit: built, branch: "developer" } }));
+  mocks.verify.mockRejectedValueOnce(new Error("La rama no conserva todas las mejoras instaladas"));
+  const { releasesService } = await import("./releases.service.js");
+  await expect(releasesService.start({} as never, "", { name: "main", commit: head })).rejects.toThrow("no conserva");
+  expect(mocks.verify).toHaveBeenCalledExactlyOnceWith("main", head, built);
+  expect(mocks.exec).not.toHaveBeenCalled();
+  expect(mocks.details).not.toHaveBeenCalled();
+});
+it("uses the running artifact when installation metadata is absent", async () => {
+  mocks.verify.mockResolvedValue(undefined);
+  mocks.details.mockResolvedValue({ installable: true });
+  mocks.exec.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+  const { releasesService } = await import("./releases.service.js");
+  await releasesService.start({} as never, "", { name: "developer", commit: head });
+  expect(mocks.verify).toHaveBeenCalledExactlyOnceWith("developer", head, built);
+  expect(mocks.exec.mock.calls.at(-1)?.[0]).toContain("--branch");
 });

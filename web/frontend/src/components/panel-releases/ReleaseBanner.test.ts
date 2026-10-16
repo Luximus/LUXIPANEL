@@ -10,7 +10,7 @@ import { readPanelReleasePreflight, readPanelBranch, installPanelBranch, install
 
 let root: Root; let container: HTMLDivElement;
 const latest = { tag: "v2.0.4", name: "Release", notes: "Fixes", publishedAt: null };
-const status: PanelReleaseStatus = { installed: { tag: "v2.0.3" }, currentVersion: "v2.0.3", latest, releases: [latest, { ...latest, tag: "v2.0.3" }], updateAvailable: true, operation: null, previous: null, canInstall: true };
+const status: PanelReleaseStatus = { comparisonKnown: true, installed: { tag: "v2.0.3" }, currentVersion: "v2.0.3", latest, releases: [latest, { ...latest, tag: "v2.0.3" }], updateAvailable: true, operation: null, previous: null, canInstall: true };
 const render = async (isAdmin = true) => { await act(async () => root.render(createElement(ReleaseBanner, { isAdmin, labels: labels.community, locale: "es" }))); };
 const open = async () => { await act(async () => container.querySelector("button")!.click()); };
 const installButton = () => Array.from(container.querySelectorAll("dialog button")).find(button => button.textContent === "Actualizar a v2.0.4" || button.textContent === labels.community.updating) as HTMLButtonElement | undefined;
@@ -232,4 +232,36 @@ it("discards a completed preflight if the selected server changed", async () => 
   await act(async () => finish({ ok: true }));
   expect(installPanelBranch).not.toHaveBeenCalled();
   expect(container.querySelector("dialog[open]")).toBeNull();
+});
+
+it.each([
+  { comparisonKnown: true, updateAvailable: false, ahead: 0 },
+  { comparisonKnown: true, updateAvailable: true, ahead: 0 },
+  { comparisonKnown: false, updateAvailable: true, ahead: 3 },
+  { comparisonKnown: undefined, updateAvailable: true, ahead: 3 },
+])("does not offer an update without verified new changes: %j", async selection => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, comparisonKnown: selection.comparisonKnown, branches: [{ ...branch, ...selection }] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render(); await open(); await selectBranch();
+  expect(branchButton()).toBeUndefined();
+  expect(installPanelBranch).not.toHaveBeenCalled();
+});
+it("never offers old main as an update from developer", async () => {
+  const main = { ...branch, name: "main", ahead: 0, updateAvailable: false };
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, installed: { branch: "developer", commit: "b".repeat(40) }, branches: [main] });
+  vi.mocked(readPanelBranch).mockResolvedValue({ ...branchDetails, ...main });
+  await render(); await open(); await selectBranch("main");
+  expect(container.querySelector(".lxp-branch-version-row button")).toBeNull();
+  expect(container.textContent).toContain(labels.community.noBranchChanges);
+  expect(installPanelBranch).not.toHaveBeenCalled();
+});
+it("removes the update action when a refreshed comparison has no pending changes", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render(); await open(); await selectBranch();
+  expect(branchButton()).toBeDefined();
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [{ ...branch, ahead: 0, updateAvailable: false }] });
+  await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+  expect(branchButton()).toBeUndefined();
+  expect(installPanelBranch).not.toHaveBeenCalled();
 });

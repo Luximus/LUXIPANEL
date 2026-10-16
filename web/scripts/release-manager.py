@@ -247,6 +247,14 @@ def main(root, tag, branch=None, expected_commit=None):
                 raise RuntimeError("Espacio insuficiente: se requieren al menos 5 GiB libres")
             old_branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=root, text=True).strip()
             commit = fetch_revision(root, tag, branch, expected_commit)
+            if branch:
+                installed_commit = prior.get("commit") if isinstance(prior, dict) else old_head
+                if not isinstance(installed_commit, str) or not re.fullmatch(r"[a-f0-9]{40}", installed_commit):
+                    raise RuntimeError("No se pudo verificar la revisión instalada; se conserva la instalación")
+                if installed_commit == commit:
+                    raise RuntimeError("Esta revisión ya está instalada; no hay cambios pendientes")
+                if subprocess.run(["git", "merge-base", "--is-ancestor", installed_commit, commit], cwd=root, check=False).returncode != 0:
+                    raise RuntimeError("La rama no conserva todas las mejoras instaladas; se mantiene la instalación actual")
             # Never drop local-only history. A recorded installed revision, or a
             # commit contained in its official upstream branch, is recoverable.
             if not isinstance(prior, dict) or prior.get("commit") != old_head:

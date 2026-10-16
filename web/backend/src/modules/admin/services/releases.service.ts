@@ -110,8 +110,11 @@ export const releasesService = {
 
   async start(_req: Request, tag: string, branch?: { name: string; commit: string }) {
     const executor = installationExecutor;
+    const root = installationRoot();
+    const state = await readState(executor, root);
     if (branch) {
-      await verifyBranchRevision(branch.name, branch.commit);
+      const installed = state.installed as { commit?: string } | undefined;
+      await verifyBranchRevision(branch.name, branch.commit, installed?.commit || runningCommit);
       const details = await releaseBranchDetails(branch.name, branch.commit);
       if (!details.installable) throw new ValidationError("Esta rama no contiene una instalación completa del panel.");
     } else {
@@ -119,8 +122,6 @@ export const releasesService = {
       const catalog = await githubReleases();
       if (!catalog.releases.some(release => release.tag === tag)) throw new ValidationError("La versión no figura entre las Releases publicadas de GitHub.");
     }
-    const root = installationRoot();
-    const state = await readState(executor, root);
     const operation = state.operation as { status?: string; startedAt?: number } | undefined;
     if (operation?.status === "running" && (!operation.startedAt || Date.now() - operation.startedAt < 7200000))
       throw new AppError("Ya hay una actualización en curso.", 409);

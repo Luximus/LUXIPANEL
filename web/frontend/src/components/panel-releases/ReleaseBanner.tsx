@@ -46,7 +46,7 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
   };
   const updateBranch = async (branch: string, commit: string) => {
     const row = status?.branches?.find(item => item.name === branch && item.commit === commit);
-    if (installing.current || !isAdmin || !status?.canInstall || !row || row.error || status.branchesError || catalogError || status.operation?.status === "running") return;
+    if (installing.current || !isAdmin || !status?.canInstall || status.comparisonKnown !== true || !row || !row.updateAvailable || row.ahead <= 0 || row.error || status.branchesError || catalogError || status.operation?.status === "running") return;
     if (status.installed?.commit === commit) return;
     const current = generation.current;
     installing.current = true; setBusy(true); setError("");

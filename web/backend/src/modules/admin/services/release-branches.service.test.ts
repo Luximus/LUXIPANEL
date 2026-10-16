@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals());
 it("compares exact branch heads and does not mark an older branch as new", async () => {
   vi.mocked(publicGithub).mockImplementation(async route => route.includes("/branches?") ? [
     { name: "developer", commit: { sha } }, { name: "main", commit: { sha: base } }, { name: "untrusted", commit: { sha } },
-  ] : { ahead_by: 3 });
+  ] : { ahead_by: 3, behind_by: 0 });
   const result = await releaseBranches(base);
   expect(result.branches).toEqual([{ name: "main", commit: base, ahead: 0, updateAvailable: false }, { name: "developer", commit: sha, ahead: 3, updateAvailable: true }]);
   expect(publicGithub).toHaveBeenCalledWith(`/repos/Luxisoft/LUXIPANEL/compare/${base}...${sha}`);
@@ -26,12 +26,12 @@ it("loads history for the selected SHA and detects component-only branches", asy
 });
 it.each([["../main", sha], ["developer", "--upload-pack=bad"], ["developer;id", sha]])("rejects invalid branch selections before network access", async (branch, commit) => {
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
-  await expect(verifyBranchRevision(branch, commit)).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
+  await expect(verifyBranchRevision(branch, commit, base)).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
 });
 it("revalidates mutations without the catalog cache and rejects an advanced branch", async () => {
-  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ commit: { sha: base } }) })); vi.stubGlobal("fetch", fetch);
-  await expect(verifyBranchRevision("developer", sha)).rejects.toThrow("más reciente"); expect(publicGithub).not.toHaveBeenCalled();
-  await expect(verifyBranchRevision("developer", base)).resolves.toBeUndefined();
+  const fetch = vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("/compare/") ? { ahead_by: 1, behind_by: 0 } : { commit: { sha: base } } })); vi.stubGlobal("fetch", fetch);
+  await expect(verifyBranchRevision("developer", sha, base)).rejects.toThrow("más reciente"); expect(publicGithub).not.toHaveBeenCalled();
+  await expect(verifyBranchRevision("developer", base, sha)).resolves.toBeUndefined();
 });
 
 it("does not label an unavailable contents check as a component-only branch", async () => {
@@ -69,4 +69,28 @@ it("uses reviewed historical descriptions only for exact commits in the selected
   expect(result.notes).toHaveLength(1);
   expect(result.notes[0]?.title).toBe("Avisos centrados en las actualizaciones");
   expect(result.notesIncomplete).toBe(false);
+});
+
+it.each([{ ahead_by: 0, behind_by: 4 }, { ahead_by: 2, behind_by: 4 }])("does not advertise a backward or divergent branch: %j", async comparison => {
+  vi.mocked(publicGithub).mockImplementation(async route => route.includes("/branches?") ? [{ name: "main", commit: { sha } }] : comparison);
+  const result = await releaseBranches(base);
+  expect(result.branches[0]?.updateAvailable).toBe(false);
+});
+it.each([
+  { ahead_by: 0, behind_by: 4 }, { ahead_by: 2, behind_by: 4 },
+  { ahead_by: 0, behind_by: 0 }, { ahead_by: 2 }, { ahead_by: -1, behind_by: 0 },
+])("blocks unsafe or unverifiable installation without cached comparisons: %j", async comparison => {
+  const fetch = vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("/compare/") ? comparison : { commit: { sha } } }));
+  vi.stubGlobal("fetch", fetch);
+  await expect(verifyBranchRevision("main", sha, base)).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(2); expect(publicGithub).not.toHaveBeenCalled();
+});
+it.each([undefined, "unknown", sha])("blocks an unknown or already installed revision: %s", async installed => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  await expect(verifyBranchRevision("developer", sha, installed)).rejects.toThrow();
+  expect(fetch).not.toHaveBeenCalled();
+});
+it("does not install when the live comparison cannot be reached", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ commit: { sha } }) }).mockRejectedValueOnce(new Error("offline")));
+  await expect(verifyBranchRevision("developer", sha, base)).rejects.toThrow("no se ha iniciado");
 });

@@ -22,7 +22,7 @@ export default function BranchChanges({ branch, locale, status, labels: L, canIn
         {installedVersion && <span className="lxp-community-installed"><i className="ti ti-circle-check" aria-hidden="true" />{L.installed}<code>{versionTag(installedVersion)}</code></span>}
         {branch.updateAvailable && !unavailable && !branch.error && <span className="lxp-community-installed">{L.newBadge}</span>}
       </div>
-      {ready?.installable && canInstall && onInstall && !current && !unavailable && !error && !branch.error && <button type="button" className="lxp-community-action lxp-community-action--primary" disabled={busy || status.operation?.status === "running"} onClick={() => void onInstall(branch.name, branch.commit)}><i className="ti ti-download" aria-hidden="true" /><span>{busy || status.operation?.status === "running" ? L.updating : L.branchUpdate.replace("{branch}", branch.name)}</span></button>}
+      {ready?.installable && canInstall && onInstall && status.comparisonKnown === true && branch.updateAvailable && branch.ahead > 0 && !current && !unavailable && !error && !branch.error && <button type="button" className="lxp-community-action lxp-community-action--primary" disabled={busy || status.operation?.status === "running"} onClick={() => void onInstall(branch.name, branch.commit)}><i className="ti ti-download" aria-hidden="true" /><span>{busy || status.operation?.status === "running" ? L.updating : L.branchUpdate.replace("{branch}", branch.name)}</span></button>}
     </div>
     <p className="text-sm text-muted-foreground">{L.branchPreview}</p>
     {current && <p role="status" className="text-sm">{L.branchCurrent}</p>}

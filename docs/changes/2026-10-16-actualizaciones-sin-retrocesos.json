@@ -1,0 +1,7 @@
+{
+  "title": "Actualizaciones de ramas sin retrocesos",
+  "changes": [
+    "El botón Actualizar aparece únicamente cuando hay cambios nuevos verificados que conservan las mejoras instaladas.",
+    "Las ramas antiguas y las que necesitan integrar cambios ya no pueden sustituir la instalación mediante el botón Actualizar, incluso desde una pestaña desactualizada."
+  ]
+}

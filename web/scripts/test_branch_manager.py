@@ -10,6 +10,24 @@ class BranchTests(fixtures.ReleaseTests):
   directory=self.root/'.releases'/('branch-'+self.commit)
   shutil.copytree(self.release,directory)
   return directory
+ def test_old_main_cannot_replace_installed_developer(self):
+  self.branch_fixture()
+  git(self.root,'switch','developer')
+  (self.root/'source').write_text('developer improvement');git(self.root,'add','source');git(self.root,'commit','-m','developer improvement')
+  installed=git(self.root,'rev-parse','HEAD')
+  (self.root/'.releases/state.json').write_text(json.dumps({'installed':{'branch':'developer','commit':installed,'path':str(self.root)}}))
+  with patch.object(manager,'activate') as activate:
+   with self.assertRaisesRegex(RuntimeError,'no conserva'):manager.main(self.root,'','main',self.commit)
+   activate.assert_not_called()
+  self.assertEqual(git(self.root,'branch','--show-current'),'developer')
+  self.assertEqual(git(self.root,'rev-parse','HEAD'),installed)
+  self.assertEqual((self.root/'frontend/dist/asset').read_text(),'old')
+ def test_same_revision_does_not_reinstall(self):
+  self.branch_fixture()
+  (self.root/'.releases/state.json').write_text(json.dumps({'installed':{'branch':'developer','commit':self.commit,'path':str(self.root)}}))
+  with patch.object(manager,'activate') as activate:
+   with self.assertRaisesRegex(RuntimeError,'ya está instalada'):manager.main(self.root,'','developer',self.commit)
+   activate.assert_not_called()
  def test_validates_branch_and_sha_without_touching_git(self):
   for branch,sha in [('developer;id',self.commit),('../main',self.commit),('developer','HEAD')]:
    with self.assertRaises(ValueError):manager.main(self.root,'',branch,sha)
@@ -59,10 +77,10 @@ class BranchTests(fixtures.ReleaseTests):
   self.assertEqual(git(self.root,'branch','--show-current'),'main')
   self.assertEqual(git(self.root,'rev-parse','HEAD'),self.old)
   self.assertEqual((self.root/'frontend/dist/asset').read_text(),'old')
- def test_reinstall_keeps_current_modules(self):
+ def test_blocked_reinstall_keeps_current_modules(self):
   self.branch_fixture();module=self.root/'backend/dist/modules/community/installed/example-module';module.mkdir(parents=True);(module/'backend.js').write_text('approved')
   with patch.object(manager,'activate'):
    manager.main(self.root,'','developer',self.commit)
-   manager.main(self.root,'','developer',self.commit)
+   with self.assertRaisesRegex(RuntimeError,'ya está instalada'):manager.main(self.root,'','developer',self.commit)
   self.assertEqual((self.root/'backend/dist/modules/community/installed/example-module/backend.js').read_text(),'approved')
 if __name__=='__main__':unittest.main()
