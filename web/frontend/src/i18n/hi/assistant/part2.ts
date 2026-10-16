@@ -19,8 +19,8 @@ const assistantPart2 = {
   },
   "voiceSettings": {
     "title": "आवाज़ (ऑडियो)",
-    "description": "असिस्टेंट से बात करें (यह टेक्स्ट में बदल दी जाती है) और उसके उत्तर आवाज़ में सुनें। पहले से कॉन्फ़िगर की गई अपनी OpenAI या Gemini API key का उपयोग करें।",
-    "missingCapabilities": "ऑडियो सक्षम करने के लिए प्रदाता कार्ड में OpenAI (ट्रांसक्रिप्शन + आवाज़) या Gemini (केवल ट्रांसक्रिप्शन) की API key कॉन्फ़िगर करें।",
+    "description": "OpenAI से सहायक से बात करें और उसके जवाब सुनें।",
+    "missingCapabilities": "ऑडियो चालू करने के लिए Codex प्रदाता में OpenAI API कुंजी कॉन्फ़िगर करें।",
     "inputLabel": "इनपुट (STT)",
     "outputLabel": "आउटपुट (TTS)",
     "notAvailable": "उपलब्ध नहीं",

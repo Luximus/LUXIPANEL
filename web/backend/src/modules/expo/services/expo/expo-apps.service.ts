@@ -93,6 +93,20 @@ export function deduplicateExpoProjects(projects: ExpoProject[]): ExpoProject[] 
   return [...byProjectId.values(), ...unlinked];
 }
 
+/** An opt-out marker excludes archived trees without deleting review work. */
+export function projectScanCommand(roots: string[], ignoredRoots: string[] = [], markersOnly = false): string {
+  const rootsArg = roots.map(quoteArg).join(" ");
+  // Escape find's pattern syntax as well as shell quoting (paths can contain []).
+  const ignored = ignoredRoots.map(root => `-o -path ${quoteArg(root.replace(/([\\*?\[\]])/g, "\\$1"))} `).join("");
+  const candidates = markersOnly
+    ? "-name .luxipanel-expo-ignore"
+    : "'(' -name app.json -o -name app.config.js -o -name app.config.ts -o -name eas.json ')'";
+  return `find ${rootsArg} -maxdepth 5 ` +
+    `-type d '(' -name node_modules -o -name .git -o -name .obsidian -o -name .expo -o -name .Trash ` +
+    `${ignored}')' -prune -o ${candidates} -print ` +
+    `2>/dev/null | head -n 400`;
+}
+
 export const expoAppsService = {
   /** Validate the stored token via `eas whoami` on the connected server. */
   async whoami(executor: Executor): Promise<{ loggedIn: boolean; username: string | null }> {
@@ -133,14 +147,12 @@ export const expoAppsService = {
             ].filter((r): r is string => !!r),
           ),
         );
-    const rootsArg = roots.map((r) => quoteArg(r)).join(" ");
-    // -maxdepth right after the paths (it's a global option). Markers include
-    // eas.json so EAS-linked projects without a static app.json are still seen.
-    const cmd =
-      `find ${rootsArg} -maxdepth 5 ` +
-      `\\( -name node_modules -o -name .git -o -name .obsidian -o -name .expo -o -name .Trash \\) -prune -o ` +
-      `\\( -name app.json -o -name app.config.js -o -name app.config.ts -o -name eas.json \\) -print ` +
-      `2>/dev/null | head -n 400`;
+    // Two native find passes avoid spawning a `test` process for every directory.
+    const markers = await sh(executor, projectScanCommand(roots, [], true), SCAN_TIMEOUT_MS).catch(() => null);
+    const ignoredRoots = (markers?.stdout ?? "").split("\n").map(line => line.trim())
+      .filter(line => line.endsWith("/.luxipanel-expo-ignore"))
+      .map(line => line.slice(0, -"/.luxipanel-expo-ignore".length));
+    const cmd = projectScanCommand(roots, ignoredRoots);
     const result = await sh(executor, cmd, SCAN_TIMEOUT_MS).catch(() => null);
     const files = (result?.stdout ?? "")
       .split("\n")

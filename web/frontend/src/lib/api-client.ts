@@ -494,6 +494,7 @@ async function request<T = unknown>(
     // typed AppError codes, e.g. `MAIL_CREDENTIAL_INVALID`) must NOT replace
     // the backend's human message with the raw token — keep the message and
     // expose the code alongside so consumers can branch on it.
+    if (code === "GITHUB_CONNECTION_REQUIRED" && typeof window !== "undefined" && window.location.pathname !== "/connect-github") window.location.replace("/connect-github");
     const translatable = !!code && isKnownErrorCode(code);
     if (translatable || !res.ok || json.ok === false) await errorLocaleReady;
     // A failed response may wait for translations while the user switches.
@@ -734,6 +735,7 @@ export async function uploadFile(
       : typeof rawError === "string" && isKnownErrorCode(rawError)
         ? rawError
         : undefined;
+    if (code === "GITHUB_CONNECTION_REQUIRED" && typeof window !== "undefined" && window.location.pathname !== "/connect-github") window.location.replace("/connect-github");
     const translatable = !!code && isKnownErrorCode(code);
     if (translatable || !res.ok || json.ok === false) await errorLocaleReady;
     if (resolveTargetScope() !== requestScope) {

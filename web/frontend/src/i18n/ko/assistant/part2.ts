@@ -19,8 +19,8 @@ const assistantPart2 = {
   },
   "voiceSettings": {
     "title": "음성(오디오)",
-    "description": "어시스턴트에게 말하면(텍스트로 변환됩니다) 응답을 음성으로 들을 수 있습니다. 이미 구성해 둔 OpenAI 또는 Gemini의 API key를 사용합니다.",
-    "missingCapabilities": "오디오를 사용하려면 공급자 카드에서 OpenAI(음성 인식 + 음성 출력) 또는 Gemini(음성 인식 전용)의 API key를 구성하세요.",
+    "description": "OpenAI로 어시스턴트에게 말하고 답변을 음성으로 들으세요.",
+    "missingCapabilities": "오디오를 사용하려면 Codex 제공자에 OpenAI API 키를 설정하세요.",
     "inputLabel": "입력 (STT)",
     "outputLabel": "출력 (TTS)",
     "notAvailable": "사용 불가",

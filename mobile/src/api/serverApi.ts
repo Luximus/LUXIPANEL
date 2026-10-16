@@ -234,7 +234,7 @@ export const GATEWAY_GET_TTL_MS = 20_000;
  *  - `/api/monitor/*` → stat cards en vivo (MonitorScreen sondea cada 8 s).
  *  - `/api/notifications*` → campana: debe reflejar lo recién llegado/leído.
  */
-const LIVE_GET = /^\/api\/(jobs|monitor|notifications|chat|preferences|me)\b/;
+const LIVE_GET = /^\/api\/(jobs|monitor|notifications|chat|preferences|me|session|auth)\b/;
 
 /** ¿Este GET admite caché por TTL? (expuesto para los tests). */
 export function isCacheableGet(method: HttpMethod, path: string): boolean {
@@ -332,6 +332,7 @@ async function rawServerCall<T>(
       : await directRequest<T>(direct, method, path, body, false, _opts?.timeoutMs);
     if (directIdentityRevisions.get(panelId) !== identity) return {ok:false, status:409, code:"DIRECT_AUTH_REQUIRED"};
     if (method === "GET" && resourceForPath(path)) result.liveResource = {serverId:panelId, resource:resourceForPath(path)};
+    if (result.code === "GITHUB_CONNECTION_REQUIRED") for (const listener of githubRequiredListeners) listener(panelId);
     if (!result.ok) gatewayCache.invalidate(`${panelId}|${getDirectSessionRevision(panelId)}|${path}`);
     return result;
   }
@@ -645,3 +646,6 @@ export function invalidateServerData(serverId: string, resources?: string[]) {
   versionedReads.invalidate(key => { const parts = JSON.parse(key) as unknown[]; return parts[0] === serverId && (!resources || Object.entries(dataResources).some(([path, resource]) => resources.includes(resource) && String(parts[4]).startsWith(path))); });
   gatewayCache.invalidateWhere(key => key.startsWith(`${serverId}|`) && (!resources || Object.entries(dataResources).some(([path, resource]) => resources.includes(resource) && key.includes(path))));
 }
+
+const githubRequiredListeners = new Set<(serverId:string)=>void>();
+export function onGithubRequired(fn:(serverId:string)=>void):()=>void { githubRequiredListeners.add(fn);return ()=>{githubRequiredListeners.delete(fn);}; }

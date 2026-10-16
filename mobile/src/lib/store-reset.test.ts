@@ -7,6 +7,8 @@
 // curso (higiene entre cuentas). API y nativo mockeados; los stores son reales.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("react-native", () => ({ AppState: { currentState: "active" }, Platform: { OS: "ios", Version: 18 }, PermissionsAndroid: {} }));
+
 vi.mock("../api/client", () => ({
   getSshKeys: vi.fn(async () => []),
   getTickets: vi.fn(async () => []),

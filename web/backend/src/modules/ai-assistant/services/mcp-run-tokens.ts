@@ -20,6 +20,9 @@ export const CROSS_MCP_TOKEN_TTL_MS = 6 * 60 * 60 * 1000; // 6h — covers long 
  *  full `SessionUser` (per-run mints) and the repair endpoint's
  *  `McpTokenSession` (structurally identical). */
 export interface McpIdentitySession {
+  direct?: boolean;
+  githubIdentityDirect?: boolean;
+  githubIdentityTargetId?: string;
   userId?: number;
   username?: string;
   displayName?: string;
@@ -43,6 +46,8 @@ export interface McpIdentitySession {
  */
 export function mcpTokenIdentityClaims(session: McpIdentitySession): TokenPayload {
   return {
+    githubIdentityDirect: session.githubIdentityDirect ?? !!session.direct,
+    githubIdentityTargetId: session.githubIdentityTargetId ?? session.targetId,
     userId: session.userId ?? 0,
     username: session.username ?? "",
     displayName: session.displayName ?? "",

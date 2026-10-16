@@ -79,6 +79,7 @@ export const conversationsRepository = {
       cursor?: string;
       paged?: boolean;
       includeSummary?: boolean;
+      summaryScope?: "filtered";
       limit?: number;
       offset?: number;
     } = {},
@@ -128,11 +129,6 @@ export const conversationsRepository = {
       items = items.filter(c => ids.has(c.projectId ?? "none"));
     }
     const summary = opts.includeSummary ? { projects: {} as Record<string, number>, agents: {} as Record<string, number> } : undefined;
-    if (summary) for (const c of all) {
-      const project = c.projectId ?? "none", agent = c.agentId ?? "none";
-      summary.projects[project] = (summary.projects[project] ?? 0) + 1;
-      summary.agents[agent] = (summary.agents[agent] ?? 0) + 1;
-    }
     const q = foldSearchText((opts.q ?? "").trim().replace(/\s+/g, " ").slice(0, 160));
     if (q) {
       const inMetadata = (c: ConversationMeta) =>
@@ -144,6 +140,13 @@ export const conversationsRepository = {
           const searchMatch = transcriptMatches.get(String(c.id));
           return searchMatch ? { ...c, searchMatch } : c;
         });
+    }
+    // Existing clients keep global counts; project teams request counts for
+    // the same scope and search as their rows, before pagination.
+    if (summary) for (const c of opts.summaryScope === "filtered" ? items : all) {
+      const project = c.projectId ?? "none", agent = c.agentId ?? "none";
+      summary.projects[project] = (summary.projects[project] ?? 0) + 1;
+      summary.agents[agent] = (summary.agents[agent] ?? 0) + 1;
     }
     // Transcript indexing is demand-driven by a non-empty search.
     const searchStatus = q && opts.paged ? conversationSearchStatus(executor, all) : undefined;
@@ -256,7 +259,9 @@ export const conversationsRepository = {
       }
     }
     if (Object.keys(update).length === 0) return getMetaAny(executor, id);
-    return store.update(id, update, { touch: false });
+    const saved = await store.update(id, update, { touch: false });
+    if (saved) await embeddedMetaStore(executor, id, scope).set(META_DOC_ID, embeddedFromMeta(saved));
+    return saved;
   },
 
   /** Explicit project deletion/move, unlike patchRuntime's turn-safety guard. */

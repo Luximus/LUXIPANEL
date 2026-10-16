@@ -5,6 +5,7 @@
  */
 
 import type { Request, Response } from "express";
+import { githubStatus } from "../../../shared/github/user-connection.js";
 import { tokenService, type TokenPayload } from "../services/token.service.js";
 import { authConfig } from "../../../config/auth.js";
 import { extractToken } from "../middlewares/session.middleware.js";
@@ -60,6 +61,7 @@ export const sessionController = {
       ok: true,
       user: {
         userId: user.userId,
+        github: await githubStatus(res.locals.authBaseUser ?? user),
         username: user.username,
         displayName: user.displayName,
         role: user.role,
@@ -117,7 +119,10 @@ export const sessionController = {
     // matches the original `!== undefined` chain exactly.
     const targetId = bridgedSession?.targetId ?? user.targetId;
     const targetName = bridgedSession?.targetName ?? user.targetName;
+    const githubIdentity = res.locals.authBaseUser ?? user;
     const payload: TokenPayload = {
+      githubIdentityDirect: githubIdentity.githubIdentityDirect ?? !!githubIdentity.direct,
+      githubIdentityTargetId: githubIdentity.githubIdentityTargetId ?? githubIdentity.targetId,
       userId: user.userId,
       username: user.username,
       displayName: user.displayName,

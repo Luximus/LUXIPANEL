@@ -5,10 +5,13 @@
  * ChatPane. JSX extracted VERBATIM from the original `ChatPane.tsx`;
  * state/handlers come from the `useChatPane` view-model bag (`vm`).
  */
-import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./chat-alerts.css";
 import PromptBar, { type PromptBarPicker } from "./reactbits/PromptBar";
 import { AnimatedGreeting } from "./reactbits/AnimatedGreeting";
+import { RealtimeRequests } from "./RealtimeRequests";
+import { useRealtimeVoice } from "./use-realtime-voice";
+import { lockChatInput } from "../chat-engine/input-lock";
 import { usePromptDictation } from "./use-prompt-dictation";
 import { createPortal } from "react-dom";
 import { formatAssistantMessage, useAssistantI18n } from "../i18n";
@@ -31,6 +34,7 @@ import { chatUiState } from "../chat-ui-state";
 import { ChatNavbar } from "./ChatNavbar";
 import { useIsMobile } from "./use-is-mobile";
 import { projectLocation } from "./project-location";
+import { useChatProjectVisibility, visibleChatProjects } from "../chat-project-visibility";
 
 const PROMPT_EFFORTS: Record<string, string[]> = {
   default: [],
@@ -65,10 +69,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     chatTokens,
     compactNow,
     compacting,
-    connectedConnectors,
-    connectors,
     contentRef,
-    convAttachments,
     ct,
     ctx,
     currentAgent,
@@ -123,9 +124,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     selectedEffort,
     send,
     setAttachments,
-    setBrowseConnectorId,
     setBrowserOpen,
-    setConnectorsManagerOpen,
     setCurrentProjectId,
     setDraft,
     setEditorPath,
@@ -141,7 +140,6 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     slashMatches,
     slashOpen,
     streaming,
-    sttAvailable,
     support,
     teamBoardGroups,
     terminalAvailable,
@@ -156,10 +154,27 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     webSpeechAvailable,
   } = vm;
 
-  const promptDictation = usePromptDictation(sttAvailable);
+  const realtime = useRealtimeVoice({
+    enabled: voiceEnabled && !!voice?.realtimeEnabled, chatKey, conversationId: activeId,
+    refresh: (key, id) => chatEngine.refreshVoiceHistory(key, id),
+    ensureConversation: async (accept) => {
+      if (activeId) return activeId;
+      const meta = await assistantConversationsApi.create(provider, "Conversación por voz", currentProjectId, currentAgent?.id ?? null, { approvalMode });
+      if (accept(meta.id)) await openConversation(meta.id);
+      return meta.id;
+    },
+  });
+  const audioLockRef = useRef<(() => void) | null>(null);
+  const onAudioPhaseChange = (value: boolean) => {
+    if (value && !audioLockRef.current) audioLockRef.current = lockChatInput(chatKey, "voice-note");
+    if (!value) { audioLockRef.current?.(); audioLockRef.current = null; }
+  };
+  useEffect(() => () => { audioLockRef.current?.(); audioLockRef.current = null; }, [chatKey]);
+  const promptDictation = usePromptDictation();
+  useEffect(() => () => promptDictation.cancel(), [chatKey, promptDictation.cancel]);
 
   const scopedProjectIds = useMemo(() => projectScopeIds(currentProjectId, projects), [currentProjectId, projects]);
-  const rootProjects = useMemo(() => projects.filter((project) => !project.parentId), [projects]);
+  const { hiddenIds: hiddenProjectIds } = useChatProjectVisibility();
   const selectedRootProject = useMemo(() => {
     const byId = new Map(projects.map((project) => [project.id, project]));
     let project = currentProjectId ? byId.get(currentProjectId) : undefined;
@@ -171,6 +186,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     }
     return project ?? null;
   }, [currentProjectId, projects]);
+  const rootProjects = visibleChatProjects(projects, hiddenProjectIds, selectedRootProject?.id);
   // An open conversation owns its project; sidebar navigation is only the
   // draft scope when no conversation is open.
   const locationNames = useMemo(() => projectLocation(
@@ -385,7 +401,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                       projectPath={currentProject?.path}
                       ttsAvailable={ttsAvailable}
                       voiceName={voice?.voice}
-                      autoSpeak={autoSpeak}
+                      autoSpeak={autoSpeak && !realtime.active}
                       conversationId={activeId ?? undefined}
                       agent={headerAgent}
                       scrollContainerRef={scrollerRef}
@@ -394,6 +410,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   </Fragment>
                 );
               })}
+              <RealtimeRequests voice={realtime} />
               {/* Before an assistant turn exists, keep live delegated tasks visible. */}
               {lastAssistantTurnIndex < 0 && teamBoardGroups.unanchored.length > 0 && (
                 <div className="w-full max-w-[48rem] overflow-hidden rounded-2xl border border-border/60 bg-muted/40 shadow-sm">
@@ -429,7 +446,10 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                 icon: <i className="ti ti-pencil text-sm" aria-hidden />,
                 onSelect: () => setModalProject(selectedRootProject),
               } : undefined,
-              before: !mobileNavigation && terminalAvailable ? <button type="button" data-search-target="chat-prompt-terminal" onClick={() => window.__lxpFloatingTerminalAPI?.requestOpen()} className="prompt-bar__tool" aria-label={ct.openTerminal ?? "Terminal"} title={ct.openTerminal ?? "Terminal"}><i className="ti ti-terminal-2 text-base" aria-hidden /></button> : undefined,
+              before: !mobileNavigation ? <>
+                {terminalAvailable && <button type="button" data-search-target="chat-prompt-terminal" onClick={() => window.__lxpFloatingTerminalAPI?.requestOpen()} className="prompt-bar__tool" aria-label={ct.openTerminal ?? "Terminal"} title={ct.openTerminal ?? "Terminal"}><i className="ti ti-terminal-2 text-base" aria-hidden /></button>}
+                <button type="button" data-search-target="chat-prompt-multimedia" onClick={() => setBrowserOpen(true)} className="prompt-bar__tool" aria-label={ct.multimedia ?? "Multimedia"} title={ct.multimedia ?? "Multimedia"}><i className="ti ti-photo text-base" aria-hidden /></button>
+              </> : undefined,
             },
             ...(onApprovalModeChange ? [{
               key: "approval", label: ct.approvalModeLabel ?? "Modo de aprobación del agente",
@@ -454,13 +474,6 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               })),
               onChange: key => { if (key !== provider) mobileProviderNav?.onSelect(key); },
             },
-          ];
-          const promptSources = [
-            ...(!mobileNavigation ? [{ key: "multimedia", group: "navigation", name: ct.multimedia ?? "Multimedia", description: convAttachments.length ? `${convAttachments.length} · ${ct.viewAttachments ?? "Adjuntos de la conversación"}` : (ct.viewAttachments ?? "Ver archivos de la conversación"), icon: <i className="ti ti-photo" aria-hidden />, onSelect: () => setBrowserOpen(true) }] : []),
-            { key: "audio-settings", group: "settings", name: ct.voiceSettings ?? "Opciones de audio", description: voiceEnabled ? (sttAvailable ? (ct.sttServer ?? "STT del servidor") : (ct.sttBrowser ?? "Dictado del navegador")) : (ct.voiceEnable ?? "Activar audio"), icon: <i className="ti ti-microphone" aria-hidden />, onSelect: () => window.dispatchEvent(new CustomEvent("luxipanel:assistant-settings-open", { detail: { section: "providers" } })) },
-            { key: "advanced-settings", group: "settings", name: ct.advancedSettings ?? "Configuración avanzada", icon: <i className="ti ti-settings" aria-hidden />, onSelect: () => window.dispatchEvent(new CustomEvent("luxipanel:assistant-settings-open")) },
-            ...connectedConnectors.map((connector) => ({ key: `connector-${connector.id}`, group: "connectors", name: connector.name, description: ct.browseConnectorTitle ? formatAssistantMessage(ct.browseConnectorTitle, { name: connector.name }) : "Consultar archivos", icon: <i className={`ti ${connector.icon}`} aria-hidden />, onSelect: () => setBrowseConnectorId(connector.id) })),
-            ...(connectors.length > 0 ? [{ key: "connectors", group: "connectors", name: ct.connectOffice ?? "Conectar herramientas de oficina", icon: <i className="ti ti-plug" aria-hidden />, onSelect: () => setConnectorsManagerOpen(true) }] : []),
           ];
           {/* Single action slot to the right of the pill: renders exactly ONE of
               record-bar / stop / send / mic / disabled-send by priority. */}
@@ -598,7 +611,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             inputRef={textareaRef}
             onPaste={onPaste}
             placeholder={mobileNavigation ? (ct.composerPlaceholder ?? "Escribe tu mensaje…") : support.enabled ? (ct.composerPlaceholderAttach ?? "Escribe o pega una imagen (Ctrl+V)…") : (ct.composerPlaceholder ?? "Escribe tu mensaje…")}
-            sources={promptSources}
+            sources={[]}
+            settingsLabel={ct.advancedSettings ?? "Configuración avanzada"}
+            onOpenSettings={() => window.dispatchEvent(new CustomEvent("luxipanel:assistant-settings-open"))}
             toolbarPickers={mobileNavigation ? toolbarPickers.filter(picker => picker.key !== "project") : toolbarPickers}
             inputLeading={mobileNavigation ? null : <a href="/panel/preferences#pref-profile" className="prompt-bar__profile-avatar" aria-label={`${ct.openProfile ?? "Abrir perfil"}${userInitials ? ` (${userInitials})` : ""}`} title={ct.openProfile ?? "Abrir perfil"}><span aria-hidden="true">{userInitials ?? <i className="ti ti-user" aria-hidden="true" />}</span></a>}
             commands={SLASH_COMMANDS.map((command) => ({ key: command.cmd, name: command.cmd, description: command.desc }))}
@@ -622,13 +637,17 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               setSelectedEffort(value);
               chatUiState.patchConversationChoice(provider, activeId, { effort: value });
             }}
-            onDictate={voiceEnabled && (canHoldRecord || webSpeechAvailable) ? promptDictation.dictate : undefined}
+            realtime={voiceEnabled && voice?.realtimeEnabled ? realtime : undefined}
+            onAudioPhaseChange={onAudioPhaseChange}
+            onDictate={voiceEnabled && !voice?.realtimeEnabled && canHoldRecord ? promptDictation.dictate : undefined}
             onStopDictation={promptDictation.stop}
+            onCancelDictation={promptDictation.cancel}
+            cancelDictationLabel={ct.cancelAudio ?? "Cancelar audio"}
             dictateLabel={ct.sttStart ?? "Dictar por voz"}
             stopDictationLabel={ct.sttStop ?? "Detener dictado"}
-            dictateHint={`${ct.sttStart ?? "Dictar por voz"} · ${sttAvailable ? (ct.sttServer ?? "STT del servidor") : (ct.sttBrowser ?? "navegador (Web Speech)")}`}
+            dictateHint={`${ct.sttStart ?? "Dictar por voz"} · OpenAI`}
             externalAttachmentCount={attachments.length}
-            onSend={(text, detail) => { const level = detail.effort ?? "Auto"; void send(text, { reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" }); }}
+            onSend={(text, detail) => { const level = detail.effort ?? "Auto"; return send(text, { ...(detail.recording ? { attachmentsOverride: [detail.recording], queue: true } : {}), reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" }); }}
             onStop={() => chatEngine.stop(chatKey)}
             onQueue={() => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" })}
             queueLabel={ct.queueMessage ?? "Encolar mensaje"}

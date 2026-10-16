@@ -12,6 +12,7 @@ import { initialsFrom } from "@/lib/format";
 
 // MUST match backend SessionUser (shared/types/index.ts)
 export interface SessionUser {
+  github?: { required: boolean; connected: boolean; login?: string; canEditCore: boolean; canContribute: boolean; deviceFlowAvailable: boolean };
   hostingPolicy?: { capabilities?: { php: boolean }; runtime: boolean; state: "ready" | "pending"; security?: { shell: "disabled" | "jailed" } };
   userId: number;
   username: string;

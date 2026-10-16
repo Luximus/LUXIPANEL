@@ -9,6 +9,7 @@ import { api, TARGET_SCOPE_SESSION_KEY } from "@/lib/api-client";
 import { openConfirm, openAlert } from "@/lib/confirm";
 import { TerminalWsMsg } from "@/lib/terminal-ws-protocol";
 import { FILES_CURRENT_PATH_KEY } from "../../pages/panel/files/state";
+import { MOUSE_TRACKING_OFF } from "./terminal-lifecycle";
 import { applyShellHighlight } from "./editor";
 import { syncTerminalTheme, ensureTerminalThemeSync } from "./theme";
 import { createTerminal, getModeInitialCommand, syncLoadingOverlay, connectWs, ro } from "./terminal";
@@ -358,13 +359,8 @@ import {
     document.getElementById("btn-reconnect")?.addEventListener("click", () => {
       const session = sessions.get(S.activeTabId);
       if (session) {
-        if (session.reconnectTimer) { clearTimeout(session.reconnectTimer); session.reconnectTimer = null; }
-        session.reconnectAttempts = 0;
-        session.cdOnConnect = session.cwd || (window as any).__filesCurrentPath || sessionStorage.getItem(FILES_CURRENT_PATH_KEY) || "/";
-        session.initialCommand = session.startupCommand;
-        session.ws?.close();
         session.term.write(`\r\n\x1b[33m${I18N.banner.reconnecting}\x1b[0m\r\n`);
-        connectWs(S.activeTabId);
+        reconnectNow(S.activeTabId);
       }
     });
 
@@ -378,7 +374,7 @@ import {
     // que el shell/TUI sobrevive intacto.
     function reconnectNow(tabId: number): void {
       const s = sessions.get(tabId);
-      if (!s) return;
+      if (!s || s.connecting) return;
       if (s.reconnectTimer) { clearTimeout(s.reconnectTimer); s.reconnectTimer = null; }
       s.reconnectAttempts = 0;
       s.endedNormally = false;
@@ -391,6 +387,7 @@ import {
         try { old.close(); } catch { /* ignore */ }
         s.ws = null;
       }
+      s.term.write(MOUSE_TRACKING_OFF);
       // tmux re-adjunta y re-pinta el scrollback; en modo legacy (sin tmux) se
       // restablece el cwd como hace el botón de reconectar manual.
       s.cdOnConnect = s.cwd || (window as any).__filesCurrentPath || sessionStorage.getItem(FILES_CURRENT_PATH_KEY) || "/";
@@ -408,6 +405,7 @@ import {
           continue;
         }
         if (ws.readyState !== WebSocket.OPEN) continue; // CONNECTING → dejar que termine
+        if (s.awaitingPong) continue;
         // Socket aparentemente vivo: puede ser un zombi. Mandamos un ping y, si no
         // llega `pong` (ni ningún otro mensaje) a tiempo, forzamos reconexión.
         s.awaitingPong = true;
@@ -423,7 +421,7 @@ import {
           if (cur.ws === ws && ws.readyState === WebSocket.OPEN && cur.awaitingPong) {
             reconnectNow(tabId);
           }
-        }, 2500);
+        }, 10000);
       }
     }
 

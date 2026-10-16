@@ -41,9 +41,21 @@ export function flattenConfig(raw: RawAppConfig): RawAppConfig["expo"] & Record<
   return expo as RawAppConfig["expo"] & Record<string, unknown>;
 }
 
+/** Static local overrides used by app.config.js; never evaluate project code. */
+export function mergeAppConfig(base: RawAppConfig | null, local: RawAppConfig | null): RawAppConfig | null {
+  const valid = (value: unknown): value is RawAppConfig =>
+    !!value && typeof value === "object" && !Array.isArray(value);
+  const a = valid(base) ? flattenConfig(base) : null;
+  const b = valid(local) ? flattenConfig(local) : null;
+  if (!a && !b) return null;
+  if (!b) return base;
+  return { expo: { ...a, ...b, android: { ...a?.android, ...b.android }, ios: { ...a?.ios, ...b.ios },
+    extra: { ...a?.extra, ...b.extra, eas: { ...a?.extra?.eas, ...b.extra?.eas } } } };
+}
+
 /**
  * Read and parse a project's app config on the connected server by reading
- * `app.json` STATICALLY (one `cat`, never throws — returns null on failure).
+ * `app.json` and optional `app.config.local.json` STATICALLY (no code evaluation).
  *
  * SECURITY: we deliberately do NOT run `npx --yes expo config --json` here.
  * That evaluates the project's `app.config.js`/`.ts` (arbitrary code) and
@@ -56,12 +68,13 @@ export function flattenConfig(raw: RawAppConfig): RawAppConfig["expo"] & Record<
 export async function readAppConfig(executor: Executor, projectPath: string): Promise<RawAppConfig | null> {
   const raw = await sh(
     executor,
-    `cat ${quoteArg(`${projectPath}/app.json`)} 2>/dev/null || true`,
+    `cat ${quoteArg(`${projectPath}/app.json`)} 2>/dev/null; ` +
+    `printf '\\n<<LOCALCONFIG>>\\n'; cat ${quoteArg(`${projectPath}/app.config.local.json`)} 2>/dev/null || true`,
     15_000,
   ).catch(() => null);
   if (raw?.stdout) {
-    const parsed = safeJsonParse<RawAppConfig>(raw.stdout.trim());
-    if (parsed) return parsed;
+    const [base = "", local = ""] = raw.stdout.split("<<LOCALCONFIG>>");
+    return mergeAppConfig(safeJsonParse<RawAppConfig>(base.trim()), safeJsonParse<RawAppConfig>(local.trim()));
   }
   return null;
 }
@@ -71,7 +84,7 @@ export function projectFromConfig(projectPath: string, raw: RawAppConfig | null)
   const cfg = raw ? flattenConfig(raw) : null;
   return {
     path: projectPath,
-    name,
+    name: cfg?.name?.trim() || name,
     slug: cfg?.slug ?? null,
     projectId: cfg?.extra?.eas?.projectId ?? null,
     androidPackage: cfg?.android?.package ?? null,
@@ -119,6 +132,7 @@ interface RawPackageJson {
 export async function detectExpoProject(executor: Executor, dir: string): Promise<ExpoProject | null> {
   const script =
     `echo '<<APPJSON>>'; cat ${quoteArg(`${dir}/app.json`)} 2>/dev/null; ` +
+    `echo '<<LOCALCONFIG>>'; cat ${quoteArg(`${dir}/app.config.local.json`)} 2>/dev/null; ` +
     `echo '<<PKGJSON>>'; cat ${quoteArg(`${dir}/package.json`)} 2>/dev/null; ` +
     `echo '<<RUNTIME>>'; ${runtimeProbeCommand(dir)}; echo '<<END>>'`;
   const res = await sh(executor, script, 15_000).catch(() => null);
@@ -128,8 +142,9 @@ export async function detectExpoProject(executor: Executor, dir: string): Promis
     const j = out.indexOf(to);
     return i >= 0 && j > i ? out.slice(i + from.length, j).trim() : "";
   };
-  const appJsonText = section("<<APPJSON>>", "<<PKGJSON>>");
-  const rawAppJson = appJsonText ? safeJsonParse<RawAppConfig>(appJsonText) : null;
+  const appJsonText = section("<<APPJSON>>", out.includes("<<LOCALCONFIG>>") ? "<<LOCALCONFIG>>" : "<<PKGJSON>>");
+  const localText = section("<<LOCALCONFIG>>", "<<PKGJSON>>");
+  const rawAppJson = mergeAppConfig(safeJsonParse<RawAppConfig>(appJsonText), safeJsonParse<RawAppConfig>(localText));
   const pkgText = section("<<PKGJSON>>", "<<RUNTIME>>");
   const pkg = pkgText ? safeJsonParse<RawPackageJson>(pkgText) : null;
 
@@ -150,11 +165,7 @@ export async function detectExpoProject(executor: Executor, dir: string): Promis
  * even when the caller didn't pass an explicit projectId.
  */
 export async function readProjectIdFromPath(executor: Executor, dir: string): Promise<string | null> {
-  const res = await sh(executor, `cat ${quoteArg(`${dir}/app.json`)} 2>/dev/null || true`, 10_000).catch(
-    () => null,
-  );
-  if (!res?.stdout) return null;
-  const raw = safeJsonParse<RawAppConfig>(res.stdout.trim());
+  const raw = await readAppConfig(executor, dir);
   return raw ? projectFromConfig(dir, raw).projectId : null;
 }
 

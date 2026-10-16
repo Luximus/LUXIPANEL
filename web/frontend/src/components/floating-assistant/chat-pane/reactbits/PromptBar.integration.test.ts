@@ -6,16 +6,16 @@ import PromptBar from "./PromptBar";
 
 afterEach(() => document.body.replaceChildren());
 
-it("places mobile sources and send beside the draft and restores desktop controls without losing it", async () => {
+it("places mobile settings and send beside the draft and restores desktop controls without losing it", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   const onSend = vi.fn();
-  const props = { value: "Revisa el proyecto", onSend, models: [{ key: "", name: "Auto" }], efforts: ["Auto", "High"], inputLeading: createElement("a", { className: "test-profile" }, "JW") };
+  const props = { value: "Revisa el proyecto", onSend, onOpenSettings: vi.fn(), models: [{ key: "", name: "Auto" }], efforts: ["Auto", "High"], inputLeading: createElement("a", { className: "test-profile" }, "JW") };
   await act(async () => root.render(createElement(PromptBar, { ...props, mobileLayout: true })));
   const row = host.querySelector('.prompt-bar__input-row')!;
   const input = row.querySelector('textarea')!;
-  expect(row.querySelector('[data-search-target="chat-prompt-plus"]')).not.toBeNull();
+  expect(row.querySelector('[data-search-target="chat-prompt-settings"]')).not.toBeNull();
   expect(row.querySelector('[aria-label="Send"]')).not.toBeNull();
   expect(row.querySelector('.test-profile')).toBeNull();
   expect(host.querySelectorAll('[aria-label="Send"]')).toHaveLength(1);
@@ -29,14 +29,14 @@ it("places mobile sources and send beside the draft and restores desktop control
   await act(async () => root.unmount());
 });
 
-it("keeps mobile dictation, queue and stop in the writing row with their original callbacks", async () => {
+it("keeps queue and stop in the mobile writing row while a run is active", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   const onQueue = vi.fn(), onStop = vi.fn();
   await act(async () => root.render(createElement(PromptBar, { mobileLayout:true, value:"Siguiente instrucción", busy:true, onQueue, onStop, onDictate:vi.fn(), models:[], efforts:[] })));
   const row=host.querySelector('.prompt-bar__input-row')!;
-  expect(row.querySelector('[aria-label="Dictate"]')).not.toBeNull();
+  expect(row.querySelector('[aria-label="Dictate"]')).toBeNull();
   const queue=row.querySelector('[aria-label="Queue message"]') as HTMLButtonElement;
   const stop=row.querySelector('[aria-label="Stop"]') as HTMLButtonElement;
   expect(queue.nextElementSibling).toBe(stop);
@@ -46,7 +46,7 @@ it("keeps mobile dictation, queue and stop in the writing row with their origina
   await act(async () => root.unmount());
 });
 
-it("connects the original send tile and microphone to a controlled chat draft", async () => {
+it("uses the send button for a written draft", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -63,8 +63,7 @@ it("connects the original send tile and microphone to a controlled chat draft", 
       defaultEffort: "Auto",
     }));
   });
-  await act(async () => { (host.querySelector('[aria-label="Dictate"]') as HTMLButtonElement).click(); });
-  expect(onChange).toHaveBeenCalledWith("Revisa el proyecto por favor");
+  expect(host.querySelector('[aria-label="Dictate"]')).toBeNull();
   await act(async () => { (host.querySelector('[aria-label="Send"]') as HTMLButtonElement).click(); });
   expect(onSend).toHaveBeenCalledWith("Revisa el proyecto", expect.objectContaining({ effort: "Auto" }));
   await act(async () => { root.unmount(); });
@@ -100,65 +99,87 @@ it("queues a drafted follow-up beside Stop while a response is active", async ()
   await act(async () => { root.unmount(); });
 });
 
-it("opens source actions without changing the draft", async () => {
+it("opens advanced settings directly without changing the draft", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const onSelect = vi.fn();
+  const onOpenSettings = vi.fn();
   const onChange = vi.fn();
   await act(async () => {
     root.render(createElement(PromptBar, {
       value: "Texto pendiente",
       onChange,
-      sources: [{ key: "terminal", name: "Terminal", icon: createElement("span", null, ">"), onSelect }],
+      onOpenSettings,
+      settingsLabel: "Configuración avanzada",
+      sources: [],
       models: [],
       efforts: [],
     }));
   });
-  await act(async () => { (host.querySelector('[aria-label="Add files and sources"]') as HTMLButtonElement).click(); });
-  expect(host.querySelector('[role="menu"]')).not.toBeNull();
-  await act(async () => { (host.querySelector('[role="menuitem"]') as HTMLButtonElement).click(); });
-  expect(onSelect).toHaveBeenCalledOnce();
+  const settings = host.querySelector('[aria-label="Configuración avanzada"]') as HTMLButtonElement;
+  expect(settings.querySelector('.ti-settings')).not.toBeNull();
+  expect(settings.title).toBe("Configuración avanzada");
+  await act(async () => settings.click());
+  expect(host.querySelector('[role="menu"]')).toBeNull();
+  expect(host.querySelector('.prompt-bar__menu')).toBeNull();
+  expect(onOpenSettings).toHaveBeenCalledOnce();
   expect(onChange).not.toHaveBeenCalled();
   await act(async () => { root.unmount(); });
 });
 
-it("runs creation actions in the source menu footer", async () => {
+it("places mobile settings before History and opens them directly", async () => {
+  const nav = document.createElement("header");
+  nav.innerHTML = '<span id="workspace-chat-plus-control"></span><button id="workspace-history-toggle">Historial</button>';
+  const host = document.createElement("div");
+  document.body.append(nav, host);
+  const root = createRoot(host);
+  const onOpenSettings = vi.fn();
+  await act(async () => root.render(createElement(PromptBar, {
+    mobileLayout: true,
+    onOpenSettings,
+    sources: [],
+    models: [], efforts: [],
+  })));
+  const settings = nav.querySelector<HTMLButtonElement>('[data-search-target="chat-prompt-settings"]')!;
+  expect(settings.closest('#workspace-chat-plus-control')?.nextElementSibling?.id).toBe('workspace-history-toggle');
+  expect(host.querySelector('.prompt-bar__input-row [data-search-target="chat-prompt-settings"]')).toBeNull();
+  await act(async () => settings.click());
+  expect(onOpenSettings).toHaveBeenCalledOnce();
+  expect(document.body.querySelector('[role="menu"]')).toBeNull();
+  await act(async () => root.unmount());
+});
+
+it("closes the model picker before opening settings", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const onNewProject = vi.fn();
-  const onNewChat = vi.fn();
+  const onOpenSettings = vi.fn();
   await act(async () => {
     root.render(createElement(PromptBar, {
       sources: [],
-      sourceMenuFooter: createElement("div", null,
-        createElement("button", { type: "button", "data-prompt-footer-action": "", onClick: onNewProject }, "Nuevo proyecto"),
-        createElement("button", { type: "button", "data-prompt-footer-action": "", onClick: onNewChat }, "Nueva conversación"),
-      ),
-      models: [],
+      onOpenSettings,
+      models: [{ key: "auto", name: "Auto" }],
       efforts: [],
     }));
   });
-  await act(async () => { (host.querySelector('[aria-label="Add files and sources"]') as HTMLButtonElement).click(); });
-  await act(async () => { (Array.from(host.querySelectorAll('[data-prompt-footer-action]')).find(node => node.textContent === "Nuevo proyecto") as HTMLButtonElement).click(); });
-  expect(onNewProject).toHaveBeenCalledOnce();
-  await act(async () => { (host.querySelector('[aria-label="Add files and sources"]') as HTMLButtonElement).click(); });
-  await act(async () => { (Array.from(host.querySelectorAll('[data-prompt-footer-action]')).find(node => node.textContent === "Nueva conversación") as HTMLButtonElement).click(); });
-  expect(onNewChat).toHaveBeenCalledOnce();
+  await act(async () => { (host.querySelector('[aria-label="Choose model"]') as HTMLButtonElement).click(); });
+  expect(host.querySelector('[role="listbox"]')).not.toBeNull();
+  await act(async () => { (host.querySelector('[aria-label="Configuración avanzada"]') as HTMLButtonElement).click(); });
+  expect(onOpenSettings).toHaveBeenCalledOnce();
+  expect(host.querySelector('[role="listbox"]')).toBeNull();
   await act(async () => { root.unmount(); });
 });
 
-it("keeps the transcribed text when dictation is stopped", async () => {
+it("transcribes and sends voice from the empty composer", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   let finish: ((text: string) => void) | undefined;
-  const onChange = vi.fn();
+  const onSend = vi.fn();
   await act(async () => {
     root.render(createElement(PromptBar, {
       value: "",
-      onChange,
+      onSend,
       onDictate: () => new Promise<string>(resolve => { finish = resolve; }),
       onStopDictation: () => finish?.("Texto dictado"),
       models: [],
@@ -167,8 +188,75 @@ it("keeps the transcribed text when dictation is stopped", async () => {
   });
   await act(async () => { (host.querySelector('[aria-label="Dictate"]') as HTMLButtonElement).click(); });
   await act(async () => { (host.querySelector('[aria-label="Stop dictation"]') as HTMLButtonElement).click(); });
-  expect(onChange).toHaveBeenCalledWith("Texto dictado");
+  expect(onSend).toHaveBeenCalledWith("Texto dictado", expect.any(Object));
   await act(async () => { root.unmount(); });
+});
+
+it("cancels a recording with X without sending its eventual transcript", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  let finish: ((text: string) => void) | undefined;
+  const onSend = vi.fn();
+  const onCancelDictation = vi.fn();
+  await act(async () => root.render(createElement(PromptBar, {
+    mobileLayout: true, value: "", onSend, onCancelDictation,
+    onDictate: () => new Promise<string>(resolve => { finish = resolve; }),
+    models: [], efforts: [],
+  })));
+  await act(async () => (host.querySelector('[aria-label="Dictate"]') as HTMLButtonElement).click());
+  const cancel = host.querySelector('[aria-label="Cancelar audio"]') as HTMLButtonElement;
+  expect(cancel).not.toBeNull();
+  await act(async () => { cancel.click(); finish?.("texto cancelado"); });
+  expect(onCancelDictation).toHaveBeenCalledOnce();
+  expect(onSend).not.toHaveBeenCalled();
+  expect(host.querySelector('[aria-label="Dictate"]')).not.toBeNull();
+  await act(async () => root.unmount());
+});
+
+it("shows the specific message when OpenAI rejects the dictation key", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const message = "OpenAI rechazó la clave API guardada. Sustitúyela en Ajustes → Agentes IA → OpenAI y pulsa Probar. La sesión de Codex CLI es independiente del audio.";
+  await act(async () => root.render(createElement(PromptBar, {
+    mobileLayout: true, value: "", onDictate: async () => { throw new Error(message); },
+    models: [], efforts: [],
+  })));
+  await act(async () => (host.querySelector('[aria-label="Dictate"]') as HTMLButtonElement).click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(message);
+  await act(async () => root.unmount());
+});
+
+it("shows the missing OpenAI credential instead of a generic transcription error", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => root.render(createElement(PromptBar, {
+    value: "", onDictate: async () => { throw new Error("Configura una clave API de OpenAI en Ajustes → Agentes IA → OpenAI para transcribir audio."); },
+    models: [], efforts: [],
+  })));
+  await act(async () => (host.querySelector('[aria-label="Dictate"]') as HTMLButtonElement).click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Ajustes → Agentes IA → OpenAI");
+  await act(async () => root.unmount());
+});
+
+it("swaps the send control between microphone and text send on mobile and tablet layouts", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const props = { onDictate: vi.fn(async () => "hola"), onSend: vi.fn(), models: [], efforts: [] };
+  for (const mobileLayout of [true, false]) {
+    await act(async () => root.render(createElement(PromptBar, { ...props, mobileLayout, value: "" })));
+    expect(host.querySelector('[aria-label="Dictate"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Send"]')).toBeNull();
+    await act(async () => root.render(createElement(PromptBar, { ...props, mobileLayout, value: "mensaje" })));
+    expect(host.querySelector('[aria-label="Send"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Dictate"]')).toBeNull();
+    await act(async () => root.render(createElement(PromptBar, { ...props, mobileLayout, value: "" })));
+    expect(host.querySelector('[aria-label="Dictate"]')).not.toBeNull();
+  }
+  await act(async () => root.unmount());
 });
 
 it("keeps Auto as the first reasoning level and sends explicit changes", async () => {
@@ -212,4 +300,15 @@ it("shows and selects a model alongside the reasoning control", async () => {
   await act(async () => { (Array.from(host.querySelectorAll('[role="option"]')).find(node => node.textContent?.includes("gpt-6-astra")) as HTMLButtonElement).click(); });
   expect(onModelChange).toHaveBeenCalledWith("gpt-6-astra");
   await act(async () => { root.unmount(); });
+});
+
+it("sends the original recording with its hidden transcript instead of losing the audio", async () => {
+  const host = document.createElement("div");document.body.append(host);const root = createRoot(host);
+  const recording = { name: "audio.webm", mimeType: "audio/webm", dataBase64: "YXVkaW8=", voice: { transcript: "Mensaje de voz" } };
+  const onSend = vi.fn();
+  await act(async () => root.render(createElement(PromptBar, { value: "", onSend, onDictate: async () => ({ text: "Mensaje de voz", recording }), models: [], efforts: [] })));
+  await act(async () => (host.querySelector('[aria-label="Dictate"]') as HTMLButtonElement).click());
+  expect(onSend).toHaveBeenCalledWith("Mensaje de voz", expect.objectContaining({ recording }));
+  expect(host.querySelector("textarea")?.value).toBe("");
+  await act(async () => root.unmount());
 });

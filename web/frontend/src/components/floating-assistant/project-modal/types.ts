@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /** ProjectModal prop shapes — extracted verbatim. */
-import type { AssistantProject } from "../assistant-api";
+import type { AssistantAgent, AssistantProject } from "../assistant-api";
 
 export interface ProjectModalProps {
   project: AssistantProject | null; // null = create
   allProjects?: AssistantProject[];
   /** Pre-set parentId when creating a child project. */
   initialParentId?: string;
+  initialTab?: "general" | "agents";
+  initialEditAgentId?: string | null;
+  locale?: string;
+  onLaunchAgent?(agent: AssistantAgent, projectId?: string): void;
   onClose(): void;
   onSaved(p: AssistantProject): void;
   onDeleted?(id: string): void;

@@ -499,6 +499,8 @@ const workspaceToolGroups = navGroups.map((group) => ({
         </div>
         {moduleDrawerOpen && <span class="lxp-workspace-drawer-settings" data-module-header-settings></span>}
 
+        {workspaceShell && !moduleDrawerOpen && <span id="workspace-chat-plus-control" class="lxp-chat-plus-control"></span>}
+
         {workspaceShell && !moduleDrawerOpen && <button
           id="workspace-history-toggle"
           type="button"
@@ -511,7 +513,7 @@ const workspaceToolGroups = navGroups.map((group) => ({
         ><i class="ti ti-history text-xl" aria-hidden="true"></i></button>}
 
         {workspaceShell && !moduleDrawerOpen && <span id="workspace-chat-navbar-controls" class="lxp-chat-navbar-controls"></span>}
-        {workspaceShell && !moduleDrawerOpen && <ReleaseBanner client:load isAdmin={isAdminUser} labels={t.panelLayout.community} />}
+        {workspaceShell && !moduleDrawerOpen && <ReleaseBanner client:load isAdmin={isAdminUser} labels={t.panelLayout.community} locale={locale} />}
         {workspaceShell && !moduleDrawerOpen && <span id="workspace-chat-server-controls" class="lxp-chat-server-controls"></span>}
         {workspaceShell && !moduleDrawerOpen && <div id="workspace-chat-cli" class="lxp-chat-cli"></div>}
 
@@ -866,7 +868,7 @@ const workspaceToolGroups = navGroups.map((group) => ({
       </div>
     </div>
   </div>}
-  {!embed && <script type="module" src="/scripts/extracted/lib/reactbits-kit.js?v=20260826a"></script>}
+  {!embed && <script type="module" src="/scripts/extracted/lib/reactbits-kit.js?v=20261015c"></script>}
 </BaseLayout>
 
 {!embed && <script
@@ -940,7 +942,7 @@ const workspaceToolGroups = navGroups.map((group) => ({
   })();
 </script>}
 <!-- Cierre animado de todos los <dialog> nativos (modal-drawer.css + motion.css). -->
-{!embed && <script type="module" src="/scripts/chat-mobile-refine.20261004-1.js"></script>}
+{!embed && <script type="module" src="/scripts/chat-mobile-refine.20261015-1.js"></script>}
 {!embed && <script type="module" src="/scripts/terminal-mobile-fullwidth.20261004-2.js"></script>}
 <script type="module" src="/scripts/extracted/layouts/dialog-motion.js?v=20260930-fast-close"></script>
 {!embed && <script type="module" src="/scripts/extracted/layouts/super-search.js?v=20260928-prompt-create"></script>}

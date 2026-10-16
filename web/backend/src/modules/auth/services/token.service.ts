@@ -22,6 +22,8 @@ const log = createModuleLogger("auth.token");
 const DENYLIST_PREFIX = "auth:revoked:jti:";
 
 export interface TokenPayload {
+  githubIdentityTargetId?: string;
+  githubIdentityDirect?: boolean;
   authTime?: number;
   iat?: number;
   exp?: number;
@@ -331,6 +333,8 @@ export const tokenService = {
   /** Build a SessionUser from a token payload. */
   toSessionUser(payload: TokenPayload): SessionUser {
     return {
+      githubIdentityTargetId: payload.githubIdentityTargetId,
+      githubIdentityDirect: payload.githubIdentityDirect,
       sessionIssuedAt: payload.authTime ?? payload.iat,
       mfaAuthenticated: payload.mfaAuthenticated,
       direct: payload.direct,

@@ -67,6 +67,8 @@ export type TerminalSession = {
   historyIdx: number;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+  connecting?: boolean;
+  outputTail?: string;
   cdOnConnect: string | null;
   initialCommand: string | null;
   startupCommand: string | null;
@@ -80,7 +82,7 @@ export type TerminalSession = {
   // a primer plano el socket puede quedar "zombi" (OPEN pero muerto, `onclose`
   // nunca dispara). `awaitingPong` marca un sondeo de liveness en curso; si no
   // llega `pong` a tiempo, forzamos reconexión (el backend re-adjunta el tmux).
-  // `endedNormally` = el PTY salió a propósito (code 1000 / `exit`): NO revivir
+  // `endedNormally` = el PTY salió a propósito (`process-exit`): NO revivir
   // en la reactivación (re-adjuntar crearía una sesión tmux nueva, no deseada).
   awaitingPong?: boolean;
   endedNormally?: boolean;

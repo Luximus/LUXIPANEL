@@ -20,6 +20,7 @@
  */
 
 import { z } from "zod";
+import { chatAttachmentSchema } from "../models/chat-attachment.js";
 import type { Request, Response } from "express";
 import { agentService } from "../services/agent.service.js";
 import { agentRunRegistry } from "../services/agent-run-registry.js";
@@ -39,7 +40,6 @@ import { conversationsRepository } from "../repositories/conversations.repositor
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
-import { translationService } from "../services/translation.service.js";
 import { slashCommandsService } from "../services/slash-commands.service.js";
 import { assessContext } from "../services/context-window.service.js";
 import { compactConversation } from "../services/compaction.service.js";
@@ -59,8 +59,6 @@ import {
   MAX_MSG_CONTENT,
   type AgentTurnMessage,
   persistUserMessage,
-  resolveTranslation,
-  buildTranslateHooks,
   buildMessagesFromHistory,
   makeUsageRecorder,
   startConversationRun,
@@ -109,12 +107,7 @@ const agentSchema = z.object({
   /** Custom agent driving this turn (system prompt + tool subset + provider/model). */
   agentId: z.string().max(64).nullable().optional(),
   /** Files attached to the latest user message (base64). */
-  attachments: z
-    .array(z.object({
-      name: z.string().max(256),
-      mimeType: z.string().max(128),
-      dataBase64: z.string().max(15_000_000),
-    }))
+  attachments: z.array(chatAttachmentSchema)
     .max(8)
     .optional(),
   /**
@@ -156,12 +149,7 @@ const enqueueSchema = z.object({
   projectId: z.string().max(64).nullable().optional(),
   agentId: z.string().max(64).nullable().optional(),
   withContext: z.boolean().default(true),
-  attachments: z
-    .array(z.object({
-      name: z.string().max(256),
-      mimeType: z.string().max(128),
-      dataBase64: z.string().max(15_000_000),
-    }))
+  attachments: z.array(chatAttachmentSchema)
     .max(8)
     .optional(),
   /** Igual que agentSchema.planDecision — el drain re-valida server-side. */
@@ -511,35 +499,7 @@ export const agentController = {
       // No live run → start a fresh one. Persist the user's message up-front so
       // the thread stays non-blank if the client reloads mid-run.
       let outgoingMessages: AgentTurnMessage[] = body.messages;
-      let translate: ReturnType<typeof buildTranslateHooks> | undefined;
-
-      {
-        // Los slash commands (/mod, /clear, …) se interpretan literalmente en
-        // agent.service ANTES del provider: traducirlos los mutila ("/mod
-        // estado" → "/mod status" ya no matchea). Se saltan la traducción.
-        const translationProvider = resolvedTarget.provider ?? body.provider;
-        const plan = slashCommandsService.isSlash(lastUser.content)
-          ? null
-          : await resolveTranslation(executor, conversationId, translationProvider, lastUser.content);
-        if (plan) {
-          // Translate the user's message to English BEFORE it reaches the agent
-          // (cheaper tokens). Persist both: English `content` + original text.
-          const englishInput = await translationService.translate(plan.config, lastUser.content, plan.lang, "en", {
-            executor,
-            conversationId,
-          });
-          await persistUserMessage(executor, conversationId, englishInput, body.provider, body.attachments, {
-            textOriginal: lastUser.content,
-            lang: plan.lang,
-          });
-          // The client sent display-language turns; a translated run must feed
-          // the agent ENGLISH, so rebuild context from persisted (English) history.
-          outgoingMessages = await buildMessagesFromHistory(executor, conversationId);
-          translate = buildTranslateHooks(plan);
-        } else {
-          await persistUserMessage(executor, conversationId, lastUser.content, body.provider, body.attachments);
-        }
-      }
+      await persistUserMessage(executor, conversationId, lastUser.content, body.provider, body.attachments);
 
       // Aprobación de plan: el frontend manda `planDecision:"approve"` al elegir
       // la PRIMERA opción de un ask `askKind:"plan-approval"`. Se valida contra
@@ -603,7 +563,6 @@ export const agentController = {
         ...(crossMcpToken ? { crossMcpToken } : {}),
         ...(graphMcpToken ? { graphMcpToken } : {}),
         ...(approvalModeOverride ? { approvalModeOverride } : {}),
-        translate,
       });
 
       await streamRunToClient(req, res, conversationId, resumeFromSeq(req));

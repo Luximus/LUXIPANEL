@@ -8,7 +8,7 @@ import { deriveCliSummary, looksLikeCliTranscript, stripLaneTokens } from "./cli
 /** History message → renderable turn, resolving attachment refs to URLs. */
 export function historyTurn(m: ConversationMessage, fallbackProvider?: string): ChatTurn {
   const attachments: TurnAttachment[] | undefined = m.attachments?.length
-    ? m.attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, url: attachmentUrl(a.id) }))
+    ? m.attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, ...(a.voice ? { voice: a.voice } : {}), url: attachmentUrl(a.id) }))
     : undefined;
   const createdAt = m.ts ? Date.parse(m.ts) : NaN;
   // User turns: when background translation was active, `content` holds the

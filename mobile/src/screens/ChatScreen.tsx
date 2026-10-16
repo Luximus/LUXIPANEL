@@ -52,6 +52,8 @@ import { AGENT_VIOLET, ChatHeaderPills } from "../components/assistant/ChatHeade
 import { CliUsageBarsLive } from "../components/assistant/CliUsageBarsLive";
 import { StartTiles } from "../components/assistant/StartTiles";
 import { getDirect } from "../api/serverApi";
+import { RealtimeActivity } from "../components/assistant/RealtimeActivity";
+import { useRealtimeVoiceState } from "../features/assistant/realtime-voice";
 import { TurnView } from "../components/assistant/TurnView";
 import { AssistantSendGate } from "../components/assistant/TurnQuickReplies";
 import { ChatComposer } from "../components/assistant/ChatComposer";
@@ -239,6 +241,7 @@ export function ChatScreen({ panelId, token, language, projectPath, metricsState
   // ¿Se puede despachar un envío? (mismos guards que `sendQuick` del controller).
   // Atenúa y desactiva las respuestas rápidas (chips del turno y tarjetas de
   // inicio) en vez de tragarse el toque en silencio.
+  const realtimeVoice = useRealtimeVoiceState();
   const canSend = !busy && !blocked && !!token;
   const sendGate = useMemo(() => ({ canSend }), [canSend]);
 
@@ -444,7 +447,7 @@ export function ChatScreen({ panelId, token, language, projectPath, metricsState
                 agentName={session.agentName}
                 ttsAvailable={voice.ttsAvailable}
                 voiceName={voice.voiceName}
-                autoSpeak={voice.autoSpeak && activeProviderCfg?.mode === "api"}
+                autoSpeak={voice.autoSpeak && activeProviderCfg?.mode === "api" && !(realtimeVoice?.panelId === panelId && realtimeVoice.conversationId === conversationId && realtimeVoice.phase !== "idle")}
                 conversationId={conversationId}
                 tokens={tokens}
                 theme={theme === "dark" ? "dark" : "light"}
@@ -459,6 +462,7 @@ export function ChatScreen({ panelId, token, language, projectPath, metricsState
               />
             );
           })}
+          {!blocked && <RealtimeActivity panelId={panelId} conversationId={conversationId} tokens={tokens} t={t} />}
           {!blocked && notice ? <Text style={[styles.notice, { color: tokens.danger }]}>{notice}</Text> : null}
         </ScrollView>
       </AssistantSendGate.Provider>

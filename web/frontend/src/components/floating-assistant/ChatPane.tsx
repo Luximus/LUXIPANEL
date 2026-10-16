@@ -33,6 +33,12 @@ export function ChatPane(props: ChatPaneProps) {
     if (props.active) workspaceState.setContext(props.provider, props.mode, vm.activeChatProject ?? vm.currentProject);
   }, [props.active, props.provider, props.mode, vm.activeChatProject, vm.currentProject]);
   useEffect(() => {
+    if (!props.active) return;
+    const refresh = () => { void vm.reloadProjects(); };
+    window.addEventListener("lxp:assistant:projects-updated", refresh);
+    return () => window.removeEventListener("lxp:assistant:projects-updated", refresh);
+  }, [props.active, vm.reloadProjects]);
+  useEffect(() => {
     if (props.active && previewSurface) {
       vm.setListOpen(false);
       vm.setMobileListOpen(false);
@@ -97,6 +103,7 @@ export function ChatPane(props: ChatPaneProps) {
         <ProjectModal
           project={modalProject === "new" ? null : modalProject}
           allProjects={projects}
+          onLaunchAgent={props.onLaunchAgent}
           onClose={() => setModalProject(null)}
           onSaved={(p) => {
             void reloadProjects();

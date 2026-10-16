@@ -17,6 +17,8 @@ import {
 } from "@/lib/assistant-request";
 import { ChatTab } from "./ChatTab";
 import { ProviderIcon } from "./ProviderIcon";
+import { workspaceState } from "./workspace-state";
+const ProjectAgentsDialog = lazy(() => import("./ProjectAgentsDialog").then((module) => ({ default: module.ProjectAgentsDialog })));
 import type { AssistantSettingsSection } from "./AssistantSettingsModal";
 const AssistantSettingsModal = lazy(() => import("./AssistantSettingsModal").then(module => ({ default: module.AssistantSettingsModal })));
 import {
@@ -159,9 +161,9 @@ function useVisualViewportHeight(active: boolean): void {
 }
 
 function isSettingsSection(
-  tab: AssistantTab | null | undefined,
-): tab is Extract<AssistantTab, "agentes" | "providers" | "modules" | "stats" | "access"> {
-  return tab === "agentes" || tab === "providers" || tab === "modules" || tab === "stats" || tab === "access";
+  tab: AssistantTab | "general" | null | undefined,
+): tab is AssistantSettingsSection {
+  return tab === "general" || tab === "modules" || tab === "stats" || tab === "access";
 }
 
 /**
@@ -195,8 +197,7 @@ export default function AssistantPanel({
   const [settingsVisited, setSettingsVisited] = useState(false);
   useEffect(() => { if (settingsOpen) setSettingsVisited(true); }, [settingsOpen]);
   const [settingsSection, setSettingsSection] = useState<AssistantSettingsSection | null>(null);
-  // Deep-link into the Agents section's editor (chat header agent chip).
-  const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
+  const [projectAgentsRequest, setProjectAgentsRequest] = useState<{ projectId?: string; agentId?: string; nonce: number } | null>(null);
   // Active screen's provider selector (mobile): the in-screen top strip is
   // hidden on phones and registers here so the shared bottom strip drives it.
   const [screenProvider, setScreenProvider] = useState<ScreenProviderController | null>(null);
@@ -206,10 +207,8 @@ export default function AssistantPanel({
   );
   const [config, setConfig] = useState<AssistantConfigState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Lista de providers con toggle "Mostrar en chat" activo. Necesaria por
-  // `openAssistantRequest` (resuelve provider) y `onboarding` (decide si
-  // abrir Proveedores). Declarada ANTES del callback que la consume para que
-  // TS no proteste por uso antes de declaración.
+  // Lista de proveedores visibles en chat, usada por `openAssistantRequest`.
+  // Debe declararse antes del callback que la consume.
   const activeProviders = useMemo<AssistantProviderId[]>(() => {
     if (!config) return [];
     return (PROVIDER_ORDER as AssistantProviderId[]).filter((id) => config.providers[id]?.active);
@@ -265,21 +264,28 @@ export default function AssistantPanel({
   // Launch a chat bound to a custom agent: switch to its provider sub-tab and
   // start a fresh agent-bound conversation. Shared by the Agents tab, the
   // Dashboard's agents section, and the Chat sidebar's agents section.
-  const launchAgent = useCallback((agent: AssistantAgent) => {
-    setOpenReq({ kind: "agent", provider: agent.providerId, agentId: agent.id, projectId: agent.projectIds?.[0] ?? null, nonce: Date.now() });
+  const launchAgent = useCallback((agent: AssistantAgent, projectId?: string) => {
+    setOpenReq({ kind: "agent", provider: agent.providerId, agentId: agent.id, projectId: projectId ?? agent.projectIds?.[0] ?? null, nonce: Date.now() });
     setTab("chat");
   }, []);
 
-  const openSettings = useCallback((section?: AssistantSettingsSection | null, agentId?: string | null) => {
+  const openSettings = useCallback((section?: AssistantSettingsSection | "agentes" | null, agentId?: string | null) => {
+    if (section === "agentes" || agentId) {
+      setSettingsOpen(false);
+      setProjectAgentsRequest({ projectId: workspaceState.getSnapshot().project?.id, agentId: agentId ?? undefined, nonce: Date.now() });
+      return;
+    }
     setSettingsSection(section ?? null);
-    setSettingsAgentId(agentId ?? null);
     setSettingsOpen(true);
+  }, []);
+
+  const openProviderCredentials = useCallback(() => {
+    window.location.assign("/panel/settings#cred-assistant");
   }, []);
 
   const closeSettings = useCallback(() => {
     setSettingsOpen(false);
     setSettingsSection(null);
-    setSettingsAgentId(null);
   }, []);
 
   useEffect(() => {
@@ -298,11 +304,6 @@ export default function AssistantPanel({
     };
   }, [locale]);
 
-  // "Configurado" = al menos un proveedor con el toggle "Mostrar en chat"
-  // activo (lo único que hace usable el asistente). En el primer arranque
-  // nada está activo → el flujo de onboarding aterriza en Proveedores.
-  const hasActiveProvider = activeProviders.length > 0;
-
   const reload = useCallback(async () => {
     try {
       const cfg = await assistantApi.getConfig();
@@ -316,6 +317,7 @@ export default function AssistantPanel({
       if (cfg.defaultConversationsTab) mirror.defaultConversationsTab = cfg.defaultConversationsTab;
       if (cfg.defaultChatProvider !== undefined) mirror.defaultChatProvider = cfg.defaultChatProvider;
       if (cfg.defaultChatModel !== undefined) mirror.defaultChatModel = cfg.defaultChatModel;
+      mirror.defaultChatEffort = cfg.defaultChatEffort ?? "";
       if (Object.keys(mirror).length > 0) uiPrefs.set(mirror);
       setLoadError(null);
     } catch (err) {
@@ -323,40 +325,38 @@ export default function AssistantPanel({
     }
   }, []);
 
-  // Onboarding de primer arranque: cuando la config ya cargó y no hay ningún
-  // proveedor configurado, abrir directamente en Proveedores — no hay nada que
-  // mostrar en Dashboard/Chat y la primera tarea del usuario es configurar uno.
-  useEffect(() => {
-    if (!config) return;
-    if (hasActiveProvider) return;
-    setTab("chat");
-    openSettings("providers");
-  }, [config, hasActiveProvider, openSettings]);
-
   // Switch tab on external request (deep-link from /panel/assistant, window API,
   // or a seed event routed by the drawer wrapper).
   useEffect(() => {
     if (!requestedTab) return;
-    if (isSettingsSection(requestedTab)) {
+    if (requestedTab === "providers") {
+      openProviderCredentials();
+      return;
+    }
+    if (requestedTab === "agentes" || isSettingsSection(requestedTab)) {
       openSettings(requestedTab);
       return;
     }
     setTab(requestedTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestNonce, requestedTab, openSettings]);
+  }, [requestNonce, requestedTab, openSettings, openProviderCredentials]);
 
   useEffect(() => {
     const handleOpenSettings = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ section?: AssistantTab; agentId?: string; __ack?: boolean }>).detail;
+      const detail = (ev as CustomEvent<{ section?: AssistantTab | "general"; agentId?: string; __ack?: boolean }>).detail;
       if (detail && typeof detail === "object") detail.__ack = true; // tell deep-link dispatchers we're hydrated
+      if (detail?.section === "providers") {
+        openProviderCredentials();
+        return;
+      }
       openSettings(
-        isSettingsSection(detail?.section) ? detail.section : null,
+        detail?.section === "agentes" || isSettingsSection(detail?.section) ? detail.section : null,
         typeof detail?.agentId === "string" ? detail.agentId : null,
       );
     };
     window.addEventListener("luxipanel:assistant-settings-open", handleOpenSettings);
     return () => window.removeEventListener("luxipanel:assistant-settings-open", handleOpenSettings);
-  }, [openSettings]);
+  }, [openSettings, openProviderCredentials]);
 
   /**
    * Deep-link a una conversación IA existente (notificación "Chat IA
@@ -532,7 +532,7 @@ export default function AssistantPanel({
                   enabled={Boolean(config?.enabled)}
                   config={config}
                   loading={config === null && !loadError}
-                  onOpenProviders={() => openSettings("providers")}
+                  onOpenProviders={openProviderCredentials}
                   onConfigChange={setConfig}
                   openReq={openReq}
                   chatVisible={tab === "chat"}
@@ -598,7 +598,7 @@ export default function AssistantPanel({
                       <i className="ti ti-plug text-base" aria-hidden></i>
                     )}
                     <span className="inline-flex items-center gap-1 text-[10px]">
-                      <span className="capitalize">{isAll ? ((messages.drawer as Record<string, unknown>).allProviders as string | undefined) ?? "All" : opt.id}</span>
+                      <span className="capitalize">{isAll ? ((messages.drawer as Record<string, unknown>).allProviders as string | undefined) ?? "All" : opt.id === "codex" ? "OpenAI" : opt.id}</span>
                       {opt.mode && <span className="text-[9px] opacity-60 uppercase">{opt.mode}</span>}
                     </span>
                   </button>
@@ -614,15 +614,15 @@ export default function AssistantPanel({
           locale={locale}
           config={config}
           dataTableI18n={dataTableI18n}
-          editAgentId={settingsAgentId}
           onClose={closeSettings}
-          onSectionChange={(s) => {
-            setSettingsSection(s);
-            // Navigating inside the modal consumes the agent deep-link so
-            // re-entering the Agents section shows the list, not the editor.
-            setSettingsAgentId(null);
-          }}
+          onSectionChange={setSettingsSection}
           onConfigChange={setConfig}
+        /></Suspense>}
+        {projectAgentsRequest && <Suspense fallback={null}><ProjectAgentsDialog
+          key={projectAgentsRequest.nonce}
+          {...projectAgentsRequest}
+          locale={locale}
+          onClose={() => setProjectAgentsRequest(null)}
           onLaunchAgent={launchAgent}
         /></Suspense>}
       </ScreenProviderContext.Provider>

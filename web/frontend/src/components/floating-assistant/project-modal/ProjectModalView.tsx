@@ -13,12 +13,16 @@
  * state inside the content column while the drawer swaps to another project
  * (nav + header stay put — no opaque full-card spinner).
  */
+import { lazy, Suspense, useState } from "react";
+import { projectAgentScope } from "./agent-scope";
+import { SettingsFooterContext, SettingsHeaderContext, type SettingsFooterAction, type SettingsHeaderOverride } from "../settings-footer";
+const AgentsTab = lazy(() => import("../AgentsTab").then((module) => ({ default: module.AgentsTab })));
 import { ModalShell } from "@/components/ui/ModalShell";
 import { DrawerSectionNav, type DrawerSectionItem } from "@/components/ui/DrawerSectionNav";
 import { cn } from "@/lib/utils";
 import { ViewTransition, useViewDirection } from "@/components/ui/ViewTransition";
 
-const PROJECT_TAB_ORDER = ["general", "context", "servers", "skills", "children", "structure"] as const;
+const PROJECT_TAB_ORDER = ["general", "agents", "context", "servers", "skills", "children", "structure"] as const;
 type ProjectTab = (typeof PROJECT_TAB_ORDER)[number];
 import { PROJECT_ICONS, STRUCTURE_PROVIDERS, type StructureProviderId } from "../assistant-api";
 import { LucideIcon } from "../LucideIcon";
@@ -31,14 +35,19 @@ import { type ProjectModalViewProps } from "./types";
 
 export function ProjectModalView(props: ProjectModalViewProps) {
   const vm: ProjectModalViewVM = useProjectModalView(props);
-  const { i18n, project, allProjects, initialParentId, onClose, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, teamName, setTeamName, leaderName, setLeaderName, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, addBusy, removeBusy, selectRef, overlayRef, assignedChildren, parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide } = vm;
+  const { i18n, project, allProjects, initialParentId, onClose, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, teamName, setTeamName, leaderName, setLeaderName, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, addBusy, removeBusy, selectRef, overlayRef, assignedChildren, parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide } = vm;
   // Dirección de la transición entre secciones (orden del menú lateral).
   const tabDirection = useViewDirection(tab, PROJECT_TAB_ORDER);
+  const [agentFooter, setAgentFooter] = useState<SettingsFooterAction | null>(null);
+  const [agentHeader, setAgentHeader] = useState<SettingsHeaderOverride | null>(null);
+  const agentScope = project ? projectAgentScope(project, allProjects) : null;
+  const activeAgentHeader = tab === "agents" ? agentHeader : null;
 
   // Section menu — same shape as the settings drawer (`AssistantSettingsModal`).
   // Structure only exists for saved projects.
   const sections: DrawerSectionItem[] = [
     { id: "general", label: t.tabGeneral, icon: "ti-id-badge-2", description: t.sectionGeneralDesc },
+    ...(project ? [{ id: "agents", label: t.tabAgents, icon: "ti-robot", description: t.sectionAgentsDesc }] : []),
     { id: "context", label: t.tabContext, icon: "ti-file-text", description: t.sectionContextDesc },
     { id: "servers", label: t.tabServers, icon: "ti-server", description: t.sectionServersDesc },
     { id: "skills", label: t.tabSkills, icon: "ti-stack-2", description: t.sectionSkillsDesc },
@@ -89,18 +98,22 @@ export function ProjectModalView(props: ProjectModalViewProps) {
   // `closeController` shares the VM's exit phase (save/delete/backdrop/✕
   // all play the same 200ms ease-out exit, never a double onClose).
   return (
+    <SettingsFooterContext.Provider value={setAgentFooter}>
+    <SettingsHeaderContext.Provider value={setAgentHeader}>
     <ModalShell
       onClose={props.onClose}
       closeController={deferredClose}
       overlayRef={overlayRef}
       cardClassName="w-[min(96vw,68rem)] max-lg:w-[85vw] max-sm:w-full"
-      title={headerTitle}
-      description={activeSection.description}
-      onBack={canGoBack ? onBack : undefined}
-      backLabel={t.back}
+      title={tab === "agents" ? `${activeAgentHeader?.title ?? t.tabAgents} · ${project?.title}` : headerTitle}
+      description={tab === "agents" ? `${project?.title} · ${activeAgentHeader?.description ?? activeSection.description}` : activeSection.description}
+      onBack={activeAgentHeader?.onBack ?? (canGoBack ? onBack : undefined)}
+      backLabel={activeAgentHeader?.backLabel ?? t.back}
       closeLabel={i18n.drawer.close}
       bodyClassName="overflow-hidden p-0"
-      footer={tab === "structure" ? undefined : footer}
+      footer={tab === "structure" ? undefined : tab === "agents" ? (agentFooter ? (
+        <button type="button" onClick={agentFooter.onClick} disabled={agentFooter.disabled} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40">{agentFooter.label}</button>
+      ) : undefined) : footer}
     >
       <div className="flex h-full min-h-0">
         <DrawerSectionNav items={sections} activeId={tab} onSelect={(id) => setTab(id as ProjectTab)} />
@@ -167,7 +180,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   {!project ? <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="block"><span>Nombre del equipo</span><input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder={title || "Equipo del proyecto"} maxLength={120} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-xs outline-none focus:border-primary" /></label>
                     <label className="block"><span>Agente líder</span><input value={leaderName} onChange={(e) => setLeaderName(e.target.value)} placeholder={title ? `${title} · Líder` : "Agente líder"} maxLength={120} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-xs outline-none focus:border-primary" /></label>
-                  </div> : <p className="mt-2 text-[11px] text-muted-foreground">Gestiona el equipo y el agente líder desde Agentes IA.</p>}
+                  </div> : <button type="button" onClick={() => setTab("agents")} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"><i className="ti ti-robot" aria-hidden />{t.tabAgents}</button>}
                 </div>
               )}
 
@@ -558,6 +571,24 @@ export function ProjectModalView(props: ProjectModalViewProps) {
             </>
           )}
 
+          {tab === "agents" && project && (
+            agentScope ? <>
+              {agentScope.root.id !== project.id && <p className="rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground">{formatAssistantMessage(t.agentsSharedTeam, { project: agentScope.root.title })}</p>}
+              <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">{t.loadingProject}</p>}>
+                <AgentsTab
+                  key={`${project.id}:${agentScope.teamId}`}
+                  projectScope={agentScope}
+                  locale={props.locale}
+                  initialEditAgentId={props.initialEditAgentId}
+                  onLaunchAgent={(agent) => {
+                    props.onLaunchAgent?.(agent, project.id);
+                    onClose();
+                  }}
+                />
+              </Suspense>
+            </> : <p role="status" className="rounded-lg border border-border p-4 text-sm text-muted-foreground">{t.agentsMissingTeam}</p>
+          )}
+
           {tab === "structure" && project && (
             <StructurePanel projectId={project.id} />
           )}
@@ -578,5 +609,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
         />
       )}
     </ModalShell>
+    </SettingsHeaderContext.Provider>
+    </SettingsFooterContext.Provider>
   );
 }

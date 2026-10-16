@@ -28,7 +28,7 @@ interface ChatTabProps {
    *  que cada kind se enrute sin ambigüedad. */
   openReq?: import("./AssistantPanel").ChatOpenRequest | null;
   /** Launch a chat bound to a custom agent (switches to its provider sub-tab). */
-  onLaunchAgent?: (agent: AssistantAgent) => void;
+  onLaunchAgent?: (agent: AssistantAgent, projectId?: string) => void;
   /** Prompt to prefill into the active provider's composer (deep-link/handoff). */
   seedText?: string | null;
   seedAutoSend?: boolean;
@@ -285,6 +285,7 @@ export function ChatTab({ enabled, config, loading, onOpenProviders, onConfigCha
                   ? config?.providers[id].cli?.model
                   : config?.providers[id].api?.model
               }
+              initialEffort={config?.defaultChatEffort ?? ""}
               initialModel={
                 defaultChatProvider === id && defaultChatModel && defaultChatModel !== "auto"
                   ? defaultChatModel

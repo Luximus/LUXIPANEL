@@ -40,6 +40,19 @@
   overflow-y: auto;
 }
 
+.prompt-bar.prompt-bar__plus-portal {
+  position: fixed;
+  z-index: 80;
+}
+
+.prompt-bar.prompt-bar__plus-portal .prompt-bar__menu {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  max-height: inherit;
+  transform-origin: top left;
+}
+
 .prompt-bar__menu[data-kind='model'] {
   right: auto;
   width: min(320px, 100%);

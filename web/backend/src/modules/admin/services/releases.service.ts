@@ -65,6 +65,12 @@ async function githubReleases(): Promise<Catalog> {
 }
 
 export const releasesService = {
+  async publishedRelease(tag: string): Promise<GithubRelease> {
+    if (!/^v?\d+\.\d+\.\d+$/.test(tag)) throw new ValidationError("Etiqueta de versión inválida.");
+    const release = (await githubReleases()).releases.find(row => row.tag === tag);
+    if (!release) throw new ValidationError("La versión no figura entre las Releases publicadas de GitHub.");
+    return { ...release, notes: sanitizePublicText(release.notes) };
+  },
   async preflight() {
     const root = installationRoot();
     const result = await installationExecutor.exec("git status --porcelain=v1 --untracked-files=all", { cwd: root, timeoutMs: 10000 });

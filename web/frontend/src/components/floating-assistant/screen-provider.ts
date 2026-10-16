@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef } from "react";
 
 /**
  * Per-screen provider selector, lifted to the drawer so the mobile bottom strip
- * can drive it. On phones each internal screen (Dashboard / Providers / Stats)
+ * can drive it. On phones each internal screen (Dashboard / Stats)
  * HIDES its own top provider strip and registers its selector here instead; the
  * shared bottom strip renders/controls it — per-screen, with NO navigation to
  * the chat tab. On desktop the in-screen strips stay and this is unused.

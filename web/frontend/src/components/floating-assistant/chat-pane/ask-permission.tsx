@@ -196,15 +196,17 @@ export function PermissionView({
 }: {
   request: { id: string; tool: string; title: string; detail?: string };
   interactive: boolean;
-  onDecide: (decision: "allow" | "deny" | "always") => void;
+  onDecide: (decision: "allow" | "deny" | "always") => void | Promise<void>;
 }) {
   const ct = useAssistantI18n().chatTab as Record<string, any>;
   const [sent, setSent] = useState<"allow" | "deny" | "always" | null>(null);
 
+  const [error, setError] = useState("");
   function decide(decision: "allow" | "deny" | "always") {
     if (sent) return;
     setSent(decision);
-    onDecide(decision);
+    setError("");
+    void Promise.resolve().then(() => onDecide(decision)).catch(() => { setSent(null); setError(ct.answerFailed ?? "No se pudo completar la respuesta"); });
   }
 
   // Once it's no longer the active turn (run stopped / superseded) we don't have
@@ -227,6 +229,7 @@ export function PermissionView({
         <i className="ti ti-shield-lock shrink-0 text-amber-500" aria-hidden></i>
         {ct.permNeedsApproval ?? "El asistente necesita tu permiso para continuar"}
       </p>
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-foreground/90">{request.title}</p>
         {request.detail ? (

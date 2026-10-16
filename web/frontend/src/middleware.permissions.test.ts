@@ -43,3 +43,14 @@ describe("all panel routes", () => {
     expect(rewrite).toHaveBeenCalledOnce();
   });
 });
+
+describe("mandatory GitHub connection",()=>{
+ it.each(["/","/files","/assistant","/settings","/module-dev"])("redirects an unlinked administrator at %s",async route=>{
+  mocked.session.mockResolvedValue({kind:"admin",github:{required:true,connected:false}});
+  const {response,rewrite}=await navigate(route);expect(response.headers.get("Location")).toBe("/connect-github");expect(rewrite).not.toHaveBeenCalled();
+ });
+ it("allows the linked account to keep its existing panel permissions",async()=>{
+  mocked.session.mockResolvedValue({kind:"admin",github:{required:true,connected:true}});
+  const {response,rewrite}=await navigate("/assistant");expect(response.status).toBe(200);expect(rewrite).toHaveBeenCalledOnce();
+ });
+});

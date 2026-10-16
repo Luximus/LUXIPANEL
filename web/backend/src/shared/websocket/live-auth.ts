@@ -5,6 +5,7 @@ import { resolveLiveAuthorization } from "../../modules/auth/services/live-autho
 import { localExecutor } from "../executor/local-executor.js";
 import { getDirectExecutorByBridgeSessionId } from "../executor/factory.js";
 import { AuthError } from "../errors/index.js";
+import { requireGithub } from "../github/user-connection.js";
 const authenticated = new WeakMap<IncomingMessage, TokenPayload>();
 export async function verifyWsAuthorization(req: IncomingMessage, refresh = false): Promise<TokenPayload | null> {
   const existing = authenticated.get(req);
@@ -14,6 +15,7 @@ export async function verifyWsAuthorization(req: IncomingMessage, refresh = fals
   if (!payload || payload.mcpScope || payload.kind === "mfa_pending") return null;
   const executor = payload.direct && payload.bridgeSessionId ? await getDirectExecutorByBridgeSessionId(payload.bridgeSessionId) : localExecutor;
   if (!executor) throw new AuthError("Identity server session expired");
+  await requireGithub(tokenService.toSessionUser(payload));
   const user = await resolveLiveAuthorization(tokenService.toSessionUser(payload), executor);
   if (user.hostingPolicy?.state === "pending") throw new AuthError("Hosting runtime update pending");
   const live = { ...payload, ...user } as TokenPayload;

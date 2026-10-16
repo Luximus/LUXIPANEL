@@ -16,6 +16,8 @@ import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
 import { once } from "node:events";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+const mockNodePtySpawn = vi.hoisted(() => vi.fn());
+vi.mock("node-pty", () => ({ spawn: mockNodePtySpawn }));
 vi.mock("../../../shared/websocket/live-auth.js", () => ({ verifyWsAuthorization: async () => {
   const { tokenService } = await import("../../auth/services/token.service.js");
   return tokenService.verify("fixture");
@@ -40,7 +42,7 @@ vi.mock("../../../shared/session/bridge-header.js", () => ({
 }));
 vi.mock("../../../shared/executor/index.js", () => ({
   quoteArg: (value: string) => `'${value}'`,
-  localExecutor: { id: "local", target: { id: "local" } },
+  localExecutor: { id: "local", target: { id: "local" }, exec: vi.fn() },
   LOCAL_TARGET_ID: "local",
   getDirectExecutorByBridgeSessionId: vi.fn(async () => null),
 }));
@@ -74,6 +76,7 @@ vi.mock("../../../shared/worklog/worklog-taxonomy.js", () => ({
 }));
 
 import type { IncomingMessage } from "http";
+import { tmuxScrollArgs } from "./tmux-command.js";
 import {
   parseCookies,
   extractToken,
@@ -414,6 +417,21 @@ describe("enforceHostingJail", () => {
 // ────────────────────────────────────────────────────────────────────────
 
 describe("openTerminalPty", () => {
+  it("reattaches a local tmux session in a real PTY", async () => {
+    vi.mocked(localExecutor.exec)
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok" } as never)
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "yes" } as never);
+    mockNodePtySpawn.mockReturnValue({ pid: 123, write: vi.fn(), resize: vi.fn(), kill: vi.fn(), onData: vi.fn(), onExit: vi.fn() });
+    const res = await openTerminalPty(localExecutor, basePayload, "stable-1234", "s1", true);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.reattached).toBe(true);
+    expect(mockNodePtySpawn).toHaveBeenCalledWith("tmux", [
+      "-u", "new-session", "-A", "-s", "lxp_7_stable-1234",
+      "env", "NO_LXP_CLI_AUTOSTART=1", env.TERMINAL_SHELL,
+      ";", ...tmuxScrollArgs("lxp_7_stable-1234"),
+    ], expect.objectContaining({ name: "xterm-256color" }));
+  });
+
   it("rejects a Linux account that is no longer eligible", async () => {
     mIdentity.mockResolvedValueOnce(null);
     const spawn = vi.fn();
@@ -456,6 +474,7 @@ describe("openTerminalPty", () => {
       "-A",
       "-s",
       "lxp_7_stable-1234",
+      ";", ...tmuxScrollArgs("lxp_7_stable-1234"),
     ]);
   });
 
@@ -473,7 +492,7 @@ describe("openTerminalPty", () => {
     const res = await openTerminalPty(dssh as never, basePayload, "stable-1234", "s1", true);
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.reattached).toBe(true);
-    expect(dssh.spawn).toHaveBeenCalledWith("sudo", ["-n", "-u", "alice", "-H", "--", "tmux", "-u", "new-session", "-A", "-s", "lxp_7_stable-1234", "env", "NO_LXP_CLI_AUTOSTART=1", env.TERMINAL_SHELL]);
+    expect(dssh.spawn).toHaveBeenCalledWith("sudo", ["-n", "-u", "alice", "-H", "--", "tmux", "-u", "new-session", "-A", "-s", "lxp_7_stable-1234", "env", "NO_LXP_CLI_AUTOSTART=1", env.TERMINAL_SHELL, ";", ...tmuxScrollArgs("lxp_7_stable-1234")]);
   });
 
   it("fails 1011/'PTY spawn failed' when spawn throws", async () => {
@@ -632,9 +651,9 @@ describe("wireTerminalDispatch", () => {
   it("closes the session on ws close and on ws error", () => {
     const { ws } = wire();
     ws.emit("close", 1000, Buffer.from("bye"));
-    expect(sessionManagerService.close).toHaveBeenCalledWith(7, "s1", "ws-close");
+    expect(sessionManagerService.close).toHaveBeenCalledWith(7, "s1", "ws-close", ws);
     ws.emit("error", new Error("x"));
-    expect(sessionManagerService.close).toHaveBeenCalledWith(7, "s1", "ws-error");
+    expect(sessionManagerService.close).toHaveBeenCalledWith(7, "s1", "ws-error", ws);
   });
 
   it("pipes PTY output to the socket and forwards PTY exit", () => {
@@ -646,6 +665,6 @@ describe("wireTerminalDispatch", () => {
     expect(lastSent(ws)).toEqual({ type: "output", data: "hello" });
     onExit(0);
     expect(lastSent(ws)).toEqual({ type: "exit", code: 0 });
-    expect(sessionManagerService.close).toHaveBeenCalledWith(7, "s1", "process-exit");
+    expect(sessionManagerService.close).toHaveBeenCalledWith(7, "s1", "process-exit", ws);
   });
 });

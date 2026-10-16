@@ -4,8 +4,7 @@ import { getClientMessages } from "@/i18n/client";
 import { useViewContext } from "../view-context";
 import { useModuleVisibility } from "../module-visibility";
 import { AssistantI18nProvider, mergeAssistantMessages, useAssistantI18n } from "../../floating-assistant/i18n";
-import { ProviderCard } from "../../floating-assistant/ProvidersTab";
-import { TranslationSettings } from "../../floating-assistant/TranslationSettings";
+import { ProviderCard } from "./AssistantProviderCard";
 import { AgentCredentialFields } from "./AgentCredentialFields";
 import type { AssistantConfigState, AssistantAgent, AssistantProviderId } from "../../floating-assistant/assistant-api";
 
@@ -59,14 +58,17 @@ function AssistantCredentialEditor() {
   return <AssistantI18nProvider value={data.messages}><CredentialSections config={data.config} onChange={config => { if (mounted.current) setData(current => current ? { ...current, config } : current); }} /></AssistantI18nProvider>;
 }
 
-function CredentialSections({ config, onChange }: { config: AssistantConfigState; onChange(config: AssistantConfigState): void }) {
+export function CredentialSections({ config, onChange }: { config: AssistantConfigState; onChange(config: AssistantConfigState): void }) {
   const t = useAssistantI18n();
-  const { locale, messages } = useViewContext();
+  const { messages } = useViewContext();
   const [section, setSection] = useState("providers");
-  const [provider, setProvider] = useState<AssistantProviderId>(config.activeProvider || "claude");
+  const [provider, setProvider] = useState<AssistantProviderId>(() =>
+    config.defaultChatProvider && config.providers[config.defaultChatProvider]?.active
+      ? config.defaultChatProvider
+      : IDS.find(id => config.providers[id]?.active) ?? config.activeProvider ?? "codex"
+  );
   const sections = [
     ["providers", t.drawer.tabs.providers],
-    ["translation", t.translationSettings.enginesCredentials],
     ["agents", t.agentsTab.editor.credentialTitle],
   ];
   return <div className="space-y-3 p-3" data-ai-credentials>
@@ -77,7 +79,7 @@ function CredentialSections({ config, onChange }: { config: AssistantConfigState
     </label>
     {section === "providers" && <>
       <select aria-label={t.drawer.tabs.providers} value={provider} onChange={e => setProvider(e.target.value as AssistantProviderId)} className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm">
-        {IDS.map(id => <option key={id} value={id}>{id === "codex" ? "Codex (OpenAI)" : id.charAt(0).toUpperCase() + id.slice(1)}</option>)}
+        {IDS.map(id => <option key={id} value={id}>{id === "codex" ? "OpenAI" : id.charAt(0).toUpperCase() + id.slice(1)}</option>)}
       </select>
       <ProviderCard key={provider} id={provider} state={config.providers[provider]} onPatch={async patch => {
         const res = await api.put<{config: AssistantConfigState}>(`/api/ai/config/providers/${provider}`, patch);
@@ -85,7 +87,6 @@ function CredentialSections({ config, onChange }: { config: AssistantConfigState
         onChange(next); changed();
       }} />
     </>}
-    {section === "translation" && <TranslationSettings config={config} locale={locale} credentialsOnly />}
     {section === "agents" && <AgentCredentials />}
   </div>;
 }

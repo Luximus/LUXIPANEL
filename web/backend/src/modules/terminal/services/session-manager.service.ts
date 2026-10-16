@@ -105,10 +105,12 @@ class SessionManagerService {
   }
 
   /** Close and remove a session by (userId, sessionId). */
-  close(userId: number, sessionId: string, reason = "closed"): boolean {
+  close(userId: number, sessionId: string, reason = "closed", expectedWs?: WebSocket): boolean {
     const key = sessionKey(userId, sessionId);
     const session = this.sessions.get(key);
-    if (!session) return false;
+    // A replaced socket can emit close/error (or its old PTY can exit) after
+    // the new connection has registered the same persistent session id.
+    if (!session || (expectedWs && session.ws !== expectedWs)) return false;
     this._destroySession(session, reason);
     this.sessions.delete(key);
     return true;

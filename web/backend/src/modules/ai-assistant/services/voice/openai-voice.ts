@@ -24,8 +24,9 @@ interface ResolvedOpenAi {
 function resolve(config: AssistantConfig): ResolvedOpenAi {
   const slot = config.providers.codex;
   return {
-    apiKey: slot?.api?.apiKey ?? "",
-    baseUrl: (slot?.api?.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, ""),
+    apiKey: (slot?.api?.apiKey ?? "").trim(),
+    // Accept either an origin or the conventional /v1 API base URL.
+    baseUrl: (slot?.api?.baseUrl?.trim() || DEFAULT_BASE_URL).replace(/\/+$/, "").replace(/\/v1$/, ""),
   };
 }
 
@@ -39,17 +40,57 @@ function extFor(mime: string): string {
   return "webm";
 }
 
+async function openAiRequestError(response: Response, action = "el audio"): Promise<VoiceError> {
+  const status = response.status;
+  // Read only a known error code; upstream messages can contain credentials.
+  const payload = await response.json().catch(() => null) as { error?: { code?: string } } | null;
+  const code = payload?.error?.code;
+  if (status === 401 && code === "ip_not_authorized") {
+    return new VoiceError("openai", "OpenAI no autorizó la IP de este servidor. Revisa la lista de IP permitidas de tu proyecto en OpenAI.", status);
+  }
+  if (status === 401 && code === "invalid_api_key") {
+    return new VoiceError("openai", "OpenAI rechazó la clave API guardada. Sustitúyela en Ajustes → Agentes IA → OpenAI y pulsa Probar. La sesión de Codex CLI es independiente del audio.", status);
+  }
+  if (status === 401) {
+    return new VoiceError("openai", "OpenAI no autenticó la clave API. Revisa la clave guardada en Ajustes → Agentes IA → OpenAI y su organización en OpenAI.", status);
+  }
+  if (status === 403) {
+    return new VoiceError("openai", `OpenAI denegó el acceso de esta clave para ${action}. Revisa los permisos y restricciones del proyecto en OpenAI.`, status);
+  }
+  if (status === 429) {
+    return new VoiceError("openai", "OpenAI limitó las solicitudes o agotó la cuota. Revisa el uso y la facturación de tu cuenta.", status);
+  }
+  return new VoiceError("openai", `OpenAI no pudo procesar ${action} (respuesta ${status}). Inténtalo de nuevo.`, status);
+}
+
 export function makeOpenAiVoice(config: AssistantConfig): VoiceProvider {
   const cfg = resolve(config);
   return {
     id: "openai",
     async ping() {
-      if (!cfg.apiKey) return { ok: false, detail: "OpenAI (slot codex) sin API key." };
-      return { ok: true, detail: "openai · voz" };
+      if (!cfg.apiKey) return { ok: false, detail: "Configura una clave API de OpenAI en Ajustes → Agentes IA → OpenAI para usar audio. La sesión de Codex CLI es independiente." };
+      try {
+        // No generation or audio upload: authenticate the saved credential.
+        const res = await fetch(`${cfg.baseUrl}/v1/models`, {
+          headers: { Authorization: `Bearer ${cfg.apiKey}` },
+          signal: AbortSignal.timeout(15_000),
+          redirect: "error",
+        });
+        if (!res.ok) return { ok: false, detail: (await openAiRequestError(res, "la consulta de modelos para verificar la clave")).message };
+        const data = await res.json().catch(() => null) as { object?: string; data?: unknown[] } | null;
+        if (data?.object !== "list" || !Array.isArray(data.data)) {
+          return { ok: false, detail: "OpenAI no devolvió una respuesta válida. No se pudo verificar la clave API; revisa la URL del proveedor." };
+        }
+        return { ok: true, detail: "OpenAI autenticó la clave API guardada. El audio también requiere permisos y cuota disponibles en el proyecto." };
+      } catch (err) {
+        return { ok: false, detail: err instanceof Error && err.name === "TimeoutError"
+          ? "OpenAI no respondió a tiempo. No se pudo verificar la clave API; vuelve a intentarlo."
+          : "No se pudo conectar con OpenAI para verificar la clave API. Comprueba la conexión y la URL del proveedor." };
+      }
     },
 
     async transcribe(audioBase64, mimeType, signal) {
-      if (!cfg.apiKey) throw new VoiceError("openai", "OpenAI (slot codex) sin API key.");
+      if (!cfg.apiKey) throw new VoiceError("openai", "Configura una clave API de OpenAI en Ajustes → Agentes IA → OpenAI para usar audio.");
       const bytes = Buffer.from(audioBase64, "base64");
       const form = new FormData();
       form.append("model", STT_MODEL.openai);
@@ -66,14 +107,14 @@ export function makeOpenAiVoice(config: AssistantConfig): VoiceProvider {
         signal,
       });
       if (!res.ok) {
-        throw new VoiceError("openai", `OpenAI STT ${res.status}: ${(await res.text()).slice(0, 200)}`, res.status);
+        throw await openAiRequestError(res);
       }
       const data = (await res.json()) as { text?: string };
       return { text: (data.text ?? "").trim() };
     },
 
     async speak(text, voice, signal) {
-      if (!cfg.apiKey) throw new VoiceError("openai", "OpenAI (slot codex) sin API key.");
+      if (!cfg.apiKey) throw new VoiceError("openai", "Configura una clave API de OpenAI en Ajustes → Agentes IA → OpenAI para usar audio.");
       const res = await fetch(`${cfg.baseUrl}/v1/audio/speech`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
@@ -86,7 +127,7 @@ export function makeOpenAiVoice(config: AssistantConfig): VoiceProvider {
         signal,
       });
       if (!res.ok) {
-        throw new VoiceError("openai", `OpenAI TTS ${res.status}: ${(await res.text()).slice(0, 200)}`, res.status);
+        throw await openAiRequestError(res);
       }
       const buf = Buffer.from(await res.arrayBuffer());
       return { audioBase64: buf.toString("base64"), mimeType: "audio/mpeg" };

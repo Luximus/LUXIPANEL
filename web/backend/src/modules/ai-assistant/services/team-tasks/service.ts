@@ -20,6 +20,7 @@ import { eventBus, Events } from "../../../../shared/events/index.js";
 import { agentRunRegistry } from "../agent-run-registry.js";
 import { cliJobTracker } from "../cli-job-tracker.service.js";
 import { teamIsolationService, type PreparedIsolation } from "../team-isolation.service.js";
+import { assistantConfigRepository } from "../../repositories/assistant-config.repository.js";
 import { conversationsRepository } from "../../repositories/conversations.repository.js";
 import { projectsRepository } from "../../repositories/projects.repository.js";
 import { teamTasksRepository } from "../../repositories/team-tasks.repository.js";
@@ -81,6 +82,8 @@ export interface AssignTaskInput {
   verifyCommands?: string[];
   /** Tope de tokens por tarea ya clampado (override del assign). */
   budgetTokens?: number;
+  /** Serialize build/deploy tasks across projects on this target. */
+  exclusiveBuild?: boolean;
 }
 
 let initialized = false;
@@ -263,6 +266,10 @@ export const teamTasksService = {
     //    síncrono lo persiste antes de arrancar; el diferido deja que
     //    drainConversationQueue lo haga al despachar (evita duplicarlo).
     const convId = await createWorkerConversation(executor, worker, task, projectId, { appendUserMessage: false });
+    if (leaderAgentId.startsWith("realtime:")) {
+      const parent = await conversationsRepository.getMeta(executor, leaderConversationId);
+      await conversationsRepository.patchMeta(executor, convId, { approvalMode: parent?.approvalMode ?? (await assistantConfigRepository.load(executor)).approval.mode });
+    }
     // Persistir el origen en el meta del worker YA (no solo al arrancar): el
     // camino DIFERIDO despacha vía drainConversationQueue, que lee el
     // panelOrigin del meta de ESTA conversación para re-montar el canal MCP.
@@ -295,8 +302,17 @@ export const teamTasksService = {
 
     // 4. Aislamiento (solo con proyecto con path). Nunca lanza: peor caso "none".
     let prep: PreparedIsolation = { isolation: { mode: "none" }, deferred: false };
-    if (project?.path) {
+    if (input.exclusiveBuild || (leaderAgentId.startsWith("realtime:") && effectiveVerify.length > 0)) {
+      const leasePath = "@realtime-build-deploy";
+      prep = { isolation: { mode: "lease", leasePath, ...(project?.path ? { cwd: project.path } : {}) },
+        deferred: !teamIsolationService.tryAcquireLease(leasePath, taskId, executor.target.id) };
+    } else if (project?.path) {
       prep = await teamIsolationService.prepare(executor, { taskId, projectPath: project.path });
+      if (leaderAgentId.startsWith("realtime:") && prep.isolation.mode === "none") {
+        const leasePath = project.path;
+        prep = { isolation: { mode: "lease", leasePath, cwd: project.path },
+          deferred: !teamIsolationService.tryAcquireLease(leasePath, taskId, executor.target.id) };
+      }
     }
     if (prep.isolation.mode !== "none" || prep.baseHadUncommitted) {
       record =
@@ -506,6 +522,7 @@ export const teamTasksService = {
   /** Reconcile a stale orphaned `running`/`pending` task. Returns the updated
    *  task, or null when it is NOT actually orphaned. */
   async reconcileRunningTask(executor: Executor, task: TeamTask): Promise<TeamTask | null> {
+    if (task.leaderAgentId.startsWith("realtime:") && task.status === "pending" && task.pendingPermission) return task;
     if (!task.id) return null;
 
     if (task.status === "pending") {

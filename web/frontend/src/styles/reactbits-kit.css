@@ -52,6 +52,10 @@
   z-index: 9999;
 }
 
+.lxp-spark-canvas[hidden] {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lxp-card-glow::after {
     transition: none;

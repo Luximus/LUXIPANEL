@@ -1,3 +1,8 @@
+import { initializeOwnerContributions } from "../../shared/github/owner-contributions.js";
+import { resolveLiveAuthorization } from "../auth/services/live-authorization.service.js";
+import { localExecutor } from "../../shared/executor/local-executor.js";
+import { ForbiddenError } from "../../shared/errors/index.js";
+import { canRecoverOwnerContribution, resumeOwnerContribution } from "./services/cli-run-recovery.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import type { Express } from "express";
@@ -17,8 +22,10 @@ import {
   initTeamVerifyRetryListener,
   initAgentMessageListener,
 } from "./services/turn-queue.service.js";
+import { handleRealtimeAudio } from "./controllers/realtime-ws.controller.js";
 import { handleAssistantConnection } from "./controllers/assistant-ws.controller.js";
 import type { WsRouter } from "../../shared/websocket/ws-router.js";
+import { registerReleaseTranslator } from "./services/release-translation-adapter.js";
 import { registerLogsRepairAgent } from "./services/logs-repair-adapter.js";
 
 const log = createModuleLogger("ai-module");
@@ -31,7 +38,15 @@ export {
 } from "./services/integrations.service.js";
 
 export function registerAiModule(app: Express): void {
+  void initializeOwnerContributions(async user => {
+    const live=await resolveLiveAuthorization(user,localExecutor);
+    if(live.kind!=="admin" || live.direct || live.tenantId) throw new ForbiddenError();
+    return live;
+  },canRecoverOwnerContribution).then(async jobs=>{
+    for(const job of jobs)await resumeOwnerContribution(job);
+  }).catch(()=>undefined);
   registerLogsRepairAgent();
+  registerReleaseTranslator();
   // Validate the team-templates seed at boot (cheap O(n) over 10 templates).
   // Fails loudly if the curated content is broken so we catch typos before
   // users hit the wizard.
@@ -70,6 +85,7 @@ export function registerAiModule(app: Express): void {
 /** Register /api/assistant/ws in the centralized WsRouter. Called from
  *  server.ts after `app.listen()` (matches the terminal/monitor/ui-sync pattern). */
 export function attachAssistantWebSocket(router: WsRouter): void {
+  router.register("/api/assistant/ws/realtime-audio", handleRealtimeAudio);
   router.register("/api/assistant/ws", (ws, req) => handleAssistantConnection(ws, req));
   log.info("Assistant WebSocket handler registered at /api/assistant/ws");
 }

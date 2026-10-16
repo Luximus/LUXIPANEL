@@ -39,11 +39,11 @@ import type { Executor } from "../../../shared/executor/index.js";
 // nunca como el usuario de servicio ni en el host del panel. Import directo del
 // archivo (no del barrel) para no tocar el índice compartido.
 import { PrivilegeDropExecutor } from "../../../shared/executor/privilege-drop-executor.js";
-// Reattach (persistencia de PTY vía tmux): solo se aplica sobre DirectSSH (honra
-// el comando y asigna PTY). Import directo del archivo, igual que PrivilegeDrop.
+// Reattach (persistencia de PTY vía tmux) para DirectSSH y ejecución local.
 import { DirectSshExecutor } from "../../../shared/executor/direct-ssh-executor.js";
 import { env } from "../../../config/env.js";
 import type { PtyProcess } from "./pty.service.js";
+import { tmuxSessionArgs } from "./tmux-command.js";
 import { resolveOverrideBridge } from "../../../shared/session/bridge-header.js";
 import {
   extractOverrideBridgeId as extractWsOverrideBridgeId,
@@ -178,7 +178,7 @@ export function createPtyFromStream(stream: StreamLikePty): PtyProcess {
  * with the SAME shape the rest of this service consumes (onData→WS output,
  * resize from the client frame, kill on close), so the dispatch code is unchanged.
  */
-async function spawnLocalPty(username: string, switchUser: boolean, clientManagesCli = false): Promise<PtyProcess> {
+async function spawnLocalPty(username: string, switchUser: boolean, clientManagesCli = false, tmuxName = ""): Promise<PtyProcess> {
   const pty = await import("node-pty");
 
   // node-pty's env must be `{ [k]: string }`; process.env has `| undefined`.
@@ -189,8 +189,12 @@ async function spawnLocalPty(username: string, switchUser: boolean, clientManage
   ptyEnv.TERM = "xterm-256color";
   if (clientManagesCli) ptyEnv.NO_LXP_CLI_AUTOSTART = "1";
 
-  const child = pty.spawn(switchUser ? "sudo" : env.TERMINAL_SHELL,
-    switchUser ? ["-n", "-u", username, "-H", "--", ...(clientManagesCli ? ["env", "NO_LXP_CLI_AUTOSTART=1"] : []), env.TERMINAL_SHELL] : [], {
+  const launchCommand = tmuxName ? "tmux" : switchUser && clientManagesCli ? "env" : env.TERMINAL_SHELL;
+  const launchArgs = tmuxName
+    ? tmuxSessionArgs(tmuxName, env.TERMINAL_SHELL, clientManagesCli)
+    : switchUser && clientManagesCli ? ["NO_LXP_CLI_AUTOSTART=1", env.TERMINAL_SHELL] : [];
+  const child = pty.spawn(switchUser ? "sudo" : launchCommand,
+    switchUser ? ["-n", "-u", username, "-H", "--", launchCommand, ...launchArgs] : launchArgs, {
     name: "xterm-256color",
     cols: 80,
     rows: 24,
@@ -487,12 +491,12 @@ export async function openTerminalPty(
   // --- Persistencia opcional vía tmux (reattach) ---
   // Aplica cuando: el cliente opta (clientSessionId), NO es hosting (la ruta
   // hosting va enjaulada/fail-closed y la dejamos intacta) y el executor honra
-  // `spawn(cmd,args)` con PTY: DirectSshExecutor (clave de usuario) o
+  // `spawn(cmd,args)` con PTY: LocalExecutor (node-pty), DirectSshExecutor o
   // PrivilegeDropExecutor en modo NORMAL (clave de servicio, privilege-drop SIN
   // jaula → `sudo -u <owner> -H tmux …`). Se EXCLUYE cualquier PrivilegeDrop que
   // vaya a jaula (`spawn` ignora cmd/args y abre la login shell jk_chrootsh: el
-  // tmux nunca correría y el probe mentiría). LicenseProxy ignora el comando y
-  // local no tiene TTY, así que ninguno de esos entra. El shell corre dentro de
+  // tmux nunca correría y el probe mentiría). LicenseProxy ignora el comando.
+  // El shell corre dentro de
   // `tmux new-session -A` (attach-or-create): al cerrar el WS, el SIGHUP DETACHA
   // el cliente tmux (la sesión sobrevive en el daemon); un reattach con el mismo
   // sessionId re-adjunta y tmux re-pinta el scrollback. El nombre va namespaced
@@ -502,7 +506,8 @@ export async function openTerminalPty(
   let tmuxName = "";
   let reattached = false;
   const tmuxCapableExecutor =
-    executor instanceof DirectSshExecutor
+    executor === localExecutor
+    || executor instanceof DirectSshExecutor
     || executor instanceof PrivilegeDropExecutor;
   const interactiveShellWillJail =
     executor instanceof PrivilegeDropExecutor && executor.willJailInteractiveShell;
@@ -546,17 +551,16 @@ export async function openTerminalPty(
   let pty;
   try {
     if (executor === localExecutor) {
-      // LOCAL session (panel host): a real PTY, not `localExecutor.spawn` (piped
-      // stdio → non-interactive bash, no prompt, pid 0). `usingTmux` is always
-      // false here (localExecutor is neither DirectSsh nor PrivilegeDrop).
-      pty = await spawnLocalPty(identity.username, identity.switchUser, clientManagesCli);
+      // LOCAL session: node-pty supplies the controlling TTY. When tmux is
+      // installed it keeps the shell/TUI alive across browser reconnections.
+      pty = await spawnLocalPty(identity.username, identity.switchUser, clientManagesCli, usingTmux ? tmuxName : "");
     } else {
       // The panel sends its saved startup command once, after WS connected.
       // Suppress the managed bashrc block for these sessions only (including
       // dedicated shells for snippets/install/history) to avoid double launch.
       const command = usingTmux ? "tmux" : clientManagesCli ? "env" : env.TERMINAL_SHELL;
       const args = usingTmux
-        ? ["-u", "new-session", "-A", "-s", tmuxName, ...(clientManagesCli ? ["env", "NO_LXP_CLI_AUTOSTART=1", env.TERMINAL_SHELL] : [])]
+        ? tmuxSessionArgs(tmuxName, env.TERMINAL_SHELL, clientManagesCli)
         : clientManagesCli ? ["NO_LXP_CLI_AUTOSTART=1", env.TERMINAL_SHELL] : [];
       pty = identity.switchUser
         ? createPtyFromStream(executor.spawn("sudo", ["-n", "-u", identity.username, "-H", "--", command, ...args]))
@@ -643,7 +647,7 @@ export function wireTerminalDispatch(args: {
   pty.onExit((code) => {
     log.info({ sessionId, code }, "PTY process exited");
     send(ws, { type: "exit", code });
-    sessionManagerService.close(payload.userId, sessionId, "process-exit");
+    sessionManagerService.close(payload.userId, sessionId, "process-exit", ws);
   });
 
   // --- WebSocket messages → PTY ---
@@ -760,11 +764,11 @@ export function wireTerminalDispatch(args: {
       { sessionId, code, reason: reason.toString() },
       "Terminal WS disconnected",
     );
-    sessionManagerService.close(payload.userId, sessionId, "ws-close");
+    sessionManagerService.close(payload.userId, sessionId, "ws-close", ws);
   });
 
   ws.on("error", (err) => {
     log.error({ sessionId, err }, "Terminal WS error");
-    sessionManagerService.close(payload.userId, sessionId, "ws-error");
+    sessionManagerService.close(payload.userId, sessionId, "ws-error", ws);
   });
 }

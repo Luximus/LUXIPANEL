@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "노트",
+    "activityTab": "활동",
+    "contributors": "기여자",
+    "contributorsUnavailable": "기여자를 불러올 수 없습니다.",
+    "translationInsufficientBalance": "AI 제공업체의 API 크레딧이 부족하여 번역할 수 없습니다. 원문을 표시합니다.",
+    "newBadge": "신규",
+    "updateTo": "{version}(으)로 업데이트",
     "title": "커뮤니티 및 버전",
     "comments": "댓글",
     "read": "읽음으로 표시",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "설치됨",
     "version": "버전",
     "openGithub": "GitHub에서 열기",
-    "close": "닫기"
+    "close": "닫기",
+    "newVersion": "새 버전이 있습니다",
+    "translating": "AI로 번역 중…",
+    "showOriginal": "원문 보기",
+    "showTranslation": "번역 보기",
+    "translationUnavailable": "AI 번역을 사용할 수 없어 원문을 표시합니다.",
+    "allComments": "GitHub에서 모든 댓글 보기",
+    "activity": "커뮤니티 활동",
+    "loading": "불러오는 중…",
+    "loadError": "정보를 불러올 수 없습니다."
 },
   "groups": {
     "main": "메인",

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
+import { teamIsolationService } from "./team-isolation.service.js";
+import { workerRunStarted, workerRunEnded } from "./team-tasks/worker-quota.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { cliJobsRepository, type CliJobDescriptor } from "../repositories/cli-jobs.repository.js";
 import { cliSessionsRepository } from "../repositories/cli-sessions.repository.js";
@@ -12,7 +15,31 @@ import { createModuleLogger } from "../../../shared/logger/index.js";
 import { makeUsageRecorder, persistAssistantMessage, drainConversationQueue } from "./turn-queue.service.js";
 import { moduleToolRunScope } from "./module-tools.service.js";
 import { readModuleRunRecovery, restoreModuleRunRecovery, moduleRecoveryJobIsAlive, moduleTokenHash } from "./module-run-recovery.service.js";
+import { contributionCliBinding, recoverOwnerContribution, finishOwnerContribution, type ContributionJob } from "../../../shared/github/owner-contributions.js";
+import { localExecutor } from "../../../shared/executor/local-executor.js";
+import { runWithExecutor } from "../../../shared/executor/context.js";
 const log = createModuleLogger("ai-cli-recovery");
+
+/** Recover contribution tracking only for the exact signed CLI job. */
+export async function canRecoverOwnerContribution(job:ContributionJob):Promise<boolean>{
+ return runWithExecutor(localExecutor,async()=>{
+  const desc=await cliJobsRepository.get(localExecutor,job.conversationId);
+  if(!desc || contributionCliBinding(desc)!==job.cliBinding || !readModuleRunRecovery(localExecutor,desc,job.user))return false;
+  const artifacts=await localExecutor.exec(`test -e ${quoteArg(desc.logFile)} && echo Y || echo N`,{timeoutMs:8000});
+  if(artifacts.stdout.trim()!=="Y")return false;
+  const exited=await localExecutor.exec(`test -e ${quoteArg(desc.exitFile)} && echo Y || echo N`,{timeoutMs:8000});
+  return exited.stdout.trim()==="Y" || await moduleRecoveryJobIsAlive(localExecutor,desc);
+ },job.user.userId,job.user);
+}
+export async function resumeOwnerContribution(job:ContributionJob):Promise<void>{
+ await runWithExecutor(localExecutor,async()=>{
+  if(agentRunRegistry.has(job.conversationId,"local"))return;
+  const desc=await cliJobsRepository.get(localExecutor,job.conversationId);
+  if(!desc || contributionCliBinding(desc)!==job.cliBinding)return;
+  const recoverTools=!!readModuleRunRecovery(localExecutor,desc,job.user) && await moduleRecoveryJobIsAlive(localExecutor,desc);
+  if(!agentRunRegistry.has(job.conversationId,"local"))resumeCliRun(localExecutor,job.conversationId,desc,job.user,recoverTools);
+ },job.user.userId,job.user);
+}
 
 function resumeCliRun(
   executor: Executor,
@@ -21,6 +48,7 @@ function resumeCliRun(
   user?: SessionUser,
   recoverTools = false,
 ): void {
+  let contribution:Awaited<ReturnType<typeof recoverOwnerContribution>>=null;
   const cliHolder = { value: false };
   const tokensHolder = { input: 0, output: 0, estimated: false };
   const recordUsage = makeUsageRecorder({
@@ -40,11 +68,21 @@ function resumeCliRun(
     user,
     makeGen: async function* () {
       const release = recoverTools && user ? restoreModuleRunRecovery(executor, desc, user) : () => {};
-      try { yield* makeRecoveredCliGen(executor, conversationId, desc); }
-      finally { release(); }
+      const task = await teamTasksRepository.findByWorkerConversation(executor, conversationId).catch(() => null);
+      if (task) {
+        workerRunStarted(task.userId, conversationId);
+        if (task.isolation?.leasePath && task.id) teamIsolationService.tryAcquireLease(task.isolation.leasePath, task.id, executor.target.id);
+      }
+      try {
+        contribution=await recoverOwnerContribution(user,desc,executor.target.id);
+        yield* makeRecoveredCliGen(executor, conversationId, desc);
+      }
+      finally { release(); if (task) workerRunEnded(task.userId, conversationId); }
     },
     onEvent: recordUsage,
-    onComplete: async (assistantText, _errored, ask, _translation, durationMs, cliLog, askKind, outcome) => {
+    onComplete: async (assistantText, errored, ask, _translation, durationMs, cliLog, askKind, outcome) => {
+      const contributionId=await finishOwnerContribution(contribution,!errored && !ask?.length && !outcome?.interrupted && !outcome?.error);
+      if(contributionId)assistantText+="\n\nEl aporte quedó registrado para envío automático a developer; su estado está en la conexión GitHub.";
       const tokens =
         tokensHolder.input + tokensHolder.output > 0
           ? {

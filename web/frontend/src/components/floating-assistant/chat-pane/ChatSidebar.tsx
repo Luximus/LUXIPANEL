@@ -10,6 +10,8 @@ import { LucideIcon } from "../LucideIcon";
 import { TimelineRow, ProjectsPager, SidebarTabs } from "./sidebar-chrome";
 import { ConvoRow } from "./ConvoRow";
 import { AgentThreadedConvos } from "./agent-threaded-convos";
+import { ProjectAgentConvos } from "./ProjectAgentConvos";
+import { projectForAgent } from "../project-modal/agent-scope";
 import { ProjectTreeConvos } from "./project-tree-convos";
 import { rootProjectId, SelectedProjectConvos } from "./project-history-picker";
 import { type ChatPaneVM } from "./use-chat-pane";
@@ -30,6 +32,12 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     historyError,
     historySearchStatus,
     historyHasMore,
+    projectTeam,
+    projectTeamAgents,
+    projectAgentHistory,
+    loadAgentHistory,
+    retryAgentHistory,
+    agentCatalogReady,
     loadMoreHistory,
     loadHistoryGroup,
     closeHistoryGroup,
@@ -86,7 +94,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     ? document.getElementById("server-rail-assistant-nav")
     : null;
   const standaloneMobile = isMobile && !railNavTarget;
-  const unifiedRoot = !projectQuery;
+  const unifiedRoot = !!projectTeam || !projectQuery;
   const scopedConvos = convos;
   const rootId = rootProjectId(currentProjectId, projectById);
   const parentRoot = rootId && rootId !== currentProjectId ? projectById.get(rootId) : null;
@@ -96,9 +104,13 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     if (autoProjectForRef.current === activeId) return;
     const chat = activeMeta?.id === activeId ? activeMeta : convos.find((item) => item.id === activeId);
     if (!chat) return;
+    if (!chat.projectId && chat.agentId && !agentCatalogReady) return;
     autoProjectForRef.current = activeId;
-    setCurrentProjectId(chat.projectId && projectById.has(chat.projectId) ? chat.projectId : null);
-  }, [activeId, activeMeta, convos, projectById, setCurrentProjectId]);
+    const agent = chat.agentId ? agentById.get(chat.agentId) : undefined;
+    const legacyRoot = !chat.projectId && agent?.teamId && projects.filter(p => !p.parentId && p.teamId === agent.teamId).length === 1
+      ? projectForAgent(agent, projects, currentProjectId ?? undefined) : null;
+    setCurrentProjectId(chat.projectId && projectById.has(chat.projectId) ? chat.projectId : legacyRoot?.id ?? null);
+  }, [activeId, activeMeta, convos, projectById, agentById, agentCatalogReady, projects, currentProjectId, setCurrentProjectId]);
   // In the workspace, the existing conversation tree lives in the left rail.
   // Elsewhere it keeps its original collapsible desktop/mobile behavior.
   const toggleHistoryProject = (id: string, siblings?: Iterable<string>) => {
@@ -117,6 +129,11 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     }
   };
   const listedRowProps = { ...looseTreeRowProps, onOpen: openListedConversation };
+  const teamHistory = projectTeam && <ProjectAgentConvos agents={projectTeamAgents} history={projectAgentHistory}
+    expanded={expandedConvAgents} onToggle={toggleConvAgentGroup} onNewChat={handleNewAgentChat}
+    onLoadMore={loadAgentHistory} onRetry={retryAgentHistory} rolesById={rolesById} rowProps={listedRowProps}
+    activeConversation={!projectQuery && activeMeta && (projectTeam.projects.some(p => p.id === activeMeta.projectId)
+      || (!activeMeta.projectId && projects.filter(p => !p.parentId && p.teamId === projectTeam.teamId).length === 1)) ? activeMeta : null} />;
   const historyRetry = historyError != null && (
     <div role="alert" className="absolute inset-0 z-10 flex items-center justify-center bg-card px-3 dark:bg-background sm:bg-muted">
       <button type="button" onClick={() => void reloadList(search)} className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-destructive shadow-sm hover:bg-accent">
@@ -193,7 +210,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
                 ? "flex flex-1 min-h-0 flex-col overflow-hidden"
                 : `flex flex-1 min-h-0 gap-0.5 overflow-y-auto px-1.5 py-1 touch-pan-y overscroll-y-contain ${groupAgentsList || groupLooseList ? "flex-col" : "flex-col-reverse"}`}
             >
-              {unifiedRoot ? (
+              {projectTeam ? teamHistory : unifiedRoot ? (
                 <SelectedProjectConvos
                   entries={looseProjectTree.entries}
                   projectById={projectById}
@@ -289,7 +306,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
                  drawer móvil; los proyectos se navegan desde el tab inferior
                  "Sueltos / Proyectos". Este bloque solo aparece al buscar o dentro
                  de un proyecto (flujo de proyecto intacto). */}
-            {projectQuery && (
+            {projectQuery && !projectTeam && (
             <div data-vaul-no-drag className="shrink-0 border-t border-border overflow-y-auto touch-pan-y overscroll-y-contain max-h-[38%]">
               {projectQuery ? (
                 /* Search active: flat list of matching projects/subprojects. */
@@ -452,7 +469,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
                 className={unifiedRoot ? "flex min-h-0 flex-1 flex-col" : "space-y-0.5"}
               >
               {scopedConvos.length === 0 && !unifiedRoot && <p className="px-2 py-3 text-[11px] text-muted-foreground">{ct.conversations?.empty ?? "Sin conversaciones."}</p>}
-              {unifiedRoot ? (
+              {projectTeam ? teamHistory : unifiedRoot ? (
                 <SelectedProjectConvos
                   entries={looseProjectTree.entries}
                   projectById={projectById}

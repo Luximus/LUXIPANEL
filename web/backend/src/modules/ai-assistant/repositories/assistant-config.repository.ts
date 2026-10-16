@@ -121,6 +121,7 @@ function mergeVoice(
     ttsProvider: patch.ttsProvider ?? b.ttsProvider,
     autoSpeak: patch.autoSpeak ?? b.autoSpeak,
     voice: patch.voice ?? b.voice,
+    realtimeEnabled: patch.realtimeEnabled ?? b.realtimeEnabled ?? false,
   };
 }
 
@@ -196,6 +197,7 @@ function merge(base: AssistantConfig, patch: Partial<AssistantConfig>): Assistan
     // the preference back to "no default".
     ...mergeOptional("defaultChatProvider", base, patch),
     ...mergeOptional("defaultChatModel", base, patch),
+    ...mergeOptional("defaultChatEffort", base, patch),
     integrations: mergeIntegrations(base.integrations, patch.integrations),
   };
 }
@@ -206,7 +208,7 @@ function merge(base: AssistantConfig, patch: Partial<AssistantConfig>): Assistan
  * otherwise the base value is preserved. Keeps the key absent when unset so the
  * sidecar JSON stays clean.
  */
-function mergeOptional<K extends "defaultChatProvider" | "defaultChatModel">(
+function mergeOptional<K extends "defaultChatProvider" | "defaultChatModel" | "defaultChatEffort">(
   key: K,
   base: AssistantConfig,
   patch: Partial<AssistantConfig>,
@@ -237,6 +239,7 @@ export const assistantConfigRepository = {
       // Optional startup provider/model for new chats — kept absent when unset.
       ...(doc.defaultChatProvider ? { defaultChatProvider: doc.defaultChatProvider } : {}),
       ...(doc.defaultChatModel ? { defaultChatModel: doc.defaultChatModel } : {}),
+      ...(doc.defaultChatEffort ? { defaultChatEffort: doc.defaultChatEffort } : {}),
       // Third-party integrations (ElevenLabs) — absent in configs saved before
       // the block existed, so default to the empty object.
       integrations: doc.integrations ?? {},

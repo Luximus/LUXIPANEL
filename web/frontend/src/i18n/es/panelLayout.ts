@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "Notas",
+    "activityTab": "Actividad",
+    "contributors": "Contribuidores",
+    "contributorsUnavailable": "No se pudieron cargar los contribuidores.",
+    "translationInsufficientBalance": "El proveedor de IA no tiene saldo API suficiente para traducir. Se muestra el texto original.",
+    "newBadge": "nuevo",
+    "updateTo": "Actualizar a {version}",
     "title": "Comunidad y versiones",
     "comments": "Comentarios",
     "read": "Marcar leído",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "Instalada",
     "version": "Versión",
     "openGithub": "Abrir en GitHub",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "newVersion": "Nueva versión disponible",
+    "translating": "Traduciendo con IA…",
+    "showOriginal": "Ver original",
+    "showTranslation": "Ver traducción",
+    "translationUnavailable": "La traducción IA no está disponible. Se muestra el texto original.",
+    "allComments": "Ver todos los comentarios en GitHub",
+    "activity": "Actividad de la comunidad",
+    "loading": "Cargando…",
+    "loadError": "No se pudo cargar esta información."
 },
   "groups": {
     "main": "Principal",

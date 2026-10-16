@@ -2,6 +2,7 @@
 // Copyright (C) 2026 LUXISOFT
 import { useEffect, useRef, useState } from "react";
 import { assistantConversationsApi, type ConversationMeta } from "../assistant-api/conversations";
+import { normalizeReasoningEffort, type ChatReasoningEffort } from "../reasoning-effort";
 import { chatUiState } from "../chat-ui-state";
 
 type Options = Required<Pick<ConversationMeta, "model" | "effort" | "approvalMode">>;
@@ -12,10 +13,11 @@ const effortLabel = (value: Options["effort"]) => ({ "": "Auto", low: "Low", med
 export function useConversationOptions(input: {
   id: string | null; provider: string; active: boolean; defaultModel: string;
   defaultApproval: Options["approvalMode"];
+  defaultEffort?: ChatReasoningEffort;
   onRestoreProvider?: (provider: string, id: string) => void;
 }) {
   const { id, provider, active } = input;
-  const defaults = (): Options => ({ model: input.defaultModel, effort: "", approvalMode: input.defaultApproval });
+  const defaults = (): Options => ({ model: input.defaultModel, effort: normalizeReasoningEffort(input.defaultEffort), approvalMode: input.defaultApproval });
   const [state, setState] = useState<{ id: string | null; value: Options; meta: ConversationMeta | null; ready: boolean; error: string | null }>(() => ({ id, value: defaults(), meta: null, ready: !id, error: null }));
   const stateRef = useRef(state); stateRef.current = state;
   const current = useRef(id); current.current = id;

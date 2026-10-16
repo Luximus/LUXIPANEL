@@ -1,3 +1,4 @@
+import { coreRepository } from "../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -20,6 +21,7 @@
  * restart, so at worst two workers of the same path overlap post-restart.
  */
 
+import { executionKey } from "./execution-scope.js";
 import { env } from "../../../config/env.js";
 import type { ExecResult, Executor } from "../../../shared/executor/index.js";
 import { quoteArg } from "../../../shared/executor/index.js";
@@ -152,14 +154,15 @@ export const teamIsolationService = {
 
     if (repoRoot) {
       try {
-        return await withRepoLock(repoRoot, () => this.prepareWorktree(executor, { taskId, projectPath, repoRoot }));
+        return await withRepoLock(executionKey(repoRoot, executor.target.id), () => this.prepareWorktree(executor, { taskId, projectPath, repoRoot }));
       } catch (err) {
+        if(executor.target.id==="local"&&repoRoot===coreRepository())throw err;
         log.warn({ err: (err as Error).message, repoRoot, taskId }, "worktree prepare failed — falling back to lease");
       }
     }
 
     // Lease fallback (non-git path or worktree failure).
-    const acquired = this.tryAcquireLease(projectPath, taskId);
+    const acquired = this.tryAcquireLease(projectPath, taskId, executor.target.id);
     return {
       isolation: { mode: "lease", leasePath: projectPath },
       deferred: !acquired,
@@ -172,7 +175,8 @@ export const teamIsolationService = {
     args: { taskId: string; projectPath: string; repoRoot: string },
   ): Promise<PreparedIsolation> {
     const { taskId, projectPath, repoRoot } = args;
-    const base = await git(executor, repoRoot, ["rev-parse", "HEAD"]);
+    const ownerCore=executor.target.id==="local"&&repoRoot===coreRepository();
+    const base = await git(executor, repoRoot, ["rev-parse", ownerCore?"refs/remotes/lxp-owner/developer":"HEAD"]);
     if (base.exitCode !== 0) throw new Error(`repo sin commits (${base.stderr.trim().slice(0, 120)})`);
     const baseSha = base.stdout.trim();
     const dirty = await git(executor, repoRoot, ["status", "--porcelain"]);
@@ -189,11 +193,11 @@ export const teamIsolationService = {
 
     const worktreePath = worktreePathFor(repoRoot, taskId);
     const branch = branchFor(taskId);
-    // Clear leftovers of a crashed previous attempt of the SAME task, then add.
-    await git(executor, repoRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
-    await git(executor, repoRoot, ["worktree", "prune"]).catch(() => undefined);
-    // -B: resets our own lxp/task-<id> branch if a stale one survived a crash.
-    const add = await git(executor, repoRoot, ["worktree", "add", worktreePath, "-B", branch]);
+    // Resume an existing task without resetting its branch or removing its files.
+    const existing = await git(executor, worktreePath, ["rev-parse", "--show-toplevel"]);
+    const add = existing.exitCode===0 && existing.stdout.trim()===worktreePath
+      ? existing
+      : await git(executor, repoRoot, ["worktree", "add", worktreePath, "-b", branch, baseSha]);
     if (add.exitCode !== 0) {
       throw new Error(`git worktree add falló: ${(add.stderr || add.stdout).trim().slice(0, 200)}`);
     }
@@ -406,7 +410,8 @@ export const teamIsolationService = {
   },
 
   /** Acquire the per-path write lease. Idempotent for the same holder. */
-  tryAcquireLease(path: string, taskId: string): boolean {
+  tryAcquireLease(path: string, taskId: string, targetId?: string): boolean {
+    path = executionKey(path.replace(new RegExp("/+$"), "") || "/", targetId);
     const holder = leases.get(path);
     if (holder === undefined) {
       leases.set(path, taskId);
@@ -415,7 +420,8 @@ export const teamIsolationService = {
     return holder === taskId;
   },
 
-  releaseLease(path: string, taskId: string): void {
+  releaseLease(path: string, taskId: string, targetId?: string): void {
+    path = executionKey(path.replace(new RegExp("/+$"), "") || "/", targetId);
     if (leases.get(path) === taskId) leases.delete(path);
   },
 
@@ -424,6 +430,7 @@ export const teamIsolationService = {
    * in `keepTaskIds` (crashed/pre-restart leftovers). Best-effort.
    */
   async sweepOrphans(executor: Executor, repoRoot: string, keepTaskIds: Set<string>): Promise<void> {
+    if(executor.target.id==="local"&&repoRoot===coreRepository())return;
     const ls = await executor
       .exec(`ls -1 ${quoteArg(`${repoRoot}/.lxp/worktrees`)} 2>/dev/null`, { timeoutMs: GIT_TIMEOUT_MS })
       .catch(() => null);

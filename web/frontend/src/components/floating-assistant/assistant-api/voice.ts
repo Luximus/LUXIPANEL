@@ -12,6 +12,7 @@ export type TtsProvider = "api" | "cli" | "minimax-cli";
 
 /** Redacted voice (audio in/out) settings + derived availability. */
 export interface VoiceConfigState {
+  realtimeEnabled?: boolean;
   enabled: boolean;
   sttEngine: VoiceEngineId | "auto";
   ttsEngine: VoiceEngineId | "auto";
@@ -30,10 +31,11 @@ export interface VoiceConfigState {
 }
 
 export interface VoiceConfigPatch {
+  realtimeEnabled?: boolean;
   enabled?: boolean;
-  sttEngine?: VoiceEngineId | "auto";
-  ttsEngine?: VoiceEngineId | "auto";
-  ttsProvider?: TtsProvider;
+  sttEngine?: "openai" | "auto";
+  ttsEngine?: "openai" | "auto";
+  ttsProvider?: "api";
   autoSpeak?: boolean;
   voice?: string;
 }
@@ -50,7 +52,7 @@ export interface VoiceCapabilities {
 }
 
 /** Base64-encode a Blob (browser) without the data-URL prefix. */
-async function blobToBase64(blob: Blob): Promise<string> {
+export async function blobToBase64(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer();
   let binary = "";
   const bytes = new Uint8Array(buf);
@@ -77,12 +79,12 @@ export const voiceApi = {
   },
 
   /** Transcribe a recorded audio Blob to text (server-side STT). */
-  async transcribe(blob: Blob): Promise<string> {
+  async transcribe(blob: Blob, signal?: AbortSignal): Promise<string> {
     const audioBase64 = await blobToBase64(blob);
     const res = await api.post<{ ok: boolean; text: string }>("/api/ai/voice/transcribe", {
       audioBase64,
       mimeType: blob.type || "audio/webm",
-    });
+    }, { signal });
     return unwrap(res, "Transcription failed").text;
   },
 

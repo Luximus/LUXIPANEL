@@ -8,6 +8,9 @@
  * `@/components/floating-assistant/chat-engine` unchanged.
  */
 import type { AgentMessage, ChatAttachment, TeamTaskView } from "./assistant-api";
+import { historyTurns } from "./chat-engine/history";
+import { resolveTargetScope } from "@/lib/api-client";
+import { chatInputLocked } from "./chat-engine/input-lock";
 import {
   stopAgent, cancelAgentQueue, sendPermissionDecision, getAgentQueueItem,
   assistantConversationsApi, streamAgentResume, teamApi, listActiveRuns, snapshotToTaskView,
@@ -314,6 +317,22 @@ export const chatEngine = {
     clearActiveViewKey(key);
   },
 
+  /** Refresh persisted voice messages without navigation or dropping task state. */
+  async refreshVoiceHistory(key: string, conversationId: string): Promise<void> {
+    const before = chats.get(key), scope = resolveTargetScope();
+    if (!before || before.conversationId !== conversationId || before.streaming) return;
+    const { items } = await assistantConversationsApi.messages(conversationId, Math.max(30, before.turns.length + 10), 0);
+    const current = chats.get(key);
+    if (scope !== resolveTargetScope() || (!current || current.turns !== before.turns) || current.streaming) return;
+    const fetched = historyTurns(items, current.provider);
+    const first = fetched[0];
+    const overlap = first?.createdAt ? current.turns.findIndex(t => t.createdAt === first.createdAt && t.role === first.role && t.text === first.text) : -1;
+    const turns = overlap > 0 ? [...current.turns.slice(0, overlap), ...fetched] : fetched;
+    chats.set(key, { ...current, turns });
+    emit();
+    await chatEngine.refreshTeamTasks(key);
+  },
+
   /** Seed turns loaded from history into the engine (no stream). */
   seed(key: string, provider: string, conversationId: string | null, turns: ChatTurn[]): void {
     const existing = chats.get(key);
@@ -488,6 +507,7 @@ export const chatEngine = {
     onSettled?: (key: string) => void;
   }): Promise<void> {
     const { key, provider, mode, conversationId, projectId, agentId, messages, userText, attachments, model, effort } = opts;
+    if (chatInputLocked(key) && !attachments?.some(a => a.voice) && !opts.planDecision) return;
     const isCli = mode === "cli";
 
     // A run is already in flight for this chat → queue the follow-up instead of

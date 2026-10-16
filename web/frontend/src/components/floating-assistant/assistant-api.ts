@@ -13,7 +13,6 @@ export * from "./assistant-api/modules";
 export * from "./assistant-api/connectors";
 export * from "./assistant-api/skills";
 export * from "./assistant-api/conversations";
-export * from "./assistant-api/translation";
 export * from "./assistant-api/storage";
 export * from "./assistant-api/projects";
 export * from "./assistant-api/project-structure";

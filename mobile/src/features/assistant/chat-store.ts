@@ -142,7 +142,7 @@ const composerSlice = createSlice<ComposerState>(EMPTY_COMPOSER, (a, b) =>
   a.busy === b.busy && a.blocked === b.blocked && a.blockedReason === b.blockedReason &&
   a.started === b.started && a.mcpExpired === b.mcpExpired && sameArray(a.queued, b.queued) &&
   a.approvalMode === b.approvalMode && sameConnectors(a.connectors, b.connectors) &&
-  a.voiceAvailable === b.voiceAvailable && a.terminalAvailable === b.terminalAvailable &&
+  a.realtimeEnabled === b.realtimeEnabled && a.voiceAvailable === b.voiceAvailable && a.terminalAvailable === b.terminalAvailable &&
   a.imageAttachSupported === b.imageAttachSupported,
 );
 const headerSlice = createSlice<AssistantHeader>(EMPTY_HEADER, (a, b) =>

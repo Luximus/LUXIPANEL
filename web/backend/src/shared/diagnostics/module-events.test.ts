@@ -42,5 +42,7 @@ describe("Public source credential gate", () => {
   it("rejects recognized tokens, private keys, and credential-bearing URLs without printing them", () => {
     for (const text of ["ghp_" + "a".repeat(36), "github_pat_" + "a".repeat(50), "sk-proj-" + "a".repeat(35), "-----BEGIN " + "PRIVATE KEY-----", "postgres://user:" + "s".repeat(20) + "@database/db", 'apiKey="' + 's'.repeat(32) + '"']) expect(() => assertPublishableSource(text)).toThrow("credencial");
     expect(() => assertPublishableSource('const apiKey = process.env.API_KEY;')).not.toThrow();
+    expect(() => assertPublishableSource('"placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----"')).not.toThrow();
+    expect(() => assertPublishableSource('-----BEGIN ' + 'OPENSSH PRIVATE KEY-----\nmaterial\n-----END OPENSSH PRIVATE KEY-----')).toThrow("credencial");
   });
 });

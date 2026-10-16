@@ -66,6 +66,7 @@ let convSeq = 0;
 // Meta del líder (panelOrigin heredable) + registro de patchRuntime por conv.
 const leaderMeta = { current: null as Record<string, unknown> | null };
 const patchedRuntime: Array<[string, Record<string, unknown>]> = [];
+vi.mock("../repositories/assistant-config.repository.js", () => ({ assistantConfigRepository: {load: async () => ({approval:{mode:"plan"}})} }));
 vi.mock("../repositories/conversations.repository.js", () => ({
   conversationsRepository: {
     async create() {
@@ -85,6 +86,7 @@ vi.mock("../repositories/conversations.repository.js", () => ({
     async getMeta(_e: unknown, id: string) {
       return id === "conv-leader" ? leaderMeta.current : null;
     },
+    async patchMeta(_e: unknown, id: string, patch: Record<string, unknown>) { patchedRuntime.push([id, patch]); return null; },
     async patchRuntime(_e: unknown, id: string, patch: Record<string, unknown>) {
       patchedRuntime.push([id, patch]);
       return null;
@@ -894,4 +896,13 @@ describe("dispatchNext no filtra unhandledRejection (concurrencia)", () => {
       process.off("unhandledRejection", onUnhandled);
     }
   });
+});
+
+it.each(["manual","auto",undefined])("voice workers inherit the conversation mode %s or configured plan mode", async mode => {
+  leaderMeta.current = mode ? {approvalMode:mode} : null;
+  const task = await teamTasksService.assignTask({
+    executor,leaderConversationId:"conv-leader",leaderAgentId:"realtime:conv-leader",
+    worker,title:"Revisar",task:"Solo revisar",projectId:null,depth:0,runAgent,
+  });
+  expect(patchedRuntime).toContainEqual([task.workerConversationId,{approvalMode:mode??"plan"}]);
 });

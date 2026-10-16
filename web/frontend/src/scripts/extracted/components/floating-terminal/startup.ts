@@ -26,7 +26,10 @@ export async function refreshStartupCli(): Promise<boolean> {
           const response = await api.get<{ active: string }>('/api/terminal-cli/state');
           if (scope !== terminalTargetScope() || revision !== startupRevision) return;
           if (response.ok && response.data) {
-            startupCommand = getCli(response.data.active)?.command || null;
+            const cli = getCli(response.data.active);
+            // Inline Codex keeps its transcript in the terminal's scrollback.
+            // Full-screen mode handles Up/Down as prompt history instead.
+            startupCommand = cli?.id === 'codex' ? `${cli.command} --no-alt-screen` : cli?.command || null;
             startupScope = scope;
           } else if (startupScope !== scope) { startupCommand = null; startupScope = scope; }
         } catch {

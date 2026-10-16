@@ -20,6 +20,8 @@ vi.mock("../../../shared/executor/factory.js", () => ({
 }));
 vi.mock("../services/live-authorization.service.js", () => ({ resolveLiveAuthorization: async (user: unknown) => user }));
 
+vi.mock("../../../shared/github/user-connection.js", async importOriginal => { const actual=await importOriginal<typeof import("../../../shared/github/user-connection.js")>();return {...actual,requireGithub:vi.fn(async()=>undefined),githubStatus:vi.fn(async()=>({required:true,connected:true}))}; });
+
 import { optionalAuth, requireAuth, requireAuthNoExecutor, requireMfaPending } from "./session.middleware.js";
 import { getContextExecutor } from "../../../shared/executor/context.js";
 

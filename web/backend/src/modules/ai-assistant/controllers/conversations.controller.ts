@@ -94,7 +94,8 @@ export const conversationsController = {
     const projectIds = typeof req.query["projectIds"] === "string" ? req.query["projectIds"].split(",").filter(Boolean).slice(0, 1000) : undefined;
     const agentIds = typeof req.query["agentIds"] === "string" ? req.query["agentIds"].split(",").filter(Boolean).slice(0, 1000) : undefined;
     const includeSummary = req.query["includeSummary"] === "1";
-    const result = await conversationsRepository.list(executor, { q, provider, projectId, projectIds, agentId, agentIds, withAgent, limit, offset, cursor, paged, includeSummary });
+    const summaryScope = req.query["summaryScope"] === "filtered" ? "filtered" : undefined;
+    const result = await conversationsRepository.list(executor, { q, provider, projectId, projectIds, agentId, agentIds, withAgent, limit, offset, cursor, paged, includeSummary, summaryScope });
     res.json({ ok: true, ...result });
 
     // On the initial, unfiltered load, self-heal any "orphan" chats (a CLI/
@@ -111,7 +112,7 @@ export const conversationsController = {
     const reconcileKey = JSON.stringify([executor?.target?.id ?? "local", getContextUserId() ?? "shared"]);
     const reconcileDue =
       Date.now() - (lastReconcileAt.get(reconcileKey) ?? 0) >= RECONCILE_COOLDOWN_MS;
-    if (offset === 0 && !q && !provider && projectId === undefined && reconcileDue) {
+    if (offset === 0 && !cursor && !q && !provider && projectId === undefined && !projectIds && agentId === undefined && !agentIds && withAgent === undefined && reconcileDue) {
       lastReconcileAt.set(reconcileKey, Date.now());
       void (async () => {
         try {

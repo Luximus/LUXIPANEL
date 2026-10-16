@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "ノート",
+    "activityTab": "アクティビティ",
+    "contributors": "貢献者",
+    "contributorsUnavailable": "貢献者を読み込めませんでした。",
+    "translationInsufficientBalance": "翻訳に必要なAIプロバイダーのAPIクレジットが不足しています。原文を表示しています。",
+    "newBadge": "新着",
+    "updateTo": "{version} に更新",
     "title": "コミュニティとバージョン",
     "comments": "コメント",
     "read": "既読にする",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "インストール済み",
     "version": "バージョン",
     "openGithub": "GitHubで開く",
-    "close": "閉じる"
+    "close": "閉じる",
+    "newVersion": "新しいバージョンがあります",
+    "translating": "AIで翻訳中…",
+    "showOriginal": "原文を表示",
+    "showTranslation": "翻訳を表示",
+    "translationUnavailable": "AI翻訳を利用できません。原文を表示しています。",
+    "allComments": "GitHubですべてのコメントを見る",
+    "activity": "コミュニティの活動",
+    "loading": "読み込み中…",
+    "loadError": "情報を読み込めませんでした。"
 },
   "groups": {
     "main": "メイン",

@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+export interface GithubCopy {title:string;description:string;token:string;connect:string;browser:string;continue:string;logout:string;disconnect:string;waiting:string;failed:string;tokenHelp:string}
+const rows:Record<string,string[]> = {
+es:["Conecta tu cuenta GitHub","Vincula tu cuenta para utilizar LUXIPANEL. Los aportes se atribuirán a tu identidad de GitHub.","Token personal de GitHub","Conectar cuenta","Autorizar en GitHub","Continuar","Cerrar sesión","Desconectar cuenta","Esperando autorización…","No se pudo conectar. Vuelve a intentarlo.","Crea un token en GitHub con acceso a tu perfil. Para publicar aportes, necesita acceso al repositorio correspondiente."],
+en:["Connect your GitHub account","Link your account to use LUXIPANEL. Contributions will use your GitHub identity.","GitHub personal access token","Connect account","Authorize on GitHub","Continue","Sign out","Disconnect account","Waiting for authorization…","Could not connect. Try again.","Create a GitHub token with access to your profile. Publishing contributions requires access to the relevant repository."],
+fr:["Connectez votre compte GitHub","Associez votre compte pour utiliser LUXIPANEL. Les contributions utiliseront votre identité GitHub.","Jeton personnel GitHub","Connecter le compte","Autoriser sur GitHub","Continuer","Se déconnecter","Dissocier le compte","En attente d’autorisation…","Connexion impossible. Réessayez.","Créez un jeton GitHub avec accès à votre profil. La publication nécessite un accès au dépôt concerné."],
+de:["GitHub-Konto verbinden","Verbinden Sie Ihr Konto, um LUXIPANEL zu nutzen. Beiträge werden Ihrer GitHub-Identität zugeordnet.","Persönliches GitHub-Token","Konto verbinden","Auf GitHub autorisieren","Weiter","Abmelden","Konto trennen","Warte auf Autorisierung…","Verbindung fehlgeschlagen. Erneut versuchen.","Erstellen Sie ein GitHub-Token mit Profilzugriff. Zum Veröffentlichen benötigen Sie Zugriff auf das jeweilige Repository."],
+it:["Collega il tuo account GitHub","Collega il tuo account per usare LUXIPANEL. I contributi useranno la tua identità GitHub.","Token personale GitHub","Collega account","Autorizza su GitHub","Continua","Esci","Scollega account","In attesa di autorizzazione…","Connessione non riuscita. Riprova.","Crea un token GitHub con accesso al profilo. La pubblicazione richiede l’accesso al repository corrispondente."],
+pt:["Conecte sua conta GitHub","Vincule sua conta para usar o LUXIPANEL. As contribuições usarão sua identidade GitHub.","Token pessoal do GitHub","Conectar conta","Autorizar no GitHub","Continuar","Sair","Desconectar conta","Aguardando autorização…","Não foi possível conectar. Tente novamente.","Crie um token GitHub com acesso ao perfil. Para publicar, é necessário acesso ao repositório correspondente."],
+ar:["اربط حساب GitHub","اربط حسابك لاستخدام LUXIPANEL. ستُنسب المساهمات إلى هويتك في GitHub.","رمز GitHub الشخصي","ربط الحساب","التفويض في GitHub","متابعة","تسجيل الخروج","فصل الحساب","في انتظار التفويض…","تعذر الاتصال. حاول مجددًا.","أنشئ رمز GitHub للوصول إلى ملفك الشخصي. يتطلب النشر صلاحية الوصول إلى المستودع المعني."],
+bn:["GitHub অ্যাকাউন্ট সংযুক্ত করুন","LUXIPANEL ব্যবহার করতে অ্যাকাউন্ট সংযুক্ত করুন। অবদান আপনার GitHub পরিচয়ে প্রকাশিত হবে।","GitHub ব্যক্তিগত টোকেন","অ্যাকাউন্ট সংযুক্ত করুন","GitHub-এ অনুমতি দিন","চালিয়ে যান","সাইন আউট","অ্যাকাউন্ট বিচ্ছিন্ন করুন","অনুমতির অপেক্ষায়…","সংযোগ করা যায়নি। আবার চেষ্টা করুন।","প্রোফাইলে প্রবেশের অনুমতিসহ GitHub টোকেন তৈরি করুন। প্রকাশের জন্য সংশ্লিষ্ট রিপোজিটরির অনুমতি প্রয়োজন।"],
+hi:["GitHub खाता जोड़ें","LUXIPANEL उपयोग करने के लिए अपना खाता जोड़ें। योगदान आपकी GitHub पहचान से जुड़ेंगे।","GitHub व्यक्तिगत टोकन","खाता जोड़ें","GitHub पर अनुमति दें","जारी रखें","साइन आउट","खाता हटाएँ","अनुमति की प्रतीक्षा…","कनेक्ट नहीं हुआ। फिर प्रयास करें।","प्रोफ़ाइल तक पहुँच वाला GitHub टोकन बनाएँ। योगदान प्रकाशित करने के लिए संबंधित रिपॉज़िटरी की अनुमति चाहिए।"],
+ja:["GitHub アカウントを接続","LUXIPANEL を使うにはアカウントを接続してください。貢献は GitHub の本人情報に紐付きます。","GitHub 個人アクセストークン","アカウントを接続","GitHub で認証","続行","ログアウト","接続を解除","認証を待っています…","接続できませんでした。再試行してください。","プロフィールにアクセスできる GitHub トークンを作成してください。公開には対象リポジトリへのアクセス権が必要です。"],
+ko:["GitHub 계정 연결","LUXIPANEL을 사용하려면 계정을 연결하세요. 기여는 GitHub 계정에 연결됩니다.","GitHub 개인 액세스 토큰","계정 연결","GitHub에서 승인","계속","로그아웃","계정 연결 해제","승인 대기 중…","연결하지 못했습니다. 다시 시도하세요.","프로필에 접근할 수 있는 GitHub 토큰을 만드세요. 게시하려면 해당 저장소에 대한 권한이 필요합니다."],
+ru:["Подключите аккаунт GitHub","Свяжите аккаунт для использования LUXIPANEL. Вклад будет связан с вашей учётной записью GitHub.","Личный токен GitHub","Подключить аккаунт","Авторизовать в GitHub","Продолжить","Выйти","Отключить аккаунт","Ожидание авторизации…","Не удалось подключиться. Повторите попытку.","Создайте токен GitHub с доступом к профилю. Для публикации нужен доступ к соответствующему репозиторию."]
+};
+export function githubCopy(locale:string):GithubCopy {
+ const [title,description,token,connect,browser,cont,logout,disconnect,waiting,failed,tokenHelp]=rows[locale]??rows.en!;
+ return {title:title!,description:description!,token:token!,connect:connect!,browser:browser!,continue:cont!,logout:logout!,disconnect:disconnect!,waiting:waiting!,failed:failed!,tokenHelp:tokenHelp!};
+}
+
+export function contributionCopy(locale:string) {
+ const all:Record<string,string[]> = {
+ es:["Aportes automáticos","En cola","Enviado a developer","Requiere atención","Interrumpido","Sin cambios","Reintentar","Validación CI pendiente"],
+ en:["Automatic contributions","Queued","Sent to developer","Needs attention","Interrupted","No changes","Retry","CI validation pending"],
+ fr:["Contributions automatiques","En attente","Envoyé à developer","Action requise","Interrompu","Aucun changement","Réessayer","Validation CI en attente"],
+ de:["Automatische Beiträge","Warteschlange","An developer gesendet","Aktion erforderlich","Unterbrochen","Keine Änderungen","Erneut versuchen","CI-Prüfung ausstehend"],
+ it:["Contributi automatici","In coda","Inviato a developer","Richiede attenzione","Interrotto","Nessuna modifica","Riprova","Verifica CI in attesa"],
+ pt:["Contribuições automáticas","Na fila","Enviado a developer","Requer atenção","Interrompido","Sem alterações","Tentar novamente","Validação CI pendente"],
+ ar:["المساهمات التلقائية","في الانتظار","أُرسل إلى developer","يتطلب الانتباه","متوقف","لا تغييرات","إعادة المحاولة","التحقق من CI معلق"],
+ bn:["স্বয়ংক্রিয় অবদান","সারিতে","developer-এ পাঠানো হয়েছে","মনোযোগ প্রয়োজন","বাধাপ্রাপ্ত","কোনো পরিবর্তন নেই","আবার চেষ্টা করুন","CI যাচাই অপেক্ষমাণ"],
+ hi:["स्वचालित योगदान","कतार में","developer को भेजा गया","ध्यान आवश्यक","बाधित","कोई बदलाव नहीं","फिर प्रयास करें","CI सत्यापन लंबित"],
+ ja:["自動貢献","待機中","developer に送信済み","対応が必要","中断","変更なし","再試行","CI 検証待ち"],
+ ko:["자동 기여","대기 중","developer에 전송됨","확인 필요","중단됨","변경 없음","다시 시도","CI 검증 대기"],
+ ru:["Автоматические вклады","В очереди","Отправлено в developer","Требует внимания","Прервано","Без изменений","Повторить","Ожидается проверка CI"]
+ };
+ const [title,pending,pushed,blocked,interrupted,empty,retry,ci]=all[locale]??all.en!;
+ return {title:title!,retry:retry!,ci:ci!,saved:locale==="es"?"Commit guardado localmente":"Commit saved locally",checks:{pending:ci!,success:locale==="es"?"Comprobaciones correctas":"Checks passed",failure:locale==="es"?"Fallaron las comprobaciones":"Checks failed",missing:locale==="es"?"No se encontró una ejecución de las comprobaciones":"No checks run found"} as Record<string,string>,status:{pending:pending!,pushed:pushed!,blocked:blocked!,interrupted:interrupted!,empty:empty!,capturing:pending!} as Record<string,string>};
+}
+

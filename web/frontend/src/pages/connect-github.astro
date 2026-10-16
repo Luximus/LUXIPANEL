@@ -1,0 +1,14 @@
+---
+import AuthLayout from "@/layouts/AuthLayout.astro";
+import GithubConnection from "@/components/auth/GithubConnection";
+import { getSession } from "@/lib/auth";
+import { localeFromRequest } from "@/i18n/server";
+import { githubCopy } from "@/lib/github-copy";
+const user = await getSession(Astro.request);
+if (!user) return Astro.redirect("/login");
+Astro.response.headers.set("Cache-Control","no-store");
+const locale=localeFromRequest(Astro.request);
+---
+<AuthLayout title={githubCopy(locale).title}>
+ <GithubConnection client:load locale={locale} initial={user.github ?? {connected:false,deviceFlowAvailable:false}} />
+</AuthLayout>

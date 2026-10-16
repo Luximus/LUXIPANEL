@@ -13,6 +13,8 @@
  *   - CountUp        → `[data-countup]` numbers animate from 0 into view once.
  */
 
+import { initClickSparks } from "./click-sparks";
+
 const REDUCED = typeof window !== "undefined"
   && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
@@ -44,82 +46,6 @@ function bindPointer() {
     },
     { passive: true },
   );
-}
-
-// ── ClickSpark: quick spark burst on click ──────────────────────────────────
-function initClickSpark() {
-  if (REDUCED) return;
-  let canvas = document.querySelector<HTMLCanvasElement>("canvas.lxp-spark-canvas");
-  if (!canvas) {
-    canvas = document.createElement("canvas");
-    canvas.className = "lxp-spark-canvas";
-    document.body.appendChild(canvas);
-  }
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  function resize() {
-    canvas!.width = Math.floor(window.innerWidth * dpr);
-    canvas!.height = Math.floor(window.innerHeight * dpr);
-    ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  resize();
-  window.addEventListener("resize", resize, { passive: true });
-
-  const brand = () => {
-    const v = getComputedStyle(document.documentElement).getPropertyValue("--brand")
-      || getComputedStyle(document.documentElement).getPropertyValue("--primary");
-    return v.trim() || "oklch(0.62 0.2 265)";
-  };
-
-  interface Spark { x: number; y: number; angle: number; start: number; }
-  let sparks: Spark[] = [];
-  const COUNT = 8;
-  const DIST = 15;
-  const LIFE = 380;
-  let raf = 0;
-
-  function frame(now: number) {
-    ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
-    ctx!.strokeStyle = brand();
-    ctx!.lineWidth = 2;
-    ctx!.lineCap = "round";
-    sparks = sparks.filter((s) => {
-      const t = (now - s.start) / LIFE;
-      if (t >= 1) return false;
-      const ease = t * (2 - t); // easeOut
-      const d = ease * DIST;
-      const len = 8 * (1 - t);
-      const x1 = s.x + Math.cos(s.angle) * d;
-      const y1 = s.y + Math.sin(s.angle) * d;
-      const x2 = s.x + Math.cos(s.angle) * (d + len);
-      const y2 = s.y + Math.sin(s.angle) * (d + len);
-      ctx!.globalAlpha = 1 - t;
-      ctx!.beginPath();
-      ctx!.moveTo(x1, y1);
-      ctx!.lineTo(x2, y2);
-      ctx!.stroke();
-      return true;
-    });
-    ctx!.globalAlpha = 1;
-    if (sparks.length > 0) {
-      raf = requestAnimationFrame(frame);
-    } else {
-      raf = 0;
-    }
-  }
-
-  document.addEventListener("click", (ev) => {
-    // Skip form controls where a flourish would feel noisy.
-    const el = ev.target as Element | null;
-    if (el?.closest("input, textarea, select, [contenteditable='true']")) return;
-    const now = performance.now();
-    for (let i = 0; i < COUNT; i++) {
-      sparks.push({ x: ev.clientX, y: ev.clientY, angle: (2 * Math.PI * i) / COUNT, start: now });
-    }
-    if (!raf) raf = requestAnimationFrame(frame);
-  });
 }
 
 // ── CountUp: animate [data-countup] numbers into view ───────────────────────
@@ -188,7 +114,7 @@ export function initReactBitsKit() {
   try {
     tagCards();
     bindPointer();
-    initClickSpark();
+    initClickSparks();
     initCountUp();
   } catch {
     /* never break the panel over a flourish */
@@ -199,10 +125,12 @@ export function initReactBitsKit() {
 function boot() {
   initReactBitsKit();
   document.addEventListener("astro:page-load", () => {
+    initClickSparks();
     tagCards();
     initCountUp();
   });
   document.addEventListener("astro:after-swap", () => {
+    initClickSparks();
     tagCards();
     initCountUp();
   });

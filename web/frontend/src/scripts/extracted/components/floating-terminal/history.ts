@@ -508,7 +508,7 @@ import { syncTerminalThemeControls, applyTerminalThemeToSessions } from "./theme
   function buildConversationResumeCommand(conversation: LoadedConversation): string {
     const sessionId = shellQuote(conversation.sessionId);
     return conversation.source === "codex"
-      ? `codex resume ${sessionId}`
+      ? `codex resume --no-alt-screen ${sessionId}`
       : `claude --resume ${sessionId}`;
   }
 

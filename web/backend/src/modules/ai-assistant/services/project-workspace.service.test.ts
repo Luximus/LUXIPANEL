@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let uid = 7;
 let serial = 0;
+let failLink = false;
 const projects = new Map<string, Record<string, any>>();
 const teams = new Map<string, Record<string, any>>();
 const agents = new Map<string, Record<string, any>>();
@@ -27,6 +28,7 @@ vi.mock("../repositories/projects.repository.js", () => ({
       return doc;
     },
     update: async (_executor: unknown, id: string, patch: Record<string, any>) => {
+      if (failLink) throw new Error("link failed");
       const doc = projects.get(id);
       if (!doc) return null;
       Object.assign(doc, patch);
@@ -87,6 +89,7 @@ const executor = { target: { id: "server-one" } } as never;
 beforeEach(() => {
   uid = 7;
   serial = 0;
+  failLink = false;
   projects.clear(); teams.clear(); agents.clear(); chats.clear(); markers.clear();
 });
 
@@ -151,4 +154,29 @@ describe("project workspace", () => {
     expect(agents.size).toBe(1);
     expect([...agents.values()][0]?.projectIds).toEqual([]);
   });
+});
+
+
+it("creates a contextual leader once under concurrent retries", async () => {
+  const input = { title: "Portal", icon: "folder", path: "/project/portal", provider: "codex" as const, instructions: "Gestiona reservas de clientes", creationKey: "concurrent" };
+  const results = await Promise.all([projectWorkspaceService.create(executor, input), projectWorkspaceService.create(executor, input)]);
+  expect(results.filter(r => r.created)).toHaveLength(1);
+  expect(projects.size).toBe(1);
+  expect(agents.size).toBe(1);
+  const leader = [...agents.values()][0]!;
+  expect(leader.description).toContain(input.instructions);
+  expect(leader.systemPrompt).toContain(results[0]!.project.id);
+  expect(leader.systemPrompt).toContain("contexto vigente");
+  expect(leader.systemPrompt).toContain("servidores asociados");
+  expect(leader.systemPrompt).toContain("subproyectos");
+  expect(leader.projectIds).toEqual([results[0]!.project.id]);
+  expect(leader.providerId).toBe("codex");
+});
+
+it("rolls back an incomplete root without leaving a stray team or leader", async () => {
+  failLink = true;
+  await expect(projectWorkspaceService.create(executor, { title: "Portal", icon: "folder", path: "", instructions: "" })).rejects.toThrow("link failed");
+  expect(projects.size).toBe(0);
+  expect(teams.size).toBe(0);
+  expect(agents.size).toBe(0);
 });

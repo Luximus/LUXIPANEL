@@ -11,6 +11,11 @@ export type ProjectModalMessages = {
   newProject: string;
   tabSettings: string;
   tabStructure: string;
+  tabAgents: string;
+  sectionAgentsDesc: string;
+  agentsSharedTeam: string;
+  agentsMissingTeam: string;
+  agentsChooseProject: string;
   tabGeneral: string;
   tabContext: string;
   tabServers: string;
@@ -91,6 +96,11 @@ export const projectModalFallback: ProjectModalMessages = {
   newProject: "",
   tabSettings: "",
   tabStructure: "",
+  tabAgents: "Agentes IA",
+  sectionAgentsDesc: "Gestiona el equipo y los agentes de este proyecto.",
+  agentsSharedTeam: "Este subproyecto comparte el equipo de {project}. Los cambios se aplican al equipo compartido.",
+  agentsMissingTeam: "No se pudo localizar el equipo de este proyecto. Actualiza la lista de proyectos y vuelve a abrirlo.",
+  agentsChooseProject: "Selecciona un proyecto para gestionar su equipo de agentes IA.",
   tabGeneral: "",
   tabContext: "",
   tabServers: "",

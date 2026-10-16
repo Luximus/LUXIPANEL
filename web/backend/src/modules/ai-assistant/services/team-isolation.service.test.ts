@@ -25,6 +25,7 @@ type Rule = { match: (cmd: string) => boolean; stdout?: string; exitCode?: numbe
 function makeExecutor(rules: Rule[]): { executor: Executor; calls: string[] } {
   const calls: string[] = [];
   const executor = {
+    target: { id: "local" },
     exec: vi.fn(async (rawCmd: string) => {
       const cmd = rawCmd.replace(/'/g, "");
       calls.push(cmd);
@@ -74,7 +75,7 @@ describe("teamIsolationService.prepare", () => {
     expect(prep.forcedCwd).toBe("/srv/repo/.lxp/worktrees/task-9/web");
     expect(prep.baseHadUncommitted).toBe(true);
     expect(prep.deferred).toBe(false);
-    expect(calls.some((c) => c.includes("worktree add") && c.includes("-B") && c.includes("lxp/task-task-9"))).toBe(true);
+    expect(calls.some((c) => c.includes("worktree add") && c.includes("-b") && c.includes("lxp/task-task-9"))).toBe(true);
     // .lxp/ excluido del git status del checkout principal.
     expect(calls.some((c) => c.includes(".git/info/exclude"))).toBe(true);
   });
@@ -165,4 +166,14 @@ describe("teamIsolationService.integrate", () => {
     expect(res.conflicts).toEqual(["src/a.ts", "src/b.ts"]);
     expect(calls.some((c) => c.includes("merge --abort"))).toBe(true);
   });
+});
+
+it("isolates identical lease paths by target and refuses a stale owner release", () => {
+  expect(teamIsolationService.tryAcquireLease("/srv/app/", "a", "server-a")).toBe(true);
+  expect(teamIsolationService.tryAcquireLease("/srv/app", "b", "server-b")).toBe(true);
+  expect(teamIsolationService.tryAcquireLease("/srv/app", "c", "server-a")).toBe(false);
+  teamIsolationService.releaseLease("/srv/app", "c", "server-a");
+  expect(teamIsolationService.tryAcquireLease("/srv/app", "c", "server-a")).toBe(false);
+  teamIsolationService.releaseLease("/srv/app", "a", "server-a");
+  expect(teamIsolationService.tryAcquireLease("/srv/app", "c", "server-a")).toBe(true);
 });

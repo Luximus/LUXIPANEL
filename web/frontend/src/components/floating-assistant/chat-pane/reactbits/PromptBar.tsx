@@ -17,6 +17,7 @@ import React, {
   type PointerEvent,
   type ReactNode
 } from 'react';
+import { createPortal } from 'react-dom';
 import { animate, useMotionValue, useMotionValueEvent, useReducedMotion } from 'motion/react';
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
 import {
@@ -30,11 +31,11 @@ import {
   HelpCircleIcon,
   Mail01Icon,
   Mic01Icon,
-  PlusSignIcon,
   SparklesIcon,
   Tick02Icon
 } from '@hugeicons/core-free-icons';
 import './PromptBar.css';
+import type { PromptDictationResult } from '../use-prompt-dictation';
 
 export interface PromptBarSource {
   key: string;
@@ -72,6 +73,7 @@ export interface PromptBarPicker {
 }
 
 export interface PromptBarSendDetail {
+  recording?: PromptDictationResult["recording"];
   attachments: string[];
   model?: PromptBarModel;
   effort?: string;
@@ -85,8 +87,10 @@ export interface PromptBarProps {
   externalAttachmentCount?: number;
   onModelChange?: (model: string) => void;
   onStopDictation?: () => void;
+  onCancelDictation?: () => void;
   dictateLabel?: string;
   stopDictationLabel?: string;
+  cancelDictationLabel?: string;
   dictateHint?: string;
   placeholder?: string;
   sources?: PromptBarSource[];
@@ -95,9 +99,10 @@ export interface PromptBarProps {
   toolbarPickers?: PromptBarPicker[];
   /** Optional control immediately beside the message input. */
   inputLeading?: ReactNode;
-  /** Chatbox mobile: sources and send flank the input; selectors stay above. */
+  /** Chatbox mobile: settings and send flank the input; selectors stay above. */
   mobileLayout?: boolean;
-  sourceMenuFooter?: ReactNode;
+  settingsLabel?: string;
+  onOpenSettings?: () => void;
   commands?: PromptBarCommand[];
   models?: PromptBarModel[];
   defaultModel?: string;
@@ -110,12 +115,15 @@ export interface PromptBarProps {
   defaultEffort?: string;
   onEffortChange?: (effort: string) => void;
   busy?: boolean;
+  realtime?: { active: boolean; toggle: () => void; phase?: string; muted?: boolean; toggleMuted?: () => void;
+    error?: string; previousId?: string | null; closePrevious?: () => void };
+  onAudioPhaseChange?: (active: boolean) => void;
   onSend?: (text: string, detail: PromptBarSendDetail) => void;
   onStop?: () => void;
   onQueue?: () => void;
   queueLabel?: string;
   onAttach?: () => string | string[] | void | Promise<string | string[] | void>;
-  onDictate?: () => string | void | Promise<string | void>;
+  onDictate?: () => string | PromptDictationResult | void | Promise<string | PromptDictationResult | void>;
   background?: string;
   color?: string;
   menuBackground?: string;
@@ -265,15 +273,18 @@ const PromptBar: React.FC<PromptBarProps> = ({
   externalAttachmentCount = 0,
   onModelChange,
   onStopDictation,
+  onCancelDictation,
   dictateLabel = 'Dictate',
   stopDictationLabel = 'Stop dictation',
+  cancelDictationLabel = 'Cancelar audio',
   dictateHint,
   sources = DEFAULT_SOURCES,
   toolbarControls,
   toolbarPickers = [],
   inputLeading,
   mobileLayout = false,
-  sourceMenuFooter,
+  settingsLabel = 'Configuración avanzada',
+  onOpenSettings,
   commands = DEFAULT_COMMANDS,
   models = DEFAULT_MODELS,
   defaultModel = '',
@@ -286,6 +297,8 @@ const PromptBar: React.FC<PromptBarProps> = ({
   defaultEffort = '',
   onEffortChange,
   busy = false,
+  realtime,
+  onAudioPhaseChange,
   onSend,
   onStop,
   onQueue,
@@ -320,6 +333,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const lastOpen = useRef<string | null>(null);
   const dictation = useRef(0);
+  useEffect(() => () => { dictation.current += 1; }, []);
   const latest = useRef<Latest>({});
   latest.current = { onSend, onStop, onAttach, onDictate, onEffortChange };
 
@@ -337,7 +351,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const [modelKey, setModelKey] = useState(defaultModel);
   const [pickerOpen, setPickerOpen] = useState<string | null>(null);
   const [menuLayout, setMenuLayout] = useState({ below: false, height: 480 });
-  const [plusOpen, setPlusOpen] = useState(false);
+  const [mobileSettingsTarget, setMobileSettingsTarget] = useState<HTMLElement | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const [effortIndex, setEffortIndex] = useState(() => {
@@ -347,19 +361,37 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const [dismissed, setDismissed] = useState(false);
   const [active, setActive] = useState(0);
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [dictationError, setDictationError] = useState<string | null>(null);
+  const [audioMenu, setAudioMenu] = useState(false);
+  useEffect(() => { if (!realtime?.active) setAudioMenu(false); }, [realtime?.active]);
   const [pressed, setPressed] = useState(false);
 
   useEffect(() => { setModelKey(defaultModel); }, [defaultModel]);
+  useEffect(() => {
+    if (!mobileLayout) { setMobileSettingsTarget(null); return; }
+    // Keep the shell's existing slot so mobile navigation can relocate it.
+    const sync = () => setMobileSettingsTarget(document.documentElement.classList.contains('lxp-webview')
+      ? null : document.getElementById('workspace-chat-plus-control'));
+    sync();
+    document.addEventListener('astro:after-swap', sync);
+    document.addEventListener('astro:page-load', sync);
+    return () => {
+      document.removeEventListener('astro:after-swap', sync);
+      document.removeEventListener('astro:page-load', sync);
+    };
+  }, [mobileLayout]);
   useEffect(() => {
     const next = efforts.indexOf(defaultEffort);
     setEffortIndex(next >= 0 ? next : Math.max(0, Math.floor((efforts.length - 1) / 2)));
   }, [defaultEffort, efforts]);
 
   const model = models.find(m => m.key === modelKey) ?? models[0];
-  const token = dismissed ? null : parseToken(draft);
+  const parsedToken = dismissed ? null : parseToken(draft);
+  const token = parsedToken?.kind === 'at' && sources.length === 0 ? null : parsedToken;
   const picker = toolbarPickers.find(item => item.key === pickerOpen);
-  const open = picker ? 'context' : plusOpen ? 'at' : modelOpen ? 'model' : effortOpen ? 'effort' : token?.kind ?? null;
-  const query = plusOpen ? '' : (token?.query ?? '');
+  const open = picker ? 'context' : modelOpen ? 'model' : effortOpen ? 'effort' : token?.kind ?? null;
+  const query = token?.query ?? '';
   const list = useMemo<Row[]>(() => {
     if (open === 'at') return sources.filter(s => s.name.toLowerCase().includes(query));
     if (open === 'slash') return commands.filter(c => c.name.replace(/^\//, '').toLowerCase().startsWith(query));
@@ -377,7 +409,6 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const focusInput = () => inputRef.current?.focus({ preventScroll: true });
   const closeMenus = useCallback(() => {
     setPickerOpen(null);
-    setPlusOpen(false);
     setModelOpen(false);
     setEffortOpen(false);
   }, []);
@@ -406,13 +437,13 @@ const PromptBar: React.FC<PromptBarProps> = ({
   }, [open]);
 
   useEffect(() => {
-    if (!plusOpen && !modelOpen && !effortOpen && !pickerOpen) return undefined;
+    if (!modelOpen && !effortOpen && !pickerOpen) return undefined;
     const onDown = (e: globalThis.PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) closeMenus();
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [plusOpen, modelOpen, effortOpen, pickerOpen, closeMenus]);
+  }, [modelOpen, effortOpen, pickerOpen, closeMenus]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -595,7 +626,6 @@ const PromptBar: React.FC<PromptBarProps> = ({
     const head = token ? draft.slice(0, token.start) : draft;
     const source = sources.find(s => s.key === row.key);
     if (source?.onSelect) {
-      setPlusOpen(false);
       setDismissed(false);
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       source.onSelect();
@@ -611,13 +641,12 @@ const PromptBar: React.FC<PromptBarProps> = ({
     } else {
       setDraft(`${head}${row.name} `);
     }
-    setPlusOpen(false);
     setDismissed(false);
     focusInput();
   };
 
   const send = () => {
-    if (!canSend || busy) return;
+    if (!canSend || busy || listening || transcribing || realtime?.active) return;
     latest.current.onSend?.(draft.trim(), { attachments, model, effort: level });
     setDraft('');
     setAttachments([]);
@@ -628,22 +657,66 @@ const PromptBar: React.FC<PromptBarProps> = ({
 
   const toggleListen = () => {
     if (listening) {
+      if (transcribing) return;
+      setTranscribing(true);
       onStopDictation?.();
       return;
     }
+    setDictationError(null);
     const seq = ++dictation.current;
     setListening(true);
+    onAudioPhaseChange?.(true);
     Promise.resolve(latest.current.onDictate?.()).then(
-      text => {
+      async text => {
         if (seq !== dictation.current) return;
-        setListening(false);
-        if (text) setDraft(d => (d.trim() ? `${d.trimEnd()} ${text}` : text));
+        setTranscribing(true);
+        try {
+        const recorded = typeof text === "object" ? text : undefined;
+        const transcript = (typeof text === "string" ? text : recorded?.text)?.trim();
+        if (transcript) {
+          if (recorded) {
+            await latest.current.onSend?.(transcript, { attachments: [], model, effort: level, recording: recorded.recording });
+          } else {
+            // A transcript is voice input, never the user's text draft.
+            await latest.current.onSend?.(transcript, { attachments: [], model, effort: level });
+          }
+        }
+        } catch { setDictationError("No se pudo enviar el audio."); }
+        finally { setListening(false); setTranscribing(false); onAudioPhaseChange?.(false); }
         focusInput();
       },
-      () => {
-        if (seq === dictation.current) setListening(false);
+      err => {
+        if (seq !== dictation.current) return;
+        setListening(false);
+        setTranscribing(false);
+        onAudioPhaseChange?.(false);
+        const message = err instanceof Error ? err.message : String(err);
+        setDictationError(
+          /^OpenAI (?:no autenticó la clave API|rechazó la clave API guardada|denegó el acceso de esta clave|no autorizó la IP de este servidor|no pudo procesar|limitó las solicitudes)/i.test(message)
+            ? message
+            : /Configura una (?:API key|clave API) de OpenAI|OpenAI \(slot codex\) sin API key/i.test(message)
+            ? 'Configura una clave API de OpenAI en Ajustes → Agentes IA → OpenAI para transcribir audio.'
+            : /NotAllowedError|Permission denied|denied|permiso/i.test(message)
+              ? 'Permite el acceso al micrófono para grabar audio.'
+              : /NotFoundError|no.*microphone|sin micrófono/i.test(message)
+                ? 'No se encontró un micrófono disponible.'
+                : /429|quota|cuota/i.test(message)
+                  ? 'La cuota de OpenAI no permite transcribir el audio ahora.'
+                  : /La grabación está vacía|No se detectó voz/i.test(message)
+                    ? message
+                    : 'No se pudo transcribir el audio. Inténtalo de nuevo.',
+        );
       }
     );
+  };
+
+  const cancelDictation = () => {
+    onCancelDictation?.();
+    onAudioPhaseChange?.(false);
+    dictation.current += 1;
+    setListening(false);
+    setTranscribing(false);
+    setDictationError(null);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -711,11 +784,12 @@ const PromptBar: React.FC<PromptBarProps> = ({
       aria-label={listening ? stopDictationLabel : dictateLabel}
       title={listening ? stopDictationLabel : (dictateHint ?? dictateLabel)}
       aria-pressed={listening}
+      disabled={transcribing}
       data-on={listening ? '' : undefined}
       onMouseDown={e => e.preventDefault()}
       onClick={toggleListen}
     >
-      {listening ? (
+      {transcribing ? <i className="ti ti-loader-2 animate-spin" aria-hidden="true" /> : listening ? (
         <span className="prompt-bar__eq" aria-hidden="true">
           <i />
           <i />
@@ -726,7 +800,13 @@ const PromptBar: React.FC<PromptBarProps> = ({
       )}
     </button>
   ) : null;
-  const queueButton = busy && canSend && onQueue ? (
+  const cancelDictationButton = listening && onCancelDictation ? (
+    <button type="button" className="prompt-bar__tool" aria-label={cancelDictationLabel}
+      title={cancelDictationLabel} onMouseDown={e => e.preventDefault()} onClick={cancelDictation}>
+      <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={2} />
+    </button>
+  ) : null;
+  const queueButton = busy && canSend && onQueue && !listening && !transcribing && !realtime?.active ? (
     <button
       type="button"
       className="prompt-bar__tool prompt-bar__queue"
@@ -738,29 +818,50 @@ const PromptBar: React.FC<PromptBarProps> = ({
       <i className="ti ti-clock-plus" aria-hidden="true" />
     </button>
   ) : null;
-  const plusButton = (
+  const settingsButton = onOpenSettings ? (
     <button
       type="button"
-      className="prompt-bar__tool"
-      data-search-target="chat-prompt-plus"
-      aria-label="Add files and sources"
-      aria-expanded={plusOpen}
-      data-on={plusOpen ? '' : undefined}
-      onMouseDown={e => e.preventDefault()}
+      className="prompt-bar__tool lxp-chat-plus-button"
+      data-search-target="chat-prompt-settings"
+      aria-label={realtime?.active ? "Opciones de audio" : settingsLabel}
+      title={realtime?.active ? "Opciones de audio" : settingsLabel}
+      aria-haspopup="dialog"
       onClick={() => {
-        setPickerOpen(null);
+        closeMenus();
         setDismissed(true);
-        setModelOpen(false);
-        setEffortOpen(false);
-        setActive(0);
-        setPlusOpen(v => !v);
+        if (realtime?.active) setAudioMenu(v => !v); else onOpenSettings();
       }}
     >
-      <HugeiconsIcon icon={PlusSignIcon} size={16} strokeWidth={2} />
+      <i className="ti ti-settings text-base" aria-hidden="true" />
     </button>
-  );
+  ) : null;
 
-  const sendButton = (
+  const showDictateInSend = !!onDictate && (listening || transcribing || (!busy && !canSend));
+  const sendButton = realtime && (realtime.active || !canSend) ? (
+    <button type="button" className="prompt-bar__send" data-armed=""
+      aria-label={realtime.active ? "Terminar voz en tiempo real" : "Iniciar voz en tiempo real"}
+      aria-pressed={realtime.active} aria-busy={realtime.phase === "connecting" || realtime.phase === "closing"}
+      data-recording={realtime.active && !realtime.muted ? "" : undefined}
+      title={realtime.active ? (realtime.phase === "closing" ? "Terminando voz…" : realtime.phase === "connecting" ? "Conectando voz · pulsa para cancelar" : realtime.muted ? "Micrófono silenciado · pulsa para terminar" : "Voz activa · pulsa para terminar") : "Iniciar voz en tiempo real"}
+      onClick={realtime.toggle}>
+      {realtime.active ? <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 2, background: "currentColor" }} /> : <HugeiconsIcon icon={Mic01Icon} size={18} strokeWidth={2} />}
+    </button>
+  ) : showDictateInSend ? (
+    <button
+      type="button"
+      className="prompt-bar__send"
+      data-armed=""
+      data-recording={listening ? "" : undefined}
+      aria-label={listening ? stopDictationLabel : dictateLabel}
+      title={listening ? stopDictationLabel : (dictateHint ?? dictateLabel)}
+      aria-pressed={listening}
+      disabled={transcribing}
+      onMouseDown={e => e.preventDefault()}
+      onClick={toggleListen}
+    >
+      {transcribing ? <i className="ti ti-loader-2 animate-spin" aria-hidden="true" /> : listening ? <span className="prompt-bar__eq" aria-hidden="true"><i /><i /><i /></span> : <HugeiconsIcon icon={Mic01Icon} size={18} strokeWidth={2} />}
+    </button>
+  ) : (
     <button
       type="button"
       className="prompt-bar__send"
@@ -782,31 +883,13 @@ const PromptBar: React.FC<PromptBarProps> = ({
     </button>
   );
 
-  return (
-    <div
-      ref={rootRef}
-      className={`prompt-bar${className ? ` ${className}` : ''}`}
-      data-busy={busy ? '' : undefined}
-      data-max={maxed ? '' : undefined}
-      style={
-        {
-          '--pb-bg': background,
-          '--pb-ink': color,
-          '--pb-menu': menuBackground,
-          '--pb-w': `${width}px`,
-          '--pb-radius': `${radius}px`,
-          '--pb-spark': sparkColor,
-          '--pb-press': pressScale
-        } as CSSProperties
-      }
-    >
-      {open ? (
+  const menuNode = open ? (
         <div
           id={menuId}
           className="prompt-bar__menu"
           data-placement={menuLayout.below ? "below" : "above"}
           style={{ maxHeight: menuLayout.height }}
-          role={open === 'effort' ? 'dialog' : open === 'context' ? 'group' : plusOpen ? 'menu' : 'listbox'}
+          role={open === 'effort' ? 'dialog' : open === 'context' ? 'group' : 'listbox'}
           aria-label={
             open === 'context' ? picker?.label : open === 'at' ? 'Sources' : open === 'slash' ? 'Commands' : open === 'model' ? 'Models' : 'Effort'
           }
@@ -861,12 +944,10 @@ const PromptBar: React.FC<PromptBarProps> = ({
             <>
               <div role={open === 'context' ? 'listbox' : undefined}
                 id={open === 'context' ? `${menuId}-list` : undefined}
-                aria-label={open === 'context' ? picker?.label : undefined}
-                className={plusOpen ? "prompt-bar__menu-list" : undefined}>
+                aria-label={open === 'context' ? picker?.label : undefined}>
               <span ref={glowRef} className="prompt-bar__glow" aria-hidden="true" />
               {list.map((row, i) => (
                 <Fragment key={row.key}>
-                {plusOpen && i > 0 && row.group !== list[i - 1].group ? <div className="prompt-bar__separator" role="separator" /> : null}
                 <button
                   key={row.key}
                   id={`${menuId}-${i}`}
@@ -875,8 +956,8 @@ const PromptBar: React.FC<PromptBarProps> = ({
                     rowRefs.current[i] = el;
                   }}
                   type="button"
-                  role={plusOpen ? 'menuitem' : 'option'}
-                  aria-selected={plusOpen ? undefined : open === 'context' ? row.key === picker?.value : open === 'model' ? row.key === model?.key : i === cursor}
+                  role="option"
+                  aria-selected={open === 'context' ? row.key === picker?.value : open === 'model' ? row.key === model?.key : i === cursor}
                   data-active={i === cursor ? '' : undefined}
                   className="prompt-bar__row"
                   onMouseDown={e => e.preventDefault()}
@@ -897,7 +978,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
                 </button>
                 </Fragment>
               ))}
-              {list.length === 0 && !(plusOpen && sourceMenuFooter) ? <div className="prompt-bar__empty">No matches for “{query}”</div> : null}
+              {list.length === 0 ? <div className="prompt-bar__empty">No matches for “{query}”</div> : null}
               </div>
               {open === 'context' && picker?.action ? <div className="prompt-bar__menu-footer">
                 <button ref={pickerActionRef} type="button" className="prompt-bar__row prompt-bar__picker-action"
@@ -917,13 +998,31 @@ const PromptBar: React.FC<PromptBarProps> = ({
                   <span className="prompt-bar__row-name">{picker.action.label}</span>
                 </button>
               </div> : null}
-              {plusOpen && sourceMenuFooter ? <div className="prompt-bar__menu-footer" onClick={(event) => {
-                if (event.target instanceof Element && event.target.closest('[data-prompt-footer-action]')) closeMenus();
-              }}>{sourceMenuFooter}</div> : null}
             </>
           )}
         </div>
-      ) : null}
+  ) : null;
+
+  return (
+    <div
+      ref={rootRef}
+      className={`prompt-bar${className ? ` ${className}` : ''}`}
+      data-busy={busy ? '' : undefined}
+      data-max={maxed ? '' : undefined}
+      style={
+        {
+          '--pb-bg': background,
+          '--pb-ink': color,
+          '--pb-menu': menuBackground,
+          '--pb-w': `${width}px`,
+          '--pb-radius': `${radius}px`,
+          '--pb-spark': sparkColor,
+          '--pb-press': pressScale
+        } as CSSProperties
+      }
+    >
+      {mobileLayout && mobileSettingsTarget ? createPortal(settingsButton, mobileSettingsTarget) : null}
+      {menuNode}
 
       <div
         className="prompt-bar__field"
@@ -955,7 +1054,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
         ) : null}
 
         <div className="prompt-bar__input-row">
-          {mobileLayout ? plusButton : inputLeading}
+          {mobileLayout ? (mobileSettingsTarget ? null : settingsButton) : inputLeading}
           <textarea
             ref={node => {
               inputRef.current = node;
@@ -965,10 +1064,11 @@ const PromptBar: React.FC<PromptBarProps> = ({
             className="prompt-bar__input"
             rows={1}
             value={draft}
-            placeholder={listening ? 'Listening…' : placeholder}
+            placeholder={realtime?.active ? (realtime.phase === "closing" ? "Terminando voz…" : realtime.phase === "connecting" ? "Conectando voz…" : realtime.muted ? "Micrófono silenciado" : "Habla con el agente…") : listening ? (transcribing ? 'Transcribiendo audio…' : 'Grabando audio…') : placeholder}
             aria-label="Prompt"
             onChange={e => {
               setDraft(e.target.value);
+              setDictationError(null);
               typing.current.energy = Math.min(1.6, typing.current.energy + 0.22);
               typing.current.strokes = Math.min(4, typing.current.strokes + 1);
               setDismissed(false);
@@ -979,13 +1079,22 @@ const PromptBar: React.FC<PromptBarProps> = ({
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />
-          {mobileLayout && dictateButton}
+          {mobileLayout && cancelDictationButton}
+          {mobileLayout && listening && !showDictateInSend && dictateButton}
           {mobileLayout && queueButton}
           {mobileLayout && sendButton}
         </div>
+        {audioMenu && realtime?.active && <div role="group" aria-label="Opciones de audio" className="flex flex-wrap gap-3 px-3 py-2 text-xs">
+          <button type="button" className="underline" onClick={() => { realtime.toggleMuted?.(); setAudioMenu(false); }}>{realtime.muted ? "Activar micrófono" : "Silenciar micrófono"}</button>
+          <button type="button" className="underline" onClick={() => { setAudioMenu(false); onOpenSettings?.(); }}>{settingsLabel}</button>
+        </div>}
+        {realtime?.error && <p role="alert" className="px-3 text-xs text-amber-600">{realtime.error}
+          {realtime.previousId && <button type="button" className="ml-2 underline" onClick={realtime.closePrevious}>Finalizar sesión anterior</button>}
+        </p>}
+        {dictationError && <p role="alert" className="text-xs text-red-500">{dictationError}</p>}
 
         <div className="prompt-bar__bar">
-          {!mobileLayout && plusButton}
+          {!mobileLayout && settingsButton}
           {toolbarPickers.length > 0 || toolbarControls ? <span className="prompt-bar__toolbar-controls">
             {toolbarPickers.map(item => {
               const selected = item.options.find(option => option.key === item.value);
@@ -1029,7 +1138,6 @@ const PromptBar: React.FC<PromptBarProps> = ({
               onClick={() => {
                 setPickerOpen(null);
                 setDismissed(true);
-                setPlusOpen(false);
                 setEffortOpen(false);
                 setActive(Math.max(0, models.indexOf(model)));
                 setModelOpen(v => !v);
@@ -1051,7 +1159,6 @@ const PromptBar: React.FC<PromptBarProps> = ({
               onClick={() => {
                 setPickerOpen(null);
                 setDismissed(true);
-                setPlusOpen(false);
                 setModelOpen(false);
                 setEffortOpen(v => !v);
               }}
@@ -1061,7 +1168,8 @@ const PromptBar: React.FC<PromptBarProps> = ({
             </button>
           ) : null}
           <span className="prompt-bar__spacer" />
-          {!mobileLayout && dictateButton}
+          {!mobileLayout && cancelDictationButton}
+          {!mobileLayout && listening && !showDictateInSend && dictateButton}
           {!mobileLayout && queueButton}
           {!mobileLayout && sendButton}
         </div>

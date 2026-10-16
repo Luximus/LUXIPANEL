@@ -249,6 +249,12 @@ completos en `frontend/src/components/floating-assistant/README.md` y
     `providerId?`, `origin`, `conversation:"new"`.
   - `"navigate"` — salta a una pestaña del Asistente (`tab` ∈
     `chat | agentes | providers | modules | stats | servers | access`).
+  - La gestión de equipos vive en **Proyecto → Agentes IA**, no en Configuración
+    avanzada. `ProjectModal` resuelve el equipo del proyecto raíz; los subproyectos
+    comparten ese equipo y muestran un aviso. La lista, jerarquía y creación de
+    agentes se acotan por `teamId`; los recursos adjuntos no cambian su pertenencia.
+    `ProjectAgentsDialog` conserva los enlaces de edición desde chats y los enlaces
+    antiguos `agentes`, abriendo el proyecto propietario (o un selector de proyecto).
 - FIFO cap 20 con dedupe por `requestId`. Versión del contrato: 1
   (`REQUEST_VERSION`). Reset del bus en `luxipanel:target-changed` para no
   arrastrar prompts entre servidores conectados.
@@ -417,3 +423,23 @@ por el proxy de Astro ni por el backend del panel.
 - E2E Playwright (`e2e/`). i18n en `lib/i18n` + `lib/locales.ts`.
 - El hook `predev` es PowerShell (inocuo en Linux). pnpm v11:
   `pnpm-workspace.yaml`.
+
+
+### Voz en tiempo real en el chat (2026-10-15)
+`VoiceSettings` activa el modo en el botón de audio existente de `PromptBar`. `useRealtimeVoice` inicia directamente con el micrófono del chat, sin selector adicional de proyectos/equipos ni confirmación intermedia. El backend obtiene el proyecto de la conversación; transcripción y tareas siguen dentro del chat. Web y escritorio Electron comparten esta implementación WebRTC. Los permisos del micrófono se solicitan al iniciar explícitamente.
+Una nota en grabación/transcripción/envío y una sesión en conexión/activa/silenciada bloquean Enter, envío y cola textual. El bloqueo también se comprueba en las acciones y el motor; borrador y adjuntos preparados se conservan separados del audio. Terminar la voz libera la entrada; no cancela tareas. Las aprobaciones permanecen como botones con el detalle de la solicitud. Una sesión anterior se consulta antes de crear otra; su cierre debe confirmarse.
+
+### Voz general y limpieza del clic (2026-10-15)
+El micrófono de tiempo real funciona también en chats sin proyecto; el contexto y los permisos se resuelven en el backend, sin selectores adicionales. La marca decorativa de clic vive en `lib/click-sparks.ts`: su borrado tiene un plazo independiente de requestAnimationFrame, se limpia al perder foco/ocultar la pestaña o navegar, y la instalación evita listeners duplicados. El script extraído de PanelLayout cambia de versión de caché. Verificación: voz general WebRTC/PCM, delegación y botones con proveedor simulado; prueba en Chromium de píxeles del clic tras detener frames y del bloqueo de envío de texto.
+
+### Voz integrada en el historial (2026-10-15)
+Se retiró el panel independiente de voz de todos los chats. El botón existente del compositor indica conexión/voz/cierre; su menú de audio permite silenciar y los errores aparecen como avisos breves. Las transcripciones se refrescan en el historial normal después de persistirse, sin llamar a openConversation ni cambiar de hilo. Las tareas usan TeamTaskBoard; las solicitudes del trabajador se muestran en el historial con botones y conservan su destino aun después de cerrar el micrófono.
+La sesión se vincula al target y al chat de origen. Navegar también hacia un chat nuevo cancela la captura y descarta respuestas tardías. La creación inicial adopta su identificador sin cancelar la sesión; una respuesta de creación que llega después de navegar no puede abrir el chat anterior. La limpieza local nunca envía el id de una sesión a otro target.
+
+### Limpieza del efecto de clic con zoom reducido (2026-10-15)
+La limpieza anterior usaba las dimensiones físicas del canvas mientras seguía activo el transform de devicePixelRatio. Con DPR inferior a 1 no borraba la franja inferior/derecha: los píxeles reaparecían al siguiente clic. click-sparks.ts borra ahora con transform identidad y restaura la escala de dibujo tanto en cada frame como al vencer el plazo. La regla [hidden] fuerza ocultar la capa y PanelLayout carga reactbits-kit con una nueva versión de caché. La regresión cubre DPR 0.5, 0.75, 1, 1.25 y 2, además de navegación, pérdida de foco y frames detenidos.
+
+
+### Historial por agente del proyecto (2026-10-15)
+Dentro de un proyecto, `ChatSidebar` usa `ProjectAgentConvos`: cada miembro del equipo raíz es un desplegable independiente, incluso sin chats. Los subproyectos comparten el equipo. `project-agent-history` pagina por agente, mantiene búsqueda y contadores dentro del árbol raíz y abarca todos los proveedores. Los buzones antiguos sin proyecto se incluyen solo si el equipo tiene una única raíz. Los chats generales y de agentes retirados siguen accesibles; leer no migra datos. Cada cursor se invalida al cambiar servidor, sesión, búsqueda o equipo. El botón de nuevo chat conserva el subproyecto seleccionado y usa la configuración del agente.
+`TurnView` conserva las tareas, identidad y aprobaciones del chat; muestra las herramientas API y permite desplegar los avisos automáticos entre agentes. Las herramientas anidadas de una consola CLI no se duplican. La misma vista se utiliza en el chat principal y en el asistente flotante.

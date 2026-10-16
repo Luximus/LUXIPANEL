@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "ملاحظات",
+    "activityTab": "النشاط",
+    "contributors": "المساهمون",
+    "contributorsUnavailable": "تعذّر تحميل المساهمين.",
+    "translationInsufficientBalance": "رصيد واجهة API لدى مزوّد الذكاء الاصطناعي غير كافٍ للترجمة. يُعرض النص الأصلي.",
+    "newBadge": "جديد",
+    "updateTo": "التحديث إلى {version}",
     "title": "المجتمع والإصدارات",
     "comments": "التعليقات",
     "read": "وضع علامة مقروء",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "مثبت",
     "version": "الإصدار",
     "openGithub": "فتح في GitHub",
-    "close": "إغلاق"
+    "close": "إغلاق",
+    "newVersion": "يتوفر إصدار جديد",
+    "translating": "جارٍ الترجمة بالذكاء الاصطناعي…",
+    "showOriginal": "عرض النص الأصلي",
+    "showTranslation": "عرض الترجمة",
+    "translationUnavailable": "الترجمة بالذكاء الاصطناعي غير متاحة. يُعرض النص الأصلي.",
+    "allComments": "عرض جميع التعليقات على GitHub",
+    "activity": "نشاط المجتمع",
+    "loading": "جارٍ التحميل…",
+    "loadError": "تعذر تحميل هذه المعلومات."
 },
   "groups": {
     "main": "الرئيسية",

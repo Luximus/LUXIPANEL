@@ -395,6 +395,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
             <div className="flex items-center gap-1.5">
               <select
                 value={draft.teamId ?? ""}
+                disabled={Boolean(vm.projectScope)}
                 onChange={(e) => setDraft({ ...draft, teamId: e.target.value || null })}
                 aria-required="true"
                 className={`flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none ${draft.teamId ? "border-input focus:border-primary" : "border-red-400/60 focus:border-red-500"}`}
@@ -403,14 +404,14 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
                 <option value="" disabled>{t.teams.teamSelectorPlaceholder}</option>
                 {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
               </select>
-              <button
+              {!vm.projectScope && <button
                 type="button"
                 onClick={() => setCreatingTeamForDraft(true)}
                 title={t.teams.newTeamBtn}
                 className="flex shrink-0 items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/10"
               >
                 <i className="ti ti-plus" aria-hidden></i> {t.teams.newTeamBtn}
-              </button>
+              </button>}
             </div>
           </div>
 

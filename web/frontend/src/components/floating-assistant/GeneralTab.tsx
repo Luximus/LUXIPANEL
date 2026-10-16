@@ -9,7 +9,9 @@ import {
   type AssistantConfigState,
   type AssistantProviderId,
 } from "./assistant-api";
+import { normalizeReasoningEffort, type ChatReasoningEffort } from "./reasoning-effort";
 import { useAssistantI18n } from "./i18n";
+import { AssistantPreferences } from "./AssistantPreferences";
 import { uiPrefs, type AgentsTabPref, type ConversationsTabPref } from "./ui-prefs";
 
 interface GeneralTabProps {
@@ -22,14 +24,9 @@ interface GeneralTabProps {
  * defaults for the panel: which tab starts active in the Agents / Conversations
  * lists, and the provider + model a NEW loose/project chat opens with.
  *
- * All four settings are PER-SERVER: they live in the assistant config sidecar
- * (GET/PATCH /api/ai/config) and are mirrored into `uiPrefs` (localStorage) so
- * the dashboard / chat sidebar / composer — which read them at mount — pick them
- * up live. Each control persists to the backend AND updates the mirror so open
- * views re-render immediately. The `defaultChat*` fields are a NEW backend
- * contract that may not be accepted yet (backend rolls out in parallel): the
- * mirror keeps them working meanwhile, and the PATCH failure is swallowed just
- * like the tab-pref selects.
+ * Defaults are persisted in the assistant configuration for the current user
+ * and target, and mirrored into uiPrefs. Reasoning is only mirrored after the
+ * server confirms the write, so a failed save remains visible to the user.
  */
 export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
   const t = useAssistantI18n();
@@ -38,6 +35,8 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
   const gt = (sm.general ?? {}) as Record<string, any>;
 
   const [prefs, setPrefs] = useState(() => uiPrefs.get());
+  const [savingEffort, setSavingEffort] = useState(false);
+  const [effortError, setEffortError] = useState<string | null>(null);
 
   // The persisted server value (config) is authoritative; fall back to the
   // localStorage mirror only while the backend hasn't returned the field yet.
@@ -48,6 +47,12 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
   // so the Auto option stays selected.
   const rawModel = config?.defaultChatModel ?? prefs.defaultChatModel ?? "";
   const modelValue = rawModel === "auto" ? "" : rawModel;
+  const effortValue = normalizeReasoningEffort(config ? config.defaultChatEffort : prefs.defaultChatEffort);
+  const effortOptions: [ChatReasoningEffort, string][] = [
+    ["", ct.modelAuto ?? "Auto"], ["low", ct.reasoningLow ?? "Bajo"],
+    ["medium", ct.reasoningMedium ?? "Medio"], ["high", ct.reasoningHigh ?? "Alto"],
+    ["xhigh", ct.reasoningExtra ?? "Extra"],
+  ];
 
   // Providers offered as a default = those toggled "show in chat" (active),
   // ordered canonically. Plus the "use active provider" opt-out (value "").
@@ -101,6 +106,23 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
       .catch(() => { /* backend contract may be pending; mirror keeps it live */ });
   };
 
+  const setDefaultEffort = async (value: ChatReasoningEffort) => {
+    setSavingEffort(true);
+    setEffortError(null);
+    try {
+      const saved = await assistantApi.patchConfig({ defaultChatEffort: value });
+      // A stale backend must not pretend a preference was persisted.
+      if (saved.defaultChatEffort !== value) throw new Error("Preference was not persisted");
+      uiPrefs.set({ defaultChatEffort: value });
+      setPrefs(uiPrefs.get());
+      onConfigChange(saved);
+    } catch {
+      setEffortError(gt.savePreferenceError ?? "No se pudo guardar la preferencia. Inténtalo de nuevo.");
+    } finally {
+      setSavingEffort(false);
+    }
+  };
+
   const selectClass =
     "mt-2 w-full rounded-[0.3rem] border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
@@ -142,8 +164,8 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
 
       <div className="border-t border-border" role="separator"></div>
 
-      {/* Default provider + model for NEW loose/project chats. */}
-      <div className="grid grid-cols-1 gap-3 @xl:grid-cols-2">
+      {/* Defaults for new chats, with reasoning beside the model. */}
+      <div className="grid grid-cols-1 items-end gap-3 @xl:grid-cols-3">
         <div>
           <label htmlFor="lxp-assistant-default-chat-provider" className="text-sm font-semibold text-foreground">
             {gt.defaultProviderTitle ?? "Proveedor por defecto"}
@@ -190,7 +212,32 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
             ))}
           </select>
         </div>
+        <div>
+          <label htmlFor="lxp-assistant-default-chat-effort" className="text-sm font-semibold text-foreground">
+            {gt.defaultEffortTitle ?? "Razonamiento por defecto"}
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {gt.defaultEffortDescription ?? "Nivel inicial en chats nuevos. Auto permite la selección automática."}
+          </p>
+          <select
+            id="lxp-assistant-default-chat-effort"
+            value={effortValue}
+            onChange={(e) => void setDefaultEffort(normalizeReasoningEffort(e.currentTarget.value))}
+            disabled={!config || savingEffort}
+            aria-busy={savingEffort}
+            className={`${selectClass} disabled:opacity-50`}
+          >
+            {effortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
       </div>
+      {effortError && <p role="alert" className="text-xs text-destructive">{effortError}</p>}
+      {config && (
+        <>
+          <div className="border-t border-border" role="separator" />
+          <AssistantPreferences config={config} onChange={onConfigChange} />
+        </>
+      )}
     </div>
   );
 }

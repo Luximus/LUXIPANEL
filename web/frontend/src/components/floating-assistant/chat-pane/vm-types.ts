@@ -7,6 +7,7 @@
  * tramos (state/derived) — they are threaded through a plain `actions` bag so the
  * sub-hooks stay contiguous and the flattened React-hook sequence is unchanged.
  */
+import type { ChatReasoningEffort } from "../reasoning-effort";
 import { type VoiceConfigState, type ApprovalMode, type AssistantAgent } from "../assistant-api";
 import { type MobileNavController } from "../MobileNavModal";
 
@@ -21,6 +22,8 @@ export interface ChatPaneProps {
    *  ChatTab). Undefined / "auto" → the composer starts on Auto. Never applied to
    *  agent chats or when reopening an existing conversation. */
   initialModel?: string;
+  /** Reasoning default for new chats; never overrides saved conversation options. */
+  initialEffort?: ChatReasoningEffort;
   /** UI complexity mode — "simple" humanizes tool traces and hides jargon. */
   uiMode?: "simple" | "advanced";
   /** Voice (audio in/out) settings + capabilities; null when unavailable. */
@@ -47,7 +50,7 @@ export interface ChatPaneProps {
   openNonce?: number;
   /** Launch a chat bound to a custom agent (switches to its provider sub-tab).
    *  Used by the chat sidebar's "Agentes" section to start any agent. */
-  onLaunchAgent?: (agent: AssistantAgent) => void;
+  onLaunchAgent?: (agent: AssistantAgent, projectId?: string) => void;
   /** When set, prefills the composer with this text (e.g. from the mail inbox "Depurar con IA"). */
   seedText?: string | null;
   /** When true, the seeded prompt is sent automatically (e.g. files AI input). */

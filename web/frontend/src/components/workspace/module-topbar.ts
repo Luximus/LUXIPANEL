@@ -71,9 +71,33 @@ export function mountModuleTopbar(root: HTMLElement, drawer: HTMLElement): () =>
   if (!tabsSlot || !actionsSlot) return () => {};
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
+  // Terminal tabs are live DOM nodes (rename/close/status listeners). Move the
+  // complete row instead of cloning it. Mobile owns its existing tabs drawer.
+  const desktopTerminal = root.dataset.internalModule === "terminal"
+    ? window.matchMedia("(min-width: 1025px)") : null;
+  let terminalRow: HTMLElement | null = null;
+  let terminalHome: Comment | null = null;
+  const restoreTerminal = () => {
+    if (terminalRow && terminalHome?.parentNode) terminalHome.replaceWith(terminalRow);
+    terminalRow?.removeAttribute("data-terminal-header-toolbar");
+    terminalRow = null;
+    terminalHome = null;
+  };
   const sync = () => {
     if (disposed) return;
-    const tabs = primaryTabs(root);
+    if (!desktopTerminal?.matches) restoreTerminal();
+    else if (!terminalRow) {
+      // The mobile controller restores its row on the next animation frame.
+      // Wait for that hand-off before recording the desktop home position.
+      terminalRow = root.querySelector<HTMLElement>("[data-terminal-toolbar]:not(.lxp-terminal-tabs-controls)");
+      if (terminalRow) {
+        terminalHome = document.createComment("terminal-toolbar-home");
+        terminalRow.before(terminalHome);
+        terminalRow.setAttribute("data-terminal-header-toolbar", "");
+        tabsSlot.replaceChildren(terminalRow);
+      }
+    }
+    const tabs = terminalRow ? [] : primaryTabs(root);
     const group = tabs[0]?.parentElement;
     const actions = [...root.querySelectorAll<HTMLButtonElement>(ACTION_SELECTOR)]
       .filter((button) => isModuleControl(button) && visibleInModule(button, root));
@@ -97,7 +121,7 @@ export function mountModuleTopbar(root: HTMLElement, drawer: HTMLElement): () =>
       ? [...tabsSlot.querySelectorAll("button")].indexOf(document.activeElement as HTMLButtonElement)
       : -1;
     const tabButtons = tabs.map((button) => proxy(button, "tab"));
-    tabsSlot.replaceChildren(...tabButtons);
+    if (!terminalRow) tabsSlot.replaceChildren(...tabButtons);
     if (focusedTabIndex >= 0) tabButtons[focusedTabIndex]?.focus();
     tabsSlot.setAttribute("role", tabButtons.length ? "tablist" : "presentation");
     tabsSlot.onkeydown = (event) => {
@@ -117,11 +141,14 @@ export function mountModuleTopbar(root: HTMLElement, drawer: HTMLElement): () =>
   };
   const observer = new MutationObserver(schedule);
   observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "hidden", "aria-selected", "aria-current", "disabled"] });
+  desktopTerminal?.addEventListener("change", sync);
   sync();
   return () => {
     disposed = true;
     clearTimeout(timer);
     observer.disconnect();
+    desktopTerminal?.removeEventListener("change", sync);
+    restoreTerminal();
     tabsSlot.replaceChildren();
     actionsSlot.replaceChildren();
     tabsSlot.onkeydown = null;

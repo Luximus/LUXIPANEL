@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "Hinweise",
+    "activityTab": "Aktivität",
+    "contributors": "Mitwirkende",
+    "contributorsUnavailable": "Die Mitwirkenden konnten nicht geladen werden.",
+    "translationInsufficientBalance": "Das API-Guthaben des KI-Anbieters reicht für die Übersetzung nicht aus. Der Originaltext wird angezeigt.",
+    "newBadge": "neu",
+    "updateTo": "Auf {version} aktualisieren",
     "title": "Community und Versionen",
     "comments": "Kommentare",
     "read": "Als gelesen markieren",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "Installiert",
     "version": "Version",
     "openGithub": "Auf GitHub öffnen",
-    "close": "Schließen"
+    "close": "Schließen",
+    "newVersion": "Neue Version verfügbar",
+    "translating": "KI übersetzt…",
+    "showOriginal": "Original anzeigen",
+    "showTranslation": "Übersetzung anzeigen",
+    "translationUnavailable": "Die KI-Übersetzung ist nicht verfügbar. Der Originaltext wird angezeigt.",
+    "allComments": "Alle Kommentare auf GitHub ansehen",
+    "activity": "Community-Aktivität",
+    "loading": "Wird geladen…",
+    "loadError": "Diese Informationen konnten nicht geladen werden."
 },
   "groups": {
     "main": "Hauptbereich",

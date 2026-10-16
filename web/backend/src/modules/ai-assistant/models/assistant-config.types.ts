@@ -172,10 +172,12 @@ export interface TranslationConfig {
 
 export const VOICE_ENGINE_IDS = ["openai", "gemini"] as const;
 export type VoiceEngineId = (typeof VOICE_ENGINE_IDS)[number];
-/** TTS can also run on the local Piper CLI engine (panel host, offline, free). */
+/** Legacy engine identifiers remain for reading old settings and recordings. */
 export type TtsEngineId = VoiceEngineId | "piper" | "minimax";
 
 export interface VoiceConfig {
+  /** Replace the existing composer microphone with a live conversation. */
+  realtimeEnabled?: boolean;
   /** Master switch for the voice surface (mic + speaker). */
   enabled: boolean;
   /** STT engine; "auto" picks the first provider that has a key. */
@@ -196,7 +198,7 @@ export interface VoiceConfig {
 }
 
 export function defaultVoiceConfig(): VoiceConfig {
-  return { enabled: true, sttEngine: "auto", ttsEngine: "auto", ttsProvider: "api", autoSpeak: false, voice: "alloy" };
+  return { enabled: true, sttEngine: "auto", ttsEngine: "auto", ttsProvider: "api", autoSpeak: false, voice: "alloy", realtimeEnabled: false };
 }
 
 /**
@@ -212,40 +214,11 @@ export function voiceCapabilities(cfg: AssistantConfig): {
   tts: TtsEngineId | null;
 } {
   const hasOpenai = !!cfg.providers?.codex?.api?.apiKey;
-  const hasGemini = !!cfg.providers?.gemini?.api?.apiKey;
-  const hasMinimaxCli = !!cfg.providers?.minimax?.cli?.installed;
-  const hasMinimaxAuth = !!cfg.providers?.minimax?.cli?.loggedIn || !!cfg.providers?.minimax?.api?.apiKey;
   const v = cfg.voice ?? defaultVoiceConfig();
   if (!v.enabled) return { stt: null, tts: null };
-
-  // Bias "auto" toward the active/main chat provider's voice engine so voice
-  // follows the default provider (codex→openai, gemini→gemini) when it has a
-  // key; otherwise fall back to the fixed preference (first provider with a key).
-  const activeEngine: VoiceEngineId | null =
-    cfg.activeProvider === "codex" ? "openai" : cfg.activeProvider === "gemini" ? "gemini" : null;
-  const sttPref: VoiceEngineId[] = activeEngine
-    ? [activeEngine, ...(["openai", "gemini"] as VoiceEngineId[]).filter((e) => e !== activeEngine)]
-    : ["openai", "gemini"];
-  const sttHas = (e: VoiceEngineId) => (e === "openai" ? hasOpenai : hasGemini);
-  let stt: VoiceEngineId | null = null;
-  if (v.sttEngine === "auto") stt = sttPref.find(sttHas) ?? null;
-  else if (sttHas(v.sttEngine)) stt = v.sttEngine;
-
-  // TTS backend. "cli" → local Piper (controller confirms host install state).
-  // "minimax-cli" → target-side `mmx speech` when the CLI is installed and the
-  // user either logged it in already or configured a MiniMax API key the server
-  // can persist on first use. "api" → OpenAI only in v1.
-  const tts: TtsEngineId | null =
-    v.ttsProvider === "cli"
-      ? "piper"
-      : v.ttsProvider === "minimax-cli"
-        ? hasMinimaxCli && hasMinimaxAuth
-          ? "minimax"
-          : null
-        : hasOpenai
-          ? "openai"
-          : null;
-  return { stt, tts };
+  // Legacy engine preferences remain readable in stored settings, but voice
+  // input and output always use the OpenAI API key from the codex slot.
+  return { stt: hasOpenai ? "openai" : null, tts: hasOpenai ? "openai" : null };
 }
 
 /**
@@ -304,6 +277,9 @@ export interface RedactedIntegrationsConfig {
   elevenlabs: RedactedElevenLabsIntegration;
 }
 
+export const CHAT_REASONING_EFFORTS = ["", "low", "medium", "high", "xhigh"] as const;
+export type ChatReasoningEffort = typeof CHAT_REASONING_EFFORTS[number];
+
 export interface AssistantConfig {
   enabled: boolean;
   activeProvider: AssistantProviderId;
@@ -335,6 +311,8 @@ export interface AssistantConfig {
    * frontend falls back to "auto". UI arrival hint only.
    */
   defaultChatModel?: string;
+  /** Initial reasoning for new chats. Empty means automatic; saved chats keep their own choice. */
+  defaultChatEffort?: ChatReasoningEffort;
   /**
    * Third-party integration credentials (ElevenLabs today). Optional: absent
    * until the admin saves one. Redacted out of every public view.
@@ -514,6 +492,7 @@ export function redactTranslationConfig(t: TranslationConfig): RedactedTranslati
 }
 
 export interface RedactedVoiceConfig {
+  realtimeEnabled: boolean;
   enabled: boolean;
   sttEngine: VoiceEngineId | "auto";
   ttsEngine: VoiceEngineId | "auto";
@@ -555,6 +534,8 @@ export interface RedactedAssistantConfig {
   /** Per-server startup provider/model for new loose/project chats (may be unset). */
   defaultChatProvider?: AssistantProviderId;
   defaultChatModel?: string;
+  /** Initial reasoning for new chats. Empty means automatic; saved chats keep their own choice. */
+  defaultChatEffort?: ChatReasoningEffort;
   /** Third-party integrations — presence + preview only, never the key. */
   integrations: RedactedIntegrationsConfig;
 }
@@ -587,6 +568,7 @@ export function redactVoiceConfig(cfg: AssistantConfig): RedactedVoiceConfig {
     autoSpeak: v.autoSpeak,
     voice: v.voice ?? "alloy",
     capabilities: voiceCapabilities(cfg),
+    realtimeEnabled: !!v.realtimeEnabled,
   };
 }
 
@@ -623,5 +605,6 @@ export function redactAssistantConfig(cfg: AssistantConfig): RedactedAssistantCo
     // (undefined ⇒ the frontend falls back to activeProvider + "auto").
     ...(cfg.defaultChatProvider ? { defaultChatProvider: cfg.defaultChatProvider } : {}),
     ...(cfg.defaultChatModel ? { defaultChatModel: cfg.defaultChatModel } : {}),
+    defaultChatEffort: cfg.defaultChatEffort ?? "",
   };
 }

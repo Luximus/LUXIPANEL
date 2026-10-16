@@ -192,7 +192,7 @@ export function startWorkerRun(args: {
         signal: undefined,
       }),
     onEvent: recordUsage,
-    onComplete: async (assistantText: string, errored: boolean) => {
+    onComplete: async (assistantText: string, errored: boolean, ask, _translation, _durationMs, _cliLog, askKind) => {
       workerRunEnded(userId, convId);
       // Un run CLI dejó un descriptor cli-job persistido (cli-bridge lo crea
       // para todo run con conversationId). Sin este delete el descriptor queda
@@ -204,12 +204,12 @@ export function startWorkerRun(args: {
         await cliJobsRepository.delete(executor, convId).catch(() => undefined);
       }
       const content = (assistantText ?? "").trim();
-      if (content) {
+      if (content || ask?.length) {
         await conversationsRepository
           .appendMessages(
             executor,
             convId,
-            [{ role: "assistant", provider, content, ts: new Date().toISOString() }],
+            [{ role: "assistant", provider, content, ts: new Date().toISOString(), ...(ask?.length ? { ask, ...(askKind ? { askKind } : {}) } : {}) }],
             { unreviewed: true },
           )
           .catch(() => undefined);

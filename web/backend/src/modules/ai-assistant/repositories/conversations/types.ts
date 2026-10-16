@@ -14,6 +14,8 @@ export interface MessageAttachmentRef {
   id: string;
   name: string;
   mimeType: string;
+  /** Original user recording; only its transcript is sent to the agent. */
+  voice?: { transcript: string };
 }
 
 export interface ConversationMessage {

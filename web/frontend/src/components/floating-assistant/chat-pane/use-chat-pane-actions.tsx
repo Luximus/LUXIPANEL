@@ -6,6 +6,7 @@
  * hooks, so it does not affect the flattened hook sequence; receives all state/
  * derived via `s`/`d` and returns the real handlers.
  */
+import { chatInputLocked } from "../chat-engine/input-lock";
 import {
   assistantConversationsApi,
   ConversationNotFoundError,
@@ -291,6 +292,8 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
       reasoningEffort?: "low" | "medium" | "high" | "xhigh";
     },
   ) {
+    const voiceInput = !!opts?.attachmentsOverride?.some(a => a.voice);
+    if (chatInputLocked(chatKey) && !voiceInput && !opts?.planDecision) return;
     if (!await s.conversationOptions.beforeSend()) return;
     const text = (explicitText ?? draft).trim();
     // No `streaming` guard: if a run is in flight the engine appends this as an
@@ -300,7 +303,7 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
     void preloadMonaco().catch(() => {});
     // Subtle haptic confirmation on touch devices (no-op on desktop).
     try { navigator.vibrate?.(8); } catch { /* unsupported */ }
-    setDraft("");
+    if (!voiceInput) setDraft("");
 
     // Replace (not combine) when the last turn was STOPPED by the user: the next
     // message redoes the stopped one, so trim the stopped user+assistant pair
@@ -344,7 +347,7 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
         setActiveId(meta.id);
         void reloadList(search);
       } catch {
-        setDraft(text);
+        if (!voiceInput) setDraft(text);
         setAttachError("No se pudo guardar la conversación. Inténtalo de nuevo.");
         return;
       }
@@ -357,7 +360,7 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
     const messages = buildAgentMessages(prior, text);
 
     const sentAttachments = opts?.attachmentsOverride ?? attachments;
-    setAttachments([]);
+    if (!voiceInput) setAttachments([]);
 
     // The user is actively in this chat → it's not a pending Dashboard item.
     chatEngine.markReviewed(key);

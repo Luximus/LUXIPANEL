@@ -1,11 +1,14 @@
 import { env } from "../../config/env.js";
-const cache = new Map<string, { until: number; value: unknown; error?: string; etag?: string }>();
+const cache = new Map<string, { until: number; refreshedAt: number; value: unknown; error?: string; etag?: string }>();
 const pending = new Map<string, Promise<unknown>>();
 const anonymousRequests: number[] = [];
 const cacheDuration = () => env.LUXIPANEL_GITHUB_TOKEN ? 300000 : 3600000;
-export async function publicGithub<T>(route: string): Promise<T> {
+interface GithubCacheOptions { maxAgeMs?: number }
+export async function publicGithub<T>(route: string, options: GithubCacheOptions = {}): Promise<T> {
   if (!/^\/repos\/Luxisoft\/LUXIPANEL(?:[/?]|$)/i.test(route)) throw new Error("Repositorio no permitido");
-  const saved = cache.get(route); if (saved && saved.until > Date.now()) { if (saved.error) throw new Error(saved.error); return saved.value as T; }
+  const ttl = Math.max(60000, Math.min(options.maxAgeMs ?? cacheDuration(), cacheDuration()));
+  const saved = cache.get(route);
+  if (saved && (saved.error ? saved.until : Math.min(saved.until, saved.refreshedAt + ttl)) > Date.now()) { if (saved.error) throw new Error(saved.error); return saved.value as T; }
   if (pending.has(route)) return pending.get(route) as Promise<T>;
   const request = (async () => {
     if (!env.LUXIPANEL_GITHUB_TOKEN) {
@@ -20,18 +23,18 @@ export async function publicGithub<T>(route: string): Promise<T> {
     const response = await fetch(`https://api.github.com${route}`, {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "LUXIPANEL-community", ...(saved?.etag ? { "If-None-Match": saved.etag } : {}), ...(env.LUXIPANEL_GITHUB_TOKEN ? { Authorization: `Bearer ${env.LUXIPANEL_GITHUB_TOKEN}` } : {}) }, signal: AbortSignal.timeout(10000), redirect: "error",
     });
-    if (response.status === 304 && saved) { saved.until = Date.now() + cacheDuration(); saved.error = undefined; return saved.value; }
+    if (response.status === 304 && saved) { saved.refreshedAt = Date.now(); saved.until = Date.now() + ttl; saved.error = undefined; return saved.value; }
     if (!response.ok) throw new Error(`GitHub ${response.status}: ${response.status === 404 ? "repositorio o recurso no accesible" : response.status === 403 || response.status === 429 ? "límite de consultas; reintenta más tarde" : "no se pudo consultar la comunidad"}`);
     const value: unknown = await response.json();
     if (cache.size >= 256) cache.delete(cache.keys().next().value!);
-    cache.set(route, { until: Date.now() + cacheDuration(), value, etag: response.headers.get("etag") || undefined }); return value;
-  })().catch((error) => { cache.set(route, { until: Date.now() + 300000, value: saved?.value, etag: saved?.etag, error: String((error as Error).message) }); throw error; }).finally(() => pending.delete(route));
+    cache.set(route, { until: Date.now() + ttl, refreshedAt: Date.now(), value, etag: response.headers.get("etag") || undefined }); return value;
+  })().catch((error) => { cache.set(route, { until: Date.now() + 300000, refreshedAt: saved?.refreshedAt ?? 0, value: saved?.value, etag: saved?.etag, error: String((error as Error).message) }); throw error; }).finally(() => pending.delete(route));
   pending.set(route, request); return request as Promise<T>;
 }
-export async function publicGithubPages<T>(path: string): Promise<T[]> {
+export async function publicGithubPages<T>(path: string, options: GithubCacheOptions = {}): Promise<T[]> {
   const result: T[] = [];
   for (let page = 1; page <= 100; page++) {
-    const rows = await publicGithub<T[]>(`${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`);
+    const rows = await publicGithub<T[]>(`${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`, options);
     if (!Array.isArray(rows)) throw new Error("Respuesta GitHub inválida");
     result.push(...rows); if (rows.length < 100) return result;
   }

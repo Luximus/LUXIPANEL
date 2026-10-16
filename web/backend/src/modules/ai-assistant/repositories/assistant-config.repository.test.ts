@@ -182,4 +182,25 @@ describe("assistantConfigRepository — full modal round-trip", () => {
     expect(red.defaultChatProvider).toBe("minimax");
     expect(red.defaultChatModel).toBe("MiniMax-M3[1m]");
   });
+
+  it("persists reasoning per user and preserves it through unrelated patches", async () => {
+    ctx.uid = 21;
+    await assistantConfigRepository.patch({ defaultChatEffort: "xhigh" });
+    await assistantConfigRepository.patch({ defaultChatModel: "example-model" });
+    expect((await assistantConfigRepository.load()).defaultChatEffort).toBe("xhigh");
+    ctx.uid = 22;
+    expect(redactAssistantConfig(await assistantConfigRepository.load()).defaultChatEffort).toBe("");
+    ctx.uid = 21;
+    expect(redactAssistantConfig(await assistantConfigRepository.load()).defaultChatEffort).toBe("xhigh");
+  });
+
+  it.each(["", undefined] as const)("clears reasoning back to Auto with %s", async (value) => {
+    ctx.uid = 23;
+    await assistantConfigRepository.patch({ defaultChatEffort: "high" });
+    await assistantConfigRepository.patch({ defaultChatEffort: value });
+    const loaded = await assistantConfigRepository.load();
+    expect(loaded.defaultChatEffort).toBeUndefined();
+    // The wire value must explicitly clear an old browser mirror.
+    expect(redactAssistantConfig(loaded).defaultChatEffort).toBe("");
+  });
 });

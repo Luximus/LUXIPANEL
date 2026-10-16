@@ -19,8 +19,8 @@ const assistantPart2 = {
   },
   "voiceSettings": {
     "title": "ভয়েস (অডিও)",
-    "description": "সহকারীর সাথে কথা বলুন (টেক্সটে প্রতিলিপি হয়) এবং তার উত্তরগুলো ভয়েসে শুনুন। আপনার ইতিমধ্যে কনফিগার করা OpenAI বা Gemini-এর API key ব্যবহার করুন।",
-    "missingCapabilities": "অডিও সক্রিয় করতে প্রদানকারীর কার্ডে OpenAI (প্রতিলিপি + ভয়েস) বা Gemini (শুধু প্রতিলিপি)-এর একটি API key কনফিগার করুন।",
+    "description": "OpenAI ব্যবহার করে সহকারীর সঙ্গে কথা বলুন এবং উত্তর শুনুন।",
+    "missingCapabilities": "অডিও চালু করতে Codex প্রদানকারীতে OpenAI API কী কনফিগার করুন।",
     "inputLabel": "ইনপুট (STT)",
     "outputLabel": "আউটপুট (TTS)",
     "notAvailable": "উপলব্ধ নয়",

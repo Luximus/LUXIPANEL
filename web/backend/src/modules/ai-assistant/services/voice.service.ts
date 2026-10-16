@@ -14,12 +14,10 @@
  * plays on demand. TTS may run via cloud API, local Piper, or MiniMax CLI.
  */
 
-import type { Executor } from "../../../shared/executor/index.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
 import type { AssistantConfig } from "../models/assistant-config.types.js";
 import { voiceCapabilities } from "../models/assistant-config.types.js";
 import { buildSttProvider, buildTtsProvider } from "./voice/voice-factory.js";
-import { isPiperInstalled } from "./voice/piper-voice.js";
 import { VoiceError } from "./voice/voice.types.js";
 import type { SttResult, TtsResult } from "./voice/voice.types.js";
 
@@ -33,12 +31,6 @@ const MAX_TTS_CHARS = 4_000;
 export const voiceService = {
   capabilities(config: AssistantConfig) {
     return voiceCapabilities(config);
-  },
-
-  /** Whether the local Piper engine (the "cli" audio provider) is usable on the
-   *  panel host — binary present + at least one voice model installed. */
-  async piperStatus(): Promise<{ installed: boolean }> {
-    return { installed: await isPiperInstalled() };
   },
 
   async transcribe(
@@ -64,12 +56,11 @@ export const voiceService = {
     config: AssistantConfig,
     text: string,
     voice?: string,
-    executor?: Executor | null,
     signal?: AbortSignal,
   ): Promise<TtsResult> {
     const clean = text.trim();
     if (!clean) throw new VoiceError("openai", "Texto vacío.");
-    const provider = buildTtsProvider(config, executor);
+    const provider = buildTtsProvider(config);
     if (!provider.speak) {
       throw new VoiceError(provider.id, `El motor ${provider.id} no soporta síntesis de voz.`);
     }

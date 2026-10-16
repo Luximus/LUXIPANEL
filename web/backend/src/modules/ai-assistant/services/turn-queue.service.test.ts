@@ -130,7 +130,7 @@ vi.mock("./team-tasks.service.js", () => ({
   teamTasksService: { markCollected: vi.fn(async () => undefined) },
 }));
 vi.mock("../repositories/assistant-config.repository.js", () => ({
-  assistantConfigRepository: { load: vi.fn(async () => ({ translation: { enabled: false } })) },
+  assistantConfigRepository: { load: vi.fn(async () => ({ translation: { enabled: false }, approval: { mode: "manual" } })) },
 }));
 vi.mock("./translation.service.js", () => ({
   translationService: { translate: vi.fn(async (_c: unknown, t: string) => t), detectLanguage: vi.fn(async () => "en") },
@@ -418,4 +418,26 @@ it("does not acknowledge a user turn whose history write failed", async () => {
   const { persistUserMessage } = await import("./turn-queue.service.js");
   vi.mocked(conversationsRepository.appendMessages).mockRejectedValueOnce(new Error("write failed"));
   await expect(persistUserMessage(null, "chat", "Aprobar plan", "codex", undefined)).rejects.toThrow("write failed");
+});
+
+it("persists recorded audio with the user turn and keeps only text in model history", async () => {
+  const { persistUserMessage, buildMessagesFromHistory } = await import("./turn-queue.service.js");
+  const { attachmentsRepository } = await import("../repositories/attachments.repository.js");
+  const recording = { name: "audio.webm", mimeType: "audio/webm", dataBase64: "YXVkaW8=", voice: { transcript: "Hola" } };
+  const ref = { id: "voice-clip", name: recording.name, mimeType: recording.mimeType, voice: recording.voice };
+  vi.mocked(attachmentsRepository.storeMany).mockResolvedValueOnce([ref]);
+  await persistUserMessage(localExecutor, "voice-conv", "Hello", "codex", [recording], { textOriginal: "Hola", lang: "es" });
+  expect(attachmentsRepository.storeMany).toHaveBeenCalledWith(localExecutor, "voice-conv", [recording]);
+  expect(conversationsRepository.appendMessages).toHaveBeenCalledWith(localExecutor, "voice-conv", [expect.objectContaining({ content: "Hello", textOriginal: "Hola", attachments: [ref] })]);
+  vi.mocked(conversationsRepository.messages).mockResolvedValueOnce({ items: [{ role: "user", content: "Hello", ts: "", attachments: [ref] }], total: 1, hasMore: false });
+  expect(await buildMessagesFromHistory(localExecutor, "voice-conv")).toEqual([{ role: "user", content: "Hello" }]);
+});
+
+it("does not silently persist a text-only message if saving its recording fails", async () => {
+  const { persistUserMessage } = await import("./turn-queue.service.js");
+  const { attachmentsRepository } = await import("../repositories/attachments.repository.js");
+  vi.mocked(attachmentsRepository.storeMany).mockRejectedValueOnce(new Error("write failed"));
+  vi.mocked(conversationsRepository.appendMessages).mockClear();
+  await expect(persistUserMessage(localExecutor, "voice-conv", "Hola", "codex", [{ name: "audio.webm", mimeType: "audio/webm", dataBase64: "YXVkaW8=", voice: { transcript: "Hola" } }])).rejects.toThrow("write failed");
+  expect(conversationsRepository.appendMessages).not.toHaveBeenCalled();
 });

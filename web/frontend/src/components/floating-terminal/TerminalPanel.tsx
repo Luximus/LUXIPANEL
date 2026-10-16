@@ -209,7 +209,7 @@ export default function TerminalPanel({
           data-floating-terminal-panel="console"
           className="flex h-full min-w-0 flex-1 flex-col overflow-hidden md:basis-[70%] md:max-w-[70%]"
         >
-          <div className="sticky top-0 z-20 flex shrink-0 items-center gap-0 border-b border-border bg-card/95 px-3 pt-2 pb-2 backdrop-blur-sm">
+          <div data-terminal-toolbar className="sticky top-0 z-20 flex shrink-0 items-center gap-0 border-b border-border bg-card/95 px-3 pt-2 pb-2 backdrop-blur-sm">
             <div
               id="tabs-container"
               role="tablist"

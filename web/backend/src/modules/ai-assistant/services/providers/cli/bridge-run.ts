@@ -27,6 +27,8 @@ import { cliSessionsRepository } from "../../../repositories/cli-sessions.reposi
 import { upstreamSessionResetBytes } from "../../context-window.service.js";
 import { cliJobsRepository } from "../../../repositories/cli-jobs.repository.js";
 import { captureModuleRunRecovery } from "../../module-run-recovery.service.js";
+import { bindOwnerContributionCli } from "../../../../../shared/github/owner-contributions.js";
+import { getContextUser } from "../../../../../shared/executor/context.js";
 import { extractAskRequest, stripAskBlock } from "../../ask-protocol.js";
 import { panelConfigDir } from "../../../../../config/paths.js";
 import { env } from "../../../../../config/env.js";
@@ -654,9 +656,11 @@ export function makeCliBridgeProvider(args: {
           const descriptor = { conversationId, jobId, logFile, exitFile, provider: args.id,
             serverName, pid, model: args.model, startedAt: job.startedAt };
           const moduleRecovery = captureModuleRunRecovery(executor, descriptor, opts.modulesMcp?.token);
+          const recoverable = { ...descriptor, ...(moduleRecovery ? { moduleRecovery } : {}) };
           await cliJobsRepository
-            .set(executor, conversationId, { ...descriptor, ...(moduleRecovery ? { moduleRecovery } : {}) })
+            .set(executor, conversationId, recoverable)
             .catch(() => undefined);
+          await bindOwnerContributionCli(getContextUser() ?? undefined, recoverable, executor.target.id);
         }
 
         if (args.id === "codex" && conversationId && codexHome && !attemptResume) {

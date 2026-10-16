@@ -7,6 +7,7 @@ import type { CliJobDescriptor } from "../repositories/cli-jobs.repository.js";
 const state = vi.hoisted(() => ({
   active: false, owner: 7, ac: new AbortController(), starts: 0,
   desc: null as CliJobDescriptor | null, generator: null as AsyncGenerator | null,
+  complete: null as null | ((...args:unknown[])=>Promise<void>),
   approval: null as null | { mode: string; autoApprove: Set<string> },
 }));
 vi.mock("./agent-run-registry.js", () => ({ agentRunRegistry: {
@@ -16,33 +17,39 @@ vi.mock("./agent-run-registry.js", () => ({ agentRunRegistry: {
   setApproval: (_id: string, value: { mode: string; autoApproveTools: string[] }) => {
     state.approval = { mode: value.mode, autoApprove: new Set(value.autoApproveTools) };
   },
-  start: (params: { makeGen: () => AsyncGenerator }) => {
+  start: (params: { makeGen: () => AsyncGenerator; onComplete:(...args:unknown[])=>Promise<void> }) => {
     if (state.active) return;
     state.active = true; state.starts++;
+    state.complete=params.onComplete;
     state.generator = params.makeGen(); void state.generator.next();
   },
 } }));
 vi.mock("../repositories/cli-jobs.repository.js", () => ({ cliJobsRepository: {
-  get: async () => state.desc, set: vi.fn(), delete: vi.fn(),
+  get: async () => state.desc, set: vi.fn(async()=>undefined), delete: vi.fn(async()=>true),
 } }));
 vi.mock("../repositories/cli-sessions.repository.js", () => ({ cliSessionsRepository: { getProvider: async () => null } }));
 vi.mock("./providers/cli/cli-session.js", () => ({ discoverCodexOrphanJob: async () => null }));
 vi.mock("./providers/cli/recovered-run.js", () => ({ makeRecoveredCliGen: async function* () { yield { type: "tool_use", name: "codex.cli" }; yield { type: "done" }; } }));
 vi.mock("./turn-queue.service.js", () => ({ makeUsageRecorder: () => () => {}, persistAssistantMessage: vi.fn(), drainConversationQueue: vi.fn() }));
+vi.mock("../../../shared/github/owner-contributions.js",()=>({
+  contributionCliBinding:vi.fn(), recoverOwnerContribution:vi.fn(async()=>null), finishOwnerContribution:vi.fn(async()=>null),
+}));
 import { runWithExecutor, setContextFileJail } from "../../../shared/executor/context.js";
 import { bindModuleToolRun, moduleToolRunScope } from "./module-tools.service.js";
 import { captureModuleRunRecovery, readModuleRunRecovery } from "./module-run-recovery.service.js";
 import { ensureModuleToolRun } from "./cli-run-recovery.service.js";
+import { finishOwnerContribution } from "../../../shared/github/owner-contributions.js";
 const user = { userId: 7, username: "test", kind: "admin", role: "admin", modules: ["assistant"] } as SessionUser;
 const token = "original-token-never-persisted";
 const executor = { target: { id: "recovery-test", name: "Test" }, exec: vi.fn() } as unknown as Executor;
 const scoped = <T>(fn: () => T) => runWithExecutor(executor, fn, user.userId, user);
 const recover = (bearer = token) => scoped(() => ensureModuleToolRun(executor, "conversation", user, bearer));
 beforeEach(() => {
-  state.active = false; state.owner = 7; state.ac = new AbortController(); state.starts = 0; state.generator = null;
+  state.active = false; state.owner = 7; state.ac = new AbortController(); state.starts = 0; state.generator = null;state.complete=null;
+  vi.mocked(finishOwnerContribution).mockClear();
   state.approval = { mode: "plan", autoApprove: new Set(["files.read"]) };
   state.desc = { conversationId: "conversation", jobId: "lxp-cli-123-abcdef", logFile: "/tmp/lxp-cli-123-abcdef.log", exitFile: "/tmp/lxp-cli-123-abcdef.exit", provider: "codex", serverName: "Test", pid: "123", startedAt: 123 };
-  vi.mocked(executor.exec).mockImplementation(async (command) => ({ stdout: command.includes("ps -ww") ? "bash /tmp/lxp-cli-123-abcdef.sh" : "Y", stderr: "", exitCode: 0 }));
+  vi.mocked(executor.exec).mockImplementation(async (command) => ({ stdout: command.includes("ps -p") ? "bash /tmp/lxp-cli-123-abcdef.sh" : "Y", stderr: "", exitCode: 0 }));
   scoped(() => {
     setContextFileJail(["/srv/allowed"]);
     const release = bindModuleToolRun("conversation", executor, user, [["files.read"], null], "original-agent");
@@ -53,6 +60,17 @@ beforeEach(() => {
 });
 afterEach(async () => { await state.generator?.return(undefined); state.active = false; vi.restoreAllMocks(); });
 describe("module channel after a backend restart", () => {
+  it.each([
+    {errored:false,ask:undefined,outcome:undefined,success:true},
+    {errored:true,ask:undefined,outcome:undefined,success:false},
+    {errored:false,ask:[{id:"approval"}],outcome:undefined,success:false},
+    {errored:false,ask:undefined,outcome:{interrupted:true},success:false},
+    {errored:false,ask:undefined,outcome:{error:"failed"},success:false},
+  ])("seals recovered contributions only on confirmed completion: $success",async({errored,ask,outcome,success})=>{
+    expect(await recover()).toBe(true);
+    await state.complete!("answer",errored,ask,undefined,1,undefined,undefined,outcome);
+    expect(finishOwnerContribution).toHaveBeenCalledWith(null,success);
+  });
   it("reattaches the existing job with the original permissions and approval mode", async () => {
     expect(await recover()).toBe(true);
     expect(moduleToolRunScope("conversation", executor, user)).toMatchObject({

@@ -32,8 +32,18 @@ function own(ownerId: number | null | undefined, uid: number): boolean {
 async function addLeader(project: AssistantProject, team: AgentTeam, name?: string): Promise<AssistantAgent> {
   return agentsRepository.create({
     name: (name || `${project.title} · Líder`).slice(0, 120),
-    description: `Agente líder del proyecto ${project.title}`,
-    systemPrompt: project.instructions || "Coordina el trabajo de este proyecto y sus subproyectos.",
+    description: [`Líder de ${project.title}`, (project.instructions ?? "").trim().replace(/\s+/g, " ")].filter(Boolean).join(" · ").slice(0, 500),
+    // Bind the persona to the project. The runtime resolves its CURRENT
+    // instructions, servers, skills, vault and children on every turn; copying
+    // those here would keep obsolete instructions after a project is edited.
+    systemPrompt: [
+      `Eres el agente líder del proyecto ${project.title} (referencia: ${project.id}).`,
+      "Coordina el trabajo del equipo y de sus subproyectos, que comparten este equipo.",
+      "Antes de actuar utiliza el contexto vigente del proyecto y del subproyecto seleccionado: objetivos, instrucciones, directorio de trabajo, servidores asociados, habilidades, notas del vault y grafo de código cuando estén disponibles.",
+      "Consulta los archivos de contexto del proyecto cuando necesites más detalle. No inventes datos que falten ni confundas proyectos o servidores.",
+      "Delega a los agentes del equipo según sus funciones y el alcance de la tarea; conserva el contexto del chat, revisa sus resultados y comunica el resultado al usuario.",
+      "Respeta los permisos y el modo de aprobación de la sesión. Los recursos asociados al proyecto no otorgan permisos adicionales.",
+    ].join("\n"),
     model: "",
     providerId: project.provider,
     teamId: team.id,

@@ -20,10 +20,21 @@ import { requireAuth, requireAuthNoExecutor, requireMfaPending } from "../middle
 import { csrfCookieSetter, csrfProtection } from "../middlewares/csrf.middleware.js";
 import { loginRateLimiter, ssoExchangeRateLimiter } from "../middlewares/rate-limiter.middleware.js";
 
+import { githubController } from "../controllers/github.controller.js";
+
 const router: ExpressRouter = Router();
 
 // ---- CSRF cookie (set on every request) ----
 router.use(csrfCookieSetter);
+
+// Each authenticated identity can connect its own GitHub account without admin privileges.
+router.post("/api/auth/github/contributions/retry", requireAuthNoExecutor, csrfProtection, githubController.retry);
+router.get("/api/auth/github/contributions", requireAuthNoExecutor, githubController.contributions);
+router.get("/api/auth/github", requireAuthNoExecutor, githubController.status);
+router.post("/api/auth/github", requireAuthNoExecutor, csrfProtection, loginRateLimiter, githubController.connect);
+router.delete("/api/auth/github", requireAuthNoExecutor, csrfProtection, githubController.disconnect);
+router.post("/api/auth/github/device", requireAuthNoExecutor, csrfProtection, loginRateLimiter, githubController.start);
+router.post("/api/auth/github/device/poll", requireAuthNoExecutor, csrfProtection, githubController.poll);
 
 // ---- Session ----
 router.post("/api/login", loginRateLimiter, csrfProtection, loginController.login);

@@ -49,6 +49,8 @@ export interface MessageAttachmentRef {
   id: string;
   name: string;
   mimeType: string;
+  /** Original user recording; only its transcript is sent to the agent. */
+  voice?: { transcript: string };
 }
 
 export interface ConversationMessage {
@@ -178,13 +180,16 @@ export const assistantConversationsApi = {
     provider?: string,
     projectId?: string | null,
     withAgent?: boolean,
-    page?: { cursor?: string; projectIds?: string[]; includeSummary?: boolean; fresh?: boolean },
+    page?: { cursor?: string; projectIds?: string[]; agentId?: string | null; agentIds?: string[]; includeSummary?: boolean; summaryScope?: "filtered"; fresh?: boolean },
   ): Promise<{ items: ConversationMeta[]; total: number; nextCursor?: string | null; hasMore?: boolean; searchStatus?: { state: string; indexed: number; total: number }; summary?: { projects: Record<string, number>; agents: Record<string, number> } }> {
     const qs =
       `q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}` +
       (provider ? `&provider=${encodeURIComponent(provider)}` : "") +
       (projectId === undefined ? "" : `&projectId=${encodeURIComponent(projectId ?? "none")}`) +
       (withAgent === undefined ? "" : `&withAgent=${withAgent ? "1" : "0"}`) +
+      (page?.agentId === undefined ? "" : `&agentId=${encodeURIComponent(page.agentId ?? "none")}`) +
+      (page?.agentIds ? `&agentIds=${encodeURIComponent(page.agentIds.join(","))}` : "") +
+      (page?.summaryScope ? `&summaryScope=${page.summaryScope}` : "") +
       (page ? `&paged=1${page.cursor ? `&cursor=${encodeURIComponent(page.cursor)}` : ""}${page.projectIds ? `&projectIds=${encodeURIComponent(page.projectIds.join(","))}` : ""}${page.includeSummary ? "&includeSummary=1" : ""}` : "");
     const res = await api.get<{ ok: boolean; items: ConversationMeta[]; total: number; nextCursor?: string | null; hasMore?: boolean; searchStatus?: { state: string; indexed: number; total: number }; summary?: { projects: Record<string, number>; agents: Record<string, number> } }>(
       `/api/ai/conversations?${qs}`, { fresh: page?.fresh },

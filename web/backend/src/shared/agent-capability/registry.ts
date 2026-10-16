@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { requireGithub } from "../github/user-connection.js";
 import { notifyModulesChanged, moduleStateRevision } from "../module-state/lifecycle.js";
 /**
  * Agent Capability Registry — in-process catalog of every module's
@@ -110,6 +111,7 @@ class AgentCapabilityRegistry {
         const user = getContextUser(), executor = getContextExecutor();
         if (!user) return handler(input); // explicitly trusted internal boot/task
         if (!executor) throw new ForbiddenError("Tool execution requires an authenticated server");
+        await requireGithub(user);
         const stateRevision = moduleStateRevision(executor.target.id);
         const { resolveLiveAuthorization } = await import("../../modules/auth/services/live-authorization.service.js");
         const live = await resolveLiveAuthorization(user, executor);

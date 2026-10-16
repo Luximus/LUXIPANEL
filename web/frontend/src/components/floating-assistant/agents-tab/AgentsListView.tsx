@@ -9,7 +9,7 @@ import { CollapsibleSection } from "../CollapsibleSection";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { formatAssistantMessage } from "../i18n";
 import { teamAvatarBg, teamInitials } from "./constants";
-import { emptyDraft, toDraft } from "./draft";
+import { toDraft } from "./draft";
 import type { AgentsTabVM } from "./use-agents-tab";
 
 export function AgentsListView({ vm }: { vm: AgentsTabVM }) {
@@ -38,15 +38,16 @@ export function AgentsListView({ vm }: { vm: AgentsTabVM }) {
           >
             <i className="ti ti-shield" aria-hidden></i> {t.list.rolesBtn}{roles.length > 0 ? ` (${roles.length})` : ""}
           </button>
-          <button
+          {!vm.projectScope && <button
             type="button" onClick={() => setTeamDraft({ team: null })}
             className="rounded-md border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
             title={t.teams.newTeamTitle}
           >
             <i className="ti ti-users-group" aria-hidden></i> {t.teams.newTeamBtn}
-          </button>
+          </button>}
           <button
-            type="button" onClick={() => { setEditorTab("general"); setDraft(emptyDraft()); }}
+            type="button" onClick={vm.newAgent}
+            disabled={loading || Boolean(vm.projectScope && !teams.length)}
             className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             <i className="ti ti-plus" aria-hidden></i> {t.list.newAgent}
@@ -146,7 +147,7 @@ export function AgentsListView({ vm }: { vm: AgentsTabVM }) {
                         >
                           <i className="ti ti-pencil" aria-hidden></i>
                         </button>
-                        <button
+                        {!vm.projectScope && <button
                           type="button"
                           onClick={() => setTeamAddCtx(team)}
                           title={t.teams.addAgentsBtn}
@@ -154,8 +155,8 @@ export function AgentsListView({ vm }: { vm: AgentsTabVM }) {
                           className="flex h-7 w-7 items-center justify-center rounded-md border border-input text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           <i className="ti ti-user-plus" aria-hidden></i>
-                        </button>
-                        <button
+                        </button>}
+                        {!vm.projectScope && <button
                           type="button"
                           onClick={() => void deleteTeam(team)}
                           title={t.teams.deleteTeamBtn}
@@ -163,7 +164,7 @@ export function AgentsListView({ vm }: { vm: AgentsTabVM }) {
                           className="flex h-7 w-7 items-center justify-center rounded-md border border-input text-xs text-amber-600 transition-colors hover:bg-amber-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           <i className="ti ti-folder-x" aria-hidden></i>
-                        </button>
+                        </button>}
                       </>
                     )}
                     <button
@@ -257,7 +258,7 @@ export function AgentsListView({ vm }: { vm: AgentsTabVM }) {
                       <button type="button" onClick={() => duplicate(a)} title={t.list.duplicateTitle} className="shrink-0 h-8 w-8 inline-flex items-center justify-center rounded-md border border-input px-1.5 text-xs hover:bg-muted/50">
                         <i className="ti ti-copy" aria-hidden></i>
                       </button>
-                      {a.teamId && teamsById.has(a.teamId) && (
+                      {!vm.projectScope && a.teamId && teamsById.has(a.teamId) && (
                         <button type="button" onClick={() => void removeFromTeam(a)} title={t.teams.removeFromTeamBtn} aria-label={t.teams.removeFromTeamBtn} className="shrink-0 h-8 w-8 inline-flex items-center justify-center rounded-md border border-input px-1.5 text-xs text-amber-600 hover:bg-amber-500/10">
                           <i className="ti ti-user-minus" aria-hidden></i>
                         </button>

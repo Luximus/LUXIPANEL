@@ -38,9 +38,12 @@ import { useSettingsFooterAction, useSettingsHeaderOverride } from "../settings-
 import { openConfirm } from "@/lib/confirm";
 import { formatAssistantMessage, useAssistantI18n } from "../i18n";
 import { agentsTabFallback, type AgentsTabMessages } from "./messages";
-import { type DraftAgent, type DraftRole, toDraft, toPayload, roleToPayload } from "./draft";
+import { type DraftAgent, type DraftRole, emptyDraft, toDraft, toPayload, roleToPayload } from "./draft";
+
+import type { ProjectAgentScope } from "../project-modal/agent-scope";
 
 export type AgentsTabProps = {
+  projectScope?: ProjectAgentScope;
   onLaunchAgent: (agent: AssistantAgent) => void;
   /** Active platform locale — forwarded to TeamTemplatesModal so template
    *  names/descriptions/systemPrompts render in the user's language. */
@@ -50,7 +53,7 @@ export type AgentsTabProps = {
   initialEditAgentId?: string | null;
 };
 
-export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId }: AgentsTabProps) {
+export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope }: AgentsTabProps) {
   const _i18n = useAssistantI18n() as ReturnType<typeof useAssistantI18n> & { agentsTab?: Partial<AgentsTabMessages> };
   const _over = _i18n.agentsTab ?? {};
   const t: AgentsTabMessages = {
@@ -148,9 +151,9 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId }: Agen
         assistantAgentRolesApi.list().catch(() => [] as AssistantAgentRole[]),
         assistantAgentTeamsApi.list().catch(() => [] as AgentTeam[]),
       ]);
-      setAgents(ags);
+      setAgents(projectScope ? ags.filter((a) => a.teamId === projectScope.teamId) : ags);
       setRoles(rls);
-      setTeams(tms);
+      setTeams(projectScope ? tms.filter((team) => team.id === projectScope.teamId) : tms);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -220,7 +223,8 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId }: Agen
 
     // ALL projects: the "attach projects" picker renders the nested tree and
     // the graph-index picker lists any project with a ready index.
-    void assistantProjectsApi.list().then(setProjects).catch(() => { /* ignore */ });
+    if (projectScope) setProjects(projectScope.projects);
+    else void assistantProjectsApi.list().then(setProjects).catch(() => { /* ignore */ });
     // Registered servers the agent can be associated with.
     void fetchAssociatableConnections().then(setConns).catch(() => { /* ignore */ });
     // Terminal snippet categories/tags for the pre-filter (never throws; ok:false
@@ -318,15 +322,19 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId }: Agen
     // Group (team) is now mandatory: bounce to the Hierarchy tab if missing so
     // the required selector is in view. (UI-only guard — programmatic agent
     // creation paths still allow a null teamId; see the multi-agent/template flows.)
-    if (!draft.teamId) {
+    if (!draft.teamId || (projectScope && draft.teamId !== projectScope.teamId)) {
       setError(t.teams.groupRequired);
       setEditorTab("hierarchy");
       return;
     }
     setSaving(true);
     try {
-      if (draft.id) await assistantAgentsApi.update(draft.id, toPayload(draft));
-      else await assistantAgentsApi.create(toPayload(draft));
+      const payload = toPayload(draft);
+      if (projectScope && !draft.id) {
+        payload.projectIds = [...new Set([projectScope.project.id, ...(payload.projectIds ?? [])])];
+      }
+      if (draft.id) await assistantAgentsApi.update(draft.id, payload);
+      else await assistantAgentsApi.create(payload);
       setDraft(null);
       await reload();
       window.dispatchEvent(new CustomEvent("lxp:assistant:agents-updated"));
@@ -423,6 +431,19 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId }: Agen
     }
   }
 
+  function newAgent() {
+    setEditorTab("general");
+    setDraft({
+      ...emptyDraft(),
+      ...(projectScope ? {
+        teamId: projectScope.teamId,
+        projectIds: [projectScope.project.id],
+        providerId: projectScope.project.provider,
+        parentAgentId: agents.some((a) => a.id === projectScope.root.leaderAgentId) ? projectScope.root.leaderAgentId ?? null : null,
+      } : {}),
+    });
+  }
+
   function duplicate(a: AssistantAgent) {
     setEditorTab("general");
     setDraft({ ...toDraft(a), id: undefined, name: formatAssistantMessage(t.duplicateName, { name: a.name }) });
@@ -432,7 +453,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId }: Agen
   // here (controlled CollapsibleSection) so they can span the full row. Acordeón:
   // solo una tarjeta de grupo abierta a la vez (openGroupKey único), abrir una
   // cierra la anterior.
-  const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
+  const [openGroupKey, setOpenGroupKey] = useState<string | null>(projectScope ? `team:${projectScope.teamId}` : null);
 
   // While the agent editor is open, its primary action (save/create) lives in
   // the settings-modal footer next to "Close". Re-published on each draft/state
@@ -473,7 +494,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId }: Agen
   useEffect(() => () => setHeaderOverride?.(null), [setHeaderOverride]);
 
   return {
-    onLaunchAgent, locale, initialEditAgentId, t, _i18n,
+    onLaunchAgent, locale, initialEditAgentId, projectScope, newAgent, t, _i18n,
     agents, setAgents, loading, setLoading, error, setError, draft, setDraft,
     editorTab, setEditorTab, saving, setSaving, modules, setModules,
     suggesting, setSuggesting, suggestArchetype, setSuggestArchetype,

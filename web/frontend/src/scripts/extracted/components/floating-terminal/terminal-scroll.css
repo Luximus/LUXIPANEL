@@ -1,0 +1,23 @@
+#terminal-container,
+#terminal-container .xterm-viewport {
+  overscroll-behavior: contain;
+}
+
+#terminal-container .xterm {
+  height: 100%;
+}
+
+[data-terminal-header-toolbar] {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+/* The inner tab strip scrolls; keep the status tooltip outside its clipping. */
+.lxp-workspace-header-tabs:has([data-terminal-header-toolbar]) {
+  overflow: visible;
+}

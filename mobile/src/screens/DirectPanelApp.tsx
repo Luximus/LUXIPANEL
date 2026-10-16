@@ -1,3 +1,5 @@
+import { GithubConnectionScreen, type GithubStatus } from "../components/login/GithubConnectionScreen";
+import { onGithubRequired } from "../api/serverApi";
 import { useConfirmation } from "../components/ui/useConfirmation";
 import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { BackHandler, Modal, Pressable, ScrollView, View } from "react-native";
@@ -36,6 +38,7 @@ export default function DirectPanelApp() {
   const [methods, setMethods] = useState<PanelLoginMethods | null>(null), [layout, setLayout] = useState<Record<string,string>>({});
   const [method, setMethod] = useState<"password" | "passkey" | "recovery">("password"), [user, setUser] = useState(""), [password, setPassword] = useState(""), [recovery, setRecovery] = useState("");
   const [partial, setPartial] = useState<DirectSession | null>(null), [code, setCode] = useState(""), [remember, setRemember] = useState(false), [visiblePassword, setVisiblePassword] = useState(false);
+  const [github, setGithub] = useState<GithubStatus | null>(null);
   const [authExpired, setAuthExpired] = useState(false);
   const [busy, setBusy] = useState(true), [notice, setNoticeValue] = useState(""), [languagePicker, setLanguagePicker] = useState(false);
   const [noticeTone, setNoticeTone] = useState<LoginNoticeTone>("error");
@@ -44,7 +47,7 @@ export default function DirectPanelApp() {
   const generation = useRef(0), selectedRef = useRef<StandaloneServer | null>(null); selectedRef.current = profile;
   const reloadProfiles = useCallback(async () => { const list = await listStandaloneServers(); setProfiles(list); return list; }, []);
   const changeLanguage = useCallback((locale: string) => { setLanguage(locale); void saveSessionState({language:locale}); setLanguagePicker(false); }, []);
-  const teardown = () => { resetAllStores(); setSession(null); setIdentity(""); setPartial(null); setPassword(""); setCode(""); setRecovery(""); };
+  const teardown = () => { setGithub(null); resetAllStores(); setSession(null); setIdentity(""); setPartial(null); setPassword(""); setCode(""); setRecovery(""); };
   const register = async (selected: StandaloneServer, value: DirectSession, persist: boolean, current: () => boolean) => {
     if (!value.jwt || !current()) return;
     let refreshing: Promise<DirectTarget | null> | null = null;
@@ -63,7 +66,7 @@ export default function DirectPanelApp() {
       return refreshing;
     };
     registerDirectServer(selected.id, {baseUrl:selected.baseUrl,...value, relogin});
-    const check = await callServerApi<{ok:boolean;user:{username:string;userId:number}}>(selected.id, "", "GET", "/api/session");
+    const check = await callServerApi<{ok:boolean;user:{username:string;userId:number;github?:GithubStatus}}>(selected.id, "", "GET", "/api/session");
     if (!current()) { unregisterDirectServer(selected.id); return; }
     if (!check.ok || !check.data?.user?.username) { unregisterDirectServer(selected.id); throw new Error(t.authError); }
     const effective = getDirect(selected.id);
@@ -74,8 +77,9 @@ export default function DirectPanelApp() {
     const username = check.data.user.username;
     await updateStandaloneServer(selected.id, {username,savePassword:false});
     if (!current()) return;
+    setGithub(check.data.user.github ?? null);
     setIdentity(`${selected.id}:${check.data.user.userId}:${username}`); setSession(activeSession); setPartial(null); setPassword(""); setCode(""); setRecovery("");
-    void registerForPanelPushNotifications(selected.id);
+    if (!check.data.user.github?.required || check.data.user.github.connected) void registerForPanelPushNotifications(selected.id);
   };
   const select = useCallback(async (selected: StandaloneServer) => {
     const seq = ++generation.current, current = () => generation.current === seq;
@@ -104,6 +108,7 @@ export default function DirectPanelApp() {
     return () => back.remove();
   }, [config, profiles.length, busy, setNotice]);
   useEffect(() => onDirectAuthRequired(id => { if (selectedRef.current?.id === id) setAuthExpired(true); }), []);
+  useEffect(() => onGithubRequired(id => { if (selectedRef.current?.id === id) setGithub({required:true,connected:false,deviceFlowAvailable:false}); }), []);
   // Catch an expired session on foreground; the user's draft stays until an explicit new login/profile.
   useEffect(() => {
     if (!session || !profile) return;
@@ -173,7 +178,7 @@ export default function DirectPanelApp() {
   return <>{confirmation}<NativeOverlayHost><View style={{flex:1,backgroundColor:colors.bgPrimary,paddingTop:insets.top}}>
     <StatusBar style={theme === "dark" ? "light" : "dark"}/>
     <ThemeTransitionScope value={`${profile?.id ?? ""}:${identity}:${config}:${languagePicker}:${!!partial}:${method}`} />
-    {session && profile && !config ? <NativePanelWorkspace key={identity} account={identity} token={session.jwt} panels={panelRows} busy={false} language={language} active onFocusHandled={()=>{}} onPanelChange={()=>{}} onManagePanels={()=>edit()} onEditPanel={()=>edit(profile)} onDeletePanel={()=>remove(profile)} onAccount={()=>edit()} onLogout={()=>void logout()} onSupport={()=>{}} onToggleTheme={toggleTheme} onLanguageChange={changeLanguage}/> :
+    {session && profile && github?.required && !github.connected ? <GithubConnectionScreen key={identity} serverId={profile.id} language={language} dark={theme === "dark"} status={github} onConnected={setGithub} onLogout={()=>void logout()}/> : session && profile && !config ? <NativePanelWorkspace key={identity} account={identity} token={session.jwt} panels={panelRows} busy={false} language={language} active onFocusHandled={()=>{}} onPanelChange={()=>{}} onManagePanels={()=>edit()} onEditPanel={()=>edit(profile)} onDeletePanel={()=>remove(profile)} onAccount={()=>edit()} onLogout={()=>void logout()} onSupport={()=>{}} onToggleTheme={toggleTheme} onLanguageChange={changeLanguage}/> :
       <DirectLoginScreen theme={theme} language={language} layout={layout} profile={profile} methods={methods} method={method} busy={busy} partial={!!partial}
         values={{user,password,recovery,code}} remember={remember} visiblePassword={visiblePassword} notice={notice} noticeTone={noticeTone} onValue={onValue}
         onMethod={next=>{setMethod(next);setNotice("");}} onRemember={()=>setRemember(v=>!v)} onVisibility={()=>setVisiblePassword(v=>!v)}
@@ -191,6 +196,6 @@ export default function DirectPanelApp() {
 
     <Modal visible={languagePicker} transparent animationType="fade" onRequestClose={()=>setLanguagePicker(false)}><Pressable accessibilityRole="button" accessibilityLabel={c.close} onPress={()=>setLanguagePicker(false)} style={{flex:1,backgroundColor:colors.bgOverlay,justifyContent:"center",padding:24}}><ScrollView style={{maxHeight:480,backgroundColor:colors.bgCardSolid,borderRadius:20,borderWidth:1,borderColor:colors.border}}>{WORKSPACE_LOCALES.map(locale=><Pressable key={locale.code} accessibilityRole="button" accessibilityState={{selected:locale.code===language}} onPress={()=>changeLanguage(locale.code)} style={{padding:16,minHeight:48,backgroundColor:locale.code===language?colors.brandDim:"transparent"}}><Text style={{color:colors.textPrimary}}>{locale.label}</Text></Pressable>)}</ScrollView></Pressable></Modal>
     {authExpired && profile && session && <View style={{position:"absolute",top:insets.top+44,left:12,right:12,padding:12,borderRadius:8,backgroundColor:colors.bgCardSolid,zIndex:999}}><Pressable onPress={()=>void select(profile)}><Text style={{color:colors.danger}}>{c.expired}</Text></Pressable></View>}
-    <ServerCallHost/>
+    {(!github?.required || github.connected) && <ServerCallHost/>}
   </View></NativeOverlayHost></>;
 }

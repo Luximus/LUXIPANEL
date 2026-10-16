@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "नोट्स",
+    "activityTab": "गतिविधि",
+    "contributors": "योगदानकर्ता",
+    "contributorsUnavailable": "योगदानकर्ता लोड नहीं किए जा सके।",
+    "translationInsufficientBalance": "अनुवाद के लिए AI प्रदाता का API क्रेडिट पर्याप्त नहीं है। मूल पाठ दिखाया जा रहा है।",
+    "newBadge": "नया",
+    "updateTo": "{version} पर अपडेट करें",
     "title": "समुदाय और संस्करण",
     "comments": "टिप्पणियाँ",
     "read": "पढ़ा हुआ चिह्नित करें",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "स्थापित",
     "version": "संस्करण",
     "openGithub": "GitHub पर खोलें",
-    "close": "बंद करें"
+    "close": "बंद करें",
+    "newVersion": "नया संस्करण उपलब्ध है",
+    "translating": "AI से अनुवाद हो रहा है…",
+    "showOriginal": "मूल पाठ देखें",
+    "showTranslation": "अनुवाद देखें",
+    "translationUnavailable": "AI अनुवाद उपलब्ध नहीं है। मूल पाठ दिखाया जा रहा है।",
+    "allComments": "GitHub पर सभी टिप्पणियाँ देखें",
+    "activity": "समुदाय की गतिविधि",
+    "loading": "लोड हो रहा है…",
+    "loadError": "यह जानकारी लोड नहीं हो सकी।"
 },
   "groups": {
     "main": "मुख्य",

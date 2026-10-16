@@ -19,8 +19,8 @@ const assistantPart2 = {
   },
   "voiceSettings": {
     "title": "الصوت (audio)",
-    "description": "تحدّث إلى المساعد (يُحوَّل كلامك إلى نص) واستمع إلى ردوده صوتياً. استخدم مفتاح API الخاص بـ OpenAI أو Gemini المضبوط لديك مسبقاً.",
-    "missingCapabilities": "اضبط مفتاح API الخاص بـ OpenAI (النسخ النصي + الصوت) أو Gemini (النسخ النصي فقط) في بطاقات المزود لتفعيل الصوت.",
+    "description": "تحدث إلى المساعد واستمع إلى ردوده باستخدام OpenAI.",
+    "missingCapabilities": "اضبط مفتاح API من OpenAI في مزود Codex لتفعيل الصوت.",
     "inputLabel": "الإدخال (STT)",
     "outputLabel": "الإخراج (TTS)",
     "notAvailable": "غير متاح",

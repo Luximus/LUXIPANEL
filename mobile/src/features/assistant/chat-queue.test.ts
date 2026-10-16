@@ -1,3 +1,4 @@
+vi.mock("./realtime-voice", () => ({ stopRealtimeVoice: vi.fn(async () => {}) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api/client", () => ({

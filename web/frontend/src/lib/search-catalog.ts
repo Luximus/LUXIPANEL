@@ -422,14 +422,14 @@ const TABS: SearchEntry[] = [
 /* ─────────────── Drawer de Configuración de Agentes IA (home `/`) ─────────────── */
 const ASSISTANT_SECTIONS: SearchEntry[] = [
   { id: "assistant.settings.general", kind: "drawer-section", module: "assistant", permission: "*", parent: "view.assistant", label: T("General", "General"), icon: "ti-settings",
-    keywords: ["configuracion del asistente", "assistant settings", "ajustes ia", "ai settings", "general", "idioma del asistente", "traduccion", "translation", "terminal en vivo", "modo"],
+    keywords: ["configuracion del asistente", "assistant settings", "ajustes ia", "ai settings", "general", "modelo", "model", "audio", "voz", "voice", "seleccion automatica", "terminal en vivo"],
     intents: ["configure"], target: { href: "/panel", event: { name: "luxipanel:assistant-settings-open", detail: { section: "general" } } } },
   { id: "assistant.settings.agentes", kind: "drawer-section", module: "assistant", permission: "*", parent: "view.assistant", label: T("Agents", "Agentes"), icon: "ti-robot",
     keywords: ["agentes", "agents", "crear agente", "create agent", "nuevo agente", "new agent", "editar agente", "edit agent", "equipos", "teams", "roles de agente", "subagentes", "avatar", "system prompt"],
     intents: ["create", "edit", "configure", "view"], target: { href: "/panel", event: { name: "luxipanel:assistant-settings-open", detail: { section: "agentes" } } } },
-  { id: "assistant.settings.providers", kind: "drawer-section", module: "assistant", permission: "*", parent: "view.assistant", label: T("Providers", "Proveedores"), icon: "ti-plug-connected",
-    keywords: ["proveedores", "providers", "proveedor ia", "ai provider", "api key", "modelo", "model", "claude", "openai", "codex", "gemini", "grok", "minimax", "anthropic", "cli", "login cli"],
-    intents: ["configure", "edit"], target: { href: "/panel", event: { name: "luxipanel:assistant-settings-open", detail: { section: "providers" } } } },
+  { id: "assistant.settings.providers", kind: "subview", module: "settings", parent: "settings.tab.credentials", label: T("AI providers and API keys", "Proveedores IA y claves API"), icon: "ti-plug-connected",
+    keywords: ["proveedores", "providers", "proveedor ia", "ai provider", "api key", "clave api", "claude", "openai", "codex", "gemini", "grok", "minimax", "anthropic", "cli", "login cli"],
+    intents: ["configure", "edit"], target: { href: "/panel/settings", hash: "#cred-assistant", click: '.tab-btn[data-tab="credentials"]' } },
   { id: "assistant.settings.modules", kind: "drawer-section", module: "assistant", permission: "*", parent: "view.assistant", label: T("Modules & tools", "Módulos y herramientas"), icon: "ti-tool",
     keywords: ["herramientas", "tools", "modulos del asistente", "mcp", "capacidades", "capabilities", "permisos de herramientas", "tool permissions"],
     intents: ["configure"], target: { href: "/panel", event: { name: "luxipanel:assistant-settings-open", detail: { section: "modules" } } } },

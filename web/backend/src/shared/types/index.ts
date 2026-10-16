@@ -8,6 +8,9 @@ import type { Request, Response, NextFunction } from "express";
 
 /** Authenticated session data attached to res.locals. */
 export interface SessionUser {
+  githubIdentityTargetId?: string;
+  githubIdentityDirect?: boolean;
+  github?: import("../github/user-connection.js").GithubConnectionStatus;
   sessionIssuedAt?: number;
   mfaAuthenticated?: boolean;
   direct?: boolean;

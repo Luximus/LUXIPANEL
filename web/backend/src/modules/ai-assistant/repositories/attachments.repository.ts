@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import type { ChatAttachment } from "../models/chat-attachment.js";
+import type { MessageAttachmentRef } from "./conversations/types.js";
 /**
  * Chat attachment storage on the connected target.
  *
@@ -53,8 +55,8 @@ export const attachmentsRepository = {
   async store(
     executor: Executor,
     convId: string,
-    file: { name: string; mimeType: string; dataBase64: string },
-  ): Promise<{ id: string; name: string; mimeType: string }> {
+    file: ChatAttachment,
+  ): Promise<MessageAttachmentRef> {
     const [ref] = await this.storeMany(executor, convId, [file]);
     return ref!;
   },
@@ -70,8 +72,8 @@ export const attachmentsRepository = {
   async storeMany(
     executor: Executor,
     convId: string,
-    files: Array<{ name: string; mimeType: string; dataBase64: string }>,
-  ): Promise<Array<{ id: string; name: string; mimeType: string }>> {
+    files: ChatAttachment[],
+  ): Promise<MessageAttachmentRef[]> {
     if (!files.length) return [];
     const dir = `${attachmentsDir()}/${safeConvSegment(convId)}`;
     await ensureBlobDir(executor, dir);
@@ -100,7 +102,7 @@ export const attachmentsRepository = {
       return { next: current, result: undefined };
     });
 
-    return prepared.map((p) => ({ id: p.id, name: p.file.name, mimeType: p.file.mimeType }));
+    return prepared.map((p) => ({ id: p.id, name: p.file.name, mimeType: p.file.mimeType, ...(p.file.voice ? { voice: p.file.voice } : {}) }));
   },
 
   async get(executor: Executor | null | undefined, id: string): Promise<AttachmentRecord | null> {

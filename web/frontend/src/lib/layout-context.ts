@@ -30,7 +30,7 @@ const layoutContextByVisitor = new Map<string, { expiresAt: number; promise: Pro
 
 function layoutEndpoint(request: Request): string {
   const pathname = new URL(request.url).pathname;
-  const publicPage = ["/login", "/passkey-enroll", "/enter"].includes(pathname);
+  const publicPage = ["/login", "/passkey-enroll", "/enter", "/connect-github"].includes(pathname);
   return !publicPage && /(?:^|;\s*)luxipanel_session=/.test(request.headers.get("cookie") ?? "")
     ? "ui/layout" : "public/layout";
 }

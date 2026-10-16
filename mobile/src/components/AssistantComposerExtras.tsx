@@ -275,7 +275,7 @@ export function VoiceComposerButton({
   /** Crea un grabador concreto; `null` ⇒ no hay captura disponible. */
   createRecorder: () => VoiceRecorderHandle | null;
   onTranscribe: (base64: string, mime: string) => Promise<string>;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => void | Promise<void>;
   /** Avisa al composer de que hay voz en curso: mientras lo haya NO debe
    *  desmontar este botón (desmontarlo tira la grabación / el clip). */
   onPhaseChange?: (active: boolean) => void;
@@ -300,9 +300,10 @@ export function VoiceComposerButton({
     // sin referencia — grabando y con el micrófono tomado hasta matar la app.
     if (startingRef.current || recRef.current) return;
     startingRef.current = true;
+    phaseChangeRef.current?.(true);
     setError(null);
     const rec = createRecorder();
-    if (!rec) { startingRef.current = false; setError(t.voiceUnavailable); return; }
+    if (!rec) { startingRef.current = false; phaseChangeRef.current?.(false); setError(t.voiceUnavailable); return; }
     recRef.current = rec;
     try {
       await rec.start();
@@ -316,6 +317,7 @@ export function VoiceComposerButton({
         ? (t.voicePermission ?? t.voiceUnavailable)
         : t.voiceUnavailable);
       if (recRef.current === rec) recRef.current = null;
+      phaseChangeRef.current?.(false);
     } finally {
       startingRef.current = false;
     }
@@ -391,8 +393,7 @@ export function VoiceComposerButton({
     }
     clipRef.current = null;
     setError(null);
-    setPhase("idle");
-    onSubmit(text.trim());
+    try { await onSubmit(text.trim()); } finally { setPhase("idle"); phaseChangeRef.current?.(false); }
   };
 
   if (phase === "idle") {

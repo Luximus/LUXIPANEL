@@ -53,7 +53,7 @@ function appendToActiveTurn(key: string, text: string, attachments?: ChatAttachm
   const addenda = [...(u.addenda ?? [])];
   if (text) addenda.push(text);
   const extraAtt: TurnAttachment[] | undefined = attachments?.length
-    ? attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, url: `data:${a.mimeType};base64,${a.dataBase64}` }))
+    ? attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, ...(a.voice ? { voice: a.voice } : {}), url: `data:${a.mimeType};base64,${a.dataBase64}` }))
     : undefined;
   turns[idx] = {
     ...u,
@@ -387,7 +387,7 @@ export async function dispatchSend(
   const userAttachments: TurnAttachment[] | undefined = attachments?.length
     ? attachments.map((a) => ({
         name: a.name,
-        mimeType: a.mimeType,
+        mimeType: a.mimeType, ...(a.voice ? { voice: a.voice } : {}),
         url: `data:${a.mimeType};base64,${a.dataBase64}`,
       }))
     : undefined;

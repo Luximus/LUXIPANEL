@@ -1,5 +1,7 @@
+import { assertCoreDeveloper, beginIsolatedOwnerContribution, finishOwnerContribution } from "../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { modelAttachments, type ChatAttachment } from "../models/chat-attachment.js";
 import { redactModuleData } from "../../../shared/module-operations/redact.js";
 import { moduleDiscoveryTools, bindModuleToolRun } from "./module-tools.service.js";
 import { mintModuleMcpToken } from "./mcp-run-tokens.js";
@@ -16,6 +18,7 @@ import { agentCapabilityRegistry } from "../../../shared/agent-capability/regist
 import type { Executor } from "../../../shared/executor/index.js";
 import { getContextExecutor, setContextFileJail } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
+import { projectsRepository } from "../repositories/projects.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
 import { resolveAgentRunModel, resolveAgentRunProvider, type AssistantProviderId } from "../models/assistant-config.types.js";
@@ -93,7 +96,7 @@ export interface AgentRunOptions {
   /** Conversation id — CLI providers use it to resume the upstream session. */
   conversationId?: string;
   /** Files attached to the latest user message. */
-  attachments?: { name: string; mimeType: string; dataBase64: string }[];
+  attachments?: ChatAttachment[];
   /**
    * Background-translation is active for this run: the user's message was
    * already translated to English upstream, and the final answer will be
@@ -135,11 +138,32 @@ export interface AgentRunOptions {
 }
 
 export const agentService = {
-  async *run(
+  async *run(messages:AgentMessage[],options:AgentRunOptions={}):AsyncGenerator<AgentEvent>{
+    const executor=options.executor??getContextExecutor();
+    const project=options.projectId?await projectsRepository.get(executor,options.projectId):null;
+    const config=await assistantConfigRepository.load(executor);
+    const conversation=options.conversationId?await conversationsRepository.getMeta(executor,options.conversationId):null;
+    const mode=options.approvalModeOverride??conversation?.approvalMode??config.approval.mode;
+    const cwd=options.forcedCwd??project?.path??options.cwd;
+    const ticket=cwd&&executor&&options.conversationId?await beginIsolatedOwnerContribution(options.user,options.conversationId,cwd,executor.target.id,config.enabled&&mode!=="plan"):null;
+    let completed=false,failed=false;
+    try{
+      for await(const event of agentService.runUntracked(messages,{...options,...(ticket?.job.workspaceCwd?{forcedCwd:ticket.job.workspaceCwd}: {})})){
+        if(event.type==="error"||event.type==="ask")failed=true;
+        if(event.type==="done")completed=true;
+        yield event;
+      }
+    }finally{
+      await finishOwnerContribution(ticket,completed&&!failed&&!options.signal?.aborted);
+    }
+  },
+  async *runUntracked(
     messages: AgentMessage[],
     options: AgentRunOptions = {},
   ): AsyncGenerator<AgentEvent> {
-    const { withContext = true, signal, executor, userId, user, providerId, model, projectId, agentId, conversationId, attachments, outputEnglish, cwd: cwdOverride, forcedCwd, panelOrigin, crossMcpToken, graphMcpToken, delegationDepth = 0 } = options;
+    const { withContext = true, signal, executor, userId, user, providerId, model, projectId, agentId, conversationId, attachments: inputAttachments, outputEnglish, cwd: cwdOverride, forcedCwd, panelOrigin, crossMcpToken, graphMcpToken, delegationDepth = 0 } = options;
+
+    const attachments = modelAttachments(inputAttachments);
 
     // EFFECTIVE per-server executor. Production conversation runs never pass
     // `options.executor` — the run registry pins it via AsyncLocalStorage and
@@ -398,6 +422,7 @@ export const agentService = {
     const moduleScope = { executor: runExecutor, user, conversationId, agentId, signal, allowlists: moduleAllowlists };
     tools = [...tools.filter(tool => !agentCapabilityRegistry.findTool(tool.name)), ...moduleDiscoveryTools(moduleScope)];
     const { systemContext, cwd, jailPaths, cliTeamLeader } = built;
+    if (cwd && runExecutor) await assertCoreDeveloper(user, cwd, runExecutor.target.id);
     const systemPrompt = built.systemPrompt + "\n\nModule management: call modules.list, then modules.describe, then modules.read or modules.execute with the discovered revision and exact tool input. These tools enforce the module manager's current state and user permissions. Use these tools for panel module operations.";
 
     log.info(

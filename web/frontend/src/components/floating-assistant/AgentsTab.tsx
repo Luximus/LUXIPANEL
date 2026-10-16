@@ -4,8 +4,8 @@
  * Agents tab — create/manage custom AI agents (CLI-subagent style): each agent
  * has a name, description, system prompt, an allowed-tool subset, and a
  * provider/model. "Iniciar chat" launches a fresh conversation bound to the
- * agent (the parent wires it to the Chat tab). Agents are panel-host/global and
- * can also be selected from the Cron module's scheduled AI-jobs.
+ * agent (the parent wires it to the Chat tab). ProjectModal supplies the owning
+ * project scope; the same saved agents remain available to scheduled AI jobs.
  *
  * Thin orchestrator: all state/effects/handlers live in `./agents-tab/
  * use-agents-tab` (moved VERBATIM so the hook order is byte-identical to the

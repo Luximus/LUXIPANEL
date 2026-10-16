@@ -16,10 +16,11 @@ export function PermissionView({
   request, interactive, t, tokens, onDecide,
 }: {
   request: PermissionReq; interactive: boolean; t: AssistantStrings; tokens: ThemeTokens;
-  onDecide: (decision: "allow" | "deny" | "always") => void;
+  onDecide: (decision: "allow" | "deny" | "always") => void | Promise<void>;
 }) {
   const [sent, setSent] = useState<"allow" | "deny" | "always" | null>(null);
-  const decide = (d: "allow" | "deny" | "always") => { if (sent) return; setSent(d); onDecide(d); };
+  const [error, setError] = useState("");
+  const decide = (d: "allow" | "deny" | "always") => { if (sent) return; setSent(d); setError(""); void Promise.resolve().then(() => onDecide(d)).catch(() => { setSent(null); setError("No se pudo completar la respuesta."); }); };
   if (!interactive) {
     return (
       <View style={[turnBoxStyles.turnBox, { borderColor: tokens.border, backgroundColor: tokens.bgInput }]}>
@@ -39,6 +40,7 @@ export function PermissionView({
       </View>
       <Text style={[turnBoxStyles.askQuestionText, { color: tokens.textPrimary }]}>{request.title}</Text>
       {request.detail ? <Text selectable style={[styles.permDetail, { color: tokens.textSecondary, borderColor: tokens.border, backgroundColor: tokens.bgInput }]}>{request.detail}</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={{color: tokens.danger}}>{error}</Text> : null}
       <Text style={[styles.permToolRow, { color: tokens.textMuted }]}>
         {`${t.permToolLabel ?? "Herramienta:"} `}
         <Text style={{ fontFamily: "monospace", color: tokens.textSecondary }}>{request.tool}</Text>

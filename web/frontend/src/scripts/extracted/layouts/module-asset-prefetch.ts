@@ -31,8 +31,8 @@ const ASSETS: Record<string, readonly string[]> = {
   "server-alerts": [page("server-alerts", "20260928-focused-views")],
   settings: [page("settings", "20260929-progressive-load")],
   terminal: [
-    "/scripts/extracted/components/floating-terminal/floating-terminal.js?v=20260929-drawer-speed",
-    "/scripts/extracted/components/floating-terminal/floating-terminal.css?v=20260929-drawer-speed",
+    "/scripts/extracted/components/floating-terminal/floating-terminal.js?v=20261015-tmux-scroll",
+    "/scripts/extracted/components/floating-terminal/floating-terminal.css?v=20261014-header-scroll",
   ],
   users: [page("users", "20260929-progressive-load")],
   webhooks: [page("webhooks", "20260928-focused-views")],

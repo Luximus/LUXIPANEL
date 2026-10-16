@@ -25,7 +25,7 @@ function nextTaskCorrelationId(): string {
   return `ttu-${Date.now().toString(36)}-${taskUpdateCorrelationSeq.toString(36)}`;
 }
 
-export function emitTaskUpdate(task: TeamTask, phase: "assigned" | "dispatched" | "verify" | "closed", targetId = executionTargetId()): void {
+export function emitTaskUpdate(task: TeamTask, phase: "assigned" | "dispatched" | "verify" | "closed" | "awaiting-answer", targetId = executionTargetId()): void {
   const view = toTaskView(task);
   const correlationId = nextTaskCorrelationId();
   // 1. Push to the leader's open SSE stream (if still alive). No-op when the

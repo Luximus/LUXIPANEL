@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import type { ChatReasoningEffort } from "../reasoning-effort";
 import { api, unwrap } from "@/lib/api-client";
 import type { AgentsTabPref, ConversationsTabPref } from "../ui-prefs";
 import type { VoiceConfigState, VoiceConfigPatch } from "./voice";
@@ -82,6 +83,8 @@ export interface AssistantConfigState {
    *  backend auto-router picks per turn; otherwise a model id of
    *  `defaultChatProvider`. */
   defaultChatModel?: string;
+  /** Initial reasoning for new chats; empty means Auto. */
+  defaultChatEffort?: ChatReasoningEffort;
 }
 
 export interface ProviderProbeResult {
@@ -107,7 +110,7 @@ export const assistantApi = {
     return unwrap(res, "Failed to load assistant config").config;
   },
 
-  async patchConfig(patch: { enabled?: boolean; activeProvider?: AssistantProviderId; uiMode?: AssistantUiMode; voice?: VoiceConfigPatch; defaultAgentsTab?: AgentsTabPref; defaultConversationsTab?: ConversationsTabPref; defaultChatProvider?: AssistantProviderId; defaultChatModel?: string }): Promise<AssistantConfigState> {
+  async patchConfig(patch: { enabled?: boolean; activeProvider?: AssistantProviderId; uiMode?: AssistantUiMode; voice?: VoiceConfigPatch; defaultAgentsTab?: AgentsTabPref; defaultConversationsTab?: ConversationsTabPref; defaultChatProvider?: AssistantProviderId; defaultChatModel?: string; defaultChatEffort?: ChatReasoningEffort }): Promise<AssistantConfigState> {
     const res = await api.put<ConfigEnvelope>("/api/ai/config", patch);
     return unwrap(res, "Failed to update assistant config").config;
   },
@@ -151,10 +154,10 @@ export const PROVIDER_META: Record<
     description: "Modo agente nativo con tool_use.",
   },
   codex: {
-    label: "Codex (OpenAI)",
+    label: "OpenAI",
     icon: "ti-brand-openai",
     accent: "text-emerald-500 bg-emerald-500/10",
-    description: "Function calling vía OpenAI o CLI @openai/codex.",
+    description: "API de OpenAI o Codex CLI.",
   },
   gemini: {
     label: "Gemini (Google)",

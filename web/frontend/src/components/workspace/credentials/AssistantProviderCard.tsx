@@ -1,234 +1,40 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import {
   assistantApi,
   assistantCliApi,
   PROVIDER_META,
-  PROVIDER_ORDER,
   type AssistantConfigState,
   type AssistantProviderId,
-  type ComplexityTier,
   type ProviderProbeResult,
-} from "./assistant-api";
-import { bubblePrefs, type BubblePrefs } from "./bubble-prefs";
-import { CollapsibleSection } from "./CollapsibleSection";
+} from "../../floating-assistant/assistant-api";
+import { CollapsibleSection } from "../../floating-assistant/CollapsibleSection";
 import { ViewTransition, useViewDirection } from "@/components/ui/ViewTransition";
-import { McpConfigPanel } from "./McpConfigPanel";
-import { ProviderIcon } from "./ProviderIcon";
-import { TranslationSettings } from "./TranslationSettings";
-import { VoiceSettings } from "./VoiceSettings";
-import { SkillsSettings } from "./SkillsSettings";
-import { NotifySettings } from "./NotifySettings";
-import { useAssistantI18n, mergeNamespaces } from "./i18n";
-import { useRegisterScreenProvider, SCREEN_PROVIDER_ALL } from "./screen-provider";
-import { CredentialsLink } from "../workspace/credentials/CredentialsLink";
+import { McpConfigPanel } from "../../floating-assistant/McpConfigPanel";
+import { ProviderIcon } from "../../floating-assistant/ProviderIcon";
+import { useAssistantI18n, mergeNamespaces } from "../../floating-assistant/i18n";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 
-type ProvidersTabExtraMessages = {
+type ProviderCardExtraMessages = {
   modelNamePlaceholder: string;
   closeCustomModel: string;
   domainDiagnosticsTitle: string;
   domainDiagnosticsDescription: string;
 };
 
-const providersTabExtraFallback: ProvidersTabExtraMessages = {
+const providerCardExtraFallback: ProviderCardExtraMessages = {
   modelNamePlaceholder: "nombre-del-modelo",
   closeCustomModel: "x",
   domainDiagnosticsTitle: "Diagnóstico de dominio",
   domainDiagnosticsDescription: "La herramienta de diagnóstico DNS / mail está disponible vía el endpoint",
 };
 
-function useProvidersTabExtra(): ProvidersTabExtraMessages {
+function useProviderCardExtra(): ProviderCardExtraMessages {
   const i18n = useAssistantI18n() as ReturnType<typeof useAssistantI18n> & {
-    providersTabExtra?: Partial<ProvidersTabExtraMessages>;
+    providersTabExtra?: Partial<ProviderCardExtraMessages>;
   };
-  return mergeNamespaces(providersTabExtraFallback, i18n.providersTabExtra);
-}
-
-function BubbleToggle({
-  provider,
-  field,
-  label,
-  title,
-}: {
-  provider: string;
-  field: keyof BubblePrefs;
-  label: string;
-  title?: string;
-}) {
-  useSyncExternalStore(bubblePrefs.subscribe, () => JSON.stringify(bubblePrefs.get(provider)), () => "{}");
-  const checked = bubblePrefs.get(provider)[field];
-  return (
-    <label title={title} className="flex cursor-pointer items-center gap-1.5 text-[11px]">
-      <span className="relative inline-flex">
-        <input
-          type="checkbox"
-          className="peer sr-only"
-          checked={checked}
-          onChange={(e) => bubblePrefs.set(provider, { [field]: e.currentTarget.checked })}
-        />
-        <span className="h-3.5 w-6 rounded-full bg-muted transition-colors after:absolute after:top-0.5 after:left-0.5 after:h-2.5 after:w-2.5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-primary peer-checked:after:translate-x-2.5"></span>
-      </span>
-      <span className="text-muted-foreground">{label}</span>
-    </label>
-  );
-}
-
-/**
- * Auto-routing controls (replaces manual model selection). The user never picks
- * a model; the backend heuristic does. The admin keeps only an on/off toggle
- * and a cost cap (max tier). Shown in the "General" sub-tab.
- */
-function AutoRoutingSettings({
-  config,
-  onChange,
-}: {
-  config: AssistantConfigState;
-  onChange(next: AssistantConfigState): void;
-}) {
-  const t = useAssistantI18n().providersTab;
-  const routing = config.autoRouting ?? { enabled: true, maxTier: "max" as ComplexityTier };
-  const [busy, setBusy] = useState(false);
-
-  async function patch(p: { enabled?: boolean; maxTier?: ComplexityTier }) {
-    setBusy(true);
-    try {
-      const next = await assistantApi.setAutoRouting(p);
-      onChange(next);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const tierLabels: Record<ComplexityTier, string> = {
-    low: t.tierLow,
-    medium: t.tierMedium,
-    high: t.tierHigh,
-    max: t.tierMax,
-  };
-
-  return (
-    <CollapsibleSection
-      icon={<i className="ti ti-wand text-lg" aria-hidden></i>}
-      title={t.autoRoutingTitle}
-      description={t.autoRoutingDesc}
-    >
-      <label className="flex cursor-pointer items-center gap-2">
-        <span className="relative inline-flex">
-          <input
-            type="checkbox"
-            className="peer sr-only"
-            checked={routing.enabled}
-            disabled={busy}
-            onChange={(e) => void patch({ enabled: e.currentTarget.checked })}
-          />
-          <span className="h-4 w-7 rounded-full bg-muted transition-colors after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-all peer-checked:bg-primary peer-checked:after:translate-x-3"></span>
-        </span>
-        <span className="text-xs">{t.autoRoutingEnable}</span>
-      </label>
-
-      <label className={`mt-3 block text-xs ${routing.enabled ? "" : "opacity-50"}`}>
-        <span className="text-muted-foreground">{t.autoRoutingMaxTier}</span>
-        <select
-          value={routing.maxTier}
-          disabled={busy || !routing.enabled}
-          onChange={(e) => void patch({ maxTier: e.currentTarget.value as ComplexityTier })}
-          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
-        >
-          {(["low", "medium", "high", "max"] as ComplexityTier[]).map((tier) => (
-            <option key={tier} value={tier}>{tierLabels[tier]}</option>
-          ))}
-        </select>
-      </label>
-    </CollapsibleSection>
-  );
-}
-
-interface ProvidersTabProps {
-  config: AssistantConfigState | null;
-  onChange(next: AssistantConfigState): void;
-  locale: string;
-}
-
-export function ProvidersTab({ config, onChange, locale }: ProvidersTabProps) {
-  const t = useAssistantI18n().providersTab;
-  const [selectedProvider, setSelectedProvider] = useState<AssistantProviderId | null>(null);
-  const providerDirection = useViewDirection<AssistantProviderId | null>(selectedProvider, [null, ...PROVIDER_ORDER]);
-
-  // Mobile: drive this screen's provider selector via the shared bottom strip.
-  useRegisterScreenProvider(
-    {
-      options: [{ id: SCREEN_PROVIDER_ALL }, ...PROVIDER_ORDER.map((id) => ({ id }))],
-      selected: selectedProvider ?? SCREEN_PROVIDER_ALL,
-      onSelect: (id) =>
-        setSelectedProvider(id === SCREEN_PROVIDER_ALL ? null : (id as AssistantProviderId)),
-    },
-  );
-
-  if (!config) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 p-10 text-center text-sm text-muted-foreground">
-        <i className="ti ti-loader-2 animate-spin text-4xl text-primary/70" aria-hidden></i>
-        <p className="font-medium text-foreground">{t.loading}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Top provider strip — hidden on phones (driven by the bottom strip). */}
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-muted/20 px-2 py-1.5 max-sm:hidden">
-        <button
-          type="button"
-          onClick={() => setSelectedProvider(null)}
-          className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors duration-200 ease-out ${
-            selectedProvider === null ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:bg-card/50"
-          }`}
-        >
-          {t.all}
-        </button>
-        {PROVIDER_ORDER.map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setSelectedProvider(id)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors duration-200 ease-out ${
-              selectedProvider === id ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:bg-card/50"
-            }`}
-          >
-            <ProviderIcon id={id} className="text-sm" />
-            <span className="capitalize">{id}</span>
-          </button>
-        ))}
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Vista General ↔ tarjeta de proveedor con la transición de vista del
-            panel, direccional según el orden de la tira superior. */}
-        <ViewTransition viewKey={selectedProvider ?? "general"} direction={providerDirection} className="flex flex-col gap-4 p-5">
-          {selectedProvider === null ? (
-            // "General" → selección automática de modelo, traducción, voz y skills.
-            // Las skills son universales (aplican a cualquier proveedor), por eso
-            // viven aquí como una sola sección y no por proveedor.
-            <>
-              <AutoRoutingSettings config={config} onChange={onChange} />
-              <TranslationSettings config={config} locale={locale} />
-              <VoiceSettings config={config} onChange={onChange} />
-              <NotifySettings />
-              <SkillsSettings />
-            </>
-          ) : (
-            // Proveedor seleccionado → solo su tarjeta de configuración.
-            <div className="grid gap-3 @xl:grid-cols-2">
-              <CredentialsLink label={t.apiKeyMode} credential="assistant" />
-            </div>
-          )}
-        </ViewTransition>
-      </div>
-    </div>
-  );
+  return mergeNamespaces(providerCardExtraFallback, i18n.providersTabExtra);
 }
 
 interface ProviderCardProps {
@@ -245,7 +51,7 @@ const MODE_ORDER = ["api", "cli"] as const;
 
 export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
   const t = useAssistantI18n().providersTab;
-  const tx = useProvidersTabExtra();
+  const tx = useProviderCardExtra();
   const active = Boolean(state.active);
   const meta = PROVIDER_META[id];
   const cliDisabled = id === "deepseek";
@@ -256,13 +62,22 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
   const [probe, setProbe] = useState<ProviderProbeResult | null>(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => { setProbe(null); }, [id, state.mode, state.api.hasApiKey, state.api.apiKeyHint]);
+
   useEffect(() => {
     if (cliDisabled && state.mode === "cli") void switchMode("api");
   }, [cliDisabled, state.mode]);
 
   async function test() {
     setBusy(true);
+    setProbe(null);
     try {
+      // Validate exactly the saved credential that the chat will use.
+      if (apiKey.trim()) {
+        await onPatch({ api: { apiKey: apiKey.trim() } });
+        setApiKey("");
+        setShowKey(false);
+      }
       const result = await assistantApi.testProvider(id);
       setProbe(result);
     } catch (err) {
@@ -273,10 +88,11 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
   }
 
   async function save() {
-    if (apiKey.length === 0) return;
+    if (apiKey.trim().length === 0) return;
     setBusy(true);
+    setProbe(null);
     try {
-      await onPatch({ api: { apiKey } });
+      await onPatch({ api: { apiKey: apiKey.trim() } });
       setApiKey("");
       setShowKey(false);
     } catch (err) {
@@ -298,6 +114,7 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
 
   return (
     <CollapsibleSection
+      defaultOpen
       className={active ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}
       icon={<ProviderIcon id={id} className="text-lg" />}
       iconClassName={`flex size-11 flex-none items-center justify-center rounded-lg transition-colors ${meta.accent}`}
@@ -318,12 +135,6 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
         </label>
       }
     >
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
-        <BubbleToggle provider={id} field="input" label={t.showInputBubble} />
-        <BubbleToggle provider={id} field="modifiedFiles" label={t.showModifiedFiles} title={t.showModifiedFilesHint} />
-        <BubbleToggle provider={id} field="terminalLive" label={t.terminalLive} title={t.terminalLiveHint} />
-      </div>
-
       <div className="mt-3 flex gap-1.5 rounded-lg bg-muted/40 p-1 text-xs">
         {(cliDisabled ? (["api"] as const) : (["api", "cli"] as const)).map((m) => (
           <button
@@ -340,40 +151,11 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
 
       {/* Bloque del modo activo (API / CLI) con la transición de vista. */}
       <ViewTransition viewKey={state.mode} direction={modeDirection}>
-      {state.mode === "cli" && (
-        <>
-          <CliPanel
-            id={id}
-            installed={state.cli.installed}
-            version={state.cli.version}
-            hasApiKey={state.api.hasApiKey}
-            apiKeyHint={state.api.apiKeyHint}
-            // Se delega en `onPatch` (la prop que este componente YA recibe), que
-            // hace exactamente esto: llama a setProvider y propaga el resultado
-            // al padre. Aquí se duplicaba la llamada y se invocaba `onChange`,
-            // que vive en el componente PADRE y aquí está fuera de ámbito → un
-            // ReferenceError al guardar la API key.
-            onPatchApiKey={async (apiKey) => {
-              await onPatch({ api: { apiKey } });
-            }}
-            onRefresh={async () => {
-              try {
-                const status = await assistantCliApi.status(id);
-                setProbe({
-                  ok: status.installed,
-                  detail: status.installed ? `${t.cliReady}${status.version ? ` · ${status.version}` : ""}` : t.cliNotInstalled,
-                  probedAt: new Date().toISOString(),
-                });
-              } catch (err) {
-                setProbe({ ok: false, detail: (err as Error).message, probedAt: new Date().toISOString() });
-              }
-            }}
-          />
-        </>
-      )}
-
-      {state.mode === "api" && (
+      {(state.mode === "api" || id === "codex") && (
         <div className="mt-3 space-y-2 text-xs">
+          {id === "codex" && state.mode === "cli" && (
+            <p className="text-muted-foreground">El audio usa la clave API de OpenAI aunque el chat esté en modo Codex CLI.</p>
+          )}
           <label className="block">
             <span className="text-muted-foreground">
               {t.apiKey} {state.api.hasApiKey && <span className="text-emerald-500">· {state.api.apiKeyHint}</span>}
@@ -382,7 +164,8 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
               <input
                 type={showKey ? "text" : "password"}
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => { setApiKey(e.target.value); setProbe(null); }}
+                disabled={busy}
                 placeholder={state.api.hasApiKey ? t.replacePlaceholder : t.pasteApiKeyPlaceholder}
                 className="h-8 w-full rounded-md border border-input bg-background px-2 pr-7 font-mono text-xs focus:border-primary focus:outline-none"
               />
@@ -398,6 +181,30 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
           </label>
         </div>
       )}
+      {state.mode === "cli" && (
+        <CliPanel
+          id={id}
+          installed={state.cli.installed}
+          version={state.cli.version}
+          hasApiKey={state.api.hasApiKey}
+          apiKeyHint={state.api.apiKeyHint}
+          onPatchApiKey={async (apiKey) => {
+            await onPatch({ api: { apiKey } });
+          }}
+          onRefresh={async () => {
+            try {
+              const status = await assistantCliApi.status(id);
+              setProbe({
+                ok: status.installed,
+                detail: status.installed ? `${t.cliReady}${status.version ? ` · ${status.version}` : ""}` : t.cliNotInstalled,
+                probedAt: new Date().toISOString(),
+              });
+            } catch (err) {
+              setProbe({ ok: false, detail: (err as Error).message, probedAt: new Date().toISOString() });
+            }
+          }}
+        />
+      )}
       </ViewTransition>
 
       <div className="mt-3 flex items-center justify-between gap-2">
@@ -407,13 +214,13 @@ export function ProviderCard({ id, state, onPatch }: ProviderCardProps) {
           disabled={busy}
           className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
         >
-          {busy ? t.testing : t.test}
+          {busy ? t.testing : `${apiKey.trim() ? `${t.save} + ` : ""}${t.test}${id === "codex" ? ` ${t.apiKey}` : ""}`}
         </button>
-        {state.mode === "api" && (
+        {(state.mode === "api" || id === "codex") && (
           <button
             type="button"
             onClick={save}
-            disabled={busy || apiKey.length === 0}
+            disabled={busy || apiKey.trim().length === 0}
             className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {t.save}

@@ -58,6 +58,8 @@ export interface AgentMessage {
 export interface ChatAttachment {
   name: string;
   mimeType: string;
+  /** Original user recording; only its transcript is sent to the agent. */
+  voice?: { transcript: string };
   dataBase64: string;
 }
 

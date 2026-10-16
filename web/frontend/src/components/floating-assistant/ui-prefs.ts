@@ -14,6 +14,7 @@
  *
  * Defaults preserve the historical behaviour (leaders / loose).
  */
+import { normalizeReasoningEffort, type ChatReasoningEffort } from "./reasoning-effort";
 import { createJsonPrefsStore } from "@/lib/prefs-store";
 
 export type AgentsTabPref = "leaders" | "projects";
@@ -40,6 +41,7 @@ export interface AssistantUiPrefs {
    */
   defaultChatProvider: string;
   defaultChatModel: string;
+  defaultChatEffort: ChatReasoningEffort;
 }
 
 const DEFAULTS: AssistantUiPrefs = {
@@ -49,6 +51,7 @@ const DEFAULTS: AssistantUiPrefs = {
   conversationsSectionOpen: true,
   defaultChatProvider: "",
   defaultChatModel: "",
+  defaultChatEffort: "",
 };
 
 // Persistencia + pub/sub compartidos (F-18); la validación por campo (abajo)
@@ -81,6 +84,7 @@ export const uiPrefs = {
           : DEFAULTS.conversationsSectionOpen,
       defaultChatProvider:
         typeof raw.defaultChatProvider === "string" ? raw.defaultChatProvider : DEFAULTS.defaultChatProvider,
+      defaultChatEffort: normalizeReasoningEffort(raw.defaultChatEffort),
       defaultChatModel:
         typeof raw.defaultChatModel === "string" ? raw.defaultChatModel : DEFAULTS.defaultChatModel,
     };

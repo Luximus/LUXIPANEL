@@ -188,6 +188,7 @@ export type ComposerState = {
   connectors: ComposerConnector[];
   /** La grabación de voz está disponible (grabador nativo + STT del servidor). */
   voiceAvailable: boolean;
+  realtimeEnabled?: boolean;
   /** La terminal del servidor está disponible (permiso `terminal` + opener). El
    *  composer muestra el chip "Terminal" encima del pill (paridad con la web). */
   terminalAvailable: boolean;

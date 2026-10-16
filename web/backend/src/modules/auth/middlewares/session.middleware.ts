@@ -6,6 +6,7 @@
  * On success, populates res.locals.user with SessionUser data.
  */
 
+import { requireGithub, githubSetupRoute, githubStatus } from "../../../shared/github/user-connection.js";
 import { toolRequestContext } from "../../../shared/module-operations/request-context.js";
 import type { RequestHandler } from "express";
 import { tokenService } from "../services/token.service.js";
@@ -178,6 +179,10 @@ async function hydrateAndRun(
       if (isHostingSession(live) && executor.target.id !== source.target.id) throw new ForbiddenError("Hosting account cannot change servers");
       reflectTargetOnUser(live, bridgedSession);
       res.locals.user = live;
+      live.githubIdentityDirect = base.githubIdentityDirect ?? !!base.direct;
+      live.githubIdentityTargetId = base.direct ? (base.githubIdentityTargetId ?? base.targetId) : undefined;
+      live.github = await githubStatus(base);
+      if (!githubSetupRoute(req.originalUrl)) await requireGithub(base);
       executor = await getExecutorAsync(req);
       if (executor instanceof PrivilegeDropExecutor && live.hostingPolicy?.runtime) executor.configureHostingRuntime(live.username);
       if (live.hostingPolicy?.state === "pending" && !["GET", "HEAD"].includes(req.method) && !/^\/api\/(logout|auth|preferences)(\/|$)/.test(req.originalUrl)) throw new ForbiddenError("Hosting runtime update pending");
@@ -186,6 +191,10 @@ async function hydrateAndRun(
     }
     runWithExecutor(executor, () => next(), userId, user);
     return;
+  }
+  if (user && user.kind !== "mfa_pending") {
+    user.github = await githubStatus(res.locals.authBaseUser ?? user);
+    if (!githubSetupRoute(req.originalUrl)) await requireGithub(res.locals.authBaseUser ?? user);
   }
   next();
 }
@@ -208,7 +217,7 @@ function sessionHandler(handler: RequestHandler): RequestHandler {
 }
 
 export const requireAuth: RequestHandler = sessionHandler(async (req, res, next) => {
-  if (toolRequestContext(req)) { next(); return; }
+  if (toolRequestContext(req)) { if (!githubSetupRoute(req.originalUrl)) await requireGithub(res.locals.authBaseUser ?? res.locals.user); next(); return; }
   const token = extractToken(req);
 
   if (!token) {
@@ -250,7 +259,7 @@ export const requireAuth: RequestHandler = sessionHandler(async (req, res, next)
  * there is deliberately NO ambient executor here.
  */
 export const requireAuthNoExecutor: RequestHandler = sessionHandler(async (req, res, next) => {
-  if (toolRequestContext(req)) { next(); return; }
+  if (toolRequestContext(req)) { if (!githubSetupRoute(req.originalUrl)) await requireGithub(res.locals.authBaseUser ?? res.locals.user); next(); return; }
   const token = extractToken(req);
 
   if (!token) {
@@ -272,7 +281,7 @@ export const requireAuthNoExecutor: RequestHandler = sessionHandler(async (req, 
 
   res.locals.authBaseUser = tokenService.toSessionUser(payload);
   res.locals.user = tokenService.toSessionUser(payload);
-  const bridgedSession = await hydrateBridgedSession(payload, req);
+  const bridgedSession = await hydrateBridgedSession(payload, req.originalUrl.startsWith("/api/auth/github") ? undefined : req);
   reflectTargetOnUser(res.locals.user, bridgedSession);
   enrichTargetHost(res.locals.user, req);
   if (bridgedSession) res.locals.bridgedSession = bridgedSession;
@@ -284,6 +293,7 @@ export const requireAuthNoExecutor: RequestHandler = sessionHandler(async (req, 
     res.locals.user = await resolveLiveAuthorization(tokenService.toSessionUser(payload), source);
     reflectTargetOnUser(res.locals.user, bridgedSession);
   }
+  if (!githubSetupRoute(req.originalUrl)) await requireGithub(res.locals.authBaseUser ?? res.locals.user);
   next();
 });
 
@@ -292,7 +302,7 @@ export const requireAuthNoExecutor: RequestHandler = sessionHandler(async (req, 
  * and valid, but does NOT reject the request if missing.
  */
 export const optionalAuth: RequestHandler = sessionHandler(async (req, res, next) => {
-  if (toolRequestContext(req)) { next(); return; }
+  if (toolRequestContext(req)) { if (!githubSetupRoute(req.originalUrl)) await requireGithub(res.locals.authBaseUser ?? res.locals.user); next(); return; }
   const token = extractToken(req);
   if (token) {
     const payload = await tokenService.verify(token);

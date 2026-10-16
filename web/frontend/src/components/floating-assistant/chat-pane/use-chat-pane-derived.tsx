@@ -11,6 +11,8 @@ import { historyReady } from "@/lib/startup-state";
 import { createPagedList } from "@/lib/paged-list";
 import { projectScopeIds } from "./project-search";
 import { rootProjectId } from "./project-history-picker";
+import { projectAgentScope, projectForAgent } from "../project-modal/agent-scope";
+import { createProjectAgentHistory, emptyAgentHistory, GENERAL_HISTORY } from "./project-agent-history";
 import {
   assistantConversationsApi,
   assistantProjectsApi,
@@ -333,6 +335,9 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     for (const r of roles) if (r.id) m.set(r.id, r);
     return m;
   }, [roles]);
+  const projectTeam = useMemo(() => currentProject ? projectAgentScope(currentProject, projects) : null, [currentProject, projects]);
+  const projectTeamAgents = useMemo(() => agents.filter(a => a.id && a.teamId === projectTeam?.teamId)
+    .sort((a, b) => Number(b.id === projectTeam?.root.leaderAgentId) - Number(a.id === projectTeam?.root.leaderAgentId) || a.name.localeCompare(b.name)), [agents, projectTeam?.teamId, projectTeam?.root.leaderAgentId]);
 
   // Auto-expand the collapsable branch that holds the ACTIVE conversation, so
   // the lists can start fully collapsed yet still reveal the open chat. Runs
@@ -347,9 +352,10 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     if (!activeId) { autoExpandedForRef.current = null; return; }
     const meta = activeConvMeta?.id === activeId ? activeConvMeta : convos.find((c) => c.id === activeId) ?? null;
     if (!meta) return; // wait until the active conversation's metadata is known
-    const expansionKey = `${activeId}:${meta.projectId ?? "loose"}:${meta.projectId ? projectById.has(meta.projectId) : true}`;
+    const expansionKey = `${activeId}:${meta.agentId ?? "none"}:${meta.projectId ?? "loose"}:${meta.projectId ? projectById.has(meta.projectId) : true}`;
     if (autoExpandedForRef.current === expansionKey) return;
     autoExpandedForRef.current = expansionKey;
+    if (meta.agentId) setExpandedConvAgents(prev => new Set([...prev, meta.agentId!]));
     // Every chat, including agent-bound chats, lives under its project folder.
     const parentOfProject = (id: string) => projectById.get(id)?.parentId ?? null;
     const chain = meta.projectId && projectById.has(meta.projectId)
@@ -420,8 +426,15 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   // liga en el panel actual; si no, salta al sub-tab del proveedor del agente.
   const handleNewAgentChat = (agentId: string) => {
     const a = agentById.get(agentId);
-    if (a && a.providerId === provider) { newConversation({ preserveAgent: false }); setCurrentAgentId(agentId); }
-    else if (a) onLaunchAgent?.(a);
+    if (!a) return;
+    const project = projectForAgent(a, projects, currentProjectId ?? undefined);
+    if (onLaunchAgent) onLaunchAgent(a, project?.id);
+    else if (a.providerId === provider) {
+      newConversation({ preserveAgent: false });
+      setCurrentProjectId(project?.id ?? null);
+      setCurrentAgentId(agentId);
+      s.conversationOptions.resetNew("");
+    }
     // En móvil, cerrar el drawer al iniciar el chat con el agente — mismo cierre
     // que el botón "+" de chat suelto (setMobileListOpen(false)); en desktop no
     // hay drawer, así que es inocuo.
@@ -639,12 +652,21 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
 
   // Custom agents (sidebar "Agentes" section + active-agent badge). Reloaded on
   // the agents-updated event so creating one in the Agents tab shows up here.
+  const catalogScope = JSON.stringify([resolveTargetScope(), scopeHeaders()]);
+  const [agentsLoadedScope, setAgentsLoadedScope] = useState<string | null>(null);
+  const agentsLoaded = agentsLoadedScope === catalogScope;
+  const [agentsError, setAgentsError] = useState<unknown>(null);
+  const catalogScopeRef = useRef(catalogScope);
+  catalogScopeRef.current = catalogScope;
   const reloadAgents = useCallback(() => {
-    void assistantAgentsApi.list().then(setAgents).catch(() => { /* ignore */ });
+    void assistantAgentsApi.list().then(items => {
+      if (catalogScopeRef.current !== catalogScope) return;
+      setAgents(items); setAgentsLoadedScope(catalogScope); setAgentsError(null);
+    }).catch(error => { if (catalogScopeRef.current === catalogScope) setAgentsError(error); });
     // Roles power the header agent pill's role chip; refreshed alongside agents.
-    void assistantAgentRolesApi.list().then(setRoles).catch(() => { /* ignore */ });
-  }, []);
-  const needsAgents = active !== false && (!!currentAgentId || !!activeConvMeta?.agentId || !!leaderConv || (conversationsSectionOpen && convScope === "agents"));
+    void assistantAgentRolesApi.list().then(items => { if (catalogScopeRef.current === catalogScope) setRoles(items); }).catch(() => { /* ignore */ });
+  }, [catalogScope]);
+  const needsAgents = active !== false && (!!currentProjectId || !!currentAgentId || !!activeConvMeta?.agentId || !!leaderConv || (conversationsSectionOpen && convScope === "agents"));
   useEffect(() => {
     if (!needsAgents) return;
     reloadAgents();
@@ -694,14 +716,36 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   const [historySearchStatus, setHistorySearchStatus] = useState<{ state: string; indexed: number; total: number } | null>(null);
   const [historyError, setHistoryError] = useState<unknown>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [projectHistoryState, setProjectHistoryState] = useState({ key: "", data: emptyAgentHistory() });
   const selectedRoot = rootProjectId(currentProjectId, projectById);
   const historyProjectIds = selectedRoot ? [...projectScopeIds(selectedRoot, projects)].sort().join(",") : "none";
-  const historyKey = `${search.trim()}:${historyProjectIds}`;
+  const teamAgentIds = projectTeamAgents.map(a => a.id!).sort().join(",");
+  const includeLegacy = !!projectTeam && projects.filter(p => !p.parentId && p.teamId === projectTeam.teamId).length === 1;
+  const historyKey = JSON.stringify([catalogScope, search.trim(), historyProjectIds, projectTeam?.teamId, teamAgentIds, includeLegacy, agentsLoaded]);
+  const projectAgentHistory = projectHistoryState.key === historyKey ? projectHistoryState.data : emptyAgentHistory();
   const currentHistoryKey = useRef(historyKey);
   currentHistoryKey.current = historyKey;
   const historyProjectsRef = useRef(projects);
   historyProjectsRef.current = projects;
   const history = useMemo(() => {
+    if (projectTeam) {
+      const controller = createProjectAgentHistory({ projectIds: historyProjectIds.split(","), agentIds: teamAgentIds ? teamAgentIds.split(",") : [], includeLegacy, query: search.trim() }, state => {
+        if (currentHistoryKey.current !== historyKey) return;
+        setProjectHistoryState({ key: historyKey, data: state });
+        setConvos(state.items);
+        setHistoryError(state.error);
+        setSearchingHistory(state.loading);
+        setHistorySearchStatus(state.searchStatus ?? null);
+        setHistoryHasMore(false); // each agent owns its cursor and load-more control
+      });
+      return {
+        first: (refresh = false) => agentsLoaded ? controller.first(refresh) : Promise.resolve(),
+        next: (id = GENERAL_HISTORY) => controller.next(id),
+        group: (id: string, retry = false) => { void controller.group(id, retry); },
+        closeGroup: () => {},
+        cancel: controller.cancel,
+      };
+    }
     const managers = new Map<string, ReturnType<typeof createPagedList<ConversationMeta>>>();
     let current = "root";
     const started = new Set<string>();
@@ -733,15 +777,20 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     };
     return {
       first: (refresh = false) => { fresh = refresh; setHistorySearchStatus(null); for (const manager of managers.values()) manager.cancel(); managers.clear(); started.clear(); current = "root"; setHistorySummary(null); return get().first(); },
-      next: () => { const manager = get(current); return manager.get().hasMore ? manager.next() : get().next(); },
-      group: (id: string) => { current = id; const manager = get(id); if (!started.has(id)) { started.add(id); void manager.first(); } },
+      next: (_id?: string) => { const manager = get(current); return manager.get().hasMore ? manager.next() : get().next(); },
+      group: (id: string, retry = false) => { current = id; const manager = get(id); if (retry || !started.has(id)) { started.add(id); void manager.first(); } },
       closeGroup: () => { current = "root"; },
       cancel: () => { for (const manager of managers.values()) manager.cancel(); },
     };
   }, [historyKey]);
   const reloadList = useCallback(async (q: string) => {
+    if (agentsError) reloadAgents();
     if (q.trim() === search.trim()) await history.first(true);
-  }, [history, search]);
+  }, [history, search, agentsError, reloadAgents]);
+  useEffect(() => {
+    if (!projectTeam || !projectAgentHistory.initialized || active === false) return;
+    for (const id of s.expandedConvAgents) history.group(id);
+  }, [history, projectTeam?.teamId, projectAgentHistory.initialized, s.expandedConvAgents, active]);
   const loadMoreHistory = useCallback(() => { if (active !== false) void history.next(); }, [history, active]);
   useEffect(() => {
     if (active === false) return;
@@ -837,7 +886,13 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     leaderAgents,
     leadersListEl,
     looseProjectTree,
-    historyError,
+    historyError: projectTeam && agentsError ? agentsError : historyError,
+    projectTeam,
+    agentCatalogReady: agentsLoaded,
+    projectTeamAgents: agentsLoaded ? projectTeamAgents : [],
+    projectAgentHistory,
+    loadAgentHistory: (id: string) => { void history.next(id); },
+    retryAgentHistory: (id: string) => history.group(id, true),
     historySearchStatus,
     historyHasMore,
     historySummary,

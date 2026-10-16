@@ -1,3 +1,4 @@
+import { githubCopy } from "@/lib/github-copy";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Internal component migrated from src/components/settings/SettingsCredentialsPanel.astro.
 import { SlotFragment as Fragment } from "../view-context";
@@ -43,6 +44,7 @@ export default function components_settings_SettingsCredentialsPanel(
             className="tab-panel hidden space-y-5"
             data-lxp-collapse-group
           >
+            <a href="/connect-github" className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 font-medium hover:bg-muted"><i className="ti ti-brand-github" aria-hidden="true"/>{githubCopy(context.scope.document.documentElement.lang || "en").title}</a>
             <div
               id="cred-empty"
               className="hidden rounded-xl border border-dashed border-border bg-card px-5 py-10 text-center text-sm text-muted-foreground"

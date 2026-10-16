@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "Заметки",
+    "activityTab": "Активность",
+    "contributors": "Участники",
+    "contributorsUnavailable": "Не удалось загрузить участников.",
+    "translationInsufficientBalance": "У поставщика ИИ недостаточно средств на API для перевода. Показан исходный текст.",
+    "newBadge": "новое",
+    "updateTo": "Обновить до {version}",
     "title": "Сообщество и версии",
     "comments": "Комментарии",
     "read": "Отметить прочитанным",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "Установлена",
     "version": "Версия",
     "openGithub": "Открыть на GitHub",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "newVersion": "Доступна новая версия",
+    "translating": "Перевод с помощью ИИ…",
+    "showOriginal": "Показать оригинал",
+    "showTranslation": "Показать перевод",
+    "translationUnavailable": "Перевод ИИ недоступен. Показан исходный текст.",
+    "allComments": "Все комментарии на GitHub",
+    "activity": "Активность сообщества",
+    "loading": "Загрузка…",
+    "loadError": "Не удалось загрузить информацию."
 },
   "groups": {
     "main": "Главное",

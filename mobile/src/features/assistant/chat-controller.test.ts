@@ -1,3 +1,4 @@
+vi.mock("./realtime-voice", () => ({ stopRealtimeVoice: vi.fn(async () => {}) }));
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 
@@ -34,6 +35,7 @@ import {
 import { loadChatSession, saveChatSession } from "../../lib/chat-session-store";
 import { chatController } from "./chat-controller";
 import { chatStore } from "./chat-store";
+import { setVoiceInputLock } from "./input-lock";
 
 const proxyMock = vi.mocked(luxAssistantProxy);
 const proxyOkMock = vi.mocked(luxAssistantProxyOk);
@@ -172,6 +174,33 @@ describe("chatController.send", () => {
     // ventana saliente lo descarta (buildOutgoingHistory).
     expect(histories[1]).toEqual(["uno", "dos"]);
     expect(chatStore.getComposer(p).queued).toEqual([]);
+  });
+
+  it("mantiene la cola durante voz y la reanuda al cerrar todos los canales de audio", async () => {
+    const p = setupPanel();
+    chatStore.patchSession(p, { conversationId: "c-voice-fifo" });
+    let finish!: (r: AssistantStreamResult) => void;
+    streamMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    chatStore.patchComposer(p, { input: "primero" });
+    const first = chatController.send(p);
+    await vi.waitFor(() => expect(streamMock).toHaveBeenCalledTimes(1));
+    chatStore.patchComposer(p, { input: "segundo" });
+    await chatController.send(p);
+    chatStore.patchComposer(p, { input: "borrador separado" });
+    setVoiceInputLock(p, "realtime", true);
+    setVoiceInputLock(p, "note", true);
+    finish({ ok: true });
+    await first;
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(chatStore.getComposer(p).queued).toEqual(["segundo"]);
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(chatController.sendQuick(p, "texto rápido")).toBe(false);
+    setVoiceInputLock(p, "note", false);
+    expect(chatStore.getComposer(p).queued).toEqual(["segundo"]);
+    setVoiceInputLock(p, "realtime", false);
+    await vi.waitFor(() => expect(streamMock).toHaveBeenCalledTimes(2));
+    expect(chatStore.getComposer(p).queued).toEqual([]);
+    expect(chatStore.getComposer(p).input).toBe("borrador separado");
   });
 
   it("código de no-disponible: retira el turno no entregado, avisa y devuelve el texto al composer", async () => {

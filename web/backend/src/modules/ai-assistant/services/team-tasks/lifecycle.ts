@@ -1,3 +1,4 @@
+import { coreRepository } from "../../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -11,6 +12,10 @@
  * (pendingDispatch FIFO, finalizeLocks) single-owned and cycle-free.
  */
 
+import { runWithExecutor, getContextUser } from "../../../../shared/executor/context.js";
+import type { SessionUser } from "../../../../shared/types/index.js";
+import { liveVoiceSession } from "../realtime-state.js";
+import { conversationsRepository } from "../../repositories/conversations.repository.js";
 import { env } from "../../../../config/env.js";
 import type { Executor } from "../../../../shared/executor/index.js";
 import { createModuleLogger } from "../../../../shared/logger/index.js";
@@ -31,7 +36,7 @@ import {
 } from "../../models/team-task.types.js";
 import { emitTaskUpdate, injectTaskUpdate } from "./task-events.js";
 import { pingWaiters, hasWaiters } from "./waiters.js";
-import { workerRunEnded, hasWorkerSlot } from "./worker-quota.js";
+import { workerRunStarted, workerRunEnded, hasWorkerSlot } from "./worker-quota.js";
 import { isInterruptionPlaceholder, TASK_INTERRUPTED_ERROR } from "./interruption.js";
 
 const log = createModuleLogger("assistant-team-tasks");
@@ -48,13 +53,16 @@ interface PendingDispatch {
   workerConversationId: string;
   leasePath?: string;
   userId?: string | null;
+  user?: SessionUser | null;
 }
 
 const pendingDispatch: PendingDispatch[] = [];
 
 /** Push a deferred task onto the FIFO (assignTask, when lease/quota is full). */
 export function deferDispatch(item: PendingDispatch): void {
-  pendingDispatch.push(item);
+  if (pendingDispatch.some(p => p.taskId === item.taskId && p.executor.target.id === item.executor.target.id)) return;
+  pendingDispatch.push({ ...item, user: item.user ?? getContextUser() });
+  void dispatchNext().catch(err => log.warn({ err: String(err) }, "deferred dispatch failed"));
 }
 
 /** Suma el gasto (ledger) de las tareas de un plan. Best-effort del caller. */
@@ -71,14 +79,17 @@ async function dispatchNext(): Promise<void> {
   for (let i = 0; i < pendingDispatch.length; i++) {
     const item = pendingDispatch[i]!;
     if (!hasWorkerSlot(item.userId)) continue;
-    if (item.leasePath && !teamIsolationService.tryAcquireLease(item.leasePath, item.taskId)) continue;
-    pendingDispatch.splice(i, 1);
+    if (item.leasePath && !teamIsolationService.tryAcquireLease(item.leasePath, item.taskId, item.executor.target.id)) continue;
+    pendingDispatch.splice(i, 1); i--;
+    workerRunStarted(item.userId, item.workerConversationId);
+    await runWithExecutor(item.executor, async () => {
     try {
       const task = await teamTasksRepository.getTask(item.executor, item.taskId);
       if (!task?.id || isTerminalTaskStatus(task.status)) {
+        workerRunEnded(item.userId, item.workerConversationId);
         // Cancelada mientras esperaba — suelta el lease y sigue con la FIFO.
-        if (item.leasePath) teamIsolationService.releaseLease(item.leasePath, item.taskId);
-        continue;
+        if (item.leasePath) teamIsolationService.releaseLease(item.leasePath, item.taskId, item.executor.target.id);
+        return;
       }
       // Presupuesto del plan al DESPACHAR una diferida: pudo agotarse mientras
       // esperaba cupo (el enforcement periódico solo mata tareas ya activas).
@@ -86,7 +97,8 @@ async function dispatchNext(): Promise<void> {
       if (task.planId && planBudget > 0) {
         const spent = await planSpentTokens(item.executor, task.leaderConversationId, task.planId).catch(() => 0);
         if (spent >= planBudget) {
-          if (item.leasePath) teamIsolationService.releaseLease(item.leasePath, item.taskId);
+          workerRunEnded(item.userId, item.workerConversationId);
+          if (item.leasePath) teamIsolationService.releaseLease(item.leasePath, item.taskId, item.executor.target.id);
           await finalizeTask(
             item.executor,
             item.taskId,
@@ -96,7 +108,7 @@ async function dispatchNext(): Promise<void> {
             },
             { skipVerify: true },
           ).catch((err) => log.warn({ err: (err as Error).message, taskId: item.taskId }, "deferred budget-fail close failed"));
-          continue;
+          return;
         }
       }
       const updated = await teamTasksRepository.updateTask(item.executor, item.taskId, {
@@ -110,8 +122,11 @@ async function dispatchNext(): Promise<void> {
         workerConversationId: item.workerConversationId,
       });
     } catch (err) {
+      workerRunEnded(item.userId, item.workerConversationId);
+      if (item.leasePath) teamIsolationService.releaseLease(item.leasePath, item.taskId, item.executor.target.id);
       log.warn({ err: (err as Error).message, taskId: item.taskId }, "team task deferred dispatch failed");
     }
+    }, item.user?.userId ?? (item.userId ? Number(item.userId) : undefined), item.user ?? undefined);
     return;
   }
 }
@@ -335,6 +350,18 @@ async function finalizeTaskInner(
   if (isTerminalTaskStatus(current.status)) return current;
 
   workerRunEnded(current.userId ?? undefined, current.workerConversationId);
+  if (outcome.status === "done" && current.leaderAgentId.startsWith("realtime:")) {
+    const { items } = await conversationsRepository.messages(executor, current.workerConversationId, { limit: 2 });
+    const last = items.at(-1);
+    if (last?.role === "assistant" && last.ask?.length) {
+      const paused = await teamTasksRepository.updateTask(executor, taskId, {
+        status: "pending", pendingPermission: true, resultSummary: last.content.slice(0, 4000),
+      });
+      if (paused) emitTaskUpdate(paused, "awaiting-answer", executor.target.id);
+      await dispatchNext();
+      return paused;
+    }
+  }
 
   // Un "done" cuyo resultado es el placeholder de interrupción NO es un éxito:
   // el run murió con el reinicio y la recuperación solo dejó esa nota. Guardia
@@ -379,17 +406,17 @@ async function finalizeTaskInner(
     try {
       const { artifacts, headSha } = await teamIsolationService.captureArtifacts(executor, iso);
       patch.artifacts = { ...(current.artifacts ?? {}), ...artifacts };
-      patch.isolation = { ...iso, cleaned: true, ...(headSha ? { headSha } : {}) };
+      patch.isolation = { ...iso, cleaned: !(executor.target.id==="local"&&iso.repoRoot===coreRepository()), ...(headSha ? { headSha } : {}) };
     } catch (err) {
       log.warn({ err: (err as Error).message, taskId }, "team task artifact capture failed");
       patch.isolation = { ...iso, cleaned: true };
     }
     // done/failed conservan la rama (integrate/forense); canceled la borra.
-    await teamIsolationService
+    if(!(executor.target.id==="local"&&iso.repoRoot===coreRepository()))await teamIsolationService
       .cleanup(executor, iso, { deleteBranch: outcome.status === "canceled" })
       .catch((err) => log.warn({ err: (err as Error).message, taskId }, "team task worktree cleanup failed"));
   } else if (iso?.mode === "lease" && iso.leasePath) {
-    teamIsolationService.releaseLease(iso.leasePath, taskId);
+    teamIsolationService.releaseLease(iso.leasePath, taskId, executor.target.id);
   }
 
   // Tokens finales de la tarea (para el board/resumen de costes). Best-effort.
@@ -490,11 +517,14 @@ async function updatePlanFromTask(executor: Executor, task: TeamTask): Promise<v
  * loop the wake-up forever.
  */
 export async function maybeNudgeLeader(executor: Executor, leaderConversationId: string): Promise<void> {
+  if (liveVoiceSession(leaderConversationId, executor.target.id)) return;
   if (hasWaiters(leaderConversationId)) return; // a collect will grab them
   if (agentRunRegistry.isActive(leaderConversationId, executor.target.id)) return; // leader mid-turn
   const tasks = await teamTasksRepository.listForLeaderConversation(executor, leaderConversationId);
   const candidates = tasks.filter((t) => t.id && !t.collected && !t.nudged);
   if (candidates.length === 0) return;
+  // Voice coordinators have no persisted agent identity; their task cards remain authoritative.
+  if (candidates.every(t => t.leaderAgentId.startsWith("realtime:"))) return;
   if (candidates.some((t) => !isTerminalTaskStatus(t.status))) return; // team still working
   for (const t of candidates) {
     await teamTasksRepository.updateTask(executor, t.id ?? "", { nudged: true }).catch(() => undefined);

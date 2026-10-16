@@ -15,6 +15,8 @@
  * Los consumidores (ChatScreen, ChatComposer, drawers) lo invocan directo (A5).
  */
 
+import { voiceInputLocked, onVoiceInputUnlocked } from "./input-lock";
+import { stopRealtimeVoice } from "./realtime-voice";
 import {
   getServerAssistantProviders,
   luxAssistantProxy,
@@ -119,6 +121,7 @@ function persist(panelId: string): void {
 
 function configure(panelId: string, opts: { token: string }): void {
   const r = rt(panelId);
+  if (r.token && r.token !== opts.token) void stopRealtimeVoice();
   r.token = opts.token;
   // Conectores Office: una carga por panel/token (antes: effect del pane).
   if (opts.token && r.connectorsToken !== opts.token) {
@@ -274,6 +277,7 @@ function fetchStoredMessages(panelId: string, convId: string): Promise<StoredMes
  * línea-a-línea requeriría `agent/stream` en el allowlist del proxy — backend).
  */
 function openConversation(panelId: string, id: string): void {
+  if (chatStore.getSession(panelId).conversationId !== id) void stopRealtimeVoice();
   const r = rt(panelId);
   if (!r.token) return;
   const prevConv = chatStore.getSession(panelId).conversationId;
@@ -418,6 +422,7 @@ function discardThreadDrafts(panelId: string): void {
 /** Descarta el hilo activo y arranca un chat nuevo (aborta el stream local).
  *  `projectId` liga el chat nuevo a una carpeta de proyecto ("+" del drawer). */
 function newConversation(panelId: string, opts?: { projectId?: string }): void {
+  void stopRealtimeVoice();
   const r = rt(panelId);
   r.openSeq++;
   r.loadingOptions = false;
@@ -458,7 +463,8 @@ function startChat(panelId: string): void {
  * `opts.keepAttachments` deja intactos los adjuntos preparados (envíos rápidos:
  * no deben arrastrar un adjunto que el usuario preparó para OTRO mensaje).
  */
-async function send(panelId: string, opts?: { text?: string; keepAttachments?: boolean; planDecision?: "approve" }): Promise<void> {
+async function send(panelId: string, opts?: { text?: string; keepAttachments?: boolean; planDecision?: "approve"; voiceInput?: boolean }): Promise<void> {
+  if (voiceInputLocked(panelId) && !opts?.voiceInput && !opts?.planDecision) return;
   const r = rt(panelId);
   if (!r.token) return;
   if (r.loadingOptions || r.optionsError) return;
@@ -677,7 +683,7 @@ async function send(panelId: string, opts?: { text?: string; keepAttachments?: b
           !lastEmpty(m, i, arr) && !(m.role === "user" && m.createdAt === startedAt)));
         if (chatStore.getComposer(panelId).queued.length === 0) {
           if (atts.length) chatStore.setAttachments(panelId, (prev) => (prev.length ? prev : atts));
-          if (text && !chatStore.getComposer(panelId).input.trim()) chatStore.patchComposer(panelId, { input: text });
+          if (!opts?.voiceInput && text && !chatStore.getComposer(panelId).input.trim()) chatStore.patchComposer(panelId, { input: text });
         }
       }
     }
@@ -690,14 +696,23 @@ async function send(panelId: string, opts?: { text?: string; keepAttachments?: b
     setTimeout(() => {
       if (runtimes.get(panelId) !== r || seq !== r.streamSeq ||
           chatStore.getSession(panelId).conversationId !== convId) return;
-      const current = chatStore.getComposer(panelId);
-      if (!r.token || r.sending || current.busy || current.blocked || !current.queued.length) return;
-      const [next, ...remaining] = current.queued;
-      chatStore.patchComposer(panelId, { queued: remaining });
-      void send(panelId, { text: next, keepAttachments: true });
+      resumeQueued(panelId);
     }, 0);
   }
 }
+
+/** Reanuda solo mensajes aceptados previamente, conservando el borrador. */
+function resumeQueued(panelId: string): void {
+  const r = runtimes.get(panelId);
+  const current = chatStore.getComposer(panelId);
+  if (!r?.token || r.sending || current.busy || current.blocked || voiceInputLocked(panelId) || !current.queued.length) return;
+  const [next, ...remaining] = current.queued;
+  chatStore.patchComposer(panelId, { queued: remaining });
+  void send(panelId, { text: next, keepAttachments: true });
+}
+
+// También funciona con la pantalla desmontada o la aplicación en segundo plano.
+onVoiceInputUnlocked(resumeQueued);
 
 /** Respuesta rápida (quick reply / ask / reintento): envía la opción elegida SIN
  *  tocar el borrador del composer ni consumir sus adjuntos preparados.
@@ -707,7 +722,7 @@ async function send(panelId: string, opts?: { text?: string; keepAttachments?: b
 function sendQuick(panelId: string, text: string, opts?: { planDecision?: "approve" }): boolean {
   const r = rt(panelId);
   const c = chatStore.getComposer(panelId);
-  if (c.busy || c.blocked || r.sending || !r.token || !text.trim()) return false;
+  if (c.busy || c.blocked || r.sending || !r.token || !text.trim() || (voiceInputLocked(panelId) && !opts?.planDecision)) return false;
   if (opts?.planDecision === "approve") void setOptions(panelId, { approvalMode: "auto" });
   void send(panelId, { text, keepAttachments: true, planDecision: opts?.planDecision });
   return true;
@@ -814,6 +829,7 @@ function decidePermission(panelId: string, requestId: string, decision: "allow" 
 /** Encola EXPLÍCITAMENTE el texto actual del composer (botón "Encolar"): a
  *  diferencia de `send`, encola aunque no haya run vivo (turno de seguimiento). */
 function queueCurrent(panelId: string): void {
+  if (voiceInputLocked(panelId)) return;
   const c = chatStore.getComposer(panelId);
   const text = c.input.trim();
   if (!text) return;
@@ -1062,6 +1078,18 @@ export const chatController = {
   send,
   sendQuick,
   sendText,
+  sendVoice: (panelId: string, text: string) => send(panelId, { text, voiceInput: true, keepAttachments: true }),
+  realtimeCapabilities: (panelId: string) => luxAssistantProxy<any>(panelId, rt(panelId).token, "GET", "/api/ai/realtime/capabilities"),
+  realtimeConversation: (panelId: string, conversationId: string) => luxAssistantProxy<any>(panelId, rt(panelId).token, "GET", "/api/ai/realtime/conversations/" + conversationId),
+  closeRealtimeSession: (panelId: string, id: string) => luxAssistantProxy<{ok: boolean}>(panelId, rt(panelId).token, "DELETE", "/api/ai/realtime/sessions/" + id),
+  realtimeTasks: (panelId: string, id: string) => luxAssistantProxy<any>(panelId, rt(panelId).token, "GET", "/api/ai/conversations/" + id + "/team-tasks"),
+  realtimePermission: (panelId: string, conversationId: string, requestId: string, decision: "allow" | "deny" | "always") =>
+    luxAssistantProxy<{ok: boolean}>(panelId, rt(panelId).token, "POST", "/api/ai/agent/permission", {conversationId, requestId, decision}),
+  realtimeAnswer: (panelId: string, sessionId: string, taskId: string, askedAt: string, choice: number) =>
+    luxAssistantProxy<{ok: boolean}>(panelId, rt(panelId).token, "POST", "/api/ai/realtime/sessions/" + sessionId + "/answer", {taskId, askedAt, choice}),
+  cancelRealtimeTask: (panelId: string, taskId: string) =>
+    luxAssistantProxy<{ok: boolean}>(panelId, rt(panelId).token, "POST", "/api/ai/team/tasks/" + taskId + "/cancel", {}),
+  prepareRealtimeContext,
   stopStream,
   editMessage,
   retryLast,
@@ -1084,3 +1112,23 @@ export const chatController = {
   compactNow,
   setNotice,
 };
+
+async function prepareRealtimeContext(panelId: string, accept?: (id: string) => boolean) {
+  const r = rt(panelId);
+  if (!r.token) throw new Error("Inicia sesión en el panel.");
+  const session = chatStore.getSession(panelId), openSeq = r.openSeq;
+  let id = session.conversationId;
+  if (!id) {
+    const response = await luxAssistantProxy<{ conversation?: { id: string } }>(panelId, r.token, "POST", "/api/ai/conversations", {
+      provider: session.provider || "claude", firstMessage: "Conversación por voz",
+      projectId: session.projectId, agentId: session.agentId, approvalMode: chatStore.getComposer(panelId).approvalMode,
+    });
+    id = response?.conversation?.id ?? null;
+    if (!id) throw new Error("No se pudo crear la conversación.");
+    if (r.openSeq !== openSeq || chatStore.getSession(panelId).conversationId !== session.conversationId || (accept && !accept(id)))
+      throw new Error("La conversación cambió antes de iniciar la voz.");
+    chatStore.patchSession(panelId, { conversationId: id });
+    persist(panelId);
+  }
+  return { panelId, token: r.token, conversationId: id };
+}

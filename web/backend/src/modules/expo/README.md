@@ -44,7 +44,13 @@ the Bearer for the Expo GraphQL API.
   - `expo-apps.service.ts` — account, project discovery/info, scaffolding.
     Discovery shows one row per EAS project ID when several local checkouts
     share it; the checkout with installed Expo dependencies is preferred.
-    Unlinked local projects keep separate rows.
+    Unlinked local projects keep separate rows. A `.luxipanel-expo-ignore`
+    file excludes its directory and descendants from discovery, including an
+    explicitly scanned root; use it on archive/audit trees instead of deleting
+    pending review work. This is a catalog filter, not an authorization rule.
+    Static `app.config.local.json` overrides supply local Expo identity without
+    publishing it in `app.json`; discovery, project details and EAS queries use
+    the same merged metadata. No JavaScript config is evaluated during reads.
   - `expo-builds.service.ts` — builds, submit, OTA updates, quota.
   - `expo-dev-client.service.ts` — Metro dev-client tunnel.
   - `expo-dependencies.service.ts` — checks local `expo` and `@expo/ngrok` for

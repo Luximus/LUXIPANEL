@@ -5,6 +5,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+import "./terminal-scroll.css";
+import { containTerminalScroll } from "./terminal-scroll";
 import { S, sessions, escapeHtml } from "./state";
 import { I18N, tI18n } from "./i18n";
 import { getTerminalTheme } from "./theme";
@@ -13,6 +15,7 @@ import { BRIDGE_SESSION_SESSION_KEY, TARGET_SCOPE_SESSION_KEY, SERVER_SWITCHER_I
 import { TerminalWsMsg } from "@/lib/terminal-ws-protocol";
 import { DEFAULT_BACKEND_PORT } from "@/lib/server-env";
 import { FILES_CURRENT_PATH_KEY } from "../../pages/panel/files/state";
+import { MOUSE_TRACKING_OFF, terminalProcessEnded, trackAlternateScreenExit } from "./terminal-lifecycle";
 import {
   setStatus,
   normalizePath,
@@ -63,6 +66,7 @@ import {
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(container);
+    containTerminalScroll(container);
     fitAddon.fit();
 
     // cd to current files path when this new tab connects
@@ -84,7 +88,9 @@ import {
       // Solo ocultamos la consola tras un overlay cuando hay un comando inicial
       // que arranca un TUI (Codex/Claude). En modo bash normal mostramos
       // directamente el shell para que el usuario pueda escribir desde ya.
-      pendingVisibility: !!resolvedInitialCommand,
+      // Inline Codex never enters the alternate screen used by the TUI-ready
+      // detector. Show it immediately, without the 30-second loading overlay.
+      pendingVisibility: !!resolvedInitialCommand && !/^codex(?: resume)? --no-alt-screen(?:\s|$)/.test(resolvedInitialCommand),
       bootstrapBuffer: "",
       reconnectTimer: null,
       cdOnConnect: options.cdOnConnect ?? filesPath,
@@ -200,7 +206,8 @@ import {
 
   async function connectWs(tabId: number): Promise<void> {
     let session = sessions.get(tabId);
-    if (!session) return;
+    if (!session || session.connecting) return;
+    session.connecting = true;
     // Nueva conexión (inicial o reconexión): la sesión vuelve a estar "deseada
     // conectada" y sin sondeo de liveness pendiente.
     session.endedNormally = false;
@@ -217,15 +224,16 @@ import {
     // Prefers the session cookie, falls back to /api/auth/ws-token (the cookie
     // is httpOnly, so the direct-path `getToken()` returned empty).
     const token = await getWebsocketToken();
-    session = sessions.get(tabId);
-    if (!session) return;
+    if (sessions.get(tabId) !== session) return;
     // Id estable por pestaña para reattach. Se conserva entre reconexiones del
     // mismo `session` Y se persiste en localStorage por `tabId`: así sobrevive a
     // una RECARGA de la página (p. ej. el SO recicla el proceso del WebView móvil
     // y se remonta). La pestaña por defecto se recrea con el mismo `tabId` (1),
     // así que recupera su sessionId y el backend re-adjunta la misma sesión tmux.
     if (!session.persistentSessionId) {
-      const storeKey = `lxp:term:sid:${encodeURIComponent(session.targetScope)}:${session.startupCommand || "default"}:${tabId}`;
+      // A display-mode change must not abandon an existing persistent session.
+      const startupKey = session.startupCommand === "codex --no-alt-screen" ? "codex" : session.startupCommand;
+      const storeKey = `lxp:term:sid:${encodeURIComponent(session.targetScope)}:${startupKey || "default"}:${tabId}`;
       session.sessionStorageKey = storeKey;
       let restored = "";
       try { restored = (localStorage.getItem(storeKey) ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64); } catch { /* ignore */ }
@@ -254,9 +262,11 @@ import {
 
     const ws = new WebSocket(wsUrl);
     session.ws = ws;
+    session.connecting = false;
 
     ws.onopen = () => {
       const s = sessions.get(tabId);
+      if (s?.ws !== ws) { ws.close(); return; }
       if (s) { s.reconnectAttempts = 0; if (s.reconnectTimer) { clearTimeout(s.reconnectTimer); s.reconnectTimer = null; } }
       if (tabId === S.activeTabId) setStatus(I18N.status.connected, true);
       const { term: t, fitAddon } = session;
@@ -265,6 +275,7 @@ import {
     };
 
     ws.onmessage = (e) => {
+      if (sessions.get(tabId)?.ws !== ws) return;
       // Cualquier mensaje del backend prueba que el socket sigue vivo: cancela
       // un sondeo de liveness en curso (ver `handleWake`).
       const sLive = sessions.get(tabId);
@@ -274,6 +285,12 @@ import {
         if (msg.type === "output") {
           maybeRevealOnOutput(tabId, msg.data);
           term.write(msg.data);
+          const current = sessions.get(tabId);
+          if (current) {
+            const tracked = trackAlternateScreenExit(current.outputTail ?? "", msg.data);
+            current.outputTail = tracked.tail;
+            if (tracked.exited) term.write(MOUSE_TRACKING_OFF);
+          }
         }
         if (msg.type === "connected") {
           const s = sessions.get(tabId);
@@ -329,8 +346,12 @@ import {
           }
         }
         if (msg.type === "exit") {
-          term.write(`\r\n\x1b[33m${tI18n(I18N.banner.sessionExited, { code: msg.code })}\x1b[0m\r\n`);
-          if (tabId === S.activeTabId) setStatus(I18N.status.sessionEnded, false);
+          if (!msg.reason || terminalProcessEnded(msg.reason)) {
+            const current = sessions.get(tabId);
+            if (current) current.endedNormally = true;
+            term.write(`\r\n\x1b[33m${tI18n(I18N.banner.sessionExited, { code: msg.code })}\x1b[0m\r\n`);
+            if (tabId === S.activeTabId) setStatus(I18N.status.sessionEnded, false);
+          }
         }
         if (msg.type === "error") {
           term.write(`\r\n\x1b[31m${tI18n(I18N.banner.errorPrefix, { message: msg.message })}\x1b[0m\r\n`);
@@ -350,11 +371,12 @@ import {
 
     ws.onclose = (ev) => {
       const s = sessions.get(tabId);
-      if (!s) return;
-      // "process-exit": PTY exited normally (user ran `exit`, CLI finished, or
-      // remote session closed). Do NOT auto-reconnect — show the reconnect
-      // button instead. Auto-reconnect only for unexpected WS drops (non-1000).
-      const shouldReconnect = ev.code !== 1000 && s.reconnectAttempts < 8;
+      if (!s || s.ws !== ws) return;
+      term.write(MOUSE_TRACKING_OFF);
+      // A normal close code can also mean the backend expired or replaced the
+      // transport. Only a real PTY process exit should end this terminal tab.
+      const processEnded = s.endedNormally || terminalProcessEnded(ev.reason);
+      const shouldReconnect = !processEnded && s.reconnectAttempts < 8;
       if (shouldReconnect) {
         const delay = Math.min(1500 * (s.reconnectAttempts + 1), 15_000);
         s.reconnectAttempts++;
@@ -372,7 +394,7 @@ import {
         // backend): la sesión tmux ya no existe → NO revivir en la reactivación
         // por cambio de app. Un agotamiento de reintentos (≥8) NO es normal:
         // dejar `endedNormally` en false para que el wake-handler pueda reintentar.
-        if (ev.code === 1000) s.endedNormally = true;
+        if (processEnded) s.endedNormally = true;
         if (ev.code !== 1000 && ev.code !== 1001) {
           const closedMsg = ev.reason
             ? tI18n(I18N.banner.connectionClosedWithReason, { code: ev.code, reason: ev.reason })

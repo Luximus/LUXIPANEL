@@ -695,3 +695,32 @@ describe("conversation history and options isolation", () => {
     expect(col("assistant", `conv-u1-${a.id}`).get("__meta")).toMatchObject({ approvalMode: "auto", effort: "", model: "" });
   });
 });
+
+
+describe("project team history summaries", () => {
+  it("counts the same search and project scope before pagination, while preserving legacy global counts", async () => {
+    const executor = makeExecutor([], "filtered-summary");
+    const rows = [
+      { id: "a1", projectId: "root", agentId: "a", title: "needle" },
+      { id: "a2", projectId: "child", agentId: "a", title: "needle second" },
+      { id: "b", projectId: "other", agentId: "b", title: "needle" },
+      { id: "old", projectId: "root", agentId: "a", title: "irrelevant" },
+    ];
+    for (const { id, ...row } of rows) seedMeta("conversations-u1", id, { ...row, preview: "", provider: "codex", messageCount: 0 });
+    const result = await conversationsRepository.list(executor, { projectIds: ["root", "child"], q: "needle", includeSummary: true, summaryScope: "filtered", limit: 1 });
+    expect(result.total).toBe(2);
+    expect(result.items).toHaveLength(1);
+    expect(result.summary).toEqual({ projects: { root: 1, child: 1 }, agents: { a: 2 } });
+    const global = await conversationsRepository.list(executor, { projectIds: ["root"], includeSummary: true });
+    expect(global.summary?.agents).toEqual({ a: 3, b: 1 });
+  });
+  it("restricts legacy mailboxes by agent and keeps other users out", async () => {
+    const executor = makeExecutor([], "legacy-summary");
+    seedMeta("conversations-u1", "own", { projectId: null, agentId: "a", title: "Own", preview: "" });
+    seedMeta("conversations-u1", "other-team", { projectId: null, agentId: "b", title: "Other", preview: "" });
+    seedMeta("conversations-u2", "other-user", { projectId: null, agentId: "a", title: "Private", preview: "" });
+    const result = await conversationsRepository.list(executor, { projectIds: ["none"], agentIds: ["a"], includeSummary: true, summaryScope: "filtered" });
+    expect(result.items.map(c => c.id)).toEqual(["own"]);
+    expect(result.summary?.agents).toEqual({ a: 1 });
+  });
+});

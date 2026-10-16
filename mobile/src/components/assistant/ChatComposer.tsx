@@ -11,6 +11,8 @@
  * `chat-store` module-level y opera directamente contra `chat-controller`
  * (el puente `assistantBridge` murió con el pane).
  */
+import { useRealtimeComposer } from "./use-realtime-composer";
+import { setVoiceInputLock } from "../../features/assistant/input-lock";
 import React, { useEffect, useState } from "react";
 import { PanelText as Text } from "../ui/PanelText";
 import { BackHandler, Image, Pressable, ScrollView, TextInput, View } from "react-native";
@@ -71,7 +73,7 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
   const setInput = (v: string) => chatStore.patchComposer(panelId, { input: v });
   const canSend = !composer.busy && !composer.blocked
     && (input.trim().length > 0 || composer.attachmentNames.length > 0);
-  const canQueue = input.trim().length > 0;
+  const realtime = useRealtimeComposer(panelId, composer.realtimeEnabled);
 
   const [connectorsManagerOpen, setConnectorsManagerOpen] = useState(false);
   const [browseConnectorId, setBrowseConnectorId] = useState<string | null>(null);
@@ -79,6 +81,10 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
   // Hay grabación / clip / transcripción en curso dentro de VoiceComposerButton:
   // mientras dure, el slot de acción NO puede cambiar a Enviar (lo desmontaría).
   const [voiceActive, setVoiceActive] = useState(false);
+  const audioActive = voiceActive || realtime.active;
+  const canQueue = input.trim().length > 0 && !audioActive;
+  const onVoicePhase = (value: boolean) => { setVoiceInputLock(panelId, "note", value); setVoiceActive(value); };
+  useEffect(() => () => setVoiceInputLock(panelId, "note", false), [panelId]);
   // Popover del botón "+" del pill (Regresar · Adjuntar · Pegar imagen).
   const [plusOpen, setPlusOpen] = useState(false);
   // Atrás de Android con el popover abierto: ciérralo en vez de hacer pop de
@@ -118,10 +124,11 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
   // Qué ocupa el slot de acción. El botón de voz se mantiene montado SIEMPRE que
   // haya voz en curso (`voiceActive`), incluso con un run corriendo: desmontarlo
   // cancela el grabador y tira el clip.
-  const voiceMounted = composer.voiceAvailable && !composer.blocked
+  const voiceMounted = !composer.realtimeEnabled && composer.voiceAvailable && !composer.blocked
     && (voiceActive || (!composer.busy && !canSend));
-  const showSend = !composer.busy && canSend && !voiceActive;
-  const showSendOff = !composer.busy && !showSend && !voiceMounted;
+  const showSend = !composer.busy && canSend && !audioActive;
+  const showRealtime = composer.realtimeEnabled && !composer.blocked && (realtime.active || !canSend);
+  const showSendOff = !composer.busy && !showSend && !voiceMounted && !showRealtime;
 
   return (
     <View
@@ -197,6 +204,9 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
                   <Text style={[styles.plusMenuItemText, { color: tokens.textPrimary, textAlign: getLocaleTextAlign(language) }]}>{ct.pasteImage}</Text>
                 </Pressable>
                 {onOpenSettings ? <Pressable onPress={() => { setPlusOpen(false); onOpenSettings(); }} style={[styles.plusMenuItem, { flexDirection: getLocaleRowDirection(language) }]}><Settings2 size={16} color={tokens.textSecondary}/><Text style={[styles.plusMenuItemText, { color: tokens.textPrimary }]}>{language?.startsWith("es") ? "Configuración avanzada" : "Advanced settings"}</Text></Pressable> : null}
+                {realtime.active ? <Pressable accessibilityRole="button" onPress={() => { setPlusOpen(false); realtime.toggleMuted(); }} style={styles.plusMenuItem}>
+                  <Mic size={16} color={tokens.textSecondary}/><Text style={[styles.plusMenuItemText, {color: tokens.textPrimary}]}>{realtime.muted ? "Activar micrófono" : "Silenciar micrófono"}</Text>
+                </Pressable> : null}
                 {onOpenSettings ? <Pressable onPress={() => { setPlusOpen(false); onOpenSettings(); }} style={[styles.plusMenuItem, { flexDirection: getLocaleRowDirection(language) }]}><Mic size={16} color={tokens.textSecondary}/><Text style={[styles.plusMenuItemText, { color: tokens.textPrimary }]}>{language?.startsWith("es") ? "Opciones de audio" : "Audio settings"}</Text></Pressable> : null}
                 {composer.connectors.filter((item) => item.connected).map((item) => <Pressable key={item.id} onPress={() => { setPlusOpen(false); setBrowseConnectorId(item.id); }} style={[styles.plusMenuItem, { flexDirection: getLocaleRowDirection(language) }]}><Folder size={16} color={tokens.textSecondary}/><Text numberOfLines={1} style={[styles.plusMenuItemText, { color: tokens.textPrimary, flex: 1 }]}>{item.name}</Text></Pressable>)}
                 {composer.connectors.length > 0 ? <Pressable onPress={() => { setPlusOpen(false); setConnectorsManagerOpen(true); }} style={[styles.plusMenuItem, { flexDirection: getLocaleRowDirection(language) }]}><Plug size={16} color={tokens.textSecondary}/><Text style={[styles.plusMenuItemText, { color: tokens.textPrimary }]}>{language?.startsWith("es") ? "Conectar herramientas" : "Connect tools"}</Text></Pressable> : null}
@@ -215,7 +225,7 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
             value={input}
             onChangeText={setInput}
             onFocus={() => setPlusOpen(false)}
-            placeholder={composer.blocked ? (composer.blockedReason ?? at.unavailable) : (composer.imageAttachSupported ? ct.inputPlaceholder : ct.inputPlaceholderPlain)}
+            placeholder={realtime.active ? (realtime.phase === "connecting" ? "Conectando voz…" : realtime.muted ? "Micrófono silenciado" : "Habla con el agente…") : composer.blocked ? (composer.blockedReason ?? at.unavailable) : (composer.imageAttachSupported ? ct.inputPlaceholder : ct.inputPlaceholderPlain)}
             placeholderTextColor={controlMuted}
             multiline
             onContentSizeChange={(e) => setInputHeight(Math.min(120, Math.max(20, e.nativeEvent.contentSize.height)))}
@@ -233,6 +243,11 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
               El 2º botón "Encolar" es paridad ChatPane.tsx:4116-4132: mete el
               texto actual en la cola (chips "En cola (N)"). */}
           <View style={{ flexDirection: getLocaleRowDirection(language), alignItems: "center", gap: 6 }}>
+            {showRealtime ? <Pressable accessibilityRole="button" accessibilityLabel={realtime.active ? "Terminar voz en tiempo real" : "Iniciar voz en tiempo real"}
+              accessibilityHint={realtime.phase === "connecting" ? "Conectando voz" : realtime.muted ? "Micrófono silenciado" : realtime.active ? "Micrófono activo" : undefined}
+              onPress={() => void realtime.toggle()} style={[styles.pillBtn, { backgroundColor: armedBackground }]}>
+              {realtime.active ? <Square size={18} color={armedInk} /> : <Mic size={18} color={armedInk} />}
+            </Pressable> : null}
             {voiceMounted ? (
               // `voiceActive` tiene prioridad sobre TODO lo demás: el estado de la
               // voz vive DENTRO de este botón, así que teclear una letra, adjuntar
@@ -244,11 +259,11 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
                 tokens={tokens}
                 createRecorder={createRecorder}
                 onTranscribe={(b64, mime) => chatController.transcribeVoice(panelId, b64, mime)}
-                onSubmit={(text) => chatController.sendText(panelId, text)}
-                onPhaseChange={setVoiceActive}
+                onSubmit={(text) => chatController.sendVoice(panelId, text)}
+                onPhaseChange={onVoicePhase}
               />
             ) : null}
-            {composer.busy ? (
+            {composer.busy && !audioActive ? (
               <Pressable
                 onPress={() => chatController.stopStream(panelId)}
                 accessibilityLabel={ct.voiceStop}
@@ -291,6 +306,8 @@ export const ChatComposer = React.memo(function ChatComposer({ panelId, language
           </View>
           </View>
         </View>
+        {realtime.error ? <Text accessibilityRole="alert" style={{color: tokens.warning, fontSize: 12}}>{realtime.error}</Text> : null}
+        {realtime.previousId ? <Pressable accessibilityRole="button" onPress={() => void realtime.closePrevious()}><Text style={{color: tokens.textPrimary, fontSize: 12}}>Finalizar sesión anterior</Text></Pressable> : null}
         {/* Adjuntos: 1 por fila DEBAJO del input + botones. Las imágenes muestran
             miniatura y abren el lightbox al tocarse. */}
         {composer.attachments.map((att, index) => {

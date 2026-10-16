@@ -225,6 +225,7 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
     !agentId && !convId && initialModel && modelOptions.includes(initialModel) ? initialModel : "";
   const conversationOptions = useConversationOptions({
     id: activeId, provider, active: !!active, defaultApproval: approvalMode,
+    defaultEffort: props.initialEffort,
     defaultModel: initialModelFor(currentAgentId, null), onRestoreProvider: props.onRestoreProvider,
   });
   const { selectedModel, setSelectedModel, selectedEffort, setSelectedEffort } = conversationOptions;
@@ -260,7 +261,7 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
   const browseConnector = connectors.find((c) => c.id === browseConnectorId) ?? null;
   // Voice is API-mode only in v1 (CLI keeps its raw terminal). STT records on the
   // mic button → server transcription → composer; TTS plays an assistant reply.
-  const sttAvailable = mode === "api" && !!voice?.capabilities?.stt;
+  const sttAvailable = voice?.capabilities?.stt === "openai";
   // TTS playback ("escuchar respuesta") is offered on any completed assistant
   // reply — CLI included — whenever voice is enabled and a TTS-capable key
   // exists (`capabilities.tts` already encodes the `voice.enabled` master
@@ -283,7 +284,7 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
   // shown — regardless of browser Web Speech support or configured STT keys
   // (`capabilities` is key-derived and independent of this toggle).
   const voiceEnabled = !!voice?.enabled;
-  const canHoldRecord = voiceEnabled && canRecordAudio && (sttAvailable || webSpeechAvailable);
+  const canHoldRecord = voiceEnabled && canRecordAudio;
 
   // Prefill the composer when a seed arrives (e.g. the mail inbox hands off a
   // depuration prompt). We only fill the draft + focus — the user reviews and
@@ -464,6 +465,7 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
       newConversation({ preserveAgent: false });
       setCurrentProjectId(agentProjectId);
       setCurrentAgentId(openAgentId);
+      conversationOptions.resetNew("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openNonce]);

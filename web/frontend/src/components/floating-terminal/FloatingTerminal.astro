@@ -24,7 +24,7 @@ const isEmbedded = Astro.url.searchParams.get("embed") === "1";
 import { DIALOG_CHROME } from "@/lib/ui-classes";
 ---
 
-<link rel="stylesheet" href="/scripts/extracted/components/floating-terminal/floating-terminal.css?v=20260929-drawer-speed" />
+<link rel="stylesheet" href="/scripts/extracted/components/floating-terminal/floating-terminal.css?v=20261014-header-scroll" />
 
 {!isEmbedded && <FloatingTerminalDrawer client:load locale={locale} isAdmin={isAdmin} />}
 
@@ -79,7 +79,7 @@ import { DIALOG_CHROME } from "@/lib/ui-classes";
 
 <script type="module" define:vars={{ backendPort }}>
   window.__BACKEND_PORT__ = backendPort;
-  const terminalScript = "/scripts/extracted/components/floating-terminal/floating-terminal.reactbits-controls-20261004-1.js";
+  const terminalScript = "/scripts/extracted/components/floating-terminal/floating-terminal.js?v=20261015-tmux-scroll";
   let terminalLoad;
   const ensureTerminalScript = () => {
     if (!terminalLoad) terminalLoad = import(terminalScript).catch((error) => {

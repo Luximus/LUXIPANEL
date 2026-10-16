@@ -6,12 +6,10 @@ import { ModalShell } from "@/components/ui/ModalShell";
 import { DrawerSectionNav } from "@/components/ui/DrawerSectionNav";
 import { ViewTransition, useViewDirection } from "@/components/ui/ViewTransition";
 import { cn } from "@/lib/utils";
-import { type AssistantAgent, type AssistantConfigState } from "./assistant-api";
+import { type AssistantConfigState } from "./assistant-api";
 import { useAssistantI18n } from "./i18n";
 import { SettingsFooterContext, SettingsHeaderContext, type SettingsFooterAction, type SettingsHeaderOverride } from "./settings-footer";
-const AgentsTab = lazy(() => import("./AgentsTab").then(module => ({ default: module.AgentsTab })));
 const GeneralTab = lazy(() => import("./GeneralTab").then(module => ({ default: module.GeneralTab })));
-const ProvidersTab = lazy(() => import("./ProvidersTab").then(module => ({ default: module.ProvidersTab })));
 const ModulesTab = lazy(() => import("./ModulesTab").then(module => ({ default: module.ModulesTab })));
 const StatsTab = lazy(() => import("./StatsTab").then(module => ({ default: module.StatsTab })));
 const AccessTab = lazy(() => import("./AccessTab").then(module => ({ default: module.AccessTab })));
@@ -21,13 +19,11 @@ import type { AssistantTab } from "./AssistantPanel";
 // AssistantTab-derived sections rather than widening AssistantTab itself — the
 // least invasive change (no deep-link / requestedTab plumbing needs it).
 export type AssistantSettingsSection =
-  | Extract<AssistantTab, "agentes" | "providers" | "modules" | "stats" | "access">
+  | Extract<AssistantTab, "modules" | "stats" | "access">
   | "general";
 
 const SECTION_ICONS: Record<AssistantSettingsSection, string> = {
   general: "ti-adjustments-horizontal",
-  agentes: "ti-robot",
-  providers: "ti-plug",
   modules: "ti-puzzle",
   stats: "ti-chart-bar",
   access: "ti-shield-lock",
@@ -35,15 +31,13 @@ const SECTION_ICONS: Record<AssistantSettingsSection, string> = {
 
 const SECTION_ORDER: AssistantSettingsSection[] = [
   "general",
-  "agentes",
-  "providers",
   "modules",
   "stats",
   "access",
 ];
 
 function isSettingsSection(value: string | null | undefined): value is AssistantSettingsSection {
-  return value === "general" || value === "agentes" || value === "providers" || value === "modules" || value === "stats" || value === "access";
+  return value === "general" || value === "modules" || value === "stats" || value === "access";
 }
 
 interface AssistantSettingsModalProps {
@@ -52,12 +46,9 @@ interface AssistantSettingsModalProps {
   locale: string;
   config: AssistantConfigState | null;
   dataTableI18n: DataTableI18n | null;
-  /** Deep-link: open the Agents section directly in this agent's editor. */
-  editAgentId?: string | null;
   onClose(): void;
   onSectionChange(section: AssistantSettingsSection | null): void;
   onConfigChange(next: AssistantConfigState): void;
-  onLaunchAgent(agent: AssistantAgent): void;
 }
 
 export function AssistantSettingsModal({
@@ -66,11 +57,9 @@ export function AssistantSettingsModal({
   locale,
   config,
   dataTableI18n,
-  editAgentId,
   onClose,
   onSectionChange,
   onConfigChange,
-  onLaunchAgent,
 }: AssistantSettingsModalProps) {
   const t = useAssistantI18n();
   // Primary action published by the active section (e.g. "Save changes") and
@@ -90,11 +79,10 @@ export function AssistantSettingsModal({
     }));
   }, [t]);
 
-  // There is no landing "hub": Settings opens directly on a section. Default to
-  // the requested section, the agent editor's section when deep-linking an
-  // agent, or "general" otherwise.
+  // Settings opens directly on a section. Agent links are routed to their
+  // project by AssistantPanel; they no longer live in this global drawer.
   const activeSectionId: AssistantSettingsSection =
-    section && isSettingsSection(section) ? section : editAgentId ? "agentes" : "general";
+    section && isSettingsSection(section) ? section : "general";
   const activeSection = sections.find((item) => item.id === activeSectionId) ?? sections[0];
   // Dirección de la transición de sección según el orden del menú lateral.
   const sectionDirection = useViewDirection(activeSectionId, SECTION_ORDER);
@@ -139,8 +127,6 @@ export function AssistantSettingsModal({
             <ViewTransition viewKey={activeSectionId ?? "none"} direction={sectionDirection}>
               <Suspense fallback={<div role="status" aria-busy="true" className="p-4 text-sm text-muted-foreground">{activeSection?.label}</div>}>
               {activeSectionId === "general" && <GeneralTab config={config} onConfigChange={onConfigChange} />}
-              {activeSectionId === "agentes" && <AgentsTab onLaunchAgent={onLaunchAgent} locale={locale} initialEditAgentId={editAgentId} />}
-              {activeSectionId === "providers" && <ProvidersTab config={config} onChange={onConfigChange} locale={locale} />}
               {activeSectionId === "modules" && <ModulesTab />}
               {activeSectionId === "stats" && <StatsTab dataTableI18n={dataTableI18n} />}
               {activeSectionId === "access" && <AccessTab />}

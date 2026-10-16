@@ -1,5 +1,12 @@
 const panelLayout = {
   "community": {
+    "notesTab": "Notes",
+    "activityTab": "Activity",
+    "contributors": "Contributors",
+    "contributorsUnavailable": "Contributors could not be loaded.",
+    "translationInsufficientBalance": "The AI provider has insufficient API credit for translation. The original text is shown.",
+    "newBadge": "new",
+    "updateTo": "Update to {version}",
     "title": "Community and releases",
     "comments": "Comments",
     "read": "Mark as read",
@@ -10,7 +17,16 @@ const panelLayout = {
     "installed": "Installed",
     "version": "Version",
     "openGithub": "Open on GitHub",
-    "close": "Close"
+    "close": "Close",
+    "newVersion": "New version available",
+    "translating": "Translating with AI…",
+    "showOriginal": "Show original",
+    "showTranslation": "Show translation",
+    "translationUnavailable": "AI translation is unavailable. Showing the original text.",
+    "allComments": "See all comments on GitHub",
+    "activity": "Community activity",
+    "loading": "Loading…",
+    "loadError": "Could not load this information."
 },
   "groups": {
     "main": "Main",

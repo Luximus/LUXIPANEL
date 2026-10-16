@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { VOICE_AUDIO_MIMES } from "../models/chat-attachment.js";
 /**
  * AI Assistant — attachment serving + storage manager.
  *
@@ -71,10 +72,10 @@ export const storageController = {
     const owned = await conversationsRepository.listIds(executor);
     if (!owned.has(rec.convId)) throw notFound(apiModuleMessage(res.locals.locale, "assistantAttachmentNotFound"));
     const buf = await attachmentsRepository.read(executor, rec);
-    // Stored-XSS defense: only raster images are served inline; everything else
+    // Stored-XSS defense: only raster images and safe audio are inline; everything else
     // (image/svg+xml, text/html, …) is forced to a generic type + downloaded.
     const rawMime = ((rec.mimeType || "").toLowerCase().split(";")[0] ?? "").trim();
-    const inlineOk = INLINE_IMAGE_MIME.has(rawMime);
+    const inlineOk = INLINE_IMAGE_MIME.has(rawMime) || VOICE_AUDIO_MIMES.has(rawMime);
     res.setHeader("Content-Type", inlineOk ? rawMime : "application/octet-stream");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Content-Length", String(buf.length));

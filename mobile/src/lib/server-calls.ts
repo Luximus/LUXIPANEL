@@ -1,3 +1,4 @@
+import { realtimeMicrophoneActive } from "../features/assistant/input-lock";
 import { useSyncExternalStore } from "react";
 import {
   messagingApi,
@@ -126,6 +127,7 @@ export function attachServerCalls(serverId: string): () => void {
   };
 }
 async function join(serverId: string, session: CallSession) {
+  if (realtimeMicrophoneActive()) throw new Error("Termina la voz del asistente antes de unirte a una llamada.");
   if (snapshot?.session) throw new Error("Ya tienes una llamada activa.");
   const version = ++generation;
   snapshot = {

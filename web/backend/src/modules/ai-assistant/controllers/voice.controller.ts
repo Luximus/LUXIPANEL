@@ -65,18 +65,9 @@ export const voiceController = {
     const executor = getExecutor(req);
     const cfg = await assistantConfigRepository.load(executor);
     const caps = voiceService.capabilities(cfg);
-    const piperInstalled = (await voiceService.piperStatus()).installed;
-    // If the local engine is selected but not installed, don't advertise TTS —
-    // the UI hides the speaker and the settings show an install hint instead.
-    const tts = caps.tts === "piper" && !piperInstalled ? null : caps.tts;
     res.json({
       ok: true,
-      capabilities: {
-        ...caps,
-        tts,
-        ttsProvider: cfg.voice?.ttsProvider ?? "api",
-        piperInstalled,
-      },
+      capabilities: caps,
     });
   }),
 
@@ -121,7 +112,7 @@ export const voiceController = {
           return;
         }
       }
-      const out = await voiceService.speak(cfg, text, voice, executor);
+      const out = await voiceService.speak(cfg, text, voice);
       // No connected target → can't persist; fall back to the inline payload.
       if (!executor) {
         res.json({ ok: true, audioBase64: out.audioBase64, mimeType: out.mimeType });

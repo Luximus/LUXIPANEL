@@ -29,6 +29,7 @@ import { ToolDisclosure, CliHistoryView } from "./tool-disclosure";
 import { AskView, PermissionView } from "./ask-permission";
 import { TranslatingShimmer, PendingDot, CopyButton } from "./message-bits";
 import { SpeakButton } from "./voice-controls";
+import { VoiceMessage } from "./voice-message";
 import ThoughtLine from "./reactbits/ThoughtLine";
 import StatusMark, { type StatusMarkStatus } from "./reactbits/StatusMark";
 
@@ -109,6 +110,8 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   const editLabel = i18n.projectModal?.editChild ?? ct.editResendLabel ?? "Editar";
   const editTitle = editLabel;
   const isUser = turn.role === "user";
+  const recordings = isUser ? (turn.attachments ?? []).filter(a => a.voice && a.mimeType.startsWith("audio/")) : [];
+  const ordinaryAttachments = (turn.attachments ?? []).filter(a => !recordings.includes(a));
   const bubbleProvider = turn.provider ?? provider;
   const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   // Lightbox exit animation (200ms ease-out, motion standard) before unmount.
@@ -128,7 +131,8 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // CLI activity console and only surface the final result/summary on settle.
   // The CLI console already contains the tool activity. Showing every nested
   // tool again as a JSON disclosure duplicates it and overwhelms the answer.
-  const visibleTools = showTerminal ? turn.tools.filter((tool) => tool.name.endsWith(".cli")) : [];
+  const hasCliConsole = turn.tools.some((tool) => tool.name.endsWith(".cli"));
+  const visibleTools = turn.tools.filter((tool) => tool.name.endsWith(".cli") ? showTerminal : !hasCliConsole);
   const cliRunningHidden = !showTerminal && turn.pending && turn.tools.some((tool) => tool.name.endsWith(".cli"));
   const rawText = turn.raw ?? turn.text;
   // User turns carry the forwarded English (`raw`) only when background
@@ -223,13 +227,13 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   if (isUser && turn.auto) {
     return (
       <div className="flex justify-center">
-        <span
-          className="my-1 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[10px] text-muted-foreground"
-          title={turn.text}
-        >
+        <details className="my-1 min-w-0 max-w-full rounded-xl border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground" data-team-notice>
+          <summary className="cursor-pointer text-[10px]">
           <i className="ti ti-users-group text-[11px]" aria-hidden />
           {(i18n.teamBoard?.autoTurn as string) ?? "Aviso automático del equipo"}
-        </span>
+          </summary>
+          <div className="mt-2 border-t border-border pt-2"><MessageContent text={turn.text} /></div>
+        </details>
       </div>
     );
   }
@@ -326,9 +330,9 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
       )}
       {hasBubbleContent && (
       <div data-message-section={!isUser ? "answer" : undefined} className={isUser ? "max-w-[85%] min-w-0 overflow-hidden break-words rounded-2xl rounded-tr-sm bg-indigo-100 px-2.5 py-1.5 text-sm text-indigo-900 dark:bg-[#30343b] dark:text-zinc-100 dark:ring-1 dark:ring-white/10" : cn("min-w-0 break-words px-3.5 py-3 text-sm", hasTeamBoards && "border-b border-border/60")}>
-        {turn.attachments && turn.attachments.length > 0 && (
+        {ordinaryAttachments.length > 0 && (
           <div className="mb-1.5 flex flex-wrap gap-1.5">
-            {turn.attachments.map((a, i) =>
+            {ordinaryAttachments.map((a, i) =>
               a.mimeType.startsWith("image/") ? (
                 <button
                   key={i}
@@ -363,7 +367,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
             )}
           </div>
         )}
-        {showRaw && rawText && (
+        {showRaw && rawText && !recordings.length && (
           <details className="mt-1.5 rounded-md bg-background/40 border border-border/60 text-xs">
             <summary className="cursor-pointer px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
               {isUser ? (userForwardedEnglish ? (ct.rawForwardedEnglish ?? "texto enviado al agente (inglés)") : (ct.rawInput ?? "input crudo")) : (ct.rawOutputBackground ?? "output crudo (background)")}
@@ -374,7 +378,9 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
         {/* Summary/answer of the turn — rendered BELOW the (collapsed) console
             so the user reads the final answer while the full process log stays
             tucked away in the collapsed container above. */}
-        {summaryText
+        {recordings.length > 0
+          ? <VoiceMessage recordings={recordings} forwardedText={turn.raw ?? turn.text} />
+          : summaryText
           ? planPreview
             ? <>
                 <MessageContent text={planPreview[1]!} scrollContainerRef={scrollContainerRef} />

@@ -3,7 +3,55 @@ import { mountModuleTopbar } from "./module-topbar";
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   document.body.innerHTML = "";
+});
+
+it("moves live terminal controls into the header and restores them for mobile and teardown", async () => {
+  vi.useFakeTimers();
+  const media = window.matchMedia("(min-width: 1025px)");
+  let desktop = true;
+  Object.defineProperty(media, "matches", { get: () => desktop });
+  vi.spyOn(window, "matchMedia").mockReturnValue(media);
+  document.body.innerHTML = `<div id="drawer"><header><div data-module-header-tabs-slot></div><div data-module-header-actions-slot></div></header>
+    <div id="module" data-internal-module="terminal"><section><div data-terminal-toolbar><div id="tabs-container" role="tablist"><div role="tab" id="tab-1">Terminal 1</div></div><button id="btn-new-tab">+</button><button id="terminal-status">Connected</button><button id="btn-reconnect" class="hidden">Reconnect</button></div><div id="terminal-container"></div></section><button id="btn-new-snippet">Snippet</button></div></div>`;
+  const drawer = document.querySelector<HTMLElement>("#drawer")!;
+  const module = document.querySelector<HTMLElement>("#module")!;
+  const row = module.querySelector<HTMLElement>("[data-terminal-toolbar]")!;
+  const tabs = row.querySelector("#tabs-container")!;
+  const create = vi.fn();
+  row.querySelector("#btn-new-tab")!.addEventListener("click", create);
+  const dispose = mountModuleTopbar(module, drawer);
+  expect(drawer.querySelector("header [data-terminal-toolbar]")).toBe(row);
+  expect(drawer.querySelectorAll("#terminal-status")).toHaveLength(1);
+  drawer.querySelector<HTMLButtonElement>("header #btn-new-tab")!.click();
+  expect(create).toHaveBeenCalledOnce();
+  tabs.insertAdjacentHTML("beforeend", '<div role="tab" id="tab-2">Terminal 2</div>');
+  module.querySelector("#btn-new-snippet")!.textContent = "New snippet";
+  await vi.advanceTimersByTimeAsync(100);
+  expect(drawer.querySelector("header #tab-2")).not.toBeNull();
+  expect(drawer.querySelectorAll("header [data-module-header-proxy]")).toHaveLength(1);
+  desktop = false;
+  media.dispatchEvent(new Event("change"));
+  expect(module.querySelector("[data-terminal-toolbar]")).toBe(row);
+  const mobileHome = document.createComment("mobile-home");
+  row.before(mobileHome);
+  const mobileRail = document.createElement("aside");
+  module.append(mobileRail);
+  mobileRail.append(row);
+  row.classList.add("lxp-terminal-tabs-controls");
+  desktop = true;
+  media.dispatchEvent(new Event("change"));
+  expect(drawer.querySelector("header [data-terminal-toolbar]")).toBeNull();
+  mobileHome.replaceWith(row);
+  row.classList.remove("lxp-terminal-tabs-controls");
+  mobileRail.remove();
+  await vi.advanceTimersByTimeAsync(100);
+  expect(drawer.querySelector("header [data-terminal-toolbar]")).toBe(row);
+  dispose();
+  expect(module.querySelector("section > [data-terminal-toolbar]")).toBe(row);
+  expect(row.nextElementSibling?.id).toBe("terminal-container");
+  expect(drawer.querySelector("header #terminal-status")).toBeNull();
 });
 
 it("shows the Users tabs and actions in the header while keeping original handlers and IDs", async () => {

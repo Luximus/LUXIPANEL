@@ -9,7 +9,42 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { flattenConfig, projectFromConfig, mapBuild } from "./expo-config-parse.js";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Executor } from "../../../../shared/executor/index.js";
+import { flattenConfig, mergeAppConfig, projectFromConfig, readAppConfig, readProjectIdFromPath, detectExpoProject, mapBuild } from "./expo-config-parse.js";
+
+describe("local Expo identity", () => {
+  it("reads the same local identity for discovery, details and EAS without evaluating JS", async () => {
+    const root = mkdtempSync(join(tmpdir(), "expo identity ' "));
+    const executor = { exec: async (command: string) => ({ stdout: execFileSync("sh", ["-c", command], { encoding: "utf8" }), stderr: "", exitCode: 0, durationMs: 0 }) } as unknown as Executor;
+    try {
+      writeFileSync(join(root, "app.json"), JSON.stringify({ expo: { name: "Current app", slug: "public" } }));
+      writeFileSync(join(root, "app.config.local.json"), JSON.stringify({ slug: "existing-app", extra: { eas: { projectId: "same-project" } } }));
+      writeFileSync(join(root, "package.json"), JSON.stringify({ dependencies: { expo: "*" } }));
+      writeFileSync(join(root, "app.config.js"), "require('node:fs').writeFileSync(__dirname + '/EXECUTED', 'unsafe'); throw new Error('must not run');");
+      expect((await detectExpoProject(executor, root))?.projectId).toBe("same-project");
+      expect(projectFromConfig(root, await readAppConfig(executor, root)).slug).toBe("existing-app");
+      expect(await readProjectIdFromPath(executor, root)).toBe("same-project");
+      expect(existsSync(join(root, "EXECUTED"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses the private EAS identity without changing public defaults", () => {
+    const base = { expo: { name: "LUXIPANEL", slug: "public", android: { package: "com.example.app" } } };
+    const local = { slug: "existing-app", extra: { eas: { projectId: "existing-project" } }, android: { package: "com.owner.app" } };
+    expect(projectFromConfig("/srv/mobile", mergeAppConfig(base, local))).toMatchObject({
+      name: "LUXIPANEL", slug: "existing-app", projectId: "existing-project", androidPackage: "com.owner.app",
+    });
+    expect(base.expo.slug).toBe("public");
+    expect(projectFromConfig("/srv/mobile", mergeAppConfig(base, null)).projectId).toBeNull();
+    expect(mergeAppConfig(null, null)).toBeNull();
+  });
+});
 
 describe("flattenConfig", () => {
   it("unwraps the app.json `expo` key", () => {

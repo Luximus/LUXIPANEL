@@ -69,16 +69,16 @@ describe("assistant message container", () => {
     expect(html).not.toContain('&quot;query&quot;');
   });
 
-  it("shows an API answer without raw tool disclosures", () => {
+  it("keeps API tool activity available alongside the answer", () => {
     const turn: ChatTurn = {
       role: "assistant", text: "Consulta completada.",
       tools: [{ id: "module-1", name: "chat.read", input: { secret: "private-input" }, result: { success: true, output: "private-output" } }],
     };
     const html = renderToStaticMarkup(createElement(TurnView, { turn, provider: "gemini" }));
     expect(html).toContain("Consulta completada.");
-    expect(html).not.toContain('data-message-section="console"');
-    expect(html).not.toContain("private-input");
-    expect(html).not.toContain("private-output");
+    expect(html).toContain('data-message-section="console"');
+    expect(html).toContain("chat.read");
+    expect(html).toContain("private-output");
   });
 
   it("offers the complete saved plan while keeping the approval controls visible", () => {
@@ -95,4 +95,25 @@ describe("assistant message container", () => {
     expect(html).toContain("Aprobar plan");
     expect(html).not.toContain("Resumen:");
   });
+});
+
+it("keeps a user recording above two collapsed text details without repeating a text bubble", () => {
+  const turn: ChatTurn = { role: "user", text: "Transcripción original", raw: "Forwarded text", tools: [], attachments: [{ name: "audio.webm", mimeType: "audio/webm", url: "data:audio/webm;base64,YXVkaW8=", voice: { transcript: "Transcripción original" } }] };
+  const html = renderToStaticMarkup(createElement(TurnView, { turn, provider: "codex" }));
+  expect(html).toContain("data-user-voice-message");
+  expect(html.match(/Transcripción original/g)).toHaveLength(1);
+  expect(html.match(/Forwarded text/g)).toHaveLength(1);
+  expect(html.indexOf("data-voice-recording")).toBeLessThan(html.indexOf("data-voice-transcript"));
+  expect(html.indexOf("data-voice-transcript")).toBeLessThan(html.indexOf("data-voice-forwarded"));
+  expect(html).not.toContain("<details open");
+});
+
+
+it("keeps inter-agent notices readable and separate from user messages", () => {
+  const turn: ChatTurn = { role: "user", text: "Mateo: revisión terminada, cambios listos para Marin.", auto: true, tools: [] };
+  const html = renderToStaticMarkup(createElement(TurnView, { turn, provider: "codex" }));
+  expect(html).toContain("data-team-notice");
+  expect(html).toContain("<summary");
+  expect(html).toContain("Mateo: revisión terminada");
+  expect(html).not.toContain("data-assistant-message");
 });

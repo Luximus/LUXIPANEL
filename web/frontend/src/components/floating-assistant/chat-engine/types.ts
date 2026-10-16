@@ -46,6 +46,8 @@ export interface ToolTrace {
 export interface TurnAttachment {
   name: string;
   mimeType: string;
+  /** Original user recording; only its transcript is sent to the agent. */
+  voice?: { transcript: string };
   /** Renderable src — a data: URL (just sent) or /api/ai/attachments/:id (history). */
   url: string;
 }

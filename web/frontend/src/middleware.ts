@@ -354,6 +354,10 @@ const authMiddleware = defineMiddleware(async (context, next) => {
     return applyNoCacheHeaders(context.redirect("/login"));
   }
 
+  if (user.github?.required && !user.github.connected) {
+    return applyNoCacheHeaders(context.redirect("/connect-github"));
+  }
+
   const requiredView = viewIdFromPath(panelPublicPath);
   if (requiredView && user.kind !== "admin") {
     const allowedViews = requiredView === "terminal.view"

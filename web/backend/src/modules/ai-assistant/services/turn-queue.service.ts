@@ -12,6 +12,8 @@
  * SSE/transport layer and calls into this service.
  */
 
+import { workerRunStarted, workerRunEnded } from "./team-tasks/worker-quota.js";
+import { liveVoiceSession } from "./realtime-state.js";
 import { agentService } from "./agent.service.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import type { Executor } from "../../../shared/executor/index.js";
@@ -29,10 +31,7 @@ import { teamTasksService } from "./team-tasks.service.js";
 import { cliJobTracker } from "./cli-job-tracker.service.js";
 import { isTerminalTaskStatus } from "../models/team-task.types.js";
 import type { AgentMessage } from "../models/agent-message.types.js";
-import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
-import { translationService } from "./translation.service.js";
-import { slashCommandsService } from "./slash-commands.service.js";
-import { PROVIDER_IDS, type ApprovalMode, type AssistantConfig, type AssistantProviderId } from "../models/assistant-config.types.js";
+import { PROVIDER_IDS, type ApprovalMode, type AssistantProviderId } from "../models/assistant-config.types.js";
 import type { AskQuestion } from "../models/ask.types.js";
 import { stripAskBlock } from "./ask-protocol.js";
 import { mintCrossMcpToken, mintGraphMcpToken } from "./mcp-run-tokens.js";
@@ -83,6 +82,8 @@ export async function persistUserMessage(
       .storeMany(executor, conversationId, attachments)
       .catch((err) => {
         log.warn({ err: (err as Error).message }, "agent: failed to persist attachments");
+        // Never turn a voice message into text-only history after a failed save.
+        if (attachments.some(a => a.voice)) throw err;
         return [];
       });
   }
@@ -163,123 +164,6 @@ export async function persistAssistantMessage(
       { unreviewed: true },
     )
     .catch(() => undefined);
-}
-
-// ── Background translation plumbing ─────────────────────────────────────────
-
-export interface TranslationPlan {
-  config: AssistantConfig;
-  /** The user's display language (ISO 639-1). */
-  lang: string;
-  /** Executor + conversation to attribute translation token usage against. */
-  executor: Executor | null;
-  conversationId: string;
-}
-
-export type TranslateHooks = NonNullable<Parameters<typeof startConversationRun>[0]["translate"]>;
-
-/**
- * Decide whether this turn should be translated in the background and, if so,
- * which language. Translation is INDEPENDENT of the agent provider/mode: it runs
- * for API and CLI providers alike. It always uses the SEPARATE translation engine
- * configured in the assistant settings (`translation.ai.providerId` / engine),
- * never the active chat provider — so e.g. a Claude-CLI chat is still translated
- * by the configured Codex/API engine. The detected language is pinned on the
- * conversation so later turns skip detection. Returns `null` when no translation
- * should happen.
- */
-export async function resolveTranslation(
-  executor: Executor | null,
-  conversationId: string,
-  _provider: AssistantProviderId | undefined,
-  lastUserText: string,
-): Promise<TranslationPlan | null> {
-  let config: AssistantConfig;
-  try {
-    config = await assistantConfigRepository.load(executor);
-  } catch {
-    return null;
-  }
-
-  let meta: Awaited<ReturnType<typeof conversationsRepository.getMeta>> = null;
-  try {
-    meta = await conversationsRepository.getMeta(executor, conversationId);
-  } catch {
-    /* ignore — treat as no meta */
-  }
-  // Per-conversation override wins over the global default.
-  const enabled = meta?.translate ?? config.translation.enabled;
-  if (!enabled) return null;
-
-  let lang = meta?.lang || config.translation.targetLanguage || "";
-  if (!lang) {
-    lang = await translationService.detectLanguage(config, lastUserText, { executor, conversationId });
-  }
-  // English (or undetectable) → nothing to translate. Pin "en" so we don't
-  // re-detect on every subsequent turn of this conversation.
-  if (!lang || lang === "en") {
-    if (!meta?.lang) {
-      await conversationsRepository.setTranslation(executor, conversationId, { lang: "en" }).catch(() => undefined);
-    }
-    return null;
-  }
-  if (!meta?.lang) {
-    await conversationsRepository.setTranslation(executor, conversationId, { lang }).catch(() => undefined);
-  }
-  return { config, lang, executor, conversationId };
-}
-
-/** Build the run-registry translation hooks from a resolved plan. */
-export function buildTranslateHooks(plan: TranslationPlan): TranslateHooks {
-  const { config, lang } = plan;
-  const usageCtx = { executor: plan.executor, conversationId: plan.conversationId };
-  return {
-    lang,
-    translateText: (en) =>
-      translationService.translate(config, stripAskBlock(en.replace(ANSI_RE, "")), "en", lang, usageCtx),
-    translateTextDetailed: (en) =>
-      translationService.translateDetailed(config, stripAskBlock(en.replace(ANSI_RE, "")), "en", lang, usageCtx),
-    translateAsk: async (questions) => {
-      // Batch: ONE engine call for every question + option (instead of N+M),
-      // using numbered sentinels the engines already preserve. Falls back to
-      // the per-item path if the translated segment count doesn't line up.
-      const segments: string[] = [];
-      for (const q of questions) {
-        segments.push(q.text);
-        for (const o of q.options ?? []) segments.push(o);
-      }
-      if (segments.length > 1) {
-        const joined = segments.map((s, i) => `⟦${i + 1}⟧ ${s}`).join("\n");
-        try {
-          const translated = await translationService.translate(config, joined, "en", lang, usageCtx);
-          const bySlot = new Map<number, string>();
-          const parts = translated.split(/⟦(\d+)⟧/);
-          for (let i = 1; i < parts.length; i += 2) {
-            bySlot.set(Number(parts[i]), (parts[i + 1] ?? "").trim());
-          }
-          if (segments.every((_, i) => (bySlot.get(i + 1) ?? "").length > 0)) {
-            let slot = 0;
-            return questions.map((q) => ({
-              ...q,
-              text: bySlot.get(++slot)!,
-              options: q.options ? q.options.map(() => bySlot.get(++slot)!) : q.options,
-            }));
-          }
-        } catch {
-          /* fall through to per-item translation */
-        }
-      }
-      return Promise.all(
-        questions.map(async (q) => ({
-          ...q,
-          text: await translationService.translate(config, q.text, "en", lang, usageCtx),
-          options: q.options
-            ? await Promise.all(q.options.map((o) => translationService.translate(config, o, "en", lang, usageCtx)))
-            : q.options,
-        })),
-      );
-    },
-  };
 }
 
 /** How many trailing conversation messages to replay as context on a drain. */
@@ -376,6 +260,7 @@ export function startConversationRun(args: {
     ...(args.panelOrigin ? { panelOrigin: args.panelOrigin } : {}),
   }).catch(() => undefined);
 
+  if (args.isWorker) workerRunStarted(args.userId, args.conversationId);
   agentRunRegistry.start({
     key: args.conversationId,
     provider: args.provider,
@@ -383,8 +268,8 @@ export function startConversationRun(args: {
     executor: args.executor,
     user: args.user,
     ...(args.isWorker ? { isWorker: true } : {}),
-    makeGen: () =>
-      agentService.run(args.messages, {
+    makeGen: async function* () {
+      yield* agentService.run(args.messages, {
         withContext: args.withContext,
         userId: args.userId,
         user: args.user,
@@ -405,10 +290,12 @@ export function startConversationRun(args: {
         // output is translated back to the user's language downstream).
         outputEnglish: Boolean(args.translate),
         signal: undefined, // the registry owns the AbortController
-      }),
+      });
+    },
     translate: args.translate,
     onEvent: recordUsage,
     onComplete: async (assistantText, errored, ask, translation, durationMs, cliLog, askKind, outcome) => {
+      if (args.isWorker) workerRunEnded(args.userId, args.conversationId);
       const tokens =
         tokensHolder.input + tokensHolder.output > 0
           ? {
@@ -467,7 +354,7 @@ export function startConversationRun(args: {
  * will drain) or the queue is empty.
  */
 export async function drainConversationQueue(executor: Executor, conversationId: string): Promise<void> {
-  if (agentRunRegistry.isActive(conversationId, executor.target.id)) return;
+  if (liveVoiceSession(conversationId, executor.target.id) || agentRunRegistry.isActive(conversationId, executor.target.id)) return;
   let next;
   try {
     next = await agentQueueRepository.takeNext(executor, conversationId);
@@ -477,26 +364,8 @@ export async function drainConversationQueue(executor: Executor, conversationId:
   }
   if (!next) return;
 
-  // Translate the queued turn the same way a live send would (API mode only).
-  // Slash commands (/mod, …) nunca se traducen (se interpretan literalmente).
-  // AUTO turns (system nudges, e.g. the team wake-up) skip translation too —
-  // they are internal instructions, not user text — and persist with the
-  // `auto` flag so the UI renders them as a system chip.
-  const plan = slashCommandsService.isSlash(next.userText) || next.auto
-    ? null
-    : await resolveTranslation(executor, conversationId, next.provider, next.userText);
-  let translate: ReturnType<typeof buildTranslateHooks> | undefined;
-  if (plan) {
-    const englishInput = await translationService.translate(plan.config, next.userText, plan.lang, "en", {
-      executor,
-      conversationId,
-    });
-    await persistUserMessage(executor, conversationId, englishInput, next.provider, next.attachments, {
-      textOriginal: next.userText,
-      lang: plan.lang,
-    });
-    translate = buildTranslateHooks(plan);
-  } else if (next.auto) {
+  // Persist queued turns exactly as entered; the agent receives the same text.
+  if (next.auto) {
     await conversationsRepository
       .appendMessages(executor, conversationId, [
         { role: "user", provider: next.provider, content: next.userText, ts: new Date().toISOString(), auto: true },
@@ -559,7 +428,6 @@ export async function drainConversationQueue(executor: Executor, conversationId:
     ...(panelOrigin ? { panelOrigin } : {}),
     ...(crossMcpToken ? { crossMcpToken } : {}),
     ...(graphMcpToken ? { graphMcpToken } : {}),
-    translate,
   });
 }
 

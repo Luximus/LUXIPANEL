@@ -41,6 +41,11 @@ export type AssistantMessages = {
     noPermission: string;
   };
   settingsModal: {
+    chatProjects: {
+      title: string; description: string; loading: string; loadError: string; retry: string;
+      empty: string; count: string; showAll: string; hideAll: string; search: string;
+      noMatches: string; hint: string; saveError: string;
+    };
     buttonLabel: string;
     title: string;
     description: string;

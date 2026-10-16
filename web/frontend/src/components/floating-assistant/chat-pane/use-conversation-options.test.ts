@@ -11,8 +11,8 @@ const data: Record<string, any> = {
   a: { id: "a", provider: "codex", projectId: "pa", model: "ma", effort: "high", approvalMode: "plan" },
   b: { id: "b", provider: "codex", projectId: null, model: "mb", effort: "low", approvalMode: "manual" },
 };
-function View({ id, provider = "codex" }: { id: string | null; provider?: string }) {
-  value = useConversationOptions({ id, provider, active: true, defaultModel: "default", defaultApproval: "manual", onRestoreProvider: restore });
+function View({ id, provider = "codex", effort = "" }: { id: string | null; provider?: string; effort?: "" | "low" | "high" | "xhigh" }) {
+  value = useConversationOptions({ id, provider, active: true, defaultModel: "default", defaultEffort: effort, defaultApproval: "manual", onRestoreProvider: restore });
   return null;
 }
 const render = async (id: string | null, provider?: string) => { await act(async () => root.render(createElement(View, { id, provider }))); };
@@ -63,4 +63,26 @@ it("new and legacy chats cannot inherit the preceding chat's approval or model",
   expect(value).toMatchObject({ selectedModel: "default", selectedEffort: "Auto", approvalMode: "manual" });
   vi.mocked(assistantConversationsApi.get).mockResolvedValueOnce({ id: "old", provider: "codex" } as any);
   await render("old"); expect(value).toMatchObject({ selectedModel: "", selectedEffort: "Auto", approvalMode: "manual" });
+});
+
+it("uses the latest reasoning default for a new chat while preserving saved choices", async () => {
+  await act(async () => root.render(createElement(View, { id: null, effort: "high" })));
+  expect(value.selectedEffort).toBe("High");
+  await act(async () => value.setSelectedEffort("Low"));
+  expect(value.snapshot().effort).toBe("low");
+  await act(async () => root.render(createElement(View, { id: "b", effort: "high" })));
+  expect(value.selectedEffort).toBe("Low");
+  await act(async () => root.render(createElement(View, { id: null, effort: "xhigh" })));
+  expect(value.selectedEffort).toBe("Extra");
+  await act(async () => value.setSelectedEffort("Low"));
+  await act(async () => value.resetNew("default"));
+  expect(value.snapshot().effort).toBe("xhigh");
+});
+it("keeps legacy and explicitly automatic conversations automatic", async () => {
+  for (const effort of [undefined, ""] as const) {
+    vi.mocked(assistantConversationsApi.get).mockResolvedValueOnce({ id: "legacy", provider: "codex", effort } as any);
+    await act(async () => root.render(createElement(View, { id: "legacy", effort: "high" })));
+    expect(value.selectedEffort).toBe("Auto");
+    await render(null);
+  }
 });

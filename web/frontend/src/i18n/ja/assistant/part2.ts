@@ -19,8 +19,8 @@ const assistantPart2 = {
   },
   "voiceSettings": {
     "title": "音声（オーディオ）",
-    "description": "アシスタントに話しかけ（テキストに文字起こしされます）、その回答を音声で聞くことができます。すでに設定済みのOpenAIまたはGeminiのAPI keyを使用します。",
-    "missingCapabilities": "音声を有効にするには、プロバイダーのカードでOpenAI（文字起こし＋音声）またはGemini（文字起こしのみ）のAPI keyを設定してください。",
+    "description": "OpenAI を使ってアシスタントに話しかけ、回答を音声で聞けます。",
+    "missingCapabilities": "音声を有効にするには、Codex プロバイダーに OpenAI API キーを設定してください。",
     "inputLabel": "入力（STT）",
     "outputLabel": "出力（TTS）",
     "notAvailable": "利用不可",

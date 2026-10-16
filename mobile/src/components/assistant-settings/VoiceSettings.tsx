@@ -1,3 +1,4 @@
+import { chatStore } from "../../features/assistant/chat-store";
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { luxAssistantProxy } from "../../api/client";
@@ -15,6 +16,7 @@ type TtsProvider = "api" | "cli" | "minimax-cli";
 const OPENAI_TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"];
 
 type VoiceCfg = {
+  realtimeEnabled?: boolean;
   enabled: boolean;
   ttsProvider: TtsProvider;
   autoSpeak: boolean;
@@ -59,6 +61,8 @@ export function VoiceSettings({
       const res = await luxAssistantProxy<{ config?: ConfigWithVoice }>(
         panelId, token, "PUT", "/api/ai/config", { voice: patch },
       );
+      if (!res) return;
+      if (patch.realtimeEnabled !== undefined || patch.enabled !== undefined) chatStore.patchComposer(panelId, { realtimeEnabled: !!(res.config?.voice?.realtimeEnabled ?? patch.realtimeEnabled ?? voice?.realtimeEnabled) && !!(res.config?.voice?.enabled ?? patch.enabled ?? voice?.enabled) });
       if (res?.config?.voice) setVoice(res.config.voice);
       else setVoice((cur) => (cur ? { ...cur, ...patch } : cur));
     } finally {
@@ -83,6 +87,8 @@ export function VoiceSettings({
         tokens={tokens}
       />
 
+      <ToggleRow label="Voz en tiempo real" value={!!voice?.realtimeEnabled}
+        disabled={busy || !voice || !enabled} onChange={(v) => void save({ realtimeEnabled: v })} tokens={tokens} />
       {enabled ? (
         <>
           <View>

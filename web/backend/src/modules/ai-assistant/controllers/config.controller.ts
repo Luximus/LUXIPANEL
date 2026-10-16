@@ -17,12 +17,14 @@ import { ValidationError } from "../../../shared/errors/index.js";
 import { assistantNotFound } from "./not-found-i18n.js";
 import { zodIssues } from "../../../shared/validators/index.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
+import { makeOpenAiVoice } from "../services/voice/openai-voice.js";
 import {
   PROVIDER_IDS,
   COMPLEXITY_TIERS,
   APPROVAL_MODES,
   AGENTS_TABS,
   CONVERSATIONS_TABS,
+  CHAT_REASONING_EFFORTS,
   isAssistantProviderId,
   redactAssistantConfig,
   type AssistantConfig,
@@ -45,14 +47,16 @@ const configPatchSchema = z.object({
   // provider model id — kept as a short free string (models vary per provider).
   defaultChatProvider: z.enum(PROVIDER_IDS).nullable().optional(),
   defaultChatModel: z.string().max(128).nullable().optional(),
+  defaultChatEffort: z.enum(CHAT_REASONING_EFFORTS).nullable().optional(),
   // Voice (audio in/out) settings — merged field-by-field by the repo. The
   // engines reuse provider keys, so there's no secret here to set separately.
   voice: z
     .object({
       enabled: z.boolean().optional(),
-      sttEngine: z.enum(["openai", "gemini", "auto"]).optional(),
-      ttsEngine: z.enum(["openai", "gemini", "auto"]).optional(),
-      ttsProvider: z.enum(["api", "cli", "minimax-cli"]).optional(),
+      realtimeEnabled: z.boolean().optional(),
+      sttEngine: z.enum(["openai", "auto"]).optional(),
+      ttsEngine: z.enum(["openai", "auto"]).optional(),
+      ttsProvider: z.literal("api").optional(),
       autoSpeak: z.boolean().optional(),
       voice: z.string().max(64).optional(),
     })
@@ -80,7 +84,7 @@ const providerPatchSchema = z
     active: z.boolean().optional(),
     api: z
       .object({
-        apiKey: z.string().max(512).optional(),
+        apiKey: z.string().trim().max(512).optional(),
         model: z.string().min(1).max(128).optional(),
         baseUrl: z.string().url().max(512).optional(),
       })
@@ -155,6 +159,8 @@ export const assistantConfigController = {
       next.defaultChatProvider = parsed.data.defaultChatProvider ?? undefined;
     if (parsed.data.defaultChatModel !== undefined)
       next.defaultChatModel = parsed.data.defaultChatModel ?? undefined;
+    if (parsed.data.defaultChatEffort !== undefined)
+      next.defaultChatEffort = parsed.data.defaultChatEffort ?? undefined;
     if (parsed.data.voice !== undefined) next.voice = parsed.data.voice as AssistantConfig["voice"];
     if (parsed.data.approval !== undefined) next.approval = parsed.data.approval as AssistantConfig["approval"];
     const saved = await assistantConfigRepository.patch(next, executor);
@@ -197,9 +203,9 @@ export const assistantConfigController = {
   /**
    * POST /api/ai/config/providers/:id/test
    *
-   * Quick reachability/auth probe per provider. For F2' we ship a stub
-   * that validates "has the field needed for the chosen mode"; F4 plugs in
-   * the actual HTTP ping (API mode) or CLI status check (CLI mode).
+   * OpenAI validates the saved API key against the same endpoint/config used
+   * by voice, including in CLI mode: CLI login does not authenticate audio.
+   * Other providers retain their local configuration/installation checks.
    */
   testProvider: asyncHandler(async (req: Request, res: Response) => {
     const id = req.params["id"];
@@ -207,6 +213,11 @@ export const assistantConfigController = {
     const executor = getExecutor(req);
     const cfg = await assistantConfigRepository.load(executor);
     const provider = cfg.providers[id as AssistantProviderId];
+    if (id === "codex") {
+      const result = await makeOpenAiVoice(cfg).ping();
+      res.json({ ...result, probedAt: new Date().toISOString() });
+      return;
+    }
     if (provider.mode === "api") {
       const hasKey = (provider.api?.apiKey ?? "").length > 0;
       const hasModel = (provider.api?.model ?? "").length > 0;

@@ -373,7 +373,7 @@ export async function buildSystemPrompt(
       "\n\n## Aislamiento de tarea (copia de trabajo)\n" +
       `Trabajas en una COPIA aislada del proyecto: ${forcedCwd}\n` +
       "Haz TODOS los cambios dentro de esa ruta (es un git worktree con rama propia). " +
-      "Al terminar tu trabajo, haz commit de los cambios (git add -A && git commit -m \"<resumen>\").";
+      "El panel guarda y publica los cambios de LUXIPANEL automáticamente al terminar correctamente. No publiques ni despliegues desde esta copia; las compilaciones se serializan por servidor.";
   }
 
   // Custom-agent context: attached PARENT projects + ALL their child/related
@@ -710,5 +710,10 @@ export async function buildSystemPrompt(
       "usuario\" — for this run, English is the required output language.";
   }
 
+  if(forcedCwd?.includes("/.lxp/owner-workspaces/")){
+    const workspace=forcedCwd.split("/.lxp/owner-workspaces/")[0]+"/.lxp/owner-workspaces/"+forcedCwd.split("/.lxp/owner-workspaces/")[1]!.split("/")[0];
+    jailPaths.splice(0,jailPaths.length,workspace,env.ASSISTANT_BROWSER_SHOT_DIR);
+    systemPrompt+="\nLa única ruta editable de esta tarea es "+workspace+". Las rutas originales del proyecto son referencias de contexto: resuelve sus archivos dentro de esta copia. El envío a GitHub lo confirma el panel; no lo anuncies como terminado desde el agente.";
+  }
   return { systemPrompt, systemContext, tools, cwd, jailPaths, cliTeamLeader, ...(graphMcp ? { graphMcp } : {}) };
 }

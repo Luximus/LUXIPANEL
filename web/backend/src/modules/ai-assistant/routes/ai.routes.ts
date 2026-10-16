@@ -27,7 +27,7 @@ import { panelPairingController } from "../controllers/panel-pairing.controller.
 import { officeConnectorsController } from "../controllers/office-connectors.controller.js";
 import { notifyPrefsController } from "../controllers/notify-prefs.controller.js";
 import { storageController } from "../controllers/storage.controller.js";
-import { translationController } from "../controllers/translation.controller.js";
+import { realtimeController, rejectTextDuringLiveVoice } from "../controllers/realtime.controller.js";
 import { voiceController } from "../controllers/voice.controller.js";
 import { projectMapController } from "../controllers/project-map.controller.js";
 import { teamTemplatesController } from "../controllers/team-templates.controller.js";
@@ -94,15 +94,15 @@ protectedRouter.post("/mcp/repair", mcpController.repair);
 protectedRouter.post("/servers/:id/pair", panelPairingController.pair);
 
 protectedRouter.get("/status", chatController.status);
-protectedRouter.post("/chat", chatController.chat);
-protectedRouter.post("/agent", (req, res) => agentController.run(req, res));
+protectedRouter.post("/chat", rejectTextDuringLiveVoice, chatController.chat);
+protectedRouter.post("/agent", rejectTextDuringLiveVoice, (req, res) => agentController.run(req, res));
 protectedRouter.get("/agent/stream", (req, res) => agentController.attach(req, res));
 protectedRouter.get("/agent/active", (req, res) => agentController.activeRuns(req, res));
 protectedRouter.post("/agent/stop", (req, res) => agentController.stop(req, res));
-protectedRouter.post("/agent/input", (req, res) => agentController.input(req, res));
+protectedRouter.post("/agent/input", rejectTextDuringLiveVoice, (req, res) => agentController.input(req, res));
 protectedRouter.post("/agent/permission", (req, res) => agentController.permission(req, res));
 protectedRouter.post("/agent/resume", (req, res) => agentController.resume(req, res));
-protectedRouter.post("/agent/enqueue", (req, res) => agentController.enqueue(req, res));
+protectedRouter.post("/agent/enqueue", rejectTextDuringLiveVoice, (req, res) => agentController.enqueue(req, res));
 protectedRouter.get("/agent/queue", (req, res) => agentController.queueList(req, res));
 protectedRouter.get("/agent/queue/:id", (req, res) => agentController.queueGet(req, res));
 protectedRouter.delete("/agent/queue/:id", (req, res) => agentController.queueCancel(req, res));
@@ -143,12 +143,13 @@ protectedRouter.get("/cli/:provider/status", cliController.status);
 protectedRouter.get("/voice/capabilities", voiceController.capabilities);
 protectedRouter.post("/voice/transcribe", voiceController.transcribe);
 protectedRouter.post("/voice/speak", voiceController.speak);
+protectedRouter.get("/realtime/conversations/:conversationId", realtimeController.conversation);
+protectedRouter.get("/realtime/capabilities", realtimeController.capabilities);
+protectedRouter.post("/realtime/sessions", realtimeController.start);
+protectedRouter.get("/realtime/sessions/:id", realtimeController.snapshot);
+protectedRouter.delete("/realtime/sessions/:id", realtimeController.stop);
+protectedRouter.post("/realtime/sessions/:id/answer", realtimeController.answer);
 
-// Background translation (engine + keys + per-conversation override).
-protectedRouter.get("/translation/config", translationController.getConfig);
-protectedRouter.put("/translation/config", translationController.setConfig);
-protectedRouter.post("/translation/test", translationController.test);
-protectedRouter.post("/translation/detect", translationController.detect);
 
 // Conversation history (ChatGPT-style threads, per-target).
 protectedRouter.get("/conversations", conversationsController.list);
@@ -162,7 +163,6 @@ protectedRouter.get("/conversations/:id/session", conversationsController.sessio
 protectedRouter.get("/conversations/:id/context", conversationsController.context);
 protectedRouter.post("/conversations/:id/compact", conversationsController.compact);
 protectedRouter.post("/conversations/:id/reviewed", conversationsController.markReviewed);
-protectedRouter.patch("/conversations/:id/translate", translationController.setConversation);
 protectedRouter.patch("/conversations/:id", conversationsController.rename);
 protectedRouter.delete("/conversations/:id", conversationsController.remove);
 
@@ -296,6 +296,6 @@ router.use("/api/ai", protectedRouter);
 
 export { router as aiRouter };
 
-registerModuleOperations("assistant", protectedRouter, { prefix: "/api/ai" });
+registerModuleOperations("assistant", protectedRouter, { prefix: "/api/ai", include: path => !path.startsWith("/api/ai/realtime/") });
 
 for (const id of ["google-drive", "onedrive", "dropbox", "notion"]) registerModuleOperations(id, protectedRouter, { prefix: "/api/ai", include: path => path.startsWith("/api/ai/connectors/"), fixedParams: { id } });

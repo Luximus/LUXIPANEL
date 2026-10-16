@@ -3,6 +3,7 @@ vi.mock('@/lib/api-client',()=>({api:{get:vi.fn()},TARGET_SCOPE_SESSION_KEY:'pan
 import{api}from'@/lib/api-client';
 beforeEach(()=>{vi.resetModules();vi.mocked(api.get).mockReset();sessionStorage.clear();});
 describe('saved Terminal startup',()=>{
+ it('starts Codex with terminal scrollback instead of a fullscreen transcript',async()=>{const s=await import('./startup');vi.mocked(api.get).mockResolvedValue({ok:true,data:{active:'codex'}});await s.refreshStartupCli();expect(s.getModeInitialCommand()).toBe('codex --no-alt-screen');});
  it('resolves Opencode and Default from saved state instead of always starting a shell',async()=>{const s=await import('./startup');vi.mocked(api.get).mockResolvedValue({ok:true,data:{active:'opencode'}});await s.refreshStartupCli();expect(s.getModeInitialCommand()).toBe('opencode');vi.mocked(api.get).mockResolvedValue({ok:true,data:{active:'default'}});await s.refreshStartupCli();expect(s.getModeInitialCommand()).toBeNull();});
  it('uses the registry binary for CLIs whose id differs from their command',async()=>{const s=await import('./startup');vi.mocked(api.get).mockResolvedValue({ok:true,data:{active:'cursor'}});await s.refreshStartupCli();expect(s.getModeInitialCommand()).toBe('cursor-agent');});
  it('never executes arbitrary values returned in the active field',async()=>{const s=await import('./startup');vi.mocked(api.get).mockResolvedValue({ok:true,data:{active:'opencode;touch /tmp/invalid'}});await s.refreshStartupCli();expect(s.getModeInitialCommand()).toBeNull();});

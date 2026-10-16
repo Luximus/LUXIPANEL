@@ -19,8 +19,8 @@ const assistantPart2 = {
   },
   "voiceSettings": {
     "title": "Stimme (Audio)",
-    "description": "Sprich mit dem Assistenten (wird in Text transkribiert) und höre dir seine Antworten als Sprache an. Verwendet den bereits konfigurierten API-Schlüssel von OpenAI oder Gemini.",
-    "missingCapabilities": "Konfiguriere einen API-Schlüssel von OpenAI (Transkription + Sprache) oder Gemini (nur Transkription) in den Anbieter-Karten, um das Audio zu aktivieren.",
+    "description": "Sprich mit dem Assistenten und höre seine Antworten über OpenAI.",
+    "missingCapabilities": "Konfiguriere einen OpenAI-API-Schlüssel beim Codex-Anbieter, um Audio zu aktivieren.",
     "inputLabel": "Eingabe (STT)",
     "outputLabel": "Ausgabe (TTS)",
     "notAvailable": "nicht verfügbar",
