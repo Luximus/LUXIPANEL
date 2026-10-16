@@ -79,3 +79,6 @@ Los trabajadores y los turnos generales usan `assistant-message-persistence` par
 
 ### Esfuerzo de tareas delegadas (2026-10-16)
 `createWorkerConversation` guarda `defaultChatEffort` en los metadatos del nuevo chat cuando hay una selección explícita. Los trabajadores inmediatos, diferidos y sus reintentos leen ese valor como cualquier conversación; cambiar el valor predeterminado no altera las tareas ya creadas. `agents.delegate`, que no crea conversación, pasa la selección como opción de su ejecución. Un valor vacío o ausente conserva el razonamiento automático. El modelo sigue resolviéndose desde la configuración del agente.
+
+### Reconciliación de aportes (2026-10-16)
+La entrega intenta aplicar el parche directamente y, si la base remota avanzó, combina tres vías con los blobs capturados dentro de su índice privado. Los conflictos o bases ausentes siguen bloqueando el envío; una combinación limpia pasa las mismas comprobaciones de formato, rutas, secretos y JSON. Si no quedan diferencias, se registra la revisión remota como integración existente sin crear un commit vacío. Los errores de espacios o líneas vacías finales se explican sin revelar la salida original de Git.

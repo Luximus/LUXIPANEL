@@ -20,6 +20,8 @@ Excluye credenciales, .env, carpetas privadas, artefactos y otros proyectos. Com
 
 El commit usa la identidad GitHub verificada. El envío se confirma consultando el historial remoto; un resultado incierto se contrasta antes de repetirlo. Los fallos de conexión se reintentan con espera. Conflictos y permisos insuficientes quedan pendientes y visibles en la conexión GitHub del propietario. No hay force-push.
 
+Si el parche ya no aplica directamente, la entrega intenta una combinación de tres vías usando los blobs capturados y el índice privado. Solo continúa si Git combina los cambios sin conflictos y pasan las validaciones habituales; no modifica el checkout ni normaliza espacios automáticamente. Cuando el resultado ya coincide con developer, registra la integración existente sin crear otro commit. Los rechazos de formato se identifican explícitamente sin registrar fragmentos de código ni credenciales.
+
 La base capturada puede contener cambios locales anteriores que aún no existen en developer. En ese caso los parches incrementales pueden depender de archivos ausentes o de código distinto: el estado distingue esta base pendiente de los conflictos de aplicación. Antes de habilitar envíos efectivos hay que reconciliar la base publicada con el código del que parten las tareas; reintentar el mismo parche no lo resuelve. El validador detecta cabeceras binarias reales, no menciones de esas cabeceras dentro del código fuente.
 
 Los módulos independientes de web/modules conservan su flujo de PR a modules desde Dev. Un parche que incluya esos módulos queda pendiente para separar entregas. Los módulos integrados bajo web/backend/src/modules forman parte del núcleo y van a developer.

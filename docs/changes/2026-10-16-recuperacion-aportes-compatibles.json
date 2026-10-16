@@ -1,0 +1,8 @@
+{
+  "title": "Recuperación de aportes compatibles",
+  "changes": [
+    "Los aportes pueden combinarse con cambios compatibles que ya llegaron a la rama de desarrollo, conservando los conflictos reales para revisión.",
+    "Los cambios ya incorporados se reconocen sin crear publicaciones duplicadas.",
+    "Los bloqueos por espacios sobrantes o líneas vacías al final de un archivo muestran una explicación concreta."
+  ]
+}

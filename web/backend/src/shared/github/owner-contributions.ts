@@ -65,6 +65,7 @@ export function contributionFailure(error:unknown):{transient:boolean;message:st
  // Inspect process output for classification only; never store raw Git errors,
  // which may include authorization headers or source snippets.
  const text=[error instanceof Error?error.message:"",typeof detail?.stderr==="string"?detail.stderr:"",typeof detail?.stdout==="string"?detail.stdout:""].join("\n");
+ if(/new blank line at EOF|trailing whitespace|space before tab in indent/i.test(text))return {transient:false,message:"La validación de formato detectó espacios sobrantes o una línea vacía al final de un archivo. Corrige el formato, incluidos los archivos nuevos; el aporte está guardado."};
  if(/workflow/i.test(text)&&/scope|permission|refusing/i.test(text))return {transient:false,message:"La conexión GitHub necesita permiso workflow para publicar cambios de Actions. El commit y los archivos están guardados."};
  if(/secret scanning|push protection|detected secret/i.test(text))return {transient:false,message:"GitHub bloqueó el aporte por una posible credencial. Revisa el contenido antes de publicarlo; los archivos están guardados."};
  if(/GH006|GH013|protected branch|rule violations/i.test(text))return {transient:false,message:"GitHub rechazó el aporte por las reglas de la rama. Revisa las comprobaciones o revisiones requeridas; los archivos están guardados."};
@@ -371,16 +372,28 @@ export async function deliverContribution(job:ContributionJob, remoteUrl = REMOT
  }else{
   const opts={GIT_INDEX_FILE:path.join(dir,"delivery.index")};
   await contributionGit(cwd,["read-tree",remote],opts);
+  let applied=false;
   try{await contributionGit(cwd,["apply","--check","--cached",patchFile],opts);}
   catch(error){
-   const details=String((error as {stderr?:string}).stderr??"");
-   if(/does not exist in index|No such file or directory/.test(details))
-    throw new ContributionDeliveryError("base-missing","developer todavía no contiene archivos anteriores de los que depende este aporte. Hay que sincronizar esa base antes de enviarlo; el parche está conservado.");
-   throw new ContributionDeliveryError("patch-conflict","El aporte no coincide con el código de developer. Hay cambios previos pendientes o conflictos que deben resolverse antes de enviarlo; el parche está conservado.");
+   // Captured blob identities let Git merge compatible changes or recognize
+   // edits already present upstream. Conflicts stay in the private index;
+   // neither the running checkout nor the operator's index is modified.
+   try{await contributionGit(cwd,["apply","--3way","--cached",patchFile],opts);applied=true;}
+   catch{
+    const details=String((error as {stderr?:string}).stderr??"");
+    if(/does not exist in index|No such file or directory/.test(details))
+     throw new ContributionDeliveryError("base-missing","developer todavía no contiene archivos anteriores de los que depende este aporte. Hay que sincronizar esa base antes de enviarlo; el parche está conservado.");
+    throw new ContributionDeliveryError("patch-conflict","El aporte no coincide con el código de developer. Hay cambios previos pendientes o conflictos que deben resolverse antes de enviarlo; el parche está conservado.");
+   }
   }
-  await contributionGit(cwd,["apply","--cached",patchFile],opts);
+  if(!applied)await contributionGit(cwd,["apply","--cached",patchFile],opts);
   await contributionGit(cwd,["diff","--cached","--check",remote],opts);
   const staged=(await contributionGit(cwd,["diff","--cached","--name-only","-z",remote],opts)).split("\0").filter(Boolean);
+  if(!staged.length){
+   job.commit=remote;job.base=remote;job.integratedBy=remote;job.status="pushed";
+   job.pushedAt??=new Date().toISOString();job.ci="pending";job.error=undefined;
+   await saveContribution(job);return;
+  }
   if(staged.some(f=>!publishablePath(f)||f.startsWith("web/modules/")))throw new Error("El aporte incluye rutas fuera del código permitido.");
   const remaining=(await contributionGit(cwd,["diff","--cached","--diff-filter=d","--name-only","-z",remote],opts)).split("\0").filter(Boolean);
   for(const f of remaining){

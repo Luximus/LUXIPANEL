@@ -32,6 +32,11 @@ describe("maintainer contribution snapshots",()=>{
   expect(failure("remote rejected")).toMatchObject({transient:false});
   expect(failure("remote rejected").message).not.toContain("private-value");
  });
+ it("explains whitespace validation without exposing source or credentials",()=>{
+  const error=Object.assign(new Error("git failed AUTHORIZATION: private-value"),{stdout:"web/new.ts:72: new blank line at EOF.\n+private-source"});
+  expect(contributionFailure(error)).toMatchObject({transient:false,message:expect.stringContaining("validación de formato")});
+  expect(contributionFailure(error).message).not.toMatch(/private-value|private-source/);
+ });
  it("excludes credentials, private projects, binaries and runtime files",()=>{
   for(const p of ["web/backend/.env","web/backend/.env.production","web/backend/private/a.ts","web/backend/node_modules/pkg/index.js","web/frontend/dist/a.js","LP-LICENSE-SERVER/src/app.ts","../web/a.ts","web/backend/tokens.json","desktop/cert.p12"])expect(publishablePath(p),p).toBe(false);
   for(const p of ["web/backend/src/app.ts","web/frontend/src/components/Credentials.tsx","mobile/src/app.tsx","docs/CHANGELOG.md"])expect(publishablePath(p),p).toBe(true);
@@ -196,6 +201,44 @@ it.each(["success","missing-base","conflict"])("verifies actual Git delivery wit
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 
+
+it.each(["already-applied","compatible","partial"])("recovers %s edits against a newer remote without touching the checkout",async scenario=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"lxp-delivery-merge-"));
+ const git=(cwd:string,...args:string[])=>execFileSync("git",args,{cwd,encoding:"utf8",stdio:["ignore","pipe","pipe"]});
+ try{
+  config.LUXIPANEL_CONFIG_DIR=root;
+  const seed=path.join(root,"seed"),remote=path.join(root,"remote.git");await fs.mkdir(seed);
+  git(seed,"init","-q");git(seed,"config","user.name","Test");git(seed,"config","user.email","test@example.invalid");
+  await fs.mkdir(path.join(seed,"web/src"),{recursive:true});
+  const initial=Array.from({length:12},(_,n)=>`export const line${n}=${n};\n`).join("");
+  const incoming=initial.replace("line2=2","line2=20");
+  const filename=path.join(seed,"web/src/a.ts");await fs.writeFile(filename,initial);
+  git(seed,"add",".");git(seed,"commit","-qm","base");git(seed,"branch","-M","developer");git(root,"clone","--bare",seed,remote);
+  const before=await captureSource(seed,path.join(root,"before.index"));
+  await fs.writeFile(filename,incoming);
+  if(scenario==="partial")await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const added=true;\n");
+  const after=await captureSource(seed,path.join(root,"after.index"));
+  const patch=git(seed,"diff","--binary",before,after);
+  if(scenario==="partial")await fs.unlink(path.join(seed,"web/src/b.ts"));
+  await fs.writeFile(filename,scenario==="compatible"?initial.replace("line4=4","line4=40"):incoming);
+  git(seed,"add","web/src/a.ts");git(seed,"commit","-qm","remote edit");git(seed,"push",remote,"developer");
+  const upstream=git(seed,"rev-parse","HEAD").trim(),index=await fs.readFile(path.join(seed,".git/index"));
+  const live=await fs.readFile(filename,"utf8");
+  const id=randomUUID(),dir=path.join(root,"github-users/contributions",id);await fs.mkdir(dir,{recursive:true});
+  const patchFile=path.join(dir,"change.patch");await fs.writeFile(patchFile,patch);
+  expect(()=>git(seed,"apply","--check","--cached",patchFile)).toThrow();
+  const job:ContributionJob={id,conversationId:"test",root:seed,user:{userId:1,username:"test",displayName:"Test",kind:"admin",role:"admin",modules:[]},before,head:upstream,status:"pending",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),patchHash:createHash("sha256").update(patch).digest("hex")};
+  await deliverContribution(job,remote,async u=>u);
+  expect(job.status).toBe("pushed");
+  expect(git(remote,"show","developer:web/src/a.ts")).toBe(scenario==="compatible"?incoming.replace("line4=4","line4=40"):incoming);
+  if(scenario==="partial")expect(git(remote,"show","developer:web/src/b.ts")).toBe("export const added=true;\n");
+  expect(git(remote,"rev-list","--count","developer").trim()).toBe(scenario==="already-applied"?"2":"3");
+  if(scenario==="already-applied")expect(job.integratedBy).toBe(upstream);
+  expect(await fs.readFile(filename,"utf8")).toBe(live);
+  expect(await fs.readFile(path.join(seed,".git/index"))).toEqual(index);
+  expect(git(seed,"rev-parse","HEAD").trim()).toBe(upstream);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
 
 describe("original project contributions and legacy worktree compatibility",()=>{
  let root:string,seed:string,remote:string;
