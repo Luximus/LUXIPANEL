@@ -157,7 +157,6 @@ export default function CommunityActivity({ labels: L, locale, status, installed
       <i className="ti ti-brand-github text-lg" aria-hidden="true" /><span className="font-mono">{installed}</span>
       {update && <span data-release-notification className="lxp-release-new-badge lxp-update-badge" style={{ backgroundColor: branchColor("releases") }} role="status">{L.newBadge}<span className="sr-only"> · {L.newVersion}: {status?.latest?.tag}</span></span>}
       {branchUpdates.map((item, index) => <span key={item.name} data-branch-notification={item.name} className={`lxp-update-badge ${update || index > 0 ? "lxp-update-dot" : ""}`} style={{ backgroundColor: branchColor(item.name), color: item.name === "developer" ? "#422006" : "#fff" }} aria-label={L.branchColorHelp.replace("{branch}", item.name)} title={L.branchColorHelp.replace("{branch}", item.name)}>{item.name}<span className="sr-only"> · {L.newBadge}</span></span>)}
-      {!!feed?.unread && <span className="rounded-full bg-primary px-1.5 text-primary-foreground">{feed.unread}</span>}
     </button>
     <dialog ref={dialog} aria-label={L.title} onCancel={event => { if (help.current?.open) { event.preventDefault(); help.current.open = false; } }} onClose={() => setOpened(false)} className="lxp-community-drawer border border-border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/40">
       <header className="lxp-community-header">
