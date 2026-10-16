@@ -1,0 +1,6 @@
+{
+  "title": "Fecha y hora en las notas de versión",
+  "changes": [
+    "Las notas de versión de cada rama muestran la fecha con horas y minutos, según el idioma del panel y la zona horaria del navegador."
+  ]
+}

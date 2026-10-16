@@ -37,7 +37,7 @@ export default function BranchChanges({ branch, locale, status, labels: L, canIn
         return <article key={note.id} className="lxp-branch-note">
         <h4 className="font-semibold">{note.title}</h4>
         <div className="lxp-branch-note-meta">
-          {note.date && Number.isFinite(Date.parse(note.date)) && <time className="text-xs text-muted-foreground" dateTime={note.date}>{new Date(note.date).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}</time>}
+          {note.date && Number.isFinite(Date.parse(note.date)) && <time className="text-xs text-muted-foreground" dateTime={note.date}>{new Date(note.date).toLocaleString(locale, { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</time>}
           {commit && <a className="lxp-branch-note-link" href={`https://github.com/Luxisoft/LUXIPANEL/commit/${commit}`} target="_blank" rel="noopener noreferrer" aria-label={`${L.openGithub}: ${commit.slice(0, 8)}`} title={`${L.openGithub} · ${commit}`}><i className="ti ti-git-commit" aria-hidden="true" /><code>{commit.slice(0, 8)}</code><i className="ti ti-arrow-up-right" aria-hidden="true" /></a>}
         </div>
         <ul>{note.changes.map((change, index) => <li key={index}>{change}</li>)}</ul>
