@@ -16,6 +16,9 @@ import { usePromptDictation } from "./use-prompt-dictation";
 import { createPortal } from "react-dom";
 import { formatAssistantMessage, useAssistantI18n } from "../i18n";
 import { chatEngine } from "../chat-engine";
+import { resolveTargetScope } from "@/lib/api-client";
+import { groupTeamNotices, isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
+import { ExecutionDisclosure } from "./tool-disclosure";
 import { assistantConversationsApi, type ConversationMeta } from "../assistant-api";
 import { PROVIDER_META, SLASH_COMMANDS, type AssistantProviderId, type ApprovalMode } from "../assistant-api";
 import { formatTokens } from "@/lib/format";
@@ -254,12 +257,10 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     for (let i = turns.length - 1; i >= 0; i--) if (turns[i]?.role === "user") return i;
     return -1;
   }, [turns]);
-  const lastAssistantTurnIndex = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i--) {
-      if (turns[i]?.role === "assistant" && !turns[i]?.compacted) return i;
-    }
-    return -1;
-  }, [turns]);
+  const teamNotices = useMemo(() => groupTeamNotices(turns), [turns]);
+  const { lastAssistantTurnIndex, lastVisibleTurnIndex } = teamNotices;
+  // Native disclosures and board state belong to this target and conversation.
+  const executionScope = `${resolveTargetScope()}:${chatKey}`;
   const precedingUserText = useMemo(() => {
     const out: (string | null)[] = new Array(turns.length).fill(null);
     let lastText: string | null = null;
@@ -336,6 +337,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   </div>
               )}
               {turns.map((t, i) => {
+                if (isTeamNotice(t)) return null; // Retained once inside execution details.
                 // Compaction summary: render a divider, not a chat bubble — it's
                 // a synthetic note that replaced the older turns it folded.
                 if (t.compacted) {
@@ -349,19 +351,18 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   t.role === "assistant"
                     ? precedingUserText[i]
                     : null;
-                const teamBoards = t.role === "assistant" ? [
-                  renderTeamBoard(teamBoardGroups.byTurn.get(i) ?? [], `team-board-turn-${i}`, true),
-                  i === lastAssistantTurnIndex
-                    ? renderTeamBoard(teamBoardGroups.unanchored, "team-board-unanchored", true)
-                    : null,
-                ].filter(Boolean) : [];
+                const turnTeamTasks = t.role === "assistant" ? [
+                  ...(teamBoardGroups.byTurn.get(i) ?? []),
+                  ...(i === lastAssistantTurnIndex ? teamBoardGroups.unanchored : []),
+                ] : [];
+                const teamBoards = [renderTeamBoard(turnTeamTasks, `team-board-turn-${i}`, true)].filter(Boolean);
                 return (
-                  <Fragment key={i}>
+                  <Fragment key={`${executionScope}:${i}`}>
                     <Suspense fallback={<div aria-busy="true" className="min-h-12" />}><TurnView
                       turn={t}
                       provider={provider}
                       uiMode={uiMode}
-                      isLast={i === turns.length - 1}
+                      isLast={i === lastVisibleTurnIndex}
                       onAnswer={async (text, opts) => {
                         if (opts?.planDecision === "approve") {
                           const changed = await onApprovalModeChange?.("auto");
@@ -384,15 +385,19 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                       agent={headerAgent}
                       scrollContainerRef={scrollerRef}
                       teamBoards={teamBoards}
+                      teamTasks={turnTeamTasks}
+                      teamNotices={teamNotices.byTurn.get(i)}
                     /></Suspense>
                   </Fragment>
                 );
               })}
               <RealtimeRequests voice={realtime} />
-              {/* Before an assistant turn exists, keep live delegated tasks visible. */}
-              {lastAssistantTurnIndex < 0 && teamBoardGroups.unanchored.length > 0 && (
-                <div className="w-full max-w-[48rem] overflow-hidden rounded-2xl border border-border/60 bg-muted/40 shadow-sm">
-                  {renderTeamBoard(teamBoardGroups.unanchored, "team-board-unanchored", true)}
+              {/* Tasks/notices can arrive before the first assistant reply. */}
+              {lastAssistantTurnIndex < 0 && (teamBoardGroups.unanchored.length > 0 || teamNotices.unanchored.length > 0) && (
+                <div key={`${executionScope}:unanchored`} data-message-section="console" className="w-full max-w-[48rem] overflow-hidden rounded-2xl border border-border/60 bg-muted/40 shadow-sm">
+                  <ExecutionDisclosure running={teamBoardGroups.unanchored.some(task => task.status === "pending" || task.status === "running")} attention={<TeamExecutionAttention tasks={teamBoardGroups.unanchored} />}>
+                    <TeamExecutionContent boards={[renderTeamBoard(teamBoardGroups.unanchored, "team-board-unanchored", true)].filter(Boolean)} notices={teamNotices.unanchored} />
+                  </ExecutionDisclosure>
                 </div>
               )}
             </div>

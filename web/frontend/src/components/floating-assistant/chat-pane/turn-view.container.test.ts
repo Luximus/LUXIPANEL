@@ -7,7 +7,7 @@ import type { ChatTurn } from "../chat-engine";
 import type { AssistantAgent } from "../assistant-api";
 
 describe("assistant message container", () => {
-  it.each([null, { id: "worker", name: "Sofía", providerId: "claude" } as AssistantAgent])("keeps a reloaded CLI failure above the team section in general and agent chats: %j", (agent) => {
+  it.each([null, { id: "worker", name: "Sofía", providerId: "claude" } as AssistantAgent])("keeps a reloaded CLI failure visible with team details inside the console in general and agent chats: %j", (agent) => {
     const turn: ChatTurn = {
       role: "assistant", text: "", cli: true, tools: [],
       cliHistoryLog: "Revisando la solicitud\nOAuth session expired",
@@ -21,7 +21,7 @@ describe("assistant message container", () => {
     expect(html).toContain("El proveedor rechazó la autenticación");
     expect(html).toContain("Tareas del equipo");
     expect(html.indexOf('data-message-section="console"')).toBeLessThan(html.indexOf('data-message-section="answer"'));
-    expect(html.indexOf('data-message-section="answer"')).toBeLessThan(html.indexOf('data-message-section="team"'));
+    expect(html.indexOf('data-message-section="team"')).toBeLessThan(html.indexOf('data-message-section="answer"'));
   });
   it("keeps console, modified files and final answer in one ordered surface", () => {
     const turn: ChatTurn = {
@@ -44,7 +44,7 @@ describe("assistant message container", () => {
     );
     expect(html.match(/data-assistant-message=""/g)).toHaveLength(1);
     expect([...html.matchAll(/data-message-section="([^"]+)"/g)].map((match) => match[1]))
-      .toEqual(["reasoning", "console", "files", "answer", "team"]);
+      .toEqual(["reasoning", "console", "team", "files", "answer"]);
     expect(html).toContain("src/App.tsx");
     expect(html).toContain("Resumen final del cambio.");
     expect(html).toContain("Equipo de trabajo");
@@ -126,11 +126,13 @@ it("keeps a user recording above two collapsed text details without repeating a 
 });
 
 
-it("keeps inter-agent notices readable and separate from user messages", () => {
+it("keeps a standalone generated notice readable inside standard execution details", () => {
   const turn: ChatTurn = { role: "user", text: "Mateo: revisión terminada, cambios listos para Marin.", auto: true, tools: [] };
   const html = renderToStaticMarkup(createElement(TurnView, { turn, provider: "codex" }));
   expect(html).toContain("data-team-notice");
   expect(html).toContain("<summary");
   expect(html).toContain("Mateo: revisión terminada");
+  expect(html).toContain("Ver historial");
+  expect(html).not.toContain("<details open");
   expect(html).not.toContain("data-assistant-message");
 });

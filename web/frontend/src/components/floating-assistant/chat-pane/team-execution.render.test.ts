@@ -1,0 +1,359 @@
+// @vitest-environment happy-dom
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ChatMain } from "./ChatMain";
+import { TurnView } from "./turn-view";
+import type { ChatPaneVM } from "./use-chat-pane";
+import { TeamTaskBoard } from "../TeamTaskBoard";
+import { teamApi, type AssistantAgent, type TeamTaskView } from "../assistant-api";
+import { chatEngine, type ChatTurn } from "../chat-engine";
+import { useAssistantI18n } from "../i18n";
+import { bubblePrefs } from "../bubble-prefs";
+import { openConfirm } from "@/lib/confirm";
+import { groupTeamNotices, isTeamNotice } from "./team-execution";
+
+const scope = vi.hoisted(() => {
+  // Some imported services preload data; isolate those requests before imports.
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true, tasks: [], items: [] }), { headers: { "Content-Type": "application/json" } })));
+  return { value: "target-a" };
+});
+vi.mock("@/lib/api-client", async original => ({
+  ...await original<Record<string, unknown>>(),
+  resolveTargetScope: () => scope.value,
+}));
+vi.mock("@/lib/confirm", () => ({ openConfirm: vi.fn(async () => true) }));
+vi.mock("@/lib/assistant-ws", async original => ({
+  ...await original<Record<string, unknown>>(),
+  connectAssistantWs: vi.fn(),
+}));
+// Keep the production terminal renderer and use installed xterm packages in place
+// of the CDN transport. No React component is mocked.
+vi.mock("https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm", async () => import("@xterm/xterm"));
+vi.mock("https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm", async () => import("@xterm/addon-fit"));
+
+const agent = { id: "agent", name: "Sofía", providerId: "codex" } as AssistantAgent;
+const task = (overrides: Partial<TeamTaskView> = {}): TeamTaskView => ({
+  id: "task-1", title: "Revisar interfaz", status: "running",
+  workerAgentId: "worker", workerAgentName: "Ana", workerConversationId: "worker-chat",
+  createdAt: "2026-10-16T10:00:00Z", ...overrides,
+});
+const user: ChatTurn = { role: "user", text: "Petición humana conservada", tools: [] };
+const notice: ChatTurn = { role: "user", text: "Aviso generado conservado", tools: [], auto: true };
+const reply = (cli: boolean, history: boolean): ChatTurn => ({
+  role: "assistant", text: history ? "Respuesta final conservada" : "", pending: !history,
+  ...(cli ? { cli: true } : {}),
+  tools: cli
+    ? history ? [] : [
+      { id: "cli", name: "codex.cli", input: {}, terminal: "Registro de ejecución" },
+      { id: "nested", name: "team.assign", input: {}, result: { success: true, output: "Salida anidada no duplicada" } },
+    ]
+    : [
+      { id: "read", name: "files.read", input: {}, result: { success: true, output: "Lectura conservada" } },
+      { id: "assign", name: "team.assign", input: {}, ...(history ? { result: { success: true, output: "Resultado de asignación" } } : {}) },
+    ],
+  ...(cli && history ? { cliHistoryLog: "Registro guardado" } : {}),
+});
+
+let host: HTMLDivElement;
+let root: Root;
+const openChat = vi.fn();
+const send = vi.fn(async () => {});
+const approvalModeChange = vi.fn(async () => true);
+
+beforeEach(() => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  scope.value = "target-a";
+  // happy-dom has no CSS/layout; prevent an unrelated CDN stylesheet request.
+  if (!document.getElementById("xterm-css-cdn")) {
+    const style = document.createElement("style"); style.id = "xterm-css-cdn"; document.head.append(style);
+  }
+  host = document.createElement("div"); document.body.append(host);
+  root = createRoot(host);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true, tasks: [], items: [] }), { headers: { "Content-Type": "application/json" } })));
+  vi.spyOn(teamApi, "getSummary").mockResolvedValue(null);
+  vi.spyOn(teamApi, "listFeedback").mockResolvedValue([]);
+  vi.spyOn(teamApi, "cancelTask").mockResolvedValue(null);
+  vi.spyOn(chatEngine, "refreshTeamTasks").mockResolvedValue(undefined);
+  vi.spyOn(chatEngine, "respondPermission").mockResolvedValue(undefined);
+  openChat.mockClear(); send.mockClear(); approvalModeChange.mockClear();
+  vi.mocked(openConfirm).mockClear();
+  bubblePrefs.set("codex", { terminalLive: true });
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  host.remove();
+  vi.restoreAllMocks(); vi.unstubAllGlobals();
+});
+
+type Thread = {
+  mode: "api" | "cli";
+  turns: ChatTurn[];
+  tasks?: TeamTaskView[];
+  byTurn?: Map<number, TeamTaskView[]>;
+  agent?: AssistantAgent | null;
+  chatKey?: string;
+};
+function ThreadView({ mode, turns, tasks = [], byTurn = new Map(), agent: currentAgent = null, chatKey = "leader" }: Thread) {
+  const { chatTab: ct } = useAssistantI18n();
+  const vm = {
+    active: false, activeId: chatKey, chatKey, provider: "codex", mode, uiMode: "advanced",
+    turns, streaming: turns.some(t => t.pending), chatLoading: false,
+    ct, projects: [], projectTeamAgents: [], rolesById: new Map(),
+    currentAgent, headerAgent: currentAgent, currentProjectId: null,
+    draft: "", attachments: [], queued: [], modelOptions: [], quickStartSuggestions: [],
+    visibleProviderOptions: [{ id: "codex" }], selectedModel: "", selectedEffort: "Auto",
+    chatTokens: { total: 0, assistantTurns: 0 }, support: { enabled: false },
+    contentRef: { current: null }, scrollerRef: { current: null }, textareaRef: { current: null },
+    teamBoardGroups: { byTurn, unanchored: tasks },
+    renderTeamBoard: (items: TeamTaskView[], key: string, embedded: boolean) => items.length
+      ? createElement(TeamTaskBoard, { key, conversationId: chatKey, tasks: items, onOpenChat: openChat, embedded })
+      : null,
+    send, newConversation: vi.fn(), openConversation: openChat,
+    onApprovalModeChange: approvalModeChange,
+    setDraft: vi.fn(), setEditorPath: vi.fn(), setSelectedModel: vi.fn(), setSelectedEffort: vi.fn(),
+  } as unknown as ChatPaneVM;
+  return createElement(ChatMain, { vm, attachmentImages: new Map() });
+}
+async function renderThread(thread: Thread) {
+  await act(async () => root.render(createElement(ThreadView, thread)));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+}
+// happy-dom has no layout engine. Evaluate native <details> visibility instead
+// of treating hidden DOM text as a visible answer or relying on source strings.
+function visibleText(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (node instanceof HTMLDetailsElement && !node.open) {
+    return node.querySelector(":scope > summary")?.textContent ?? "";
+  }
+  if (node instanceof HTMLElement && (node.hidden || node.getAttribute("aria-hidden") === "true")) return "";
+  return Array.from(node.childNodes).map(visibleText).join(" ").replace(/\s+/g, " ");
+}
+function boardDisclosure() {
+  const boards = host.querySelectorAll('[data-testid="team-task-board"]');
+  expect(boards).toHaveLength(1);
+  const details = boards[0]!.closest("details");
+  expect(details).not.toBeNull();
+  expect(details!.closest('[data-message-section="console"]')).not.toBeNull();
+  return details!;
+}
+async function toggle(details: HTMLDetailsElement) {
+  await act(async () => details.querySelector("summary")!.click());
+}
+function button(label: string) {
+  const result = [...host.querySelectorAll<HTMLButtonElement>("button")].find(el => el.title === label || el.textContent?.trim() === label);
+  expect(result, label).toBeTruthy();
+  return result!;
+}
+
+describe.each([false, true])("normal/agent chat: agent=%s", withAgent => {
+  it.each([
+    { cli: false, history: false }, { cli: true, history: false },
+    { cli: false, history: true }, { cli: true, history: true },
+  ])("places the board and generated notices once inside closed execution details: %j", async ({ cli, history }) => {
+    const response = reply(cli, history);
+    await renderThread({ mode: cli ? "cli" : "api", turns: [user, notice, response], tasks: [task({ status: history ? "done" : "running" })], agent: withAgent ? agent : null });
+    const details = boardDisclosure();
+    expect(details.open).toBe(false);
+    expect(host.querySelectorAll("[data-team-notice]")).toHaveLength(1);
+    expect(host.querySelector("[data-team-notice]")!.closest("details")).toBe(details);
+    expect(visibleText(host)).toContain(user.text);
+    expect(visibleText(host)).not.toContain(task().title);
+    expect(visibleText(host)).not.toContain(notice.text);
+    if (history) expect(visibleText(host)).toContain(response.text);
+    expect(details.querySelector("summary")!.textContent).toContain(cli ? "Consola del servidor" : "team.assign");
+    if (cli) expect(host.textContent).not.toContain("Salida anidada no duplicada");
+    await toggle(details);
+    expect(details.open).toBe(true);
+    expect(visibleText(host)).toContain(task().title);
+    expect(visibleText(host)).toContain(notice.text);
+    await act(async () => button("Abrir chat").click());
+    expect(openChat).toHaveBeenCalledWith("worker-chat");
+    if (!history) {
+      await act(async () => button("Cancelar tarea").click());
+      expect(openConfirm).toHaveBeenCalledOnce();
+      expect(teamApi.cancelTask).toHaveBeenCalledWith("task-1");
+      expect(chatEngine.refreshTeamTasks).toHaveBeenCalledWith("leader");
+    }
+    await toggle(details);
+    expect(details.open).toBe(false);
+    expect(visibleText(host)).not.toContain(task().title);
+  });
+
+  it.each([false, true])("adds no team surface to an ordinary API/CLI conversation: cli=%s", async cli => {
+    await renderThread({ mode: cli ? "cli" : "api", turns: [user, reply(cli, true)], agent: withAgent ? agent : null });
+    expect(host.querySelector('[data-testid="team-task-board"]')).toBeNull();
+    expect(host.querySelector("[data-team-notice]")).toBeNull();
+    expect(visibleText(host)).toContain(user.text);
+    expect(visibleText(host)).toContain("Respuesta final conservada");
+    expect([...host.querySelectorAll("details")].every(details => !details.open)).toBe(true);
+  });
+});
+
+it("merges anchored and live tasks into one board without duplicating either task", async () => {
+  await renderThread({ mode: "api",
+    turns: [user, reply(false, false)],
+    byTurn: new Map([[1, [task({ id: "finished", title: "Tarea anterior", status: "done" })]]]),
+    tasks: [task({ id: "new", title: "Tarea actual" })],
+  });
+  const details = boardDisclosure();
+  expect(host.textContent!.match(/Tarea anterior/g)).toHaveLength(1);
+  expect(host.textContent!.match(/Tarea actual/g)).toHaveLength(1);
+  expect(details.open).toBe(false);
+});
+
+it.each([false, true])("keeps tasks before any reply, through streaming and history: cli=%s", async cli => {
+  const tasks = [task()];
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, notice], tasks });
+  expect(boardDisclosure().open).toBe(false);
+  expect(visibleText(host)).not.toContain(notice.text);
+  const pending: ChatTurn = { role: "assistant", text: "", tools: [], pending: true };
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, notice, pending], tasks });
+  expect(boardDisclosure().open).toBe(false);
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, notice, reply(cli, false)], tasks });
+  const live = boardDisclosure();
+  await toggle(live);
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, notice, { ...reply(cli, false), text: "Respuesta parcial" }], tasks });
+  expect(boardDisclosure()).toBe(live);
+  expect(live.open).toBe(true);
+  expect(visibleText(host)).toContain("Respuesta parcial");
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, notice, reply(cli, true)], tasks: [task({ status: "done" })] });
+  boardDisclosure();
+  expect(visibleText(host)).toContain("Respuesta final conservada");
+  expect(host.querySelectorAll("[data-team-notice]")).toHaveLength(1);
+});
+
+it("keeps the team reachable when live terminal display is disabled", async () => {
+  bubblePrefs.set("codex", { terminalLive: false });
+  await renderThread({ mode: "cli", turns: [user, reply(true, false)], tasks: [task()] });
+  const details = boardDisclosure();
+  expect(details.open).toBe(false);
+  expect(details.querySelector("summary")!.textContent).toContain("Ver historial");
+  await toggle(details);
+  expect(visibleText(host)).toContain(task().title);
+});
+
+it.each([false, true])("keeps failures and pending task approvals visible in the closed summary: cli=%s", async cli => {
+  const failed = task({ id: "failed", status: "failed", error: "Falló la comprobación solicitada" });
+  const waiting = task({ id: "waiting", pendingPermission: true });
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, { ...reply(cli, true), error: "Error del turno conservado" }], tasks: [failed, waiting] });
+  const details = boardDisclosure();
+  expect(details.open).toBe(false);
+  expect(visibleText(host)).toContain(failed.error);
+  expect(visibleText(host)).toContain("Esperando tu aprobación");
+  expect(visibleText(host)).toContain("Error del turno conservado");
+  expect(host.querySelector("[data-team-attention]")!.closest("summary")).toBe(details.querySelector("summary"));
+});
+
+it.each([false, true])("leaves permission and plan approval buttons visible after a trailing notice: cli=%s", async cli => {
+  const permission = { id: "approval", title: "Acción que requiere permiso", tool: "files.write", detail: "Detalle original" };
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, { ...reply(cli, false), permission }, notice], tasks: [task()] });
+  expect(boardDisclosure().open).toBe(false);
+  expect(visibleText(host)).toContain(permission.title);
+  expect(button("Aprobar").closest("details")).toBeNull();
+  await act(async () => button("Aprobar").click());
+  expect(chatEngine.respondPermission).toHaveBeenCalledWith("leader", "approval", "allow", "files.write");
+  await renderThread({ mode: cli ? "cli" : "api",
+    chatKey: "plan",
+    turns: [user, { ...reply(cli, true), askKind: "plan-approval", ask: [{ id: "plan", type: "single", text: "¿Apruebas este plan?", options: ["Aprobar plan", "Pedir cambios"] }] }, notice],
+    tasks: [task()],
+  });
+  expect(button("Aprobar plan").closest("details")).toBeNull();
+  await act(async () => button("Aprobar plan").click());
+  expect(approvalModeChange).toHaveBeenCalledWith("auto");
+  expect(send).toHaveBeenCalled();
+});
+
+it.each((["api", "cli"] as const).flatMap(mode =>
+  (["chat", "server"] as const).map(change => ({ mode, change })),
+))("isolates expanded content and callbacks: mode=$mode change=$change", async ({ mode, change }) => {
+  const cli = mode === "cli";
+  const permission = { id: "old-approval", title: "Permiso del contexto anterior", tool: "files.write", detail: "Anterior" };
+  await renderThread({ mode, turns: [user, notice, { ...reply(cli, false), permission }], tasks: [task()] });
+  const previous = boardDisclosure();
+  const oldApproval = button("Aprobar");
+  await toggle(previous);
+  if (change === "server") scope.value = "target-b";
+  const nextTask = task({ id: "next", title: "Tarea del nuevo contexto", workerConversationId: "next-worker" });
+  await renderThread({ mode, chatKey: change === "chat" ? "other-chat" : "leader", turns: [user, reply(cli, false)], tasks: [nextTask] });
+  const next = boardDisclosure();
+  expect(next).not.toBe(previous);
+  expect(oldApproval.isConnected).toBe(false);
+  expect(host.textContent).not.toContain(permission.title);
+  await act(async () => oldApproval.click());
+  expect(chatEngine.respondPermission).not.toHaveBeenCalled();
+  expect(next.open).toBe(false);
+  expect(host.textContent).not.toContain(notice.text);
+  expect(host.textContent).not.toContain(task().title);
+  await toggle(next);
+  await act(async () => button("Abrir chat").click());
+  expect(openChat).toHaveBeenLastCalledWith("next-worker");
+  await act(async () => button("Cancelar tarea").click());
+  expect(teamApi.cancelTask).toHaveBeenCalledExactlyOnceWith("next");
+  expect(chatEngine.refreshTeamTasks).toHaveBeenCalledExactlyOnceWith(change === "chat" ? "other-chat" : "leader");
+  const nextPermission = { ...permission, id: "next-approval", title: "Permiso del nuevo contexto" };
+  await renderThread({ mode, chatKey: change === "chat" ? "other-chat" : "leader", turns: [user, { ...reply(cli, false), permission: nextPermission }], tasks: [nextTask] });
+  await act(async () => button("Aprobar").click());
+  expect(chatEngine.respondPermission).toHaveBeenCalledExactlyOnceWith(change === "chat" ? "other-chat" : "leader", "next-approval", "allow", "files.write");
+});
+
+it("folds only generated coordination text and never mutates history", () => {
+  const human = { ...user, text: notice.text };
+  const assistant = { ...reply(false, true), auto: true };
+  const failed = { ...notice, error: "Error que debe permanecer visible" };
+  const turns = [human, notice, assistant, failed, { ...notice, text: "Aviso final" }];
+  const saved = JSON.stringify(turns);
+  const groups = groupTeamNotices(turns);
+  expect(groups.byTurn.get(2)?.map(t => t.text)).toEqual([notice.text, "Aviso final"]);
+  expect(groups.unanchored).toEqual([]);
+  expect(isTeamNotice(human)).toBe(false);
+  expect(isTeamNotice(assistant)).toBe(false);
+  expect(isTeamNotice(failed)).toBe(false);
+  expect(groups.lastVisibleTurnIndex).toBe(3);
+  expect(JSON.stringify(turns)).toBe(saved);
+});
+
+it("preserves a human message that happens to repeat the generated notice", async () => {
+  await renderThread({ mode: "api", turns: [{ ...user, text: notice.text }, notice, reply(false, true)] });
+  expect(visibleText(host)).toContain(notice.text);
+  expect(host.querySelectorAll("[data-team-notice]")).toHaveLength(1);
+  expect(host.textContent!.match(/Aviso generado conservado/g)).toHaveLength(2);
+});
+
+it("preserves assistant responses even if they carry the automatic flag", async () => {
+  await act(async () => root.render(createElement(TurnView, {
+    turn: { role: "assistant", text: "Respuesta del asistente", tools: [], auto: true }, provider: "codex",
+  })));
+  expect(visibleText(host)).toContain("Respuesta del asistente");
+  expect(host.querySelector("[data-team-notice]")).toBeNull();
+});
+
+it.each([false, true])("retains historical tasks when the tool trace/log is absent: cli=%s", async cli => {
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, notice, { role: "assistant", text: "Respuesta guardada", tools: [], cli }], tasks: [task({ status: "done" })] });
+  const details = boardDisclosure();
+  expect(details.open).toBe(false);
+  expect(visibleText(host)).toContain("Respuesta guardada");
+  await toggle(details);
+  expect(visibleText(host)).toContain(task().title);
+  expect(visibleText(host)).toContain(notice.text);
+});
+
+it("keeps a verification failure visible even when the task completed", async () => {
+  await renderThread({ mode: "api", turns: [user, reply(false, true)], tasks: [task({ status: "done", verify: { state: "failed", attempts: 2 } })] });
+  expect(boardDisclosure().open).toBe(false);
+  expect(visibleText(host)).toContain("Verificación falló (2)");
+});
+
+it("retains a lone generated notice until any reply or task exists", async () => {
+  await renderThread({ mode: "api", turns: [notice] });
+  expect(host.querySelector('[data-testid="team-task-board"]')).toBeNull();
+  const content = host.querySelector("[data-team-notice]")!;
+  const details = content.closest("details")!;
+  expect(details.open).toBe(false);
+  expect(visibleText(host)).not.toContain(notice.text);
+  await toggle(details);
+  expect(visibleText(host)).toContain(notice.text);
+  await renderThread({ mode: "api", turns: [notice, reply(false, true)] });
+  expect(host.querySelectorAll("[data-team-notice]")).toHaveLength(1);
+  expect(host.querySelectorAll('[data-message-section="console"]')).toHaveLength(1);
+});

@@ -1,0 +1,8 @@
+{
+  "title": "Chat con agentes en la vista habitual",
+  "changes": [
+    "Las tareas delegadas y los avisos automáticos del equipo se agrupan en los detalles de ejecución del chat, cerrados por defecto.",
+    "Al desplegar los detalles puedes consultar las tareas y abrir sus conversaciones o cancelar las que siguen activas.",
+    "Las respuestas permanecen visibles y los errores y solicitudes de aprobación conservan su acceso, tanto durante la ejecución como al recuperar el historial."
+  ]
+}

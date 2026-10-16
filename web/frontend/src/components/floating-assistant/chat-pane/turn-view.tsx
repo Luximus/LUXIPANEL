@@ -14,6 +14,7 @@ import {
   PROVIDER_META,
   type AssistantAgent,
   type AssistantProviderId,
+  type TeamTaskView,
 } from "../assistant-api";
 import { type ChatTurn } from "../chat-engine";
 import { extractCliProgress } from "../chat-engine/cli-lanes";
@@ -25,7 +26,8 @@ import { useBodyPointerEventsWhileOpen } from "@/lib/body-pointer-events";
 import { formatDuration, formatTokens } from "@/lib/format";
 import { extractModifiedFiles } from "./helpers";
 import { type ModifiedFileEntry } from "./types";
-import { ToolDisclosure, CliHistoryView } from "./tool-disclosure";
+import { ToolDisclosure, CliHistoryView, ExecutionDisclosure } from "./tool-disclosure";
+import { isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
 import { AskView, PermissionView } from "./ask-permission";
 import { TranslatingShimmer, PendingDot, CopyButton } from "./message-bits";
 import { SpeakButton } from "./voice-controls";
@@ -104,7 +106,7 @@ export function ModifiedFilesView({ files, onOpen, embedded = false }: { files: 
   );
 }
 
-export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer, onPermission, onNewChat, onRetry, onEditMessage, onImageClick, attachmentImageUrls, onOpenFile, projectPath, ttsAvailable, voiceName, autoSpeak, conversationId, agent, scrollContainerRef, teamBoards }: { turn: ChatTurn; provider: string; uiMode?: "simple" | "advanced"; isLast?: boolean; onAnswer?: (text: string, opts?: { planDecision?: "approve" }) => Promise<void> | void; onPermission?: (requestId: string, decision: "allow" | "deny" | "always", tool?: string) => void; onNewChat?: () => void; onRetry?: () => void; onEditMessage?: (text: string) => void; onImageClick?: (url: string) => void; attachmentImageUrls?: ReadonlyMap<string, string>; onOpenFile?: (path: string) => void; projectPath?: string; ttsAvailable?: boolean; voiceName?: string; autoSpeak?: boolean; conversationId?: string; agent?: AssistantAgent | null; scrollContainerRef?: RefObject<HTMLDivElement | null>; teamBoards?: ReactNode[] }) {
+export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer, onPermission, onNewChat, onRetry, onEditMessage, onImageClick, attachmentImageUrls, onOpenFile, projectPath, ttsAvailable, voiceName, autoSpeak, conversationId, agent, scrollContainerRef, teamBoards, teamNotices, teamTasks }: { turn: ChatTurn; provider: string; uiMode?: "simple" | "advanced"; isLast?: boolean; onAnswer?: (text: string, opts?: { planDecision?: "approve" }) => Promise<void> | void; onPermission?: (requestId: string, decision: "allow" | "deny" | "always", tool?: string) => void; onNewChat?: () => void; onRetry?: () => void; onEditMessage?: (text: string) => void; onImageClick?: (url: string) => void; attachmentImageUrls?: ReadonlyMap<string, string>; onOpenFile?: (path: string) => void; projectPath?: string; ttsAvailable?: boolean; voiceName?: string; autoSpeak?: boolean; conversationId?: string; agent?: AssistantAgent | null; scrollContainerRef?: RefObject<HTMLDivElement | null>; teamBoards?: ReactNode[]; teamNotices?: ChatTurn[]; teamTasks?: TeamTaskView[] }) {
   const i18n = useAssistantI18n() as Record<string, any>;
   const ct = i18n.chatTab as Record<string, any>;
   const editLabel = i18n.projectModal?.editChild ?? ct.editResendLabel ?? "Editar";
@@ -200,9 +202,12 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   const currentThought = turn.pending && progressMessages.length
     ? progressMessages[progressMessages.length - 1]
     : (ct.toolTrace?.running ?? "Ejecutando…");
+  const hasExecutionDetails = !isUser && Boolean(teamBoards?.length || teamNotices?.length);
+  const executionDetails = hasExecutionDetails ? <TeamExecutionContent boards={teamBoards} notices={teamNotices} /> : undefined;
+  const executionAttention = hasExecutionDetails && teamTasks?.length ? <TeamExecutionAttention tasks={teamTasks} /> : undefined;
   const hasConsole =
     !isUser &&
-    (visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog));
+    (visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog) || hasExecutionDetails);
   const hasModifiedFiles = !isUser && !!onOpenFile && showModifiedFiles && modifiedFiles.length > 0;
   const hasCliTool = turn.tools.some(tool => tool.name.endsWith(".cli"));
   const hasThought = !isUser && (turn.pending || thoughtSteps.length > 0 || (showTerminal && (isHistoryCli || hasCliTool)));
@@ -221,21 +226,8 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
     !!(turn.attachments && turn.attachments.length) ||
     (!!turn.pending && !visibleTools.length && !cliRunningHidden) ||
     cliNoAnswer;
-  const hasTeamBoards = !isUser && Boolean(teamBoards?.length);
-  // System-generated user turn (team leader wake-up nudge): render a centered
-  // muted chip instead of a user bubble — the user didn't type it.
-  if (isUser && turn.auto) {
-    return (
-      <div className="flex justify-center">
-        <details className="my-1 min-w-0 max-w-full rounded-xl border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground" data-team-notice>
-          <summary className="cursor-pointer text-[10px]">
-          <i className="ti ti-users-group text-[11px]" aria-hidden />
-          {(i18n.teamBoard?.autoTurn as string) ?? "Aviso automático del equipo"}
-          </summary>
-          <div className="mt-2 border-t border-border pt-2"><MessageContent text={turn.text} /></div>
-        </details>
-      </div>
-    );
+  if (isTeamNotice(turn)) {
+    return <ExecutionDisclosure><TeamExecutionContent notices={[turn]} /></ExecutionDisclosure>;
   }
   return (
     <div className={`flex min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}>
@@ -281,7 +273,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
           <TurnMeta turn={turn} isUser={false} header />
         </div>
       )}
-      {(isUser || hasThought || hasConsole || hasModifiedFiles || hasBubbleContent || hasTeamBoards) && (
+      {(isUser || hasThought || hasConsole || hasModifiedFiles || hasBubbleContent) && (
       <div data-assistant-message={!isUser ? "" : undefined} className={isUser ? "contents" : "w-full max-w-[48rem] min-w-0 overflow-hidden rounded-2xl rounded-tl-sm border border-border/60 bg-muted/40 shadow-sm"}>
       {hasThought && (
         <div data-message-section="reasoning" className="border-b border-border/60 px-3 py-2 text-muted-foreground">
@@ -300,17 +292,27 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
       )}
       {/* Tool disclosures and the CLI console are rows of this message. */}
       {hasConsole && (
-        <div data-message-section="console" className={cn("w-full min-w-0 divide-y divide-border/60", (hasModifiedFiles || hasBubbleContent || hasTeamBoards) && "border-b border-border/60")}>
+        <div data-message-section="console" className={cn("w-full min-w-0 divide-y divide-border/60", (hasModifiedFiles || hasBubbleContent) && "border-b border-border/60")}>
           {(() => {
             const hasHistoryConsole = showTerminal && isHistoryCli && !!historyLog;
-            if (visibleTools.length === 0 && !hasHistoryConsole) return null;
+            // Reuse exactly one existing disclosure; CLI already owns nested
+            // tools. Prefer the delegation tool in API turns.
+            const teamToolIndex = visibleTools.findIndex(tool => tool.name.startsWith("team."));
+            const detailsIndex = teamToolIndex < 0 ? 0 : teamToolIndex;
             return (
               <>
-                {visibleTools.map((t) => (
-                  <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded />
+                {visibleTools.map((t, index) => (
+                  <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded attention={index === detailsIndex ? executionAttention : undefined}>
+                    {index === detailsIndex ? executionDetails : undefined}
+                  </ToolDisclosure>
                 ))}
                 {/* Reloaded CLI turn: collapsed "Consola del servidor" from the log. */}
-                {hasHistoryConsole && <CliHistoryView text={historyLog} embedded />}
+                {hasHistoryConsole && <CliHistoryView text={historyLog} embedded attention={executionAttention}>{executionDetails}</CliHistoryView>}
+                {hasExecutionDetails && !visibleTools.length && !hasHistoryConsole && (
+                  <ExecutionDisclosure running={!!turn.pending || teamTasks?.some(task => task.status === "running" || task.status === "pending")} failed={!!turn.error} stopped={!!turn.stopped} attention={executionAttention}>
+                    {executionDetails}
+                  </ExecutionDisclosure>
+                )}
               </>
             );
           })()}
@@ -324,12 +326,12 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
         </div>
       )}
       {hasModifiedFiles && (
-        <div data-message-section="files" className={cn((hasBubbleContent || hasTeamBoards) && "border-b border-border/60")}>
+        <div data-message-section="files" className={cn(hasBubbleContent && "border-b border-border/60")}>
           <ModifiedFilesView files={modifiedFiles} onOpen={onOpenFile!} embedded />
         </div>
       )}
       {hasBubbleContent && (
-      <div data-message-section={!isUser ? "answer" : undefined} className={isUser ? "max-w-[85%] min-w-0 overflow-hidden break-words rounded-2xl rounded-tr-sm bg-indigo-100 px-2.5 py-1.5 text-sm text-indigo-900 dark:bg-[#30343b] dark:text-zinc-100 dark:ring-1 dark:ring-white/10" : cn("min-w-0 break-words px-3.5 py-3 text-sm", hasTeamBoards && "border-b border-border/60")}>
+      <div data-message-section={!isUser ? "answer" : undefined} className={isUser ? "max-w-[85%] min-w-0 overflow-hidden break-words rounded-2xl rounded-tr-sm bg-indigo-100 px-2.5 py-1.5 text-sm text-indigo-900 dark:bg-[#30343b] dark:text-zinc-100 dark:ring-1 dark:ring-white/10" : "min-w-0 break-words px-3.5 py-3 text-sm"}>
         {ordinaryAttachments.length > 0 && (
           <div className="mb-1.5 flex flex-wrap gap-1.5">
             {ordinaryAttachments.map((a, i) =>
@@ -550,11 +552,6 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
         )}
       </div>
       )}
-      {hasTeamBoards && teamBoards?.map((board, index) => (
-        <div key={index} data-message-section="team" className={cn("min-w-0", index < teamBoards.length - 1 && "border-b border-border/60")}>
-          {board}
-        </div>
-      ))}
       </div>
       )}
 

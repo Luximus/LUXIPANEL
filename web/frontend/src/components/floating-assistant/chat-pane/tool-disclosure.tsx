@@ -4,13 +4,17 @@
  * Tool-trace disclosures + reloaded CLI history console + CLI job timer.
  * Extracted verbatim from the original `ChatPane.tsx`.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+
 import { useAssistantI18n } from "../i18n";
 import { humanizeToolName } from "../assistant-api";
 import { CliTerminalView, CliFullscreenModal } from "../CliTerminalView";
 import { type ChatTurn } from "../chat-engine";
 import { type ToolTraceLite } from "./types";
 import CallChip, { type CallChipIcon } from "./reactbits/CallChip";
+import { ChevronRight } from "lucide-react";
+
+type ExecutionContentProps = { children?: ReactNode; attention?: ReactNode };
 
 /**
  * One tool trace rendered as a collapsible `<details>`. For a CLI tool (the
@@ -18,7 +22,7 @@ import CallChip, { type CallChipIcon } from "./reactbits/CallChip";
  * is working. The user can expand it whenever they want to watch the process.
  * Non-CLI tool traces stay collapsed by default (native uncontrolled).
  */
-export function ToolDisclosure({ t, turn, uiMode, embedded = false }: { t: ToolTraceLite; turn: ChatTurn; uiMode: "simple" | "advanced"; embedded?: boolean }) {
+export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, attention }: { t: ToolTraceLite; turn: ChatTurn; uiMode: "simple" | "advanced"; embedded?: boolean } & ExecutionContentProps) {
   const tt = useAssistantI18n().chatTab.toolTrace;
   const isCliTool = t.name.endsWith(".cli");
   const cliStartedAt = isCliTool && typeof (t.input as Record<string, unknown>).startedAt === "number"
@@ -43,7 +47,7 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false }: { t: ToolT
         onToggle={(e) => setConsoleOpen(e.currentTarget.open)}
         className={`group overflow-hidden text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-gray-200 dark:bg-black/95"}`}
       >
-        <summary className={`flex cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] text-muted-foreground [&::-webkit-details-marker]:hidden ${embedded ? "px-3" : "px-2 dark:text-zinc-300"}`}>
+        <summary className={`flex flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] text-muted-foreground [&::-webkit-details-marker]:hidden ${embedded ? "px-3" : "px-2 dark:text-zinc-300"}`}>
           <CallChip icon="terminal" name="CLI" argument={(tt as Record<string, any>).serverConsole ?? "Consola del servidor"} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
           <span className="ml-auto flex items-center gap-1.5 text-[10px] opacity-80">
             {!t.result
@@ -55,6 +59,7 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false }: { t: ToolT
               : t.result.success ? tt.viewHistory : tt.withWarnings}
             <i className="ti ti-chevron-right transition-transform group-open:rotate-90" aria-hidden></i>
           </span>
+          {attention}
         </summary>
         <div className={`border-t border-border/60 p-1 ${embedded ? "bg-gray-200 dark:bg-black/95" : ""}`}>
           <CliTerminalView bare output={t.terminal ?? ""} lanes={t.lanes} laneOrder={t.laneOrder} running={running} />
@@ -62,13 +67,14 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false }: { t: ToolT
             <p className="mt-1 px-1 text-[10px] text-amber-500">{t.result.output}</p>
           )}
         </div>
+        {children}
       </details>
     );
   }
 
   return (
     <details className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md bg-background/50 border border-border/60"}`}>
-      <summary className={`cursor-pointer list-none [&::-webkit-details-marker]:hidden py-2 flex items-center gap-1.5 ${embedded ? "px-3" : "px-2"}`}>
+      <summary className={`cursor-pointer list-none [&::-webkit-details-marker]:hidden py-2 flex flex-wrap items-center gap-1.5 ${embedded ? "px-3" : "px-2"}`}>
         {/* Estado del bloque: EN EJECUCIÓN → spinner (mismo `ti-loader-2 animate-spin`
             que el modo avanzado, también en modo simple para que el comando/tool en
             curso siempre indique que está corriendo); detenido → stop; done → check;
@@ -76,11 +82,13 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false }: { t: ToolT
         <CallChip icon={icon} name={human ? human.label : t.name} argument={statusLabel} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
         {/* Disclosure arrow pinned to the right corner; rotates when expanded. */}
         <i className="ti ti-chevron-right ml-auto text-muted-foreground transition-transform group-open:rotate-90" aria-hidden></i>
+        {attention}
       </summary>
       <div className="border-t border-border/60 px-2 py-1 space-y-1">
         <pre className="bg-card/60 rounded p-1.5 text-[11px] overflow-x-auto">{JSON.stringify(t.input, null, 2)}</pre>
         {t.result && <pre className="bg-card/60 rounded p-1.5 text-[11px] overflow-x-auto max-h-60">{t.result.output}</pre>}
       </div>
+      {children}
     </details>
   );
 }
@@ -93,18 +101,19 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false }: { t: ToolT
  * stays compact; the user expands it to read the full execution history. A
  * maximize button (and clicking the box) opens a full-screen scrollable modal.
  */
-export function CliHistoryView({ text, embedded = false }: { text: string; embedded?: boolean }) {
+export function CliHistoryView({ text, embedded = false, children, attention }: { text: string; embedded?: boolean } & ExecutionContentProps) {
   const tt = useAssistantI18n().chatTab.toolTrace;
   const ct = useAssistantI18n().chatTab as Record<string, any>;
   const [expanded, setExpanded] = useState(false);
   return (
     <details className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-black/95"}`}>
-      <summary className={`flex cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] ${embedded ? "px-3 text-muted-foreground" : "px-2 text-zinc-300"}`}>
+      <summary className={`flex flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] ${embedded ? "px-3 text-muted-foreground" : "px-2 text-zinc-300"}`}>
         <CallChip icon="terminal" name="CLI" argument={ct.toolTrace?.serverConsole ?? "Consola del servidor"} status="done" showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
         <span className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
           {tt.viewHistory}
           <i className="ti ti-chevron-right transition-transform group-open:rotate-90" aria-hidden></i>
         </span>
+        {attention}
       </summary>
       <div className={`relative border-t border-border/60 p-1 ${embedded ? "bg-black/95" : ""}`}>
         <button
@@ -123,6 +132,7 @@ export function CliHistoryView({ text, embedded = false }: { text: string; embed
           {text}
         </pre>
       </div>
+      {children}
       {expanded && (
         <CliFullscreenModal onClose={() => setExpanded(false)}>
           <pre
@@ -132,6 +142,21 @@ export function CliHistoryView({ text, embedded = false }: { text: string; embed
           </pre>
         </CliFullscreenModal>
       )}
+    </details>
+  );
+}
+
+/** Standard execution disclosure when a task/notice precedes its tool trace. */
+export function ExecutionDisclosure({ children, attention, running = false, failed = false, stopped = false }: ExecutionContentProps & { running?: boolean; failed?: boolean; stopped?: boolean }) {
+  const tt = useAssistantI18n().chatTab.toolTrace;
+  return (
+    <details className="group bg-background/20 text-xs">
+      <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-1.5 px-3 py-2 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <CallChip icon="terminal" name={tt.viewHistory} argument={failed ? tt.error : stopped ? tt.stopped : running ? tt.running : tt.done} status={failed ? "error" : stopped ? "idle" : running ? "running" : "done"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
+        <ChevronRight className="ml-auto size-3 transition-transform group-open:rotate-90" aria-hidden />
+        {attention}
+      </summary>
+      {children}
     </details>
   );
 }
