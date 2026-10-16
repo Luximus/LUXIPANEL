@@ -6,13 +6,14 @@ vi.mock('../theme/ThemeTransitionProvider',()=>({ThemeTransitionScope:()=>null})
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mocks=vi.hoisted(()=>({profiles:[{id:'sa-a',name:'Panel A',baseUrl:'https://a.test',username:'alice',savePassword:false},{id:'sa-b',name:'Panel B',baseUrl:'https://b.test',username:'bob',savePassword:false}],probe:vi.fn(),branding:vi.fn(),add:vi.fn(),activeId:'sa-a',registry:new Map<string,any>(),login:vi.fn(),totp:vi.fn(),saved:vi.fn(),persist:vi.fn(),clear:vi.fn(),call:vi.fn(),unregisterPush:vi.fn(async()=>{}),reset:vi.fn()}));
+const mocks=vi.hoisted(()=>({profiles:[{id:'sa-a',name:'Panel A',baseUrl:'https://a.test',username:'alice',savePassword:false},{id:'sa-b',name:'Panel B',baseUrl:'https://b.test',username:'bob',savePassword:false}],probe:vi.fn(),branding:vi.fn(),add:vi.fn(),activeId:'sa-a',registry:new Map<string,any>(),login:vi.fn(),totp:vi.fn(),saved:vi.fn(),persist:vi.fn(),clear:vi.fn(),call:vi.fn(),unregisterPush:vi.fn(async()=>{}),reset:vi.fn(),githubRequired:null as null|((id:string)=>void)}));
 vi.mock('react-native',()=>({BackHandler:{addEventListener:()=>({remove(){}})},Animated:{View:'AnimatedView',Value:class{constructor(public value:number){} setValue(value:number){this.value=value} interpolate(){return 0}},timing:()=>({start(){},stop(){}})},Easing:{out:(value:any)=>value,cubic:()=>{}},View:'View',Pressable:'Pressable',Text:'Text',TextInput:'TextInput',Modal:'Modal',KeyboardAvoidingView:'KAV',ScrollView:'ScrollView',Image:'Image',ActivityIndicator:'Spinner',StyleSheet:{create:(value:any)=>value,absoluteFill:{},absoluteFillObject:{}},Platform:{OS:'android'},Alert:{alert:vi.fn()}}));
 vi.mock('react-native-safe-area-context',()=>({useSafeAreaInsets:()=>({top:24,bottom:20,left:0,right:0})}));
 vi.mock('lucide-react-native',()=>Object.fromEntries(['Settings','X','Sun','Moon','Eye','EyeOff','Server','Pencil','Trash2','Check','CheckCircle2','AlertCircle','ArrowRight','ChevronDown','Fingerprint','Globe2','KeyRound','LockKeyhole','ShieldCheck','UserRound','Plus'].map(name=>[name,'Icon'])));
 vi.mock('@react-native-async-storage/async-storage',()=>({default:{getItem:async()=> mocks.activeId,setItem:async()=>{}}}));
 vi.mock('./main/NativePanelWorkspace',()=>({NativePanelWorkspace:'Workspace'}));
 vi.mock('./main/NativeOverlayHost',()=>({NativeOverlayHost:'Overlay',useNativeOverlay:()=>false,OverlayExitingContext:React.createContext(false)}));
+vi.mock('../components/login/GithubConnectionScreen',()=>({GithubConnectionScreen:'GithubGate'}));
 vi.mock('../components/ServerCallHost',()=>({ServerCallHost:'Calls'}));
 vi.mock('../components/ui/PanelLogo',()=>({PanelLogo:'Logo'}));
 vi.mock('../hooks/useTheme',()=>({useTheme:()=>{const [theme,setTheme]=React.useState('dark');return {theme,toggleTheme:()=>setTheme(value=>value==='dark'?'light':'dark')};}}));
@@ -20,7 +21,7 @@ vi.mock('../theme/panel-palette',()=>({paletteFromLayout:()=>({}),setActivePalet
 vi.mock('../theme/colors',()=>({withAlpha:(color:string)=>color,readableTextOn:()=> '#151c2c',getThemeTokens:()=>({bgPrimary:'#181b20',textPrimary:'#fff',textMuted:'#aaa',brand:'#63e6ae'})}));
 vi.mock('../lib/session-state',()=>({loadSessionState:()=>({language:'es'}),hydrateSessionState:async()=>({language:'es'}),saveSessionState:async()=>{}}));
 vi.mock('../lib/store-reset',()=>({resetAllStores:()=>{mocks.registry.clear();mocks.reset();}}));
-vi.mock('../api/serverApi',()=>({getDirect:(id:string)=>mocks.registry.get(id),registerDirectServer:(id:string,value:any)=>mocks.registry.set(id,value),unregisterDirectServer:(id:string)=>mocks.registry.delete(id),onDirectAuthRequired:()=>()=>{},callServerApi:mocks.call}));
+vi.mock('../api/serverApi',()=>({getDirect:(id:string)=>mocks.registry.get(id),registerDirectServer:(id:string,value:any)=>mocks.registry.set(id,value),unregisterDirectServer:(id:string)=>mocks.registry.delete(id),onDirectAuthRequired:()=>()=>{},onGithubRequired:(handler:(id:string)=>void)=>{mocks.githubRequired=handler;return()=>{mocks.githubRequired=null;};},callServerApi:mocks.call}));
 vi.mock('../api/directAuth',()=>({probePanel:mocks.probe,publicLayout:mocks.branding,loginStandalone:mocks.login,verifyStandaloneTotp:mocks.totp,refreshStandaloneSession:vi.fn(),normalizePanelProfileUrl:(value:string)=>new URL(/^https?:\/\//i.test(value)?value:`https://${value}`).origin,recoveryStandalone:vi.fn()}));
 vi.mock('../api/nativeBrowserAuth',()=>({loginInSystemBrowser:vi.fn()}));
 vi.mock('../storage/standaloneServers',()=>({listStandaloneServers:async()=>mocks.profiles,addStandaloneServer:mocks.add,updateStandaloneServer:async()=>{},removeStandaloneServer:vi.fn(),getStandaloneSession:mocks.saved,setStandaloneSession:mocks.persist,clearStandaloneSession:mocks.clear}));
@@ -158,4 +159,16 @@ it('never displays a late logo response from the previous selected server',async
  expect(tree.root.findByType('Image' as any).props.source).toEqual({uri:'https://b.test/branding/b.png'});
  await act(async()=>finish({layout_logo_login:'/branding/a.png'}));
  expect(tree.root.findByType('Image' as any).props.source).toEqual({uri:'https://b.test/branding/b.png'});
+});
+
+it('blocks the active workspace when its GitHub connection is required and ignores other servers',async()=>{
+ await mount();await act(async()=>press('Iniciar sesión'));
+ await act(async()=>mocks.githubRequired?.('sa-b'));
+ expect(tree.root.findAllByType('Workspace' as any)).toHaveLength(1);
+ await act(async()=>mocks.githubRequired?.('sa-a'));
+ expect(tree.root.findAllByType('Workspace' as any)).toHaveLength(0);
+ const gate=tree.root.findByType('GithubGate' as any);
+ expect(gate.props.serverId).toBe('sa-a');
+ await act(async()=>gate.props.onConnected({required:true,connected:true,deviceFlowAvailable:false}));
+ expect(tree.root.findAllByType('Workspace' as any)).toHaveLength(1);
 });
