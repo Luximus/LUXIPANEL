@@ -44,6 +44,9 @@ export function buildDelegateTool(ctx: {
   depth: number;
   signal: AbortSignal | undefined;
   runAgent: RunAgent;
+  /** Synchronous delegates participate in the parent's isolated change set. */
+  forcedCwd?: string;
+  approvalModeOverride?: "auto" | "manual" | "plan";
 }): { tool: AgentTool; targets: AssistantAgent[] } | null {
   const { agent, allAgents, executor, user, userId, depth, signal, runAgent } = ctx;
   const byId = new Map(allAgents.map((a) => [a.id ?? "", a] as const));
@@ -103,6 +106,8 @@ export function buildDelegateTool(ctx: {
           withContext: false,
           delegationDepth: depth + 1,
           signal: subSignal,
+          ...(ctx.forcedCwd ? { forcedCwd: ctx.forcedCwd } : {}),
+          ...(ctx.approvalModeOverride ? { approvalModeOverride: ctx.approvalModeOverride } : {}),
         })) {
           if (ev.type === "text") text += ev.delta;
           else if (ev.type === "error") return { ok: false, output: `El agente "${target?.name ?? targetId}" falló: ${ev.message}` };

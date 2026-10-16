@@ -515,7 +515,11 @@ export async function buildSystemPrompt(
   if (agent && provider.mode === "api" && delegationDepth < MAX_DELEGATION_DEPTH) {
     try {
       const allAgents = await agentsRepository.list();
-      const built = buildDelegateTool({ agent, allAgents, executor, user, userId, depth: delegationDepth, signal, runAgent });
+      const built = buildDelegateTool({
+        agent, allAgents, executor, user, userId, depth: delegationDepth, signal, runAgent,
+        ...(forcedCwd ? { forcedCwd } : {}),
+        approvalModeOverride: approvalMode,
+      });
       if (built) {
         tools.push(built.tool);
         const lines = built.targets.map((a) => {
