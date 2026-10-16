@@ -1,0 +1,9 @@
+{
+  "title": "Bienvenida personalizada en chats con agentes",
+  "changes": [
+    "Al iniciar un chat con un agente, la bienvenida muestra su avatar en lugar del logo del panel.",
+    "La franja redundante con el nombre del agente deja de mostrarse; el selector y el compositor siguen disponibles.",
+    "Los agentes sin avatar configurado conservan su avatar generado automáticamente.",
+    "El chat general conserva su logo y su bienvenida."
+  ]
+}
