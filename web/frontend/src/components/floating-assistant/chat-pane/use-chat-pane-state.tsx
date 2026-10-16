@@ -453,20 +453,23 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
       void openConversation(openConversationId);
     } else if (openAgentId) {
       const agentProjectId = openProjectId !== undefined ? openProjectId : currentProjectId;
+      const agentDraft = props.openAgentDraft;
       agentDraftHandoff.current = true;
       // Persist the agent-bound draft state BEFORE the provider-pane restore
       // effect runs, otherwise the stale saved snapshot can immediately clobber
       // `currentAgentId` back to null on the same activation edge.
       chatUiState.patchPane(provider, {
         activeId: null,
-        draft: "",
+        draft: agentDraft?.text ?? "",
         currentProjectId: agentProjectId,
         currentAgentId: openAgentId,
-        attachments: [],
+        attachments: agentDraft?.attachments ?? [],
       });
       newConversation({ preserveAgent: false });
       setCurrentProjectId(agentProjectId);
       setCurrentAgentId(openAgentId);
+      setDraft(agentDraft?.text ?? "");
+      setAttachments(agentDraft?.attachments ?? []);
       conversationOptions.resetNew("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

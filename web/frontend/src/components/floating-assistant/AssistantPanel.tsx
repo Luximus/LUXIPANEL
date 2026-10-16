@@ -60,6 +60,7 @@ export type ChatOpenRequest =
     }
   | {
       kind: "agent";
+      draft?: import("./chat-pane/vm-types").AgentChatDraft;
       provider: string;
       agentId: string;
       projectId?: string | null;
@@ -264,8 +265,8 @@ export default function AssistantPanel({
   // Launch a chat bound to a custom agent: switch to its provider sub-tab and
   // start a fresh agent-bound conversation. Shared by the Agents tab, the
   // Dashboard's agents section, and the Chat sidebar's agents section.
-  const launchAgent = useCallback((agent: AssistantAgent, projectId?: string) => {
-    setOpenReq({ kind: "agent", provider: agent.providerId, agentId: agent.id, projectId: projectId ?? agent.projectIds?.[0] ?? null, nonce: Date.now() });
+  const launchAgent = useCallback((agent: AssistantAgent, projectId?: string, draft?: import("./chat-pane/vm-types").AgentChatDraft) => {
+    setOpenReq({ kind: "agent", draft, provider: agent.providerId, agentId: agent.id, projectId: projectId ?? agent.projectIds?.[0] ?? null, nonce: Date.now() });
     setTab("chat");
   }, []);
 

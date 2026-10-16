@@ -7,7 +7,7 @@ import { chatUiState } from "./chat-ui-state";
 import { CliUsageBars } from "./CliUsageBars";
 import { useChatCliTarget } from "./use-chat-cli-target";
 import { assistantConversationsApi } from "./assistant-api/conversations";
-import { assistantApi, PROVIDER_META, PROVIDER_ORDER, type AssistantConfigState, type AssistantProviderId, type AssistantAgent, type ApprovalMode } from "./assistant-api";
+import { assistantApi, PROVIDER_META, PROVIDER_ORDER, type AssistantConfigState, type AssistantProviderId, type ApprovalMode } from "./assistant-api";
 import { type MobileNavController } from "./MobileNavModal";
 import { uiPrefs } from "./ui-prefs";
 import { useAssistantI18n } from "./i18n";
@@ -28,7 +28,7 @@ interface ChatTabProps {
    *  que cada kind se enrute sin ambigüedad. */
   openReq?: import("./AssistantPanel").ChatOpenRequest | null;
   /** Launch a chat bound to a custom agent (switches to its provider sub-tab). */
-  onLaunchAgent?: (agent: AssistantAgent, projectId?: string) => void;
+  onLaunchAgent?: import("./chat-pane/vm-types").ChatPaneProps["onLaunchAgent"];
   /** Prompt to prefill into the active provider's composer (deep-link/handoff). */
   seedText?: string | null;
   seedAutoSend?: boolean;
@@ -318,6 +318,7 @@ export function ChatTab({ enabled, config, loading, onOpenProviders, onConfigCha
                   ? openReq.agentId
                   : null
               }
+              openAgentDraft={openReq?.provider === id && openReq.kind === "agent" ? openReq.draft : undefined}
               openConversationAgentId={
                 openReq?.provider === id && openReq.kind === "conversation"
                   ? (openReq.conversationAgentId ?? null)

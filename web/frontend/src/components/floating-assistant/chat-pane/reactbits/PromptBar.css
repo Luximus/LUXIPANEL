@@ -782,7 +782,7 @@
   flex: 0 0 auto;
   width: auto;
   max-width: 100%;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .prompt-bar__picker-group {
@@ -793,6 +793,7 @@
   min-width: 0;
 }
 .prompt-bar__picker-group--project { width: 164px; }
+.prompt-bar__picker-group--agent { width: 180px; }
 .prompt-bar__picker-group--approval { width: 140px; }
 .prompt-bar__picker-group--provider { width: 112px; }
 .prompt-bar__picker-group .prompt-bar__context-pick {
@@ -818,6 +819,7 @@
 @media (max-width: 639px) {
   .prompt-bar .prompt-bar__toolbar-controls { flex: 1 1 calc(100% - 32px); }
   .prompt-bar__picker-group { flex: 1 1 0; width: auto; }
+  .prompt-bar__picker-group--agent { flex: 1 1 100%; }
 }
 @media (max-width: 420px) {
   .prompt-bar .prompt-bar__toolbar-controls { flex-wrap: wrap; row-gap: 4px; }

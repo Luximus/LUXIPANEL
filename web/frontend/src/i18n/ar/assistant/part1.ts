@@ -104,6 +104,9 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentHistoryAll": "جميع الوكلاء",
+    "agentHistoryHelp": "تصفية السجل حسب العضو وبدء محادثة معه.",
+    "agentRoleLeader": "القائد",
     "advancedSettings": "الإعدادات المتقدمة",
     "openProfile": "فتح الملف الشخصي",
     "mcpRepairButton": "إصلاح جلسة MCP",

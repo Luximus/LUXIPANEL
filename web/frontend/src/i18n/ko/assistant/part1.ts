@@ -104,6 +104,9 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentHistoryAll": "모든 에이전트",
+    "agentHistoryHelp": "멤버별로 기록을 필터링하고 해당 멤버와 채팅을 시작합니다.",
+    "agentRoleLeader": "리더",
     "advancedSettings": "고급 설정",
     "openProfile": "프로필 열기",
     "mcpRepairButton": "MCP 세션 복구",

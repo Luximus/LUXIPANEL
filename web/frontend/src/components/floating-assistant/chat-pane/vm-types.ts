@@ -11,6 +11,9 @@ import type { ChatReasoningEffort } from "../reasoning-effort";
 import { type VoiceConfigState, type ApprovalMode, type AssistantAgent } from "../assistant-api";
 import { type MobileNavController } from "../MobileNavModal";
 
+/** Unsent input carried only by an explicit agent selection, in memory. */
+export type AgentChatDraft = { text: string; attachments: import("../assistant-api").ChatAttachment[] };
+
 export interface ChatPaneProps {
   onRestoreProvider?: (provider: string, conversationId: string) => void;
   provider: string;
@@ -41,6 +44,7 @@ export interface ChatPaneProps {
   /** When set with a bumped `openNonce` and NO conversationId, starts a fresh
    *  chat bound to this custom agent — used by the Agents tab "Iniciar chat". */
   openAgentId?: string | null;
+  openAgentDraft?: AgentChatDraft;
   /** The owning agent of the conversation being opened from the Dashboard (null
    *  for loose/project chats). Used to select the conversation-list tab (Agentes
    *  IA vs Sueltos/Proyectos) synchronously, without depending on the async,
@@ -50,7 +54,7 @@ export interface ChatPaneProps {
   openNonce?: number;
   /** Launch a chat bound to a custom agent (switches to its provider sub-tab).
    *  Used by the chat sidebar's "Agentes" section to start any agent. */
-  onLaunchAgent?: (agent: AssistantAgent, projectId?: string) => void;
+  onLaunchAgent?: (agent: AssistantAgent, projectId?: string, draft?: AgentChatDraft) => void;
   /** When set, prefills the composer with this text (e.g. from the mail inbox "Depurar con IA"). */
   seedText?: string | null;
   /** When true, the seeded prompt is sent automatically (e.g. files AI input). */

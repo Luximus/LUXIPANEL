@@ -104,6 +104,9 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentHistoryAll": "Todos os agentes",
+    "agentHistoryHelp": "Filtra o histórico por membro e inicia uma conversa com ele.",
+    "agentRoleLeader": "Líder",
     "advancedSettings": "Configurações avançadas",
     "openProfile": "Abrir perfil",
     "mcpRepairButton": "Reparar sessão MCP",

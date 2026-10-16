@@ -73,6 +73,11 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     ct,
     ctx,
     currentAgent,
+    currentAgentId,
+    projectTeam,
+    projectTeamAgents,
+    agentCatalogReady,
+    handleNewAgentChat,
     currentProject,
     currentProjectId,
     draft,
@@ -87,6 +92,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     leaderAgent,
     leaderConv,
     listOpen,
+    looseTreeActions,
     live,
     loadMore,
     loadingMore,
@@ -125,7 +131,6 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     send,
     setAttachments,
     setBrowserOpen,
-    setCurrentProjectId,
     setDraft,
     setEditorPath,
     setListOpen,
@@ -438,8 +443,8 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               onChange: key => {
                 const nextId = key === LOOSE_GROUP_ID ? null : key;
                 if (nextId === currentProjectId) return;
-                setCurrentProjectId(nextId);
-                newConversation();
+                if (nextId) looseTreeActions.onNewProjectChat(nextId);
+                else looseTreeActions.onNewLoose();
               },
               action: selectedRootProject ? {
                 label: formatAssistantMessage(ct.editProjectNamed ?? "Editar {title}", { title: selectedRootProject.title }),
@@ -451,6 +456,21 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                 <button type="button" data-search-target="chat-prompt-multimedia" onClick={() => setBrowserOpen(true)} className="prompt-bar__tool" aria-label={ct.multimedia ?? "Multimedia"} title={ct.multimedia ?? "Multimedia"}><i className="ti ti-photo text-base" aria-hidden /></button>
               </> : undefined,
             },
+            ...(projectTeam && agentCatalogReady ? [{
+              key: "agent", label: ct.chatsWithAgents ?? "Agentes IA",
+              value: currentAgentId ?? "",
+              title: ct.agentHistoryHelp ?? "Filtra el historial por miembro e inicia un chat con él.",
+              icon: <i className="ti ti-users text-sm opacity-80" aria-hidden />,
+              options: [
+                { key: "", name: ct.agentHistoryAll ?? "Todos los agentes" },
+                ...projectTeamAgents.map(agent => ({ key: agent.id!, name: `[${(agent.roleId && rolesById.get(agent.roleId)?.name) || (agent.id === projectTeam.root.leaderAgentId ? (ct.agentRoleLeader ?? "Líder") : (ct.agentBadgeModel ?? "Agente"))}] ${agent.name}` })),
+              ],
+              onChange: (key: string) => {
+                if (key === (currentAgentId ?? "")) return;
+                if (key) handleNewAgentChat(key, true);
+                else { newConversation(); setDraft(draft); setAttachments(attachments); }
+              },
+            }] : []),
             ...(onApprovalModeChange ? [{
               key: "approval", label: ct.approvalModeLabel ?? "Modo de aprobación del agente",
               value: approvalMode,

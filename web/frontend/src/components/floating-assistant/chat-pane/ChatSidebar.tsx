@@ -10,7 +10,6 @@ import { LucideIcon } from "../LucideIcon";
 import { TimelineRow, ProjectsPager, SidebarTabs } from "./sidebar-chrome";
 import { ConvoRow } from "./ConvoRow";
 import { AgentThreadedConvos } from "./agent-threaded-convos";
-import { ProjectAgentConvos } from "./ProjectAgentConvos";
 import { projectForAgent } from "../project-modal/agent-scope";
 import { ProjectTreeConvos } from "./project-tree-convos";
 import { rootProjectId, SelectedProjectConvos } from "./project-history-picker";
@@ -32,11 +31,10 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     historyError,
     historySearchStatus,
     historyHasMore,
+    searchingHistory,
     projectTeam,
-    projectTeamAgents,
-    projectAgentHistory,
-    loadAgentHistory,
-    retryAgentHistory,
+    sidebarConvos,
+    historyAgentId,
     agentCatalogReady,
     loadMoreHistory,
     loadHistoryGroup,
@@ -95,7 +93,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     : null;
   const standaloneMobile = isMobile && !railNavTarget;
   const unifiedRoot = !!projectTeam || !projectQuery;
-  const scopedConvos = convos;
+  const scopedConvos = sidebarConvos;
   const rootId = rootProjectId(currentProjectId, projectById);
   const parentRoot = rootId && rootId !== currentProjectId ? projectById.get(rootId) : null;
   const autoProjectForRef = useRef<string | null>(null);
@@ -129,11 +127,6 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     }
   };
   const listedRowProps = { ...looseTreeRowProps, onOpen: openListedConversation };
-  const teamHistory = projectTeam && <ProjectAgentConvos agents={projectTeamAgents} history={projectAgentHistory}
-    expanded={expandedConvAgents} onToggle={toggleConvAgentGroup} onNewChat={handleNewAgentChat}
-    onLoadMore={loadAgentHistory} onRetry={retryAgentHistory} rolesById={rolesById} rowProps={listedRowProps}
-    activeConversation={!projectQuery && activeMeta && (projectTeam.projects.some(p => p.id === activeMeta.projectId)
-      || (!activeMeta.projectId && projects.filter(p => !p.parentId && p.teamId === projectTeam.teamId).length === 1)) ? activeMeta : null} />;
   const historyRetry = historyError != null && (
     <div role="alert" className="absolute inset-0 z-10 flex items-center justify-center bg-card px-3 dark:bg-background sm:bg-muted">
       <button type="button" onClick={() => void reloadList(search)} className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-destructive shadow-sm hover:bg-accent">
@@ -143,7 +136,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
   );
   const newChatButton = (
     <button key="new-chat" type="button" data-search-target="new-chat" onClick={() => {
-      newConversation();
+      newConversation({ preserveAgent: !!historyAgentId });
       setMobileListOpen(false);
       if (isMobile && railNavTarget) window.dispatchEvent(new CustomEvent("lxp:workspace:toggle-server"));
     }}>
@@ -210,7 +203,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
                 ? "flex flex-1 min-h-0 flex-col overflow-hidden"
                 : `flex flex-1 min-h-0 gap-0.5 overflow-y-auto px-1.5 py-1 touch-pan-y overscroll-y-contain ${groupAgentsList || groupLooseList ? "flex-col" : "flex-col-reverse"}`}
             >
-              {projectTeam ? teamHistory : unifiedRoot ? (
+              {unifiedRoot ? (
                 <SelectedProjectConvos
                   entries={looseProjectTree.entries}
                   projectById={projectById}
@@ -469,7 +462,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
                 className={unifiedRoot ? "flex min-h-0 flex-1 flex-col" : "space-y-0.5"}
               >
               {scopedConvos.length === 0 && !unifiedRoot && <p className="px-2 py-3 text-[11px] text-muted-foreground">{ct.conversations?.empty ?? "Sin conversaciones."}</p>}
-              {projectTeam ? teamHistory : unifiedRoot ? (
+              {unifiedRoot ? (
                 <SelectedProjectConvos
                   entries={looseProjectTree.entries}
                   projectById={projectById}
@@ -543,6 +536,11 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
           </>
         )}
         {historyRetry}
+        {historyHasMore && !historyError && <button type="button" data-history-load-more
+          disabled={searchingHistory} onClick={loadMoreHistory}
+          className="shrink-0 px-3 py-2 text-xs text-muted-foreground hover:bg-accent disabled:opacity-50">
+          {searchingHistory ? (ct.loadingMore ?? "Cargando…") : (ct.pagerNext ?? "Página siguiente")}
+        </button>}
         <div className="lxp-history-create-actions" data-history-create-actions>
           {mobileNavigation ? <>{newProjectButton}{newChatButton}{newRootChatButton}</> : <>{newChatButton}{newRootChatButton}{newProjectButton}</>}
         </div>
