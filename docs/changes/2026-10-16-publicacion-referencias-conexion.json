@@ -1,0 +1,8 @@
+{
+  "title": "Publicación automática sin falsas alertas de credenciales",
+  "changes": [
+    "Los aportes con conexiones que usan contraseñas generadas ya no se bloquean por confundir referencias del código con credenciales escritas.",
+    "Se mantiene la detección de contraseñas y claves incluidas en los archivos que se publican.",
+    "Los rechazos de publicación muestran si faltan permisos o hay reglas pendientes, en lugar de presentarse como fallos de conexión."
+  ]
+}

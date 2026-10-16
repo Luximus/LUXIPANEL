@@ -61,10 +61,18 @@ export function validateContributionPatch(patch:string):void{
 }
 export function contributionFailure(error:unknown):{transient:boolean;message:string}{
  if(error instanceof ContributionDeliveryError)return {transient:false,message:error.message};
- const text=error instanceof Error?error.message:"";
- if(/without.*workflow.*scope|refusing to allow an OAuth App/.test(text))return {transient:false,message:"La conexión GitHub necesita permiso workflow para publicar cambios de Actions. El commit y los archivos están guardados."};
- const transient=/timed out|timeout|resolve host|connect|network|remote end hung|ECONN|GitHub no|fetch first|non-fast-forward|failed to push some refs|502|503|504/i.test(text);
- return {transient,message:transient?"GitHub no respondió. El aporte está guardado y se reintentará.":"No se pudo publicar el aporte. Revisa conflictos, permisos o las comprobaciones; los cambios están guardados."};
+ const detail=error as {stderr?:unknown;stdout?:unknown}|null;
+ // Inspect process output for classification only; never store raw Git errors,
+ // which may include authorization headers or source snippets.
+ const text=[error instanceof Error?error.message:"",typeof detail?.stderr==="string"?detail.stderr:"",typeof detail?.stdout==="string"?detail.stdout:""].join("\n");
+ if(/workflow/i.test(text)&&/scope|permission|refusing/i.test(text))return {transient:false,message:"La conexión GitHub necesita permiso workflow para publicar cambios de Actions. El commit y los archivos están guardados."};
+ if(/secret scanning|push protection|detected secret/i.test(text))return {transient:false,message:"GitHub bloqueó el aporte por una posible credencial. Revisa el contenido antes de publicarlo; los archivos están guardados."};
+ if(/GH006|GH013|protected branch|rule violations/i.test(text))return {transient:false,message:"GitHub rechazó el aporte por las reglas de la rama. Revisa las comprobaciones o revisiones requeridas; los archivos están guardados."};
+ if(/Authentication failed|Bad credentials|invalid credentials|invalid username or token/i.test(text))return {transient:false,message:"GitHub rechazó las credenciales. Vuelve a conectar tu cuenta; los archivos están guardados."};
+ if(/403|permission.*denied|write access.*not granted/i.test(text))return {transient:false,message:"La conexión GitHub no tiene permiso para publicar este aporte. Revisa los permisos del repositorio; los archivos están guardados."};
+ if(/fetch first|non-fast-forward/i.test(text))return {transient:true,message:"developer recibió cambios durante el envío. El aporte está guardado y se volverá a comprobar antes de reintentarlo."};
+ const transient=/timed out|timeout|resolve host|Failed to connect|network is unreachable|remote end hung|ECONN|502|503|504/i.test(text);
+ return {transient,message:transient?"No se pudo completar la conexión con GitHub. El aporte está guardado y se reintentará.":"No se pudo publicar el aporte. Revisa conflictos, permisos o las comprobaciones; los cambios están guardados."};
 }
 export async function contributionGit(cwd:string,args:string[],extra:Record<string,string>={}):Promise<string>{
  const r=await exec("git",["-c","core.hooksPath=/dev/null","-c","core.fsmonitor=false",...args],{cwd,env:{...baseEnv(),GIT_TERMINAL_PROMPT:"0",...extra},timeout:120000,maxBuffer:16*1024*1024});

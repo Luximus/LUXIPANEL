@@ -22,6 +22,16 @@ describe("maintainer contribution snapshots",()=>{
   const error=contributionFailure(new Error("git rejected AUTHORIZATION: basic private-value"));
   expect(error.transient).toBe(false);expect(error.message).not.toContain("private-value");
  });
+ it("classifies Git rejections from stderr without claiming a connection failure",()=>{
+  const failure=(stderr:string)=>contributionFailure(Object.assign(new Error("git failed to push some refs AUTHORIZATION: basic private-value"),{stderr}));
+  expect(failure("refusing to allow a Personal Access Token to create or update workflow without workflow scope")).toMatchObject({transient:false,message:expect.stringContaining("permiso workflow")});
+  expect(failure("remote: GH013: Repository rule violations")).toMatchObject({transient:false,message:expect.stringContaining("reglas de la rama")});
+  expect(failure("remote: Authentication failed")).toMatchObject({transient:false,message:expect.stringContaining("rechazó las credenciales")});
+  expect(failure("Failed to connect: Connection timed out")).toMatchObject({transient:true,message:expect.stringContaining("conexión")});
+  expect(failure("non-fast-forward")).toMatchObject({transient:true,message:expect.stringContaining("recibió cambios")});
+  expect(failure("remote rejected")).toMatchObject({transient:false});
+  expect(failure("remote rejected").message).not.toContain("private-value");
+ });
  it("excludes credentials, private projects, binaries and runtime files",()=>{
   for(const p of ["web/backend/.env","web/backend/.env.production","web/backend/private/a.ts","web/backend/node_modules/pkg/index.js","web/frontend/dist/a.js","LP-LICENSE-SERVER/src/app.ts","../web/a.ts","web/backend/tokens.json","desktop/cert.p12"])expect(publishablePath(p),p).toBe(false);
   for(const p of ["web/backend/src/app.ts","web/frontend/src/components/Credentials.tsx","mobile/src/app.tsx","docs/CHANGELOG.md"])expect(publishablePath(p),p).toBe(true);
