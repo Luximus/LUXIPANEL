@@ -251,13 +251,16 @@ export const settingsController = {
     }
     const localWrites = localEntries;
     try {
-      if (localWrites.length > 0) {
-        await serverSettingsService.setBulk(executor, localWrites);
-      }
+      // Validate/persist the authoritative policy before mirroring the keys.
+      // An invalid selection must not partially save into the generic bag.
       if (Object.keys(securityPartial).length > 0) {
         await securitySettingsService.write(executor, securityPartial);
       }
+      if (localWrites.length > 0) {
+        await serverSettingsService.setBulk(executor, localWrites);
+      }
     } catch (err) {
+      if (err instanceof ValidationError) throw err;
       // Surface the specific failure (executor resolution, SFTP/SSH, JSON
       // corruption) with full context instead of letting asyncHandler turn
       // it into an opaque 500. The admin can retry or investigate the

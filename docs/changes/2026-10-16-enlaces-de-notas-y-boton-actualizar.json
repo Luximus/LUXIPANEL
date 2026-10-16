@@ -1,0 +1,7 @@
+{
+  "title": "Actualización más accesible y enlaces a cada mejora",
+  "changes": [
+    "El botón para actualizar aparece en la misma fila que la versión instalada y se adapta al espacio disponible.",
+    "Cada nota muestra un código breve enlazado a su cambio en GitHub, que se abre en otra pestaña."
+  ]
+}

@@ -22,7 +22,7 @@ beforeEach(async () => {
   sessionStorage.setItem(bridgeKey, "expired-bridge");
   sessionStorage.setItem(scopeKey, "previous-server");
   sessionStorage.setItem("unrelated-preference", "keep");
-  document.body.innerHTML = `<div id="login-card"></div><div id="login-error" class="hidden"></div>
+  document.body.innerHTML = `<div id="login-card" data-allow-password="true"></div><div id="login-error" class="hidden"></div>
     <form id="form-password"><input id="username" value="test"><input id="password" value="test"><button id="btn-password"></button></form>
     <form id="form-2fa" class="hidden"><input id="totp-code" value="123456"><button id="btn-2fa" type="button"></button></form>`;
   response = { ok: true };

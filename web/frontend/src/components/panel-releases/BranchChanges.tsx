@@ -17,9 +17,12 @@ export default function BranchChanges({ branch, locale, status, labels: L, canIn
   const installedVersion = status.installed?.tag || status.currentVersion;
   const notes = ready?.notes || [];
   return <section className="lxp-branch-changes" aria-label={L.notes}>
-    <div className="lxp-community-version-row">
-      {installedVersion && <span className="lxp-community-installed"><i className="ti ti-circle-check" aria-hidden="true" />{L.installed}<code>{versionTag(installedVersion)}</code></span>}
-      {branch.updateAvailable && !unavailable && !branch.error && <span className="lxp-community-installed">{L.newBadge}</span>}
+    <div className="lxp-branch-version-row">
+      <div className="lxp-community-version-row">
+        {installedVersion && <span className="lxp-community-installed"><i className="ti ti-circle-check" aria-hidden="true" />{L.installed}<code>{versionTag(installedVersion)}</code></span>}
+        {branch.updateAvailable && !unavailable && !branch.error && <span className="lxp-community-installed">{L.newBadge}</span>}
+      </div>
+      {ready?.installable && canInstall && onInstall && !current && !unavailable && !error && !branch.error && <button type="button" className="lxp-community-action lxp-community-action--primary" disabled={busy || status.operation?.status === "running"} onClick={() => void onInstall(branch.name, branch.commit)}><i className="ti ti-download" aria-hidden="true" /><span>{busy || status.operation?.status === "running" ? L.updating : L.branchUpdate.replace("{branch}", branch.name)}</span></button>}
     </div>
     <p className="text-sm text-muted-foreground">{L.branchPreview}</p>
     {current && <p role="status" className="text-sm">{L.branchCurrent}</p>}
@@ -27,14 +30,18 @@ export default function BranchChanges({ branch, locale, status, labels: L, canIn
     {(error || branch.error || status.branchesError) && <p role="alert" className="text-sm text-red-500">{error || branch.error || status.branchesError}</p>}
     {!ready && !error && <p role="status">{L.loading}</p>}
     {ready && !ready.installable && <p role="status" className="text-sm text-muted-foreground">{L.branchUnavailable}</p>}
-    {ready?.installable && canInstall && onInstall && !current && !unavailable && !error && !branch.error && <button type="button" className="lxp-community-action lxp-community-action--primary" disabled={busy || status.operation?.status === "running"} onClick={() => void onInstall(branch.name, branch.commit)}><i className="ti ti-download" aria-hidden="true" /><span>{busy || status.operation?.status === "running" ? L.updating : L.branchUpdate.replace("{branch}", branch.name)}</span></button>}
     <h3 className="lxp-community-section-title"><i className="ti ti-notes" aria-hidden="true" />{L.notes}</h3>
     {notes.length > 0 && <div className="lxp-community-notes lxp-branch-notes" dir="auto">
-      {notes.map(note => <article key={note.id} className="lxp-branch-note">
+      {notes.map(note => {
+        const commit = /^([a-f0-9]{40}):\d+$/.exec(note.id)?.[1];
+        return <article key={note.id} className="lxp-branch-note">
         <h4 className="font-semibold">{note.title}</h4>
-        {note.date && Number.isFinite(Date.parse(note.date)) && <time className="text-xs text-muted-foreground" dateTime={note.date}>{new Date(note.date).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}</time>}
+        <div className="lxp-branch-note-meta">
+          {note.date && Number.isFinite(Date.parse(note.date)) && <time className="text-xs text-muted-foreground" dateTime={note.date}>{new Date(note.date).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}</time>}
+          {commit && <a className="lxp-branch-note-link" href={`https://github.com/Luxisoft/LUXIPANEL/commit/${commit}`} target="_blank" rel="noopener noreferrer" aria-label={`${L.openGithub}: ${commit.slice(0, 8)}`} title={`${L.openGithub} · ${commit}`}><i className="ti ti-git-commit" aria-hidden="true" /><code>{commit.slice(0, 8)}</code><i className="ti ti-arrow-up-right" aria-hidden="true" /></a>}
+        </div>
         <ul>{note.changes.map((change, index) => <li key={index}>{change}</li>)}</ul>
-      </article>)}
+      </article>; })}
     </div>}
     {ready && notes.length === 0 && <p role="status" className="lxp-community-notes text-sm text-muted-foreground">{L.branchNotesUnavailable}</p>}
     {ready?.notesIncomplete && notes.length > 0 && <p className="text-xs text-muted-foreground">{L.branchNotesPartial}</p>}

@@ -288,8 +288,8 @@ export default async function initScript({ locale }: InitArgs) {
     loginMethodTabs?.classList.remove("hidden");
     resetLoadingStates();
     clearError();
-    const firstAllowed = METHODS.find(m => ALLOWED[m]) ?? "password";
-    switchMethod(firstAllowed);
+    const firstAllowed = METHODS.find(m => ALLOWED[m]);
+    if (firstAllowed) switchMethod(firstAllowed);
   }
 
   // Password should be first priority, then passkey, then recovery
@@ -297,6 +297,7 @@ export default async function initScript({ locale }: InitArgs) {
   const METHODS: LoginMethod[] = ["password", "passkey", "recovery"];
 
   function switchMethod(method: LoginMethod) {
+    if (!ALLOWED[method]) return;
     METHODS.forEach(m => {
       const tab = document.getElementById(`tab-${m}`);
       const form = document.getElementById(`form-${m}`);
@@ -315,7 +316,7 @@ export default async function initScript({ locale }: InitArgs) {
   const card = document.getElementById("login-card");
   if (!card) throw new Error("Missing login-card element");
   const ALLOWED = {
-    password: card.dataset.allowPassword !== "false",
+    password: card.dataset.allowPassword === "true",
     passkey: card.dataset.allowPasskey === "true",
     recovery: card.dataset.allowRecovery === "true",
   };
@@ -323,7 +324,7 @@ export default async function initScript({ locale }: InitArgs) {
   // Pick up hCaptcha config and render the widget (no-op when disabled).
   hcaptchaEnabled = card.dataset.hcaptchaEnabled === "true";
   hcaptchaSitekey = card.dataset.hcaptchaSitekey ?? "";
-  void setupHcaptcha();
+  if (ALLOWED.password) void setupHcaptcha();
 
   // Hide tabs for disabled methods
   for (const [method, allowed] of Object.entries(ALLOWED)) {
@@ -334,9 +335,11 @@ export default async function initScript({ locale }: InitArgs) {
   }
 
   // Activate first allowed method
-  const firstAllowed = METHODS.find(m => ALLOWED[m]) ?? "password";
+  const firstAllowed = METHODS.find(m => ALLOWED[m]);
   if (firstAllowed) {
     switchMethod(firstAllowed);
+  } else {
+    showError(i18nLogin.authError);
   }
 
   document.querySelectorAll<HTMLElement>(".method-tab").forEach(tab => {
@@ -358,6 +361,7 @@ export default async function initScript({ locale }: InitArgs) {
   // Password
   document.getElementById("form-password")?.addEventListener("submit", async e => {
     e.preventDefault();
+    if (!ALLOWED.password) return;
     clearError();
     const btn = document.getElementById("btn-password");
     const usernameInput = document.getElementById("username");
@@ -388,12 +392,13 @@ export default async function initScript({ locale }: InitArgs) {
     }
   });
 
-  // Focus username on load
-  const usernameField = document.getElementById("username");
+  // Focus the active method, without focusing a hidden password form.
+  const usernameField = document.getElementById(firstAllowed === "password" ? "username" : `${firstAllowed}-username`);
   if (usernameField instanceof HTMLInputElement) usernameField.focus();
 
   // Passkey
   document.getElementById("btn-passkey")?.addEventListener("click", async () => {
+    if (!ALLOWED.passkey) return;
     clearError();
 
     // Check WebAuthn support
@@ -472,6 +477,7 @@ export default async function initScript({ locale }: InitArgs) {
   // Recovery code
   document.getElementById("form-recovery")?.addEventListener("submit", async e => {
     e.preventDefault();
+    if (!ALLOWED.recovery) return;
     clearError();
     const btn = document.getElementById("btn-recovery");
     const recoveryUsername = document.getElementById("recovery-username");

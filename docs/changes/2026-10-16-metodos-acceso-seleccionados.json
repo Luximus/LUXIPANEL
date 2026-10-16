@@ -1,0 +1,8 @@
+{
+  "title": "El inicio de sesión respeta los métodos seleccionados",
+  "changes": [
+    "La pantalla de acceso muestra únicamente los métodos activados en Seguridad, también desde la carga inicial.",
+    "Desactivar Contraseña impide usarla para iniciar sesión, incluso mediante una petición directa.",
+    "Siempre debe quedar al menos un método activo: la interfaz conserva la última selección y el servidor rechaza guardar los tres desactivados."
+  ]
+}

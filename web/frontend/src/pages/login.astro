@@ -54,7 +54,7 @@ const t = await getPageMessages(Astro, ['login', 'components', 'panelLayout', 'b
 // so the backend resolves the right panel (BACKEND_URL points at localhost
 // which loses the original subdomain otherwise).
 const backendUrl = getBackendUrl();
-let loginMethods = { password: true, passkey: true, recovery: true };
+let loginMethods = { password: false, passkey: false, recovery: false };
 // hCaptcha config lives on the same login-methods payload (the secret is never
 // exposed — only the public site key + the enabled flag).
 let hcaptchaEnabled = false;
@@ -65,18 +65,26 @@ try {
       host: hostHeader,
       "x-forwarded-host": hostHeader,
     },
+    cache: "no-store",
   });
   if (res.ok) {
     const data = await res.json();
     if (data.ok && data.data) {
-      loginMethods = data.data;
+      loginMethods = {
+        password: data.data.password === true,
+        passkey: data.data.passkey === true,
+        recovery: data.data.recovery === true,
+      };
       hcaptchaEnabled = Boolean(data.data.hcaptchaEnabled);
       hcaptchaSitekey = typeof data.data.hcaptchaSitekey === "string" ? data.data.hcaptchaSitekey : "";
     }
   }
 } catch {
-  // Use defaults if fetch fails
+  // Do not offer methods whose policy could not be loaded.
 }
+const firstMethod = (["password", "passkey", "recovery"] as const).find(method => loginMethods[method]);
+if (!firstMethod) Astro.response.status = 503;
+Astro.response.headers.set("Cache-Control", "no-store");
 // Mirror AuthLayout: hide the theme/language buttons inside the embedded
 // (desktop / mobile-app) wrapper that already renders its own controls.
 // Ocultar tema/idioma solo en el wrapper DESKTOP (chrome nativo los gobierna).
@@ -118,9 +126,9 @@ const iconButtonTextClass = "btn-text flex items-center justify-center gap-2";
           <div
             id="login-card"
             class="wizard-step rounded-2xl border border-border bg-card/80 p-8 shadow-xl space-y-5"
-            data-allow-password={loginMethods.password}
-            data-allow-passkey={loginMethods.passkey}
-            data-allow-recovery={loginMethods.recovery}
+            data-allow-password={String(loginMethods.password)}
+            data-allow-passkey={String(loginMethods.passkey)}
+            data-allow-recovery={String(loginMethods.recovery)}
             data-hcaptcha-enabled={String(hcaptchaEnabled)}
             data-hcaptcha-sitekey={hcaptchaSitekey}
           >
@@ -162,25 +170,26 @@ const iconButtonTextClass = "btn-text flex items-center justify-center gap-2";
             </div>
 
             <div id="login-method-tabs" class="flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
-              <button type="button" id="tab-passkey" data-method="passkey" class={methodTabIdleClass}>
+              {loginMethods.passkey && <button type="button" id="tab-passkey" data-method="passkey" class={methodTabIdleClass}>
                 <i class="ti ti-fingerprint"></i>{t.login.tabs.passkey}
-              </button>
-              <button type="button" id="tab-password" data-method="password" class={methodTabIdleClass}>
+              </button>}
+              {loginMethods.password && <button type="button" id="tab-password" data-method="password" class={methodTabIdleClass}>
                 <i class="ti ti-lock"></i>{t.login.tabs.password}
-              </button>
-              <button type="button" id="tab-recovery" data-method="recovery" class={methodTabIdleClass}>
+              </button>}
+              {loginMethods.recovery && <button type="button" id="tab-recovery" data-method="recovery" class={methodTabIdleClass}>
                 <i class="ti ti-shield-check"></i>{t.login.tabs.recovery}
-              </button>
+              </button>}
             </div>
 
             <div
               id="login-error"
-              class="setup-alert setup-alert--error hidden rounded-lg px-4 py-3 text-sm"
+              class:list={["setup-alert setup-alert--error rounded-lg px-4 py-3 text-sm", { hidden: !!firstMethod }]}
             >
+              {!firstMethod && t.login.authError}
             </div>
 
             <!-- Passkey -->
-            <div id="form-passkey" class="method-form hidden space-y-5">
+            {loginMethods.passkey && <div id="form-passkey" class:list={["method-form space-y-5", { hidden: firstMethod !== "passkey" }]}>
               <div class="rounded-xl border border-border bg-muted/30 px-5 py-6 text-center space-y-3">
                 <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-500/10">
                   <i class="ti ti-fingerprint text-2xl text-blue-500"></i>
@@ -218,10 +227,10 @@ const iconButtonTextClass = "btn-text flex items-center justify-center gap-2";
               </button>
 
               <p id="passkey-status" class="text-xs text-center text-muted-foreground hidden"></p>
-            </div>
+            </div>}
 
             <!-- Password -->
-            <form id="form-password" class="method-form space-y-5">
+            {loginMethods.password && <form id="form-password" class:list={["method-form space-y-5", { hidden: firstMethod !== "password" }]}>
               <div class="space-y-2">
                 <label for="username" class="text-sm font-medium">{t.login.labels.user}</label>
                 <div class="relative">
@@ -285,10 +294,10 @@ const iconButtonTextClass = "btn-text flex items-center justify-center gap-2";
                   </svg>
                 </span>
               </button>
-            </form>
+            </form>}
 
             <!-- Recovery code -->
-            <form id="form-recovery" class="method-form hidden space-y-5">
+            {loginMethods.recovery && <form id="form-recovery" class:list={["method-form space-y-5", { hidden: firstMethod !== "recovery" }]}>
               <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
                 <p class="text-xs text-amber-600 dark:text-amber-400">
                   <i class="ti ti-alert-triangle mr-1"></i>
@@ -335,7 +344,7 @@ const iconButtonTextClass = "btn-text flex items-center justify-center gap-2";
                   </svg>
                 </span>
               </button>
-            </form>
+            </form>}
 
             <!-- Two-factor -->
             <div id="form-2fa" class="hidden space-y-5">
@@ -391,6 +400,6 @@ const iconButtonTextClass = "btn-text flex items-center justify-center gap-2";
 </style>
 
 <script type="module" define:vars={{ locale }}>
-  import initScript from "/scripts/extracted/pages/login-define-vars-script1.js?v=20261003-session-reset";
+  import initScript from "/scripts/extracted/pages/login-define-vars-script1.js?v=20261016-login-methods";
   void initScript({ locale });
 </script>

@@ -144,3 +144,30 @@ describe('passkey display names', () => {
  });
 });
 
+
+describe('login method selection', () => {
+ const methods = ['password', 'passkey', 'recovery'];
+ function checks() {return Array.from(document.querySelectorAll<HTMLInputElement>('.login-method-check'));}
+ beforeEach(() => {
+  document.body.innerHTML += methods.map(m => `<input type="checkbox" class="login-method-check" id="s-login-allow-${m}">`).join('') + '<p id="login-methods-warning" class="hidden"></p>';
+ });
+ it.each([1, 2, 3, 4, 5, 6, 7])('keeps the selection and disables only the last active method (mask %s)', async mask => {
+  const {enforceAtLeastOneMethod} = await import('./security');
+  checks().forEach((c, i) => {c.checked = Boolean(mask & (1 << i)); c.disabled = true;});
+  enforceAtLeastOneMethod();
+  const count = checks().filter(c => c.checked).length;
+  checks().forEach((c, i) => {expect(c.checked).toBe(Boolean(mask & (1 << i))); expect(c.disabled).toBe(count === 1 && c.checked);});
+ });
+ it('unlocks the previous sole method when another one is selected', async () => {
+  const {enforceAtLeastOneMethod} = await import('./security'); const [password, passkey] = checks();
+  passkey.checked = true; enforceAtLeastOneMethod(); expect(passkey.disabled).toBe(true);
+  password.checked = true; enforceAtLeastOneMethod(); expect(passkey.disabled).toBe(false);
+  passkey.checked = false; enforceAtLeastOneMethod(); expect(password.disabled).toBe(true); expect(passkey.disabled).toBe(false);
+ });
+ it('restores only the last unchecked method without enabling the others', async () => {
+  const {enforceAtLeastOneMethod} = await import('./security'); const passkey = checks()[1];
+  passkey.addEventListener('change', enforceAtLeastOneMethod); passkey.dispatchEvent(new Event('change'));
+  expect(checks().map(c => c.checked)).toEqual([false, true, false]); expect(passkey.disabled).toBe(true);
+  expect(document.getElementById('login-methods-warning')?.classList.contains('hidden')).toBe(false);
+ });
+});

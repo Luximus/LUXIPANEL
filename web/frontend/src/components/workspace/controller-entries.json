@@ -158,7 +158,7 @@
   "pages_panel_settings_index": {
     "scripts": [
       "\n  // LUXIPANEL is standalone: the panel is never auth-managed by an external\n  // license server, and every user manages their OWN passkeys/recovery/2FA on\n  // the connected server. `CAN_MANAGE_LOCAL_AUTH` (read by settings/state.ts)\n  // is therefore always true here.\n  window.__LUXIPANEL_CAN_MANAGE_LOCAL_AUTH__ = true;\n",
-      "\n  import \"/scripts/extracted/pages/panel/settings/index-script1.js?v=20261001-server-scope\";\n  import \"/scripts/extracted/pages/panel/settings/modules-cache.js?v=2\";\n  import \"/scripts/extracted/pages/panel/settings/credentials-script1.js?v=20260616gitssh\";\n  import \"/scripts/extracted/pages/panel/settings/servers-script1.js?v=1\";\n"
+      "\n  import \"/scripts/extracted/pages/panel/settings/index-script1.js?v=20261016-login-methods\";\n  import \"/scripts/extracted/pages/panel/settings/modules-cache.js?v=2\";\n  import \"/scripts/extracted/pages/panel/settings/credentials-script1.js?v=20260616gitssh\";\n  import \"/scripts/extracted/pages/panel/settings/servers-script1.js?v=1\";\n"
     ],
     "directory": "src/pages/panel/settings"
   },

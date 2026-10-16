@@ -110,25 +110,21 @@ export function applyManaged2faUi() {
   });
 }
 
-export function enforceAtLeastOneMethod() {
+export function enforceAtLeastOneMethod(event?: Event) {
   const checks = Array.from(document.querySelectorAll<HTMLInputElement>(".login-method-check"));
+  if (!checks.length) return;
+  const empty = !checks.some((c) => c.checked);
+  if (empty) {
+    // Restore only the method just unchecked; never enable unrelated methods.
+    const changed = event?.target;
+    const restore = changed instanceof HTMLInputElement && checks.includes(changed)
+      ? changed
+      : checks.find((c) => c.id === "s-login-allow-password") ?? checks[0];
+    restore.checked = true;
+  }
   const enabled = checks.filter((c) => c.checked);
-  const warning = document.getElementById("login-methods-warning")!;
-
-  if (enabled.length === 1) {
-    enabled[0].disabled = true;
-    warning.classList.add("hidden");
-  } else {
-    checks.forEach((c) => (c.disabled = false));
-    warning.classList.add("hidden");
-  }
-
-  if (enabled.length === 0) {
-    checks.forEach((c) => {
-      if (!c.disabled) c.checked = true;
-    });
-    warning.classList.remove("hidden");
-  }
+  checks.forEach((c) => { c.disabled = enabled.length === 1 && c.checked; });
+  document.getElementById("login-methods-warning")?.classList.toggle("hidden", !empty);
 }
 
 export function updateAuditLogButtonVisibility() {

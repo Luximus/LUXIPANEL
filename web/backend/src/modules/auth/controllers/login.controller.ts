@@ -66,6 +66,7 @@ export const loginController = {
     // exactly what the verify endpoints allow (all sourced from the per-server
     // security sidecar). The panel is self-hosted, so it always "matches".
     const data = await resolveEffectiveLoginMethods();
+    res.setHeader("Cache-Control", "no-store");
     res.json({ ok: true, matched: true, configured: true, data });
   }),
 };

@@ -12,7 +12,7 @@ import { activateTab, setSmtpVisibility, SETTINGS_TAB_SESSION_KEY } from "./tabs
 import { loadLayoutPalettes, setCustomPaletteColor, setTornasolPaletteColors, setCurrentTornasolIntensity, refreshActivePalette, currentTornasolIntensity, tornasolPaletteColors } from "./layout-palettes";
 import { reapplyLiveTheme, reapplyLiveLogos, syncDerivedControlsFromCanonical, updateLoginBackgroundSettingsVisibility, initImageListEditors } from "./layout-theme";
 import { refreshAllLogoPreviews } from "./branding";
-import { updateAuditLogButtonVisibility, applyHcaptchaCredential, loadAuthMethodStatus, load2FAStatusSettings } from "./security";
+import { enforceAtLeastOneMethod, updateAuditLogButtonVisibility, applyHcaptchaCredential, loadAuthMethodStatus, load2FAStatusSettings } from "./security";
 
 export function getAiModelHints(): Record<string, { models: string; hint: string; keyHint: string }> {
   return {
@@ -89,6 +89,8 @@ export function applySettings(data: Record<string, unknown>) {
       }
     }
   }
+
+  enforceAtLeastOneMethod();
 
   // After loading, sync derived UI: highlight the active palette; logo previews track inputs.
   // The persisted `layout_palette_id` is the AUTHORITATIVE source for which

@@ -102,7 +102,7 @@ it("does not show a previous target's late installation error", async () => {
 });
 
 const branch = { name: "developer", commit: "a".repeat(40), ahead: 3, updateAvailable: true };
-const branchDetails = { ...branch, installable: true, notes: [{ id: "note-1", title: "Selector de agentes", changes: ["Elige al miembro del equipo desde el chat."], date: "2026-10-16" }], commits: [{ sha: branch.commit, message: "chore: cambios del asistente internal-task", author: "Luximus", date: "2026-10-16", url: "" }] };
+const branchDetails = { ...branch, installable: true, notes: [{ id: branch.commit + ":0", title: "Selector de agentes", changes: ["Elige al miembro del equipo desde el chat."], date: "2026-10-16" }], commits: [{ sha: branch.commit, message: "chore: cambios del asistente internal-task", author: "Luximus", date: "2026-10-16", url: "" }] };
 const branchButton = () => Array.from(container.querySelectorAll<HTMLButtonElement>("dialog button")).find(button => button.textContent === labels.community.branchUpdate.replace("{branch}", "developer") || button.textContent === labels.community.updating);
 async function selectBranch(name = "developer") {
   const select = container.querySelector<HTMLSelectElement>(`select[aria-label="${labels.community.branches}"]`)!;
@@ -117,7 +117,11 @@ it("opens branch changes without installing and pins an explicit update to the d
   expect(container.textContent).toContain("Selector de agentes"); expect(installPanelBranch).not.toHaveBeenCalled();
   expect(container.textContent).toContain("Elige al miembro del equipo desde el chat.");
   expect(container.textContent).not.toContain("chore:"); expect(container.textContent).not.toContain("internal-task");
-  expect(container.textContent).not.toContain(branch.commit.slice(0, 8));
+  const link = container.querySelector<HTMLAnchorElement>(".lxp-branch-note a")!;
+  expect(link.textContent).toBe(branch.commit.slice(0, 8));
+  expect(link.href).toBe("https://github.com/Luxisoft/LUXIPANEL/commit/" + branch.commit);
+  expect(link.target).toBe("_blank"); expect(link.rel).toBe("noopener noreferrer");
+  expect(link.getAttribute("aria-label")).toContain(labels.community.openGithub);
   const button = branchButton()!;
   await act(async () => { button.click(); button.click(); });
   expect(installPanelBranch).toHaveBeenCalledExactlyOnceWith("developer", branch.commit);
@@ -177,4 +181,12 @@ it("shows an honest empty state when notes are missing and keeps technical messa
   expect(container.textContent).toContain(labels.community.branchNotesUnavailable);
   expect(container.textContent).not.toContain("internal-task");
   expect(container.textContent).not.toContain(branch.commit.slice(0, 8));
+});
+
+it("does not create a GitHub link from an invalid note revision", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue({ ...branchDetails, notes: [{ ...branchDetails.notes[0]!, id: "javascript:alert(1)" }] });
+  await render(); await open(); await selectBranch();
+  expect(container.querySelector(".lxp-branch-note")?.textContent).toContain("Selector de agentes");
+  expect(container.querySelector(".lxp-branch-note a")).toBeNull();
 });

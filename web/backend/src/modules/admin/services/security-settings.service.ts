@@ -13,7 +13,8 @@
  * panel-host store that would be shared across every server.
  */
 
-import type { Executor } from "../../../shared/executor/index.js";
+import { getContextExecutor, type Executor } from "../../../shared/executor/index.js";
+import { ValidationError } from "../../../shared/errors/index.js";
 import { remoteConfig } from "../../../shared/remote-config/index.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
 import { createTargetTtlCache } from "./target-ttl-cache.js";
@@ -87,6 +88,7 @@ export const securitySettingsService = {
    * the safe DEFAULTS are returned instead of throwing.
    */
   async read(executor?: Executor | null): Promise<SecuritySettings> {
+    executor = executor ?? getContextExecutor();
     const key = cacheKey(executor);
     const cached = secCache.get(key);
     if (cached !== undefined) return cached;
@@ -106,8 +108,12 @@ export const securitySettingsService = {
    * a resolvable executor (explicit or request-scoped); fails closed if none.
    */
   async write(executor: Executor | null | undefined, partial: Partial<SecuritySettings>): Promise<SecuritySettings> {
+    executor = executor ?? getContextExecutor();
     const current = await this.read(executor);
     const next: SecuritySettings = normalize({ ...current, ...partial });
+    if (!next.loginAllowPassword && !next.loginAllowPasskey && !next.loginAllowRecovery) {
+      throw new ValidationError("Debe quedar al menos un método de inicio de sesión activo.");
+    }
     try {
       await remoteConfig.write(executor, MODULE, next);
     } catch (err) {
