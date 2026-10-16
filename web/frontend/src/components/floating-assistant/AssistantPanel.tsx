@@ -2,6 +2,7 @@
 // Copyright (C) 2026 LUXISOFT
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClientMessages } from "@/i18n/client";
+import { resolveTargetScope, scopeHeaders } from "@/lib/api-client";
 import {
   assistantApi,
   PROVIDER_ORDER,
@@ -18,6 +19,7 @@ import {
 import { ChatTab } from "./ChatTab";
 import { ProviderIcon } from "./ProviderIcon";
 import { workspaceState } from "./workspace-state";
+import { chatUiState } from "./chat-ui-state";
 const ProjectAgentsDialog = lazy(() => import("./ProjectAgentsDialog").then((module) => ({ default: module.ProjectAgentsDialog })));
 import type { AssistantSettingsSection } from "./AssistantSettingsModal";
 const AssistantSettingsModal = lazy(() => import("./AssistantSettingsModal").then(module => ({ default: module.AssistantSettingsModal })));
@@ -208,6 +210,8 @@ export default function AssistantPanel({
   );
   const [config, setConfig] = useState<AssistantConfigState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null);
+  const agentLaunchSequence = useRef(0);
   // Lista de proveedores visibles en chat, usada por `openAssistantRequest`.
   // Debe declararse antes del callback que la consume.
   const activeProviders = useMemo<AssistantProviderId[]>(() => {
@@ -265,10 +269,47 @@ export default function AssistantPanel({
   // Launch a chat bound to a custom agent: switch to its provider sub-tab and
   // start a fresh agent-bound conversation. Shared by the Agents tab, the
   // Dashboard's agents section, and the Chat sidebar's agents section.
-  const launchAgent = useCallback((agent: AssistantAgent, projectId?: string, draft?: import("./chat-pane/vm-types").AgentChatDraft) => {
-    setOpenReq({ kind: "agent", draft, provider: agent.providerId, agentId: agent.id, projectId: projectId ?? agent.projectIds?.[0] ?? null, nonce: Date.now() });
-    setTab("chat");
-  }, []);
+  const launchAgent = useCallback(async (agent: AssistantAgent, projectId?: string, draft?: import("./chat-pane/vm-types").AgentChatDraft) => {
+    const sequence = ++agentLaunchSequence.current;
+    setAgentLaunchError(null);
+    if (!config?.enabled) return;
+
+    const scope = () => JSON.stringify([resolveTargetScope(), scopeHeaders(true)]);
+    const requestScope = scope();
+    const sourceProvider = chatUiState.getActiveProvider();
+    const sourceIdentity = () => {
+      const pane = sourceProvider ? chatUiState.getPane(sourceProvider) : null;
+      return JSON.stringify([chatUiState.getActiveProvider(), pane?.activeId, pane?.currentProjectId, pane?.currentAgentId]);
+    };
+    const requestIdentity = sourceIdentity();
+    const isCurrent = () => sequence === agentLaunchSequence.current
+      && scope() === requestScope && sourceIdentity() === requestIdentity;
+
+    try {
+      // ChatTab only mounts active providers. Explicitly selecting an agent
+      // enables its provider, just like the chat's provider picker does, but
+      // must never change the provider/options of the existing conversation.
+      if (!config.providers[agent.providerId]?.active) {
+        const next = await assistantApi.setProvider(agent.providerId, { active: true });
+        if (!isCurrent()) return;
+        if (!next.enabled || !next.providers[agent.providerId]?.active) {
+          throw new Error(messages.assistantErrorBoundary.errorMessage);
+        }
+        setConfig(next);
+        // Keep any edits made while provider activation was pending.
+        if (draft && sourceProvider) {
+          const source = chatUiState.getPane(sourceProvider);
+          draft = { text: source.draft, attachments: source.attachments };
+        }
+      }
+      setOpenReq({ kind: "agent", draft, provider: agent.providerId, agentId: agent.id, projectId: projectId ?? agent.projectIds?.[0] ?? null, nonce: Date.now() });
+      setTab("chat");
+    } catch (error) {
+      if (isCurrent()) {
+        setAgentLaunchError(error instanceof Error ? error.message : messages.assistantErrorBoundary.errorMessage);
+      }
+    }
+  }, [config, messages.assistantErrorBoundary.errorMessage]);
 
   const openSettings = useCallback((section?: AssistantSettingsSection | "agentes" | null, agentId?: string | null) => {
     if (section === "agentes" || agentId) {
@@ -487,6 +528,8 @@ export default function AssistantPanel({
 
   useEffect(() => {
     const onTargetChanged = () => {
+      ++agentLaunchSequence.current;
+      setAgentLaunchError(null);
       setConfig(null);
       void reload();
     };
@@ -495,6 +538,7 @@ export default function AssistantPanel({
     window.addEventListener("luxipanel:credentials-changed", refreshCredentials);
     window.addEventListener("luxipanel:credentials-open", closeSettings);
     return () => {
+      ++agentLaunchSequence.current;
       window.removeEventListener("luxipanel:target-changed", onTargetChanged);
       window.removeEventListener("luxipanel:credentials-changed", refreshCredentials);
       window.removeEventListener("luxipanel:credentials-open", closeSettings);
@@ -523,6 +567,11 @@ export default function AssistantPanel({
               {loadError && (
                 <div className="m-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-600 shrink-0">
                   {messages.drawer.loadErrorPrefix} {loadError}
+                </div>
+              )}
+              {agentLaunchError && (
+                <div role="alert" className="m-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-600 shrink-0">
+                  {agentLaunchError}
                 </div>
               )}
 

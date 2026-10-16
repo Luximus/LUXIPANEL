@@ -2,11 +2,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("@/lib/api-client", () => ({ api: { get: vi.fn(), post: vi.fn() } }));
-vi.mock("@/lib/panel-releases", async importOriginal => ({ ...await importOriginal<object>(), readPanelBranch: vi.fn(), installPanelBranch: vi.fn(), readPanelReleases: vi.fn(), installPanelRelease: vi.fn(), readReleaseDetails: vi.fn(), translateReleaseDetails: vi.fn() }));
+vi.mock("@/lib/panel-releases", async importOriginal => ({ ...await importOriginal<object>(), readPanelReleasePreflight: vi.fn(), readPanelBranch: vi.fn(), installPanelBranch: vi.fn(), readPanelReleases: vi.fn(), installPanelRelease: vi.fn(), readReleaseDetails: vi.fn(), translateReleaseDetails: vi.fn() }));
 import ReleaseBanner from "./ReleaseBanner";
 import labels from "@/i18n/es/panelLayout";
 import { api } from "@/lib/api-client";
-import { readPanelBranch, installPanelBranch, installPanelRelease, readPanelReleases, readReleaseDetails, translateReleaseDetails, type PanelReleaseStatus } from "@/lib/panel-releases";
+import { readPanelReleasePreflight, readPanelBranch, installPanelBranch, installPanelRelease, readPanelReleases, readReleaseDetails, translateReleaseDetails, type PanelReleaseStatus } from "@/lib/panel-releases";
 
 let root: Root; let container: HTMLDivElement;
 const latest = { tag: "v2.0.4", name: "Release", notes: "Fixes", publishedAt: null };
@@ -24,6 +24,7 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); };
   vi.mocked(api.get).mockResolvedValue({ ok: true, status: 200, data: { items: [], unread: 0 } });
   vi.mocked(readPanelReleases).mockResolvedValue(status);
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: true });
   const details = { ...latest, url: "https://github.com/Luxisoft/LUXIPANEL/releases/tag/v2.0.4", comments: [], commentsUnavailable: false };
   vi.mocked(readReleaseDetails).mockResolvedValue(details);
   vi.mocked(translateReleaseDetails).mockResolvedValue({ ...details, translation: "original" });
@@ -189,4 +190,46 @@ it("does not create a GitHub link from an invalid note revision", async () => {
   await render(); await open(); await selectBranch();
   expect(container.querySelector(".lxp-branch-note")?.textContent).toContain("Selector de agentes");
   expect(container.querySelector(".lxp-branch-note a")).toBeNull();
+});
+
+it.each(["branch", "release"])("keeps a blocked %s update visible above long notes and allows retry after the blocker is resolved", async kind => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: false });
+  await render(); await open();
+  if (kind === "branch") await selectBranch();
+  const button = kind === "branch" ? branchButton()! : installButton()!;
+  await act(async () => button.click());
+  expect(installPanelBranch).not.toHaveBeenCalled(); expect(installPanelRelease).not.toHaveBeenCalled();
+  const alert = container.querySelector('dialog > [role="alert"]')!;
+  expect(alert.textContent).toBe(labels.community.localChangesBlocked);
+  expect(container.querySelector(".lxp-community-content")!.contains(alert)).toBe(false);
+  expect(button.disabled).toBe(false);
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: true });
+  await act(async () => button.click());
+  expect(kind === "branch" ? installPanelBranch : installPanelRelease).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('dialog > [role="alert"]')).toBeNull();
+});
+
+it("does not install after a preflight failure and shows its error above the notes", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  vi.mocked(readPanelReleasePreflight).mockRejectedValue(new Error("No se pudo comprobar la instalación."));
+  await render(); await open(); await selectBranch();
+  await act(async () => branchButton()!.click());
+  expect(installPanelBranch).not.toHaveBeenCalled();
+  expect(container.querySelector('dialog > [role="alert"]')?.textContent).toBe("No se pudo comprobar la instalación.");
+});
+
+it("discards a completed preflight if the selected server changed", async () => {
+  let finish!: (value: { ok: boolean }) => void;
+  vi.mocked(readPanelReleasePreflight).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render(); await open(); await selectBranch();
+  await act(async () => branchButton()!.click());
+  await act(async () => window.dispatchEvent(new Event("luxipanel:target-changed")));
+  await act(async () => finish({ ok: true }));
+  expect(installPanelBranch).not.toHaveBeenCalled();
+  expect(container.querySelector("dialog[open]")).toBeNull();
 });

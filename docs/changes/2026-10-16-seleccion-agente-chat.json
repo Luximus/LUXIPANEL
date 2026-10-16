@@ -1,0 +1,8 @@
+{
+  "title": "Selección de agentes desde el chat",
+  "changes": [
+    "Elegir un agente desde el chat habilita su proveedor cuando está oculto y abre la conversación con el agente seleccionado.",
+    "El cambio conserva el proyecto, el borrador y los adjuntos, sin modificar las conversaciones anteriores.",
+    "Si el proveedor no puede activarse, el panel muestra el error y mantiene el chat actual."
+  ]
+}

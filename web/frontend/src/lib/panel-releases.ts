@@ -29,6 +29,12 @@ export async function readPanelReleases(): Promise<PanelReleaseStatus> {
   return response.data;
 }
 
+export async function readPanelReleasePreflight(): Promise<{ ok: boolean }> {
+  const response = await api.get<{ ok: boolean }>("/api/admin/system/releases/preflight");
+  if (!response.ok || typeof response.data?.ok !== "boolean") throw new Error(response.error || "No se pudo comprobar si la instalación permite actualizar.");
+  return response.data;
+}
+
 export async function installPanelRelease(tag: string): Promise<void> {
   const response = await api.post("/api/admin/system/releases/install", { tag });
   if (!response.ok) throw new Error(response.error || "No se pudo iniciar la instalación.");

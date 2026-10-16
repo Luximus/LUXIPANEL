@@ -1,7 +1,7 @@
 import CommunityActivity from "./CommunityActivity";
 import { useEffect, useRef, useState } from "react";
 import { version } from "../../../package.json";
-import { installPanelBranch, installPanelRelease, readPanelReleases, type PanelReleaseStatus } from "@/lib/panel-releases";
+import { readPanelReleasePreflight, installPanelBranch, installPanelRelease, readPanelReleases, type PanelReleaseStatus } from "@/lib/panel-releases";
 
 export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: boolean; labels: Record<string, string>; locale: string }) {
   const [status, setStatus] = useState<PanelReleaseStatus | null>(null);
@@ -33,6 +33,9 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     installing.current = true;
     setBusy(true); setError("");
     try {
+      const readiness = await readPanelReleasePreflight();
+      if (current !== generation.current) return;
+      if (!readiness.ok) { setError(labels.localChangesBlocked); return; }
       await installPanelRelease(tag);
       if (current !== generation.current) return;
       const next = await readPanelReleases();
@@ -48,6 +51,9 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     const current = generation.current;
     installing.current = true; setBusy(true); setError("");
     try {
+      const readiness = await readPanelReleasePreflight();
+      if (current !== generation.current) return;
+      if (!readiness.ok) { setError(labels.localChangesBlocked); return; }
       await installPanelBranch(branch, commit);
       if (current !== generation.current) return;
       setStatus(prior => prior ? { ...prior, operation: { status: "running", branch, commit, stage: "queued" } } : prior);

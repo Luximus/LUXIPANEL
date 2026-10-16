@@ -1,5 +1,6 @@
 const panelLayout = {
   "community": {
+    "localChangesBlocked": "Ci sono modifiche locali ancora da integrare. L’aggiornamento non è stato avviato per conservarle.",
     "branchNotesUnavailable": "Non è ancora disponibile una descrizione pubblica di queste novità.",
     "branchNotesPartial": "Alcune modifiche non hanno ancora note esplicative.",
     "branches": "Ramo",

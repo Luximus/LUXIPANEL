@@ -1,5 +1,6 @@
 const panelLayout = {
   "community": {
+    "localChangesBlocked": "Локальные изменения ещё не интегрированы. Обновление не запущено, чтобы сохранить их.",
     "branchNotesUnavailable": "Публичное описание этих обновлений пока недоступно.",
     "branchNotesPartial": "Для некоторых изменений пока нет пояснений.",
     "branches": "Ветка",

@@ -1,0 +1,8 @@
+{
+  "title": "Actualizaciones con avisos claros y visibles",
+  "changes": [
+    "Antes de actualizar, el panel comprueba si hay cambios locales pendientes y explica cuándo impiden iniciar la operación.",
+    "Los errores y el estado de actualización permanecen visibles en la parte superior del panel de versiones, aunque las notas sean largas.",
+    "Los cambios locales se conservan cuando una actualización no puede iniciarse."
+  ]
+}

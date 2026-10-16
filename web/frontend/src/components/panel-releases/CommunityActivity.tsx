@@ -57,6 +57,8 @@ export default function CommunityActivity({ labels: L, locale, status, installed
   }, []);
   const installed = versionTag(status?.installed?.tag || status?.currentVersion || installedVersion);
   const catalogFailure = catalogError || status?.error;
+  const feedbackError = installError || status?.operation?.error || error;
+  const updating = busy || status?.operation?.status === "running";
   const update = !!status?.updateAvailable && !!status.latest && !catalogFailure;
   const tag = selected || status?.latest?.tag || "";
   useEffect(() => {
@@ -186,6 +188,8 @@ export default function CommunityActivity({ labels: L, locale, status, installed
           {tabs.map(item => <button key={item.id} type="button" role="tab" id={`${heading}-tab-${item.id}`} aria-controls={`${heading}-panel-${item.id}`} aria-selected={tab === item.id} tabIndex={tab === item.id ? 0 : -1} onClick={() => selectTab(item.id)}><i className={`ti ti-${item.icon}`} aria-hidden="true" /><span>{item.label}</span></button>)}
         </div>
       </header>
+      {updating ? <p role="status" className="lxp-community-feedback"><i className="ti ti-loader-2 animate-spin" aria-hidden="true" /><span>{L.updating}</span></p>
+        : feedbackError && <p role="alert" className="lxp-community-feedback lxp-community-feedback--error"><i className="ti ti-alert-circle" aria-hidden="true" /><span>{feedbackError}</span></p>}
       <div ref={content} className="lxp-community-content min-h-0 flex-1 overflow-auto p-4">
         {branch !== "releases" && selectedBranch && status && <BranchChanges key={`${targetEpoch}:${branch}`} branch={selectedBranch} locale={locale} status={status} labels={L} canInstall={canInstall} busy={busy} unavailable={!!catalogError || !!status.branchesError} onInstall={onInstallBranch} />}
         {branch !== "releases" && !selectedBranch && <p role="status" className="text-sm text-muted-foreground">{!status ? L.loading : L.branchLoadError}</p>}
@@ -222,7 +226,6 @@ export default function CommunityActivity({ labels: L, locale, status, installed
           {releaseActivity.map(item => <article key={item.id} className={`lxp-community-card ${!item.read ? "lxp-community-card--unread" : ""}`}><p className="text-xs text-muted-foreground">@{item.author} · {new Date(item.updatedAt).toLocaleString(locale)}</p><p className="whitespace-pre-wrap break-words text-sm leading-relaxed" dir="auto">{item.title}</p><div className="lxp-community-card-actions">{link(item.url, L.openGithub, "brand-github", "quiet")}{!item.read && <button type="button" className="lxp-community-action lxp-community-action--quiet" onClick={() => void read(item.id)}><i className="ti ti-checks" aria-hidden="true" /><span>{L.read}</span></button>}</div></article>)}
         </section>
         </div>
-          {(error || installError || status?.operation?.error) && <p role="alert" className="break-words text-sm text-red-500">{error || installError || status?.operation?.error}</p>}
       </div>
       <footer className="lxp-community-footer" aria-label={L.contributors}>
         <div className="lxp-community-footer-heading"><span><i className="ti ti-users" aria-hidden="true" />{L.contributors}</span>{!!contributors?.items.length && <span className="lxp-community-contributor-count">{contributors.items.length}</span>}</div>
