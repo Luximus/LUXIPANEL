@@ -200,14 +200,14 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
   ), [activeId, vm.activeMeta?.projectId, currentProjectId, projects]);
   const locationLabel = locationNames.join(" / ");
   const greetingLogo = <span className="lxp-chat-greeting-logo" aria-hidden="true">
-    <img
+    {currentAgent ? <AgentAvatar agent={currentAgent} size={84} className="!h-full !w-full" /> : <img
       data-lxp-logo-role="sidebar"
       src={serverLogo}
       alt=""
       onError={(event) => {
         if (!event.currentTarget.src.endsWith("/logo_150.webp")) event.currentTarget.src = "/logo_150.webp";
       }}
-    />
+    />}
   </span>;
 
   // The topbar search asks the active chat pane for matching history. Keep the
@@ -294,43 +294,17 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   </button>
                 </div>
               )}
-              {currentAgent && (
-                <div className="mb-2 flex items-center gap-2 rounded-lg border border-violet-400/40 bg-violet-500/10 px-3 py-2 text-xs">
-                  <AgentAvatar agent={currentAgent} size={20} />
-                  <span className="font-medium text-foreground">{formatAssistantMessage(ct.agentBadge ?? "Agente: {name}", { name: currentAgent.name })}</span>
-                  <button
-                    type="button"
-                    onClick={() => newConversation({ preserveAgent: false })}
-                    className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/70 hover:text-foreground"
-                    title={ct.clearAgent ?? "Salir del agente"}
-                    aria-label={ct.clearAgent ?? "Salir del agente"}
-                  >
-                    <i className="ti ti-x text-sm" aria-hidden></i>
-                  </button>
-                </div>
-              )}
               {turns.length === 0 && (
-                currentAgent ? (
-                  // Chat de AGENTE: mantiene el estado vacío simple y centrado (sin
-                  // "starting points"), como antes — el agente ya tiene su badge arriba.
-                  <div className="lxp-chat-agent-start mx-auto flex w-full max-w-[720px] flex-col items-center justify-center px-4 text-sm text-muted-foreground">
-                    {greetingLogo}
-                    <p className="text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                      <AnimatedGreeting text={formatAssistantMessage(ct.chatWith ?? "Chat con {name}", { name: currentAgent.name })} highlightedName={currentAgent.name} />
-                    </p>
-                    <p className="text-center">{support.enabled ? (ct.typeMessageAttach ?? "Escribe tu mensaje abajo · puedes adjuntar archivos con 📎.") : (ct.typeMessage ?? "Escribe tu mensaje abajo.")}</p>
-                  </div>
-                ) : (
-                  // On compact workspace screens, the greeting stays at the top
-                  // while quick actions occupy the middle of the available space.
                   <div className="lxp-chat-start flex w-full flex-col items-center justify-center px-1">
                    <div className="flex w-full max-w-[720px] flex-col text-center">
                     <div className="lxp-chat-start-heading pb-3">
                       {greetingLogo}
                       <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                        <AnimatedGreeting text={currentProject
+                        <AnimatedGreeting text={currentAgent
+                          ? formatAssistantMessage(ct.chatWith ?? "Chat con {name}", { name: currentAgent.name })
+                          : currentProject
                           ? formatAssistantMessage(ct.newProjectChatAria ?? "Nueva conversación en {project}", { project: currentProject.title })
-                          : welcomeTitle} highlightedName={currentProject?.title} />
+                          : welcomeTitle} highlightedName={currentAgent?.name ?? currentProject?.title} />
                       </h2>
                       <p className="mt-2 text-sm text-muted-foreground">{ct.startPointsDescription ?? "Elige un punto de partida o escribe tu propia pregunta abajo."}</p>
                     </div>
@@ -360,7 +334,6 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                     )}
                    </div>
                   </div>
-                )
               )}
               {turns.map((t, i) => {
                 // Compaction summary: render a divider, not a chat bubble — it's

@@ -108,7 +108,12 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     await act(async () => root.render(createElement(Probe)));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     expect(host.querySelector('[data-picker="agent"]')?.textContent).toContain("Todos los agentes");
+    expect(host.querySelector('.lxp-chat-start .lxp-chat-greeting-logo img')?.getAttribute("data-lxp-logo-role")).toBe("sidebar");
     await choose("[Líder] Oscar");
+    expect(host.querySelector('.lxp-chat-start .lxp-chat-greeting-logo img')?.getAttribute("alt")).toBe("Oscar");
+    expect(host.querySelector('.lxp-chat-start .lxp-chat-greeting-logo img')?.getAttribute("data-lxp-logo-role")).toBeNull();
+    expect(host.querySelector('[title="Salir del agente"]')).toBeNull();
+    expect(host.querySelector('.lxp-chat-composer-meta')?.textContent).toContain("Oscar");
     expect(vm.currentAgentId).toBe("agent");
     expect(vm.currentProjectId).toBe("child");
     expect(onLaunchAgent).not.toHaveBeenCalled();
@@ -136,6 +141,7 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     await choose("[Desarrollo] Ana");
     expect(onLaunchAgent).toHaveBeenCalledWith(expect.objectContaining({ id: "other-provider", providerId: "codex" }), "root", { text: "Mensaje para otro proveedor", attachments: [staged] });
     await choose("Todos los agentes");
+    expect(host.querySelector('.lxp-chat-start .lxp-chat-greeting-logo img')?.getAttribute("data-lxp-logo-role")).toBe("sidebar");
     expect(vm.currentAgentId).toBeNull();
     expect(vm.draft).toBe("Mensaje para otro proveedor");
     expect(vm.attachments).toEqual([staged]);

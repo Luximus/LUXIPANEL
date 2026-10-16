@@ -4,8 +4,25 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TurnView } from "./turn-view";
 import type { ChatTurn } from "../chat-engine";
+import type { AssistantAgent } from "../assistant-api";
 
 describe("assistant message container", () => {
+  it.each([null, { id: "worker", name: "Sofía", providerId: "claude" } as AssistantAgent])("keeps a reloaded CLI failure above the team section in general and agent chats: %j", (agent) => {
+    const turn: ChatTurn = {
+      role: "assistant", text: "", cli: true, tools: [],
+      cliHistoryLog: "Revisando la solicitud\nOAuth session expired",
+      error: "El proveedor rechazó la autenticación del asistente.",
+    };
+    const html = renderToStaticMarkup(createElement(TurnView, {
+      turn, provider: "claude", agent,
+      teamBoards: [createElement("section", { key: "team" }, "Tareas del equipo")],
+    }));
+    expect(html).toContain("OAuth session expired");
+    expect(html).toContain("El proveedor rechazó la autenticación");
+    expect(html).toContain("Tareas del equipo");
+    expect(html.indexOf('data-message-section="console"')).toBeLessThan(html.indexOf('data-message-section="answer"'));
+    expect(html.indexOf('data-message-section="answer"')).toBeLessThan(html.indexOf('data-message-section="team"'));
+  });
   it("keeps console, modified files and final answer in one ordered surface", () => {
     const turn: ChatTurn = {
       role: "assistant",

@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { cliFailureMessage } from "./failure-message.js";
 
 describe("CLI failure explanations", () => {
+  it.each([
+    { type: "assistant", error: "authentication_failed", message: { content: [{ type: "text", text: "Failed to authenticate: OAuth session expired and could not be refreshed" }] } },
+    { type: "result", is_error: true, errors: ["Failed to authenticate: OAuth session expired and could not be refreshed"] },
+  ])("identifies a provider authentication rejection", (frame) => {
+    const text = cliFailureMessage(JSON.stringify(frame), 1);
+    expect(text).toContain("rechazó la autenticación");
+    expect(text).toContain("Proveedores");
+    expect(text).not.toMatch(/MCP|memoria|salida 1/);
+  });
+  it("does not interpret a quoted authentication error as a failed login", () => {
+    const output = JSON.stringify({ type: "user", content: "Failed to authenticate: OAuth session expired" });
+    expect(cliFailureMessage(output, 1)).not.toContain("rechazó la autenticación");
+  });
   it("explains a verified resource refusal without claiming the command ran", () => {
     const message = "La tarea no llegó a iniciarse; espera a que haya recursos disponibles.";
     expect(cliFailureMessage(JSON.stringify({ type: "error", code: "RESOURCE_GUARD_BUSY", message }), 75)).toBe(message);

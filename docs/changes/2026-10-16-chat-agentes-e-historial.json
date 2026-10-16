@@ -1,0 +1,8 @@
+{
+  "title": "Chat de agentes con la interfaz actualizada",
+  "changes": [
+    "La bienvenida de los chats con agente utiliza el diseño del chat general, muestra el avatar del agente y elimina la franja superior duplicada.",
+    "Las tareas delegadas conservan su consola, duración, consumo, preguntas y errores al volver a abrir el chat, manteniendo la sección de tareas del equipo.",
+    "Los rechazos de autenticación del proveedor se explican con una indicación para volver a conectar la cuenta."
+  ]
+}

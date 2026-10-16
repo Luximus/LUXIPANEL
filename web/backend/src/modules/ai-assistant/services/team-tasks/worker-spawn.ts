@@ -12,6 +12,7 @@ import type { SessionUser } from "../../../../shared/types/index.js";
 import { createModuleLogger } from "../../../../shared/logger/index.js";
 import { agentRunRegistry } from "../agent-run-registry.js";
 import { mintCrossMcpToken, mintGraphMcpToken } from "../mcp-run-tokens.js";
+import { persistAssistantMessage } from "../assistant-message-persistence.js";
 import { makeUsageRecorder } from "../usage-recorder.js";
 import { projectClosure } from "../project-closure.js";
 import { cliJobsRepository } from "../../repositories/cli-jobs.repository.js";
@@ -156,6 +157,7 @@ export function startWorkerRun(args: {
   // `cliHolder` queda referenciado: onComplete lo consulta para borrar el
   // descriptor cli-job de los runs CLI (paridad con turn-queue).
   const cliHolder = { value: false };
+  const tokensHolder = { input: 0, output: 0, estimated: false };
   const recordUsage = makeUsageRecorder({
     executor,
     provider,
@@ -163,6 +165,7 @@ export function startWorkerRun(args: {
     projectId: projectId ?? null,
     userId: userId ?? null,
     cliHolder,
+    tokensHolder,
   });
   workerRunStarted(userId, convId);
   agentRunRegistry.start({
@@ -192,7 +195,7 @@ export function startWorkerRun(args: {
         signal: undefined,
       }),
     onEvent: recordUsage,
-    onComplete: async (assistantText: string, errored: boolean, ask, _translation, _durationMs, _cliLog, askKind) => {
+    onComplete: async (assistantText: string, errored: boolean, ask, translation, durationMs, cliLog, askKind, outcome) => {
       workerRunEnded(userId, convId);
       // Un run CLI dejó un descriptor cli-job persistido (cli-bridge lo crea
       // para todo run con conversationId). Sin este delete el descriptor queda
@@ -204,18 +207,15 @@ export function startWorkerRun(args: {
         await cliJobsRepository.delete(executor, convId).catch(() => undefined);
       }
       const content = (assistantText ?? "").trim();
-      if (content || ask?.length) {
-        await conversationsRepository
-          .appendMessages(
-            executor,
-            convId,
-            [{ role: "assistant", provider, content, ts: new Date().toISOString(), ...(ask?.length ? { ask, ...(askKind ? { askKind } : {}) } : {}) }],
-            { unreviewed: true },
-          )
-          .catch(() => undefined);
-      }
+      const total = tokensHolder.input + tokensHolder.output;
+      const tokens = total > 0 ? {
+        input: tokensHolder.input, output: tokensHolder.output, total,
+        ...(tokensHolder.estimated ? { estimated: true } : {}),
+      } : undefined;
+      await persistAssistantMessage(executor, convId, content, provider, cliHolder.value,
+        ask, translation, tokens, durationMs, cliLog, askKind, outcome);
       try {
-        await onDone?.({ assistantText: content, errored });
+        await onDone?.({ assistantText: content || outcome?.error || "", errored });
       } catch (err) {
         log.warn({ err: (err as Error).message }, "team spawnWorker onDone hook failed");
       }

@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LOCAL_TARGET_ID, type Executor } from "../../../shared/executor/index.js";
 import type { AgentEvent } from "./providers/provider.types.js";
+import type { StartRunParams } from "./agent-run-registry.js";
 
 // ── Mocks (before importing the service) ────────────────────────────────────
 
@@ -131,7 +132,7 @@ vi.mock("../repositories/projects.repository.js", () => ({
 }));
 
 const registryState = {
-  started: [] as Array<{ key: string; isWorker?: boolean; makeGen: () => AsyncGenerator<AgentEvent>; onEvent?: (ev: AgentEvent) => void; onComplete?: (t: string, e: boolean) => Promise<void> | void }>,
+  started: [] as StartRunParams[],
   has: vi.fn((_k: string) => false),
   isActive: vi.fn((_k: string) => false),
   stopped: [] as string[],
@@ -278,6 +279,35 @@ describe("teamTasksService.assignTask", () => {
     const task = await assign();
     await registryState.started[0]?.onComplete?.("", true);
     expect(board.get(task.id ?? "")?.status).toBe("failed");
+  });
+
+  it("preserves the same console, metrics and translated answer as a normal chat", async () => {
+    const task = await assign();
+    const run = registryState.started[0]!;
+    run.onEvent?.({ type: "tool_use", id: "cli", name: "claude.cli", input: {} });
+    run.onEvent?.({ type: "usage", model: "claude-cli", inputTokens: 20, outputTokens: 5, estimated: true });
+    await run.onComplete?.("Done", false, undefined, { text: "Hecho", lang: "es" }, 1500, "Revisando archivos\nDone");
+    expect(conversationMessages.get(task.workerConversationId)?.at(-1)).toMatchObject({
+      content: "Done", cli: true, cliLog: "Revisando archivos\nDone", durationMs: 1500,
+      tokens: { input: 20, output: 5, total: 25, estimated: true }, textTranslated: "Hecho", lang: "es",
+    });
+  });
+
+  it("persists a failed worker with no answer and keeps its reason on the board", async () => {
+    const task = await assign();
+    const run = registryState.started[0]!;
+    const error = "El proveedor rechazó la autenticación del asistente.";
+    run.onEvent?.({ type: "tool_use", id: "cli", name: "claude.cli", input: {} });
+    await run.onComplete?.("", true, undefined, undefined, 3000, "OAuth session expired", undefined, { error });
+    expect(conversationMessages.get(task.workerConversationId)?.at(-1)).toMatchObject({ content: "", cli: true, error, cliLog: "OAuth session expired", durationMs: 3000 });
+    expect(board.get(task.id ?? "")).toMatchObject({ status: "failed", error });
+  });
+
+  it("keeps worker plan questions and interruptions after reloading", async () => {
+    const task = await assign();
+    const ask = [{ id: "plan", type: "single" as const, text: "¿Continuar?", options: ["Sí", "No"] }];
+    await registryState.started[0]!.onComplete?.("", true, ask, undefined, 100, undefined, "plan-approval", { interrupted: true });
+    expect(conversationMessages.get(task.workerConversationId)?.at(-1)).toMatchObject({ content: "", ask, askKind: "plan-approval", interrupted: true });
   });
 
   it("borra el descriptor cli-job al completar un run CLI de worker", async () => {
