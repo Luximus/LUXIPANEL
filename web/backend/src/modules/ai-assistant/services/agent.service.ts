@@ -1,4 +1,5 @@
-import { assertCoreDeveloper, beginIsolatedOwnerContribution, finishOwnerContribution } from "../../../shared/github/owner-contributions.js";
+import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
+import { assertCoreDeveloper, beginIsolatedOwnerContribution, finishOwnerContribution, saveContribution } from "../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { modelAttachments, type ChatAttachment } from "../models/chat-attachment.js";
@@ -146,6 +147,10 @@ export const agentService = {
     const mode=options.approvalModeOverride??conversation?.approvalMode??config.approval.mode;
     const cwd=options.forcedCwd??project?.path??options.cwd;
     const ticket=cwd&&executor&&options.conversationId?await beginIsolatedOwnerContribution(options.user,options.conversationId,cwd,executor.target.id,config.enabled&&mode!=="plan"):null;
+    if(ticket&&options.conversationId){
+      const worker=await teamTasksRepository.findByWorkerConversation(executor,options.conversationId);
+      if(worker?.id){ticket.job.teamTaskId=worker.id;await saveContribution(ticket.job);}
+    }
     let completed=false,failed=false;
     try{
       for await(const event of agentService.runUntracked(messages,{...options,...(ticket?.job.workspaceCwd?{forcedCwd:ticket.job.workspaceCwd}: {})})){

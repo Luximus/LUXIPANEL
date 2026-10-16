@@ -33,7 +33,7 @@ export function ProjectAgentConvos({ agents, history, expanded, onToggle, onNewC
       {page?.error ? <button type="button" className="px-2 py-2 text-xs text-destructive" onClick={() => onRetry(id)}>{i18n.assistantErrorBoundary.retry}</button>
         : page?.loading || !page ? <div role="status" className="px-2 py-2"><i className="ti ti-loader-2 animate-spin" aria-label={ct.loading ?? "Cargando"} /></div>
         : !items.length ? <p className="px-2 py-2 text-xs text-muted-foreground">{ct.conversations?.empty ?? "Sin conversaciones."}</p> : null}
-      {page?.hasMore && !page.loading && !page.error && <button type="button" className="px-2 py-2 text-xs text-primary hover:underline" onClick={() => onLoadMore(id)}>{i18n.dashboardTab.paginationNext}</button>}
+      {page?.hasMore && !page.loading && !page.error && <button type="button" className="px-2 py-2 text-xs text-primary hover:underline" onClick={() => onLoadMore(id)}>{(i18n.dashboardTab as Record<string, string>).paginationNext}</button>}
     </div>;
   };
   return <div className="flex min-h-0 flex-1 flex-col" data-project-agent-history>

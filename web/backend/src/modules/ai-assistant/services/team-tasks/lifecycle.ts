@@ -1,4 +1,4 @@
-import { coreRepository } from "../../../../shared/github/owner-contributions.js";
+import { coreRepository, finishOwnerTeamContribution } from "../../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -401,6 +401,7 @@ async function finalizeTaskInner(
     pendingPermission: false,
     finishedAt: new Date().toISOString(),
   };
+  if(executor.target.id==="local")await finishOwnerTeamContribution(current.workerConversationId,taskId,outcome.status==="done");
   const iso = current.isolation;
   if (iso?.mode === "worktree" && !iso.cleaned) {
     try {

@@ -36,8 +36,8 @@ export interface ContributionJob {
  id:string; conversationId:string; root:string; user:SessionUser; before:string; head:string;
  status:"capturing"|"empty"|"interrupted"|"pending"|"blocked"|"pushed";
  createdAt:string; updatedAt:string; patchHash?:string; commit?:string; base?:string; files?:string[];
- error?:string; attempt?:number; nextAttempt?:number; ci?:"pending"|"success"|"failure"|"missing"; checksUrl?:string; ciCheckedAt?:number;
- repository?:string; author?:{login:string;id:number}; isolated?:boolean; sourceCommit?:string; workspaceCwd?:string; integratedBy?:string; pushedAt?:string;
+ error?:string; attempt?:number; nextAttempt?:number; ci?:"pending"|"success"|"failure"|"missing"; checksUrl?:string; ciCheckedAt?:number; ciRequestedAt?:number;
+ teamTaskId?:string; repository?:string; author?:{login:string;id:number}; isolated?:boolean; sourceCommit?:string; workspaceCwd?:string; integratedBy?:string; pushedAt?:string;
  cliBinding?:string;
  /** Shared checkout was used by overlapping turns; never publish its aggregate delta. */
  overlapped?:boolean;
@@ -57,6 +57,7 @@ export function validateContributionPatch(patch:string):void{
 export function contributionFailure(error:unknown):{transient:boolean;message:string}{
  if(error instanceof ContributionDeliveryError)return {transient:false,message:error.message};
  const text=error instanceof Error?error.message:"";
+ if(/without.*workflow.*scope|refusing to allow an OAuth App/.test(text))return {transient:false,message:"La conexión GitHub necesita permiso workflow para publicar cambios de Actions. El commit y los archivos están guardados."};
  const transient=/timed out|timeout|resolve host|connect|network|remote end hung|ECONN|GitHub no|fetch first|non-fast-forward|failed to push some refs|502|503|504/i.test(text);
  return {transient,message:transient?"GitHub no respondió. El aporte está guardado y se reintentará.":"No se pudo publicar el aporte. Revisa conflictos, permisos o las comprobaciones; los cambios están guardados."};
 }
@@ -176,8 +177,9 @@ export async function recoverOwnerContribution(user:SessionUser|undefined,desc:C
   return {job};
  });
 }
-export async function finishOwnerContribution(ticket:Ticket|null,success:boolean):Promise<string|null>{
+export async function finishOwnerContribution(ticket:Ticket|null,success:boolean,verified=false):Promise<string|null>{
  if(!ticket)return null;
+ if(success&&ticket.job.teamTaskId&&!verified)return null;
  return withContributionState(async()=>{
   // Use the current registry object, including overlap observed after this ticket.
   const job=activeContributions.get(ticket.job.id);
@@ -389,18 +391,40 @@ export async function deliverIsolatedContribution(job:ContributionJob,remoteUrl=
  await contributionGit(cwd,["fetch","--quiet","--no-tags",remoteUrl,"refs/heads/developer:refs/remotes/upstream/developer"],auth);
  await contributionGit(cwd,["merge-base","--is-ancestor",job.commit,"refs/remotes/upstream/developer"]);
  job.status="pushed";job.pushedAt??=new Date().toISOString();job.ci="pending";job.error=undefined;await saveContribution(job);
+ if(remoteUrl===REMOTE)await refreshContributionChecks(job,authorizeUser).catch(()=>undefined);
 }
 
-export async function refreshContributionChecks(job:ContributionJob):Promise<void>{
+export async function refreshContributionChecks(job:ContributionJob,authorizeUser=authorize):Promise<void>{
  if(!job.commit)return;
- if(!authorize)throw new Error("Autorización no disponible");
- const user=await authorize(job.user),identity=await githubToken(user,true);
+ if(!authorizeUser)throw new Error("Autorización no disponible");
+ const user=await authorizeUser(job.user),identity=await githubToken(user,true);
  const r=await fetch(`https://api.github.com/repos/Luxisoft/LUXIPANEL/actions/workflows/release-checks.yml/runs?head_sha=${encodeURIComponent(job.commit)}&per_page=20`,{headers:{Authorization:`Bearer ${identity.token}`,Accept:"application/vnd.github+json"},signal:AbortSignal.timeout(15000),redirect:"error"});
  if(!r.ok)throw new Error("No se pudo consultar la verificación en GitHub.");
  const body=await r.json() as {workflow_runs:Array<{head_sha:string;status:string;conclusion:string|null;html_url:string;run_number:number}>};
  const run=body.workflow_runs.filter(r=>r.head_sha===job.commit).sort((a,b)=>b.run_number-a.run_number)[0];
  job.ciCheckedAt=Date.now();
- if(!run)job.ci=Date.now()-Date.parse(job.pushedAt??job.createdAt)>600000?"missing":"pending";
+ if(!run){
+  job.ci=Date.now()-Date.parse(job.pushedAt??job.createdAt)>600000?"missing":"pending";
+  if(!job.ciRequestedAt){
+   const headers={Authorization:`Bearer ${identity.token}`,Accept:"application/vnd.github+json","Content-Type":"application/json"};
+   const branch=await fetch("https://api.github.com/repos/Luxisoft/LUXIPANEL/git/ref/heads/developer",{headers,signal:AbortSignal.timeout(15000),redirect:"error"});
+   if(!branch.ok)throw new Error("No se pudo confirmar developer antes de solicitar las comprobaciones.");
+   const ref=await branch.json() as {object:{sha:string}};
+   if(ref.object.sha!==job.commit){job.ci="missing";job.error="El commit está publicado, pero developer avanzó antes de iniciar sus comprobaciones.";}
+   else {
+    // Record before sending: on timeout, poll the exact SHA instead of duplicating a run.
+    job.ciRequestedAt=Date.now();await saveContribution(job);
+    const dispatch=await fetch("https://api.github.com/repos/Luxisoft/LUXIPANEL/actions/workflows/release-checks.yml/dispatches",{method:"POST",headers,body:JSON.stringify({ref:"developer"}),signal:AbortSignal.timeout(15000),redirect:"error"});
+    if(!dispatch.ok){job.ci="missing";job.error="GitHub recibió el commit, pero no autorizó iniciar sus comprobaciones. Revisa el acceso a Actions de la conexión GitHub.";}
+   }
+  }
+ }
  else {job.checksUrl=run.html_url;job.ci=run.status!=="completed"?"pending":run.conclusion==="success"?"success":"failure";}
  await saveContribution(job);
+}
+
+/** Team verification is the publication boundary, including recovered workers. */
+export async function finishOwnerTeamContribution(conversationId:string,taskId:string,success:boolean):Promise<void>{
+ const job=[...activeContributions.values()].find(j=>j.conversationId===conversationId&&j.teamTaskId===taskId);
+ if(job)await finishOwnerContribution({job},success,true);
 }

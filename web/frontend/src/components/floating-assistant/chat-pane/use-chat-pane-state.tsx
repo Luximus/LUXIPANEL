@@ -428,6 +428,7 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantRequestNonce]);
 
+  const agentDraftHandoff = useRef(false);
   // The Dashboard requested this conversation be opened in this pane, OR the
   // Agents tab requested a fresh chat bound to a custom agent (no conversation id
   // yet → start new, remember the agent so the first send binds it).
@@ -452,6 +453,7 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
       void openConversation(openConversationId);
     } else if (openAgentId) {
       const agentProjectId = openProjectId !== undefined ? openProjectId : currentProjectId;
+      agentDraftHandoff.current = true;
       // Persist the agent-bound draft state BEFORE the provider-pane restore
       // effect runs, otherwise the stale saved snapshot can immediately clobber
       // `currentAgentId` back to null on the same activation edge.
@@ -513,6 +515,10 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
   useEffect(() => {
     const justActivated = active && !wasActiveRef.current;
     wasActiveRef.current = active;
+    // The open-agent effect just handed a new draft to the provider. This
+    // render still holds the old state; don't overwrite that handoff before
+    // the provider restore effect below consumes it (including initial mount).
+    if (agentDraftHandoff.current) { agentDraftHandoff.current = false; return; }
     if (!active || justActivated) return;
     chatUiState.patchPane(provider, { activeId, draft, currentProjectId, currentAgentId, attachments });
   }, [active, provider, activeId, draft, currentProjectId, currentAgentId, attachments]);
@@ -664,7 +670,11 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
     const meta = conversationOptions.meta;
     setActiveConvMeta(meta);
     if (meta?.id === activeId) {
-      setCurrentProjectId(meta.projectId ?? null);
+      // A legacy agent mailbox has no persisted project. Its navigation scope
+      // is inferred by ChatSidebar from the owning team; late metadata must
+      // not erase that selection after the history row already revealed it.
+      // The send path still uses meta.projectId (null), never this UI scope.
+      if (meta.projectId || !meta.agentId) setCurrentProjectId(meta.projectId ?? null);
       setCurrentAgentId(meta.agentId ?? null);
     }
   }, [conversationOptions.meta, activeId]);
