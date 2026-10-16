@@ -34,6 +34,7 @@ import { panelConfigDir } from "../../../../../config/paths.js";
 import { env } from "../../../../../config/env.js";
 import { quoteArg } from "../../../../../shared/executor/index.js";
 import { ANSI_RE, loginShell, sleep } from "./shell.js";
+import { cliFailureMessage } from "./failure-message.js";
 import { CLI_SPECS, GRAPH_MCP_SERVER_KEY } from "./cli-specs.js";
 import { codexContinuationPrompt, codexFailure } from "./codex-recovery.js";
 import { setupSudoAskpass } from "./cli-sudo-askpass.js";
@@ -889,9 +890,7 @@ export function makeCliBridgeProvider(args: {
       // --json); gemini/minimax have none → fall back to terminal output below.
       const finalAnswer = r.exitCode === 0 ? spec.parseFinalAnswer?.(r.accumulated) ?? "" : "";
       const success = r.exitCode === 0 && !(args.id === "codex" && (codexFailure(r.accumulated, r.exitCode) || !finalAnswer.trim()));
-      const failureMessage = r.accumulated.includes('"code":"CLI_IDLE_TIMEOUT"')
-        ? "La ejecución se interrumpió tras 60 minutos sin actividad. El trabajo no está confirmado como completo."
-        : `La ejecución CLI no terminó correctamente (${r.exitCode === 0 ? "sin respuesta final verificable" : `salida ${r.exitCode}`}). El trabajo puede haber quedado incompleto.`;
+      const failureMessage = cliFailureMessage(r.accumulated, r.exitCode);
 
       // Did the agent stop to ask the user a decision? Scan the finished output
       // for the ask sentinel block (structured providers: the parsed final

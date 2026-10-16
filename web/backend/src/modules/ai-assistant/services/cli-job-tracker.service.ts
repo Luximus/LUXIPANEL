@@ -12,6 +12,7 @@
  * process keeps running on the target and the log file remains there.
  */
 
+import { StringDecoder } from "node:string_decoder";
 import { eventBus, Events } from "../../../shared/events/index.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
 import { quoteArg, type Executor } from "../../../shared/executor/index.js";
@@ -25,8 +26,12 @@ import { agentRunRegistry } from "./agent-run-registry.js";
 const log = createModuleLogger("cli-job-tracker");
 
 const POLL_MS = 3_000;
-/** Reconcile a missing exit file after 30 min; never abandon a live writer. */
-const MAX_RUNTIME_MS = 30 * 60_000;
+// Bound every transfer, including replay after restart, below executor limits.
+const LOG_CHUNK_BYTES = 256 * 1024;
+const MAX_CHUNKS_PER_TICK = 8;
+const PROCESS_PROBE_MS = 15_000;
+/** Internal sentinel: no exit status was received; never invent SIGKILL/137. */
+export const CLI_EXIT_UNCONFIRMED = -1;
 
 export type OutputListener = (chunk: string) => void;
 export type DoneListener = (output: string, exitCode: number) => void;
@@ -80,7 +85,10 @@ interface JobState extends CliJob {
   /** True while an SSE generator is actively consuming this job's output.
    *  Suppresses the push notification so the browser doesn't double-alert. */
   hasActiveStream: boolean;
-  overdueWarned?: boolean;
+  polling: boolean;
+  decoder: StringDecoder;
+  lastProcessProbe: number;
+  missingProcessChecks: number;
   notificationCtx: { title: string; link: string };
   approvalBuffer: string;
   seenApprovals: Set<string>;
@@ -130,100 +138,72 @@ async function killHolder(job: JobState): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-async function tick(job: JobState): Promise<void> {
-  if (Date.now() - job.startedAt > MAX_RUNTIME_MS) {
-    // A legitimate CLI task can exceed 30 minutes. Evicting its tracker while
-    // leaving the nohup process alive loses the recovery descriptor and lets a
-    // later Codex resume hit "already has an active writer". Only abandon a
-    // job whose process has actually disappeared without writing an exit file.
-    const alive = job.pid && /^\d+$/.test(job.pid)
-      ? await job.executor.exec(`kill -0 ${job.pid} 2>/dev/null && echo Y || echo N`, { timeoutMs: 5_000 })
-        .then((r) => r.stdout.trim() === "Y")
-        .catch(() => false)
-      : false;
-    if (alive) {
-      if (!job.overdueWarned) {
-        job.overdueWarned = true;
-        log.warn({ jobId: job.jobId }, "CLI job exceeded 30 min but is still running — continuing to track it");
-      }
-    } else {
-      const hasExit = await job.executor.exec(`test -s ${quoteArg(job.exitFile)} && echo Y || echo N`, { timeoutMs: 5_000 })
-        .then((r) => r.stdout.trim() === "Y")
-        .catch(() => false);
-      if (!hasExit) {
-        log.warn({ jobId: job.jobId }, "CLI job exceeded max runtime and disappeared — evicting");
-        clearInterval(job.timer);
-        jobs.delete(executionKey(job.jobId, job.executor.target.id));
-        void killHolder(job);
-        job.done = true;
-        job.exitCode = 137;
-        for (const l of job.doneListeners) {
-          try { l(job.accumulated, 137); } catch { /* ignore */ }
-        }
-        return;
-      }
-    }
+/** Deliver decoded bytes once, even when a poll splits a UTF-8 character. */
+function publishOutput(job: JobState, chunk: string): void {
+  if (!chunk) return;
+  job.accumulated += chunk;
+  relayCodexApprovals(job, chunk);
+  const display = job.transform ? job.transform(chunk) : chunk;
+  if (display) for (const listener of job.outputListeners) {
+    try { listener(display); } catch { /* ignore subscriber errors */ }
   }
+  if (job.steering && !job.steerEnded && /"type":\s*"result"/.test(chunk)) {
+    job.steerEnded = true;
+    void killHolder(job);
+  }
+}
 
+async function tick(job: JobState): Promise<void> {
+  // Slow targets must not overlap polls and advance the same byte cursor twice.
+  if (job.done || job.polling) return;
+  job.polling = true;
   try {
-    // Read ONLY the new bytes since the last poll. The previous version `cat`-ed
-    // the whole log every 3 s and kept just the delta — O(n) per poll, O(n²) per
-    // session, which inflated SSH traffic ~runtime/(2·POLL) times (a 30-min CLI
-    // run re-transferred its log ~300×). A single `tail -c +OFFSET` pulls just
-    // the tail past what we've seen. We advance the offset by the byte length of
-    // what we received; a multibyte char split at EOF is at worst a transient
-    // cosmetic glitch in the live view — the canonical `cat` at completion
-    // (below) repairs `accumulated` so the final parse is byte-perfect.
-    const r = await job.executor.exec(
-      `tail -c +${job.byteOffset + 1} ${quoteArg(job.logFile)} 2>/dev/null`,
-      { timeoutMs: 10_000 },
-    );
-    if (r.stdout.length > 0) {
-      const chunk = r.stdout;
-      job.byteOffset += Buffer.byteLength(chunk, "utf8");
-      job.accumulated += chunk;
-      relayCodexApprovals(job, chunk);
-      // Raw → display (line-buffered transform for JSON streams). Identity
-      // when no transform; `accumulated` always stays raw for final parsing.
-      const display = job.transform ? job.transform(chunk) : chunk;
-      if (display) {
-        for (const l of job.outputListeners) {
-          try { l(display); } catch { /* ignore subscriber errors */ }
-        }
-      }
-
-      // Steering mode: the CLI was launched on a persistent stdin FIFO, so it
-      // will NOT exit on its own (it waits for more input). The turn is over once
-      // the stream-json `result` event lands — kill the FIFO holder so the CLI
-      // sees EOF, exits, and writes the exit file (handled by the normal path
-      // below on a later tick). Guarded so we force EOF only once per turn.
-      if (job.steering && !job.steerEnded && /"type":\s*"result"/.test(chunk)) {
-        job.steerEnded = true;
-        void killHolder(job);
-      }
-    }
-
-    // Check the exit file (written by the nohup script when claude exits)
+    // Read completion BEFORE the log. Once this exists the writer has closed,
+    // so draining the log below includes the final answer without a huge cat.
     const ex = await job.executor.exec(`cat ${quoteArg(job.exitFile)} 2>/dev/null`, { timeoutMs: 5_000 });
     const codeStr = ex.stdout.trim();
-    if (!codeStr) return; // still running — wait for next tick
+    let exitCode: number | undefined;
+    if (ex.exitCode === 0 && /^\d+$/.test(codeStr) && Number(codeStr) <= 255) exitCode = Number(codeStr);
+    else if (ex.exitCode !== 1 || codeStr) throw new Error("Could not read CLI exit status");
 
-    const exitCode = Number.parseInt(codeStr, 10);
+    let drained = false;
+    for (let i = 0; i < MAX_CHUNKS_PER_TICK; i++) {
+      // Base64 preserves raw byte offsets across local/SSH UTF-8 decoding.
+      // pipefail propagates a missing/unreadable log instead of losing output.
+      const script = `set -o pipefail; dd if=${quoteArg(job.logFile)} bs=65536 skip=${job.byteOffset} count=${LOG_CHUNK_BYTES} iflag=skip_bytes,count_bytes status=none | base64 -w0`;
+      const r = await job.executor.exec(`bash -c ${quoteArg(script)}`, { timeoutMs: 10_000 });
+      if (r.exitCode !== 0) throw new Error("Could not read CLI log chunk");
+      if (job.done) return;
+      const bytes = Buffer.from(r.stdout.trim(), "base64");
+      job.byteOffset += bytes.length;
+      publishOutput(job, job.decoder.write(bytes));
+      if (bytes.length < LOG_CHUNK_BYTES) { drained = true; break; }
+    }
+    if (!drained) return; // Continue replay next tick before finalizing.
+
+    if (exitCode === undefined) {
+      if (Date.now() - job.startedAt < PROCESS_PROBE_MS || Date.now() - job.lastProcessProbe < PROCESS_PROBE_MS) return;
+      if (!job.pid || !/^[1-9]\d*$/.test(job.pid)) return;
+      job.lastProcessProbe = Date.now();
+      const process = await job.executor.exec(`ps -p ${job.pid} -o stat=`, { timeoutMs: 5_000 });
+      const state = process.stdout.trim();
+      const missing = (process.exitCode === 1 && !state) || (process.exitCode === 0 && /^[ZX]/.test(state));
+      if (!missing) {
+        if (process.exitCode !== 0 || !state) throw new Error("Could not check CLI process status");
+        job.missingProcessChecks = 0;
+        return; // A live job has no arbitrary maximum duration.
+      }
+      if (++job.missingProcessChecks < 2) return;
+      exitCode = CLI_EXIT_UNCONFIRMED;
+      log.warn({ jobId: job.jobId }, "CLI process disappeared without a recorded exit status");
+    }
+
+    if (job.done) return;
+    publishOutput(job, job.decoder.end());
     clearInterval(job.timer);
     job.done = true;
     job.exitCode = exitCode;
     jobs.delete(executionKey(job.jobId, job.executor.target.id));
-
-    // Canonical final read: one whole-log `cat` (once, not per poll) so the
-    // final output is byte-perfect even if an incremental tail split a
-    // multibyte char at a seam (which can make the incremental buffer DIVERGE
-    // in both directions — skipped bytes OR extra U+FFFD chars). The whole-file
-    // read is authoritative, so always prefer it when it returns content; only
-    // keep the incremental buffer if the read failed or the file is gone.
-    try {
-      const full = await job.executor.exec(`cat ${quoteArg(job.logFile)} 2>/dev/null`, { timeoutMs: 10_000 });
-      if (full.stdout.length > 0) job.accumulated = full.stdout;
-    } catch { /* keep incremental accumulated */ }
 
     log.info({ jobId: job.jobId, exitCode, bytes: job.accumulated.length }, "CLI job completed");
 
@@ -259,11 +239,15 @@ async function tick(job: JobState): Promise<void> {
     }
 
     // Best-effort cleanup of temp files on the target
-    void job.executor
+    if (exitCode !== CLI_EXIT_UNCONFIRMED) void job.executor
       .exec(`rm -f ${quoteArg(job.logFile)} ${quoteArg(job.exitFile)}`, { timeoutMs: 5_000 })
       .catch(() => undefined);
   } catch (err) {
+    // A failed connection/check is unknown, never evidence of a dead process.
+    job.missingProcessChecks = 0;
     log.warn({ jobId: job.jobId, err: (err as Error).message }, "CLI job poll error");
+  } finally {
+    job.polling = false;
   }
 }
 
@@ -310,6 +294,10 @@ export const cliJobTracker = {
       startedAt: opts.startedAt ?? Date.now(),
       accumulated: "",
       byteOffset: 0,
+      decoder: new StringDecoder("utf8"),
+      polling: false,
+      lastProcessProbe: 0,
+      missingProcessChecks: 0,
       done: false,
       hasActiveStream: false,
       approvalBuffer: "",
@@ -404,6 +392,8 @@ export const cliJobTracker = {
     for (const job of [...jobs.values()]) {
       if (job.executor.target.id !== targetId || job.conversationId !== conversationId) continue;
       killed++;
+      job.done = true;
+      job.exitCode = 143;
       clearInterval(job.timer);
       jobs.delete(executionKey(job.jobId, job.executor.target.id));
       // Free the FIFO holder first (steering jobs) so it can't linger holding

@@ -100,50 +100,57 @@ describe("durable CLI contribution recovery",()=>{
   const saved=JSON.parse(await fs.readFile(path.join(root,"github-users/contributions",ticket!.job.id,"job.json"),"utf8"));
   expect(saved.status).toBe("interrupted");await expect(fs.stat(lock)).rejects.toThrow();
  });
- it("allows simultaneous chats without publishing mixed changes, in either completion order",async()=>{
+ it("queues overlapping successful turns together, including a third joining later",async()=>{
   const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
-  const [first,second]=await Promise.all([
-   api.beginOwnerContribution(user,"first",root,"local",true),
-   api.beginOwnerContribution(user,"second",root,"local",true),
-  ]);
-  expect(first).not.toBeNull();expect(second).not.toBeNull();
+  const first=await api.beginOwnerContribution(user,"first",root,"local",true);
+  const second=await api.beginOwnerContribution(user,"second",root,"local",true);
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");
   expect(await api.finishOwnerContribution(second,true)).toBeNull();
-  // One task ending must not clear the reservation of the remaining task.
-  const third=await api.beginOwnerContribution(user,"third",root,"local",true);expect(third).not.toBeNull();
+  const third=await api.beginOwnerContribution(user,"third",root,"local",true);
   expect(await api.finishOwnerContribution(first,true)).toBeNull();
+  const dir=path.join(root,"github-users/contributions",first!.job.id);
+  await expect(fs.stat(path.join(dir,"change.patch"))).rejects.toThrow();
   await fs.writeFile(path.join(root,"web/src/b.ts"),"export const b=3;\n");
-  expect(await api.finishOwnerContribution(third,true)).toBeNull();
-  for(const ticket of [first,second,third]){
-   const dir=path.join(root,"github-users/contributions",ticket!.job.id);
-   const saved=JSON.parse(await fs.readFile(path.join(dir,"job.json"),"utf8"));
-   expect(saved.status).toBe("blocked");expect(saved.overlapped).toBe(true);expect(saved.patchHash).toBeUndefined();
-   await expect(fs.stat(path.join(dir,"change.patch"))).rejects.toThrow();
-   expect(await api.finishOwnerContribution(ticket,true)).toBeNull();
+  expect(await api.finishOwnerContribution(third,true)).toBe(first!.job.id);
+  const patch=await fs.readFile(path.join(dir,"change.patch"),"utf8");
+  expect(patch).toContain("+export const a=2;");expect(patch).toContain("+export const b=3;");
+  for(const ticket of [second,third]){
+   const memberDir=path.join(root,"github-users/contributions",ticket!.job.id);
+   const saved=JSON.parse(await fs.readFile(path.join(memberDir,"job.json"),"utf8"));
+   expect(saved.includedIn).toBe(first!.job.id);expect(saved.patchHash).toBeUndefined();
+   await expect(fs.stat(path.join(memberDir,"change.patch"))).rejects.toThrow();
   }
-  expect(await fs.readFile(path.join(root,"web/src/a.ts"),"utf8")).toContain("a=2");
-  expect(await fs.readFile(path.join(root,"web/src/b.ts"),"utf8")).toContain("b=3");
-  // The next independent turn still captures only its own delta.
-  const solo=await api.beginOwnerContribution(user,"solo",root,"local",true);
-  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=4;\n");
-  expect(await api.finishOwnerContribution(solo,true)).toBe(solo!.job.id);
-  const patch=await fs.readFile(path.join(root,"github-users/contributions",solo!.job.id,"change.patch"),"utf8");
-  expect(patch).toContain("-export const a=2;");expect(patch).toContain("+export const a=4;");expect(patch).not.toContain("b.ts");
-  await new Promise(resolve=>setTimeout(resolve,30));
+  expect(await api.finishOwnerContribution(third,true)).toBeNull();
  });
- it("recovers all overlapping signed CLI tasks without losing the publication guard",async()=>{
+ it.each(["failed","foreign"])("does not publish a shared group with a %s participant",async reason=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const a=await api.beginOwnerContribution(user,"a",root,"local",true);
+  const b=await api.beginOwnerContribution(reason==="foreign"?{...user,userId:2}:user,"b",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=3;\n");
+  await api.finishOwnerContribution(a,true);await api.finishOwnerContribution(b,reason!=="failed");
+  const dir=path.join(root,"github-users/contributions",a!.job.id);
+  await expect(fs.stat(path.join(dir,"change.patch"))).rejects.toThrow();
+  expect(JSON.parse(await fs.readFile(path.join(dir,"job.json"),"utf8")).status).toBe("blocked");
+ });
+ it.each([false,true])("recovers overlapping signed CLI tasks (legacy=%s) and seals only after the last success",async legacy=>{
   let api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
   const tickets=await Promise.all(["one","two"].map(id=>api.beginOwnerContribution(user,id,root,"local",true)));
   const descriptors=tickets.map(t=>({conversationId:t!.job.conversationId,jobId:"cli-"+t!.job.id,startedAt:Date.now(),moduleRecovery:"signed-scope"}));
   for(const desc of descriptors)await api.bindOwnerContributionCli(user,desc,"local");
+  const leader=tickets.find(t=>t!.job.before)!.job.id;
+  if(legacy)for(const ticket of tickets){
+   const file=path.join(root,"github-users/contributions",ticket!.job.id,"job.json");
+   const row=JSON.parse(await fs.readFile(file,"utf8"));delete row.batchId;await fs.writeFile(file,JSON.stringify(row));
+  }
   vi.resetModules();api=await import("./owner-contributions.js");
   const recovered=await api.initializeOwnerContributions(noDelivery,async j=>descriptors.some(d=>j.cliBinding===api.contributionCliBinding(d)));
   expect(recovered.map(j=>j.id).sort()).toEqual(tickets.map(t=>t!.job.id).sort());
-  for(const desc of descriptors){
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=3;\n");
+  for(const [i,desc] of descriptors.entries()){
    expect(await api.recoverOwnerContribution(user,{...desc,jobId:"wrong"},"local")).toBeNull();
    const ticket=await api.recoverOwnerContribution(user,desc,"local");
    expect(ticket).not.toBeNull();expect(ticket!.job.overlapped).toBe(true);
-   expect(await api.finishOwnerContribution(ticket,true)).toBeNull();
+   expect(await api.finishOwnerContribution(ticket,true)).toBe(i===0?null:leader);
   }
   const solo=await api.beginOwnerContribution(user,"next",root,"local",true);
   expect(solo!.job.overlapped).toBeUndefined();await api.finishOwnerContribution(solo,false);
@@ -292,6 +299,61 @@ describe("original project contributions and legacy worktree compatibility",()=>
   expect(ticket!.job.root).toBe(seed);expect(ticket!.job.overlapped).toBeUndefined();
   expect(await fs.readFile(path.join(old!.job.root,"web/src/a.ts"),"utf8")).toContain("a=9");
   await api.finishOwnerContribution(ticket,false);
+ });
+ it.each(["clean","unfinished","staged","busy","building"])("aligns a published checkout safely with %s state",async state=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const ticket=await api.beginOwnerContribution(user,"turn",seed,"local",true);
+  await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=2;\n");
+  await fs.writeFile(path.join(seed,"web/src/new.ts"),"export const added=true;\n");
+  await api.finishOwnerContribution(ticket,true);await new Promise(resolve=>setTimeout(resolve,40));
+  await api.deliverContribution(ticket!.job,remote,async u=>u);
+  const head=git(seed,"rev-parse","HEAD");
+  if(state==="unfinished"||state==="staged")await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const b=9;\n");
+  if(state==="staged")git(seed,"add","web/src/b.ts");
+  const active=state==="busy"?await api.beginOwnerContribution(user,"next",seed,"local",true):null;
+  let release:(()=>void)|undefined;
+  if(state==="building"){
+   await fs.mkdir(path.join(seed,".lxp"),{recursive:true});
+   const {spawn}=await import("node:child_process");
+   const lock=spawn("flock",[path.join(seed,".lxp/build.lock"),"sh","-c","printf ready; cat >/dev/null"]);
+   await new Promise<void>(resolve=>lock.stdout.once("data",()=>resolve()));release=()=>lock.stdin.end();
+  }
+  const index=await fs.readFile(path.join(seed,".git/index"));
+  expect(await api.alignPublishedContribution(ticket!.job)).toBe(state==="clean");
+  if(state==="clean"){
+   expect(git(seed,"rev-parse","HEAD").trim()).toBe(ticket!.job.commit);
+   expect(git(seed,"status","--porcelain","--","web")).toBe("");
+  }else{
+   expect(git(seed,"rev-parse","HEAD")).toBe(head);expect(await fs.readFile(path.join(seed,".git/index"))).toEqual(index);
+  }
+  expect(await fs.readFile(path.join(seed,"web/src/a.ts"),"utf8")).toContain("a=2");
+  if(state==="unfinished"||state==="staged")expect(await fs.readFile(path.join(seed,"web/src/b.ts"),"utf8")).toContain("b=9");
+  release?.();if(active)await api.finishOwnerContribution(active,false);
+ });
+ it("recovers legacy completed work from immutable boundaries without including a later edit",async()=>{
+  const api=await import("./owner-contributions.js");
+  const lock=await api.publisherLock();
+  const before=await api.captureSource(seed,path.join(root,"before.index"));
+  await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=2;\n");
+  const after=await api.captureSource(seed,path.join(root,"after.index"));
+  const head=git(seed,"rev-parse","HEAD").trim(),t=(n:number)=>new Date(1700000000000+n*1000).toISOString();
+  const ids=[randomUUID(),randomUUID(),randomUUID()];
+  const legacy=(id:string,start:number,end:number,more:Partial<ContributionJob>={}):ContributionJob=>({id,conversationId:id,root:seed,user,before,head,status:"blocked",overlapped:true,cliBinding:"signed",error:"Hubo tareas simultáneas en el mismo repositorio. Los cambios se conservan y requieren revisión antes de publicarse.",createdAt:t(start),updatedAt:t(end),...more});
+  const rows=[legacy(ids[0],1,5),legacy(ids[1],2,4,{before:"",head:""}),legacy(ids[2],6,6,{before:after,status:"empty",overlapped:false,error:undefined})];
+  for(const row of rows){const dir=path.join(root,"github-users/contributions",row.id);await fs.mkdir(dir,{recursive:true});await fs.writeFile(path.join(dir,"job.json"),JSON.stringify(row));}
+  await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const b=999;\n");
+  await api.recoverClosedContributionBatches();
+  const dir=path.join(root,"github-users/contributions",ids[0]);
+  const recovered=JSON.parse(await fs.readFile(path.join(dir,"job.json"),"utf8")) as ContributionJob;
+  const patch=await fs.readFile(path.join(dir,"change.patch"),"utf8");
+  expect(patch).toContain("+export const a=2;");expect(patch).not.toContain("b.ts");
+  await api.deliverContribution(recovered,remote,async u=>u);
+  await api.recoverClosedContributionBatches();
+  const member=JSON.parse(await fs.readFile(path.join(root,"github-users/contributions",ids[1],"job.json"),"utf8"));
+  expect(member.status).toBe("pushed");expect(member.commit).toBe(recovered.commit);
+  await api.deliverContribution(recovered,remote,async u=>u);
+  expect(git(remote,"rev-list","--count","developer").trim()).toBe("2");
+  expect(git(remote,"show","developer:web/src/b.ts")).toContain("b=1");lock?.();
  });
  it("uses a kernel lock to exclude concurrent publishers",async()=>{
   const api=await import("./owner-contributions.js");const release=await api.publisherLock();expect(release).toBeTypeOf("function");

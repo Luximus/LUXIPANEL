@@ -14,9 +14,9 @@ La conexión por token personal funciona sin configurar OAuth. El flujo por disp
 
 ## Envío automático
 
-Una tarea del propietario captura un índice Git privado antes de comenzar. Las tareas simultáneas pueden continuar, pero sus aportes se marcan para revisión porque comparten el checkout. Un turno sin solapamiento que termina sin error, cancelación ni pregunta pendiente conserva únicamente su parche, hash y estado. Nunca altera el índice normal ni cambia la rama del servidor.
+Una tarea del propietario captura un índice Git privado antes de comenzar en el proyecto original. Las tareas simultáneas de la misma identidad se agrupan y generan un único aporte cuando todas terminan sin error, cancelación ni pregunta pendiente. Se conservan las instantáneas, notas, parche, hash y estado. Un participante fallido o de otra identidad detiene el grupo para revisión. No se cambia la rama del servidor.
 
-Excluye credenciales, .env, carpetas privadas, artefactos y otros proyectos. Comprueba integridad, tamaño, posibles secretos, formato del parche y JSON antes de aplicar en un checkout temporal de developer. Estas comprobaciones no sustituyen las pruebas funcionales o CI.
+Excluye credenciales, .env, carpetas privadas, artefactos y otros proyectos. Comprueba integridad, tamaño, posibles secretos, formato del parche y JSON antes de aplicar mediante un índice privado sobre developer, sin copiar las fuentes. Estas comprobaciones no sustituyen las pruebas funcionales o CI.
 
 El commit usa la identidad GitHub verificada. El envío se confirma consultando el historial remoto; un resultado incierto se contrasta antes de repetirlo. Los fallos de conexión se reintentan con espera. Conflictos y permisos insuficientes quedan pendientes y visibles en la conexión GitHub del propietario. No hay force-push.
 
@@ -24,7 +24,7 @@ La base capturada puede contener cambios locales anteriores que aún no existen 
 
 Los módulos independientes de web/modules conservan su flujo de PR a modules desde Dev. Un parche que incluya esos módulos queda pendiente para separar entregas. Los módulos integrados bajo web/backend/src/modules forman parte del núcleo y van a developer.
 
-Los cambios anteriores al comienzo del seguimiento no se publican retrospectivamente. Si el backend reinicia, una tarea CLI conserva su reserva únicamente cuando coincide con el descriptor firmado del proceso original y sus archivos de recuperación. Se recupera automáticamente y solo prepara el aporte después de confirmar que terminó correctamente. Las tareas fallidas, canceladas, con preguntas pendientes o sin recuperación verificable quedan sin publicar. Evitar ediciones manuales simultáneas del mismo checkout: Git no permite atribuir su autor con una comparación de archivos.
+Los cambios anteriores al comienzo del seguimiento no se publican retrospectivamente. Los bloqueos antiguos por concurrencia sí pueden recuperarse si todos los participantes tienen un resultado correcto confirmado y existen instantáneas que delimitan el grupo antes del turno siguiente; no se toma el contenido actual para reconstruirlos. Si el backend reinicia, una tarea CLI conserva su reserva únicamente cuando coincide con el descriptor firmado del proceso original y sus archivos de recuperación. Se recupera automáticamente y solo prepara el aporte después de confirmar que terminó correctamente. Las tareas fallidas, canceladas, con preguntas pendientes o sin recuperación verificable quedan sin publicar. Evitar ediciones manuales simultáneas del mismo checkout: Git no permite atribuir su autor con una comparación de archivos.
 
 ## Versiones
 
@@ -35,11 +35,13 @@ Un envío no publica una Release ni instala una actualización. El mantenedor de
 Pruebas de separación de cuentas, cifrado, revocación, desconexión concurrente, autorización de dispositivo, aislamiento de índices, cambios previos, exclusión de rutas, permisos, recuperación tras reinicio y push a un remoto Git temporal con repetición sin duplicados. Verificación adicional de sesiones, tokens MCP, redirección web y tipos del cliente móvil.
 
 
-## Publicación aislada y recuperación (2026-10-16)
+## Publicación y recuperación (2026-10-16)
 
-El dispatcher común del agente captura también trabajadores y turnos drenados. Cada turno propietario usa una copia interna de LUXIPANEL basada en developer; un turno interrumpido conserva y reanuda su copia. Las consultas sin cambios no crean commits y el modo plan no abre seguimiento. Los índices privados y las referencias de snapshots/tareas conservan la base y el commit local sin tocar el índice del checkout desplegado.
+El dispatcher común del agente captura también trabajadores y turnos drenados. Los turnos ordinarios trabajan en el proyecto original, sin crear copias temporales. Los trabajadores que ya tienen un checkout aislado explícito conservan su compatibilidad. Las consultas sin cambios no crean commits y el modo plan no abre seguimiento. Los índices privados y las referencias de snapshots/tareas conservan la base y el commit local sin tocar el índice del checkout desplegado.
 
-La cola persistida usa un bloqueo flock entre procesos. El publicador integra con cherry-pick en una copia de entrega, confirma ascendencia remota antes de repetir un push y conserva ambos trabajos si hay conflicto. Los commits locales y los publicados son campos distintos. El publicador solicita el workflow existente Release checks después de confirmar el push a developer, sin modificar su definición; la consulta de Actions utiliza exactamente el SHA enviado y expone pendiente, correcto, fallido o sin ejecución. Un push confirmado no significa Release aprobada ni despliegue completado.
+La cola persistida usa un bloqueo flock entre procesos. El publicador aplica el parche con un índice privado y confirma ascendencia remota antes de repetir un envío; conserva los parches si hay conflicto. La entrega con cherry-pick se limita a los trabajadores aislados existentes. Los commits locales y los publicados son campos distintos. El publicador solicita el workflow existente Release checks después de confirmar el push a developer, sin modificar su definición; la consulta de Actions utiliza exactamente el SHA enviado y expone pendiente, correcto, fallido o sin ejecución. Un push confirmado no significa Release aprobada ni despliegue completado.
+
+Después de publicar, la cola puede alinear HEAD y el índice de developer con el contenido confirmado, únicamente si no hay tareas activas, el operador no tiene cambios preparados, el contenido local coincide exactamente y no hay instalación ni compilación en curso. Esta operación no escribe archivos fuente.
 
 Los registros antiguos sin base publicada deben conciliarse contra la recuperación inicial. No se deben borrar los parches ni marcar un aporte como publicado sin comprobar su contenido. Las copias de tareas del núcleo no se eliminan automáticamente al cancelar ni mediante el barrido de huérfanos. Solo Luximus verificado puede publicar directamente; siguen separados los módulos externos y el repositorio privado de licencias.
 

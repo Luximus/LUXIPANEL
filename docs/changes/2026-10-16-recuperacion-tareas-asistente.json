@@ -1,0 +1,8 @@
+{
+  "title": "Recuperación más fiable de las tareas del asistente",
+  "changes": [
+    "El asistente detecta las tareas interrumpidas sin atribuirles un código de salida que no recibió.",
+    "La recuperación de conversaciones admite registros extensos y conserva correctamente los caracteres y la respuesta final.",
+    "Una comprobación sin respuesta no se interpreta como una tarea terminada."
+  ]
+}

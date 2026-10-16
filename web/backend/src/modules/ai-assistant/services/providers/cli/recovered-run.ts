@@ -11,6 +11,7 @@
 import { cliJobTracker } from "../../cli-job-tracker.service.js";
 import { extractAskRequest, stripAskBlock } from "../../ask-protocol.js";
 import { ANSI_RE } from "./shell.js";
+import { cliFailureMessage } from "./failure-message.js";
 import { CLI_SPECS } from "./cli-specs.js";
 import type { Executor } from "../../../../../shared/executor/index.js";
 import type { AgentEvent } from "../provider.types.js";
@@ -92,9 +93,7 @@ export async function* makeRecoveredCliGen(
   const accumulated = job.accumulated;
   const finalAnswer = jobExitCode === 0 ? spec?.parseFinalAnswer?.(accumulated) ?? "" : "";
   const success = jobExitCode === 0 && (desc.provider !== "codex" || !!finalAnswer.trim());
-  const failureMessage = accumulated.includes('"code":"CLI_IDLE_TIMEOUT"')
-    ? "La ejecución se interrumpió tras 60 minutos sin actividad. El trabajo no está confirmado como completo."
-    : `La ejecución CLI no terminó correctamente (${jobExitCode === 0 ? "sin respuesta final verificable" : `salida ${jobExitCode}`}). El trabajo puede haber quedado incompleto.`;
+  const failureMessage = cliFailureMessage(accumulated, jobExitCode);
   const askSource = spec?.parseFinalAnswer ? finalAnswer : accumulated.replace(ANSI_RE, "");
   const ask = success ? extractAskRequest(askSource) : null;
   const cleanAnswer = ask ? stripAskBlock(finalAnswer) : finalAnswer;

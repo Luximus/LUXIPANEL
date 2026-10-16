@@ -1,0 +1,8 @@
+{
+  "title": "Recuperación de aportes automáticos",
+  "changes": [
+    "Los cambios de tareas simultáneas del mismo usuario se envían juntos cuando todas terminan correctamente.",
+    "Los aportes bloqueados por concurrencia se recuperan automáticamente cuando sus registros permiten confirmar el resultado completo.",
+    "El código local ya publicado deja de bloquear las actualizaciones cuando coincide con lo enviado y no hay trabajo pendiente."
+  ]
+}
