@@ -66,6 +66,7 @@ import { registerBitNinjaModule } from "./modules/bitninja/index.js";
 import { registerCodebaseGraphModule } from "./modules/codebase-graph/index.js";
 import { registerSudoModule } from "./modules/sudo/index.js";
 import { registerMCPModule } from "./modules/mcp/index.js";
+import { startReleaseNotifications } from "./modules/admin/services/release-notifications.service.js";
 import { registerNotificationsModule } from "./modules/notifications/index.js";
 import { registerServerAlertsModule } from "./modules/server-alerts/index.js";
 import { registerChatModule } from "./modules/chat/index.js";
@@ -180,6 +181,7 @@ async function bootstrap() {
 
   // ---- 5. Start HTTP server ----
   const server = app.listen(serverConfig.port, serverConfig.host, () => {
+    startReleaseNotifications();
     log.info(
       {
         port: serverConfig.port,

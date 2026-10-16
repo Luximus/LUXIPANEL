@@ -29,7 +29,7 @@ import { escapeHtml } from "/scripts/extracted/lib/escape.js";
 import { openDialog, closeDialog } from "/scripts/extracted/lib/dom.js";
 import { resolvePanelApiPath, getCsrfToken, CSRF_HEADER_NAME } from "/scripts/extracted/lib/api-client.js";
 import { SEARCH_CATALOG, findSearchEntry } from "/scripts/extracted/lib/search-catalog.js?v=20260928promptcreate";
-import { buildTargetUrl, isSafeNotificationTarget, normalizePath } from "/scripts/extracted/lib/search-target.js";
+import { buildTargetUrl, isSafeNotificationTarget, normalizePath } from "/scripts/extracted/lib/search-target.js?v=20261016-branches";
 import type { SearchEntry, SearchIntent, SearchTarget, SearchKind } from "@/lib/search-catalog";
 
 type SearchConfig = {

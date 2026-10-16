@@ -57,6 +57,7 @@ router.post("/ui/data/refresh", requireAuth, csrfProtection, liveDataController.
 router.get("/ui/layout", requireAuth, layoutController.read);
 router.get("/ui/layout/asset", requireAuth, layoutController.asset);
 router.get("/ui/releases", requireAuth, releasesController.status);
+router.get("/ui/releases/branches/:branch", requireAuth, releasesController.branchDetails);
 router.get("/ui/releases/contributors", requireAuth, releasesController.contributors);
 router.get("/ui/releases/:tag/details", requireAuth, releasesController.details);
 router.post("/ui/releases/:tag/translate", requireAuth, requireModule("assistant"), csrfProtection, releasesController.translate);

@@ -2,11 +2,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("@/lib/api-client", () => ({ api: { get: vi.fn(), post: vi.fn() } }));
-vi.mock("@/lib/panel-releases", async importOriginal => ({ ...await importOriginal<object>(), readPanelReleases: vi.fn(), installPanelRelease: vi.fn(), readReleaseDetails: vi.fn(), translateReleaseDetails: vi.fn() }));
+vi.mock("@/lib/panel-releases", async importOriginal => ({ ...await importOriginal<object>(), readPanelBranch: vi.fn(), installPanelBranch: vi.fn(), readPanelReleases: vi.fn(), installPanelRelease: vi.fn(), readReleaseDetails: vi.fn(), translateReleaseDetails: vi.fn() }));
 import ReleaseBanner from "./ReleaseBanner";
 import labels from "@/i18n/es/panelLayout";
 import { api } from "@/lib/api-client";
-import { installPanelRelease, readPanelReleases, readReleaseDetails, translateReleaseDetails, type PanelReleaseStatus } from "@/lib/panel-releases";
+import { readPanelBranch, installPanelBranch, installPanelRelease, readPanelReleases, readReleaseDetails, translateReleaseDetails, type PanelReleaseStatus } from "@/lib/panel-releases";
 
 let root: Root; let container: HTMLDivElement;
 const latest = { tag: "v2.0.4", name: "Release", notes: "Fixes", publishedAt: null };
@@ -22,7 +22,7 @@ beforeEach(() => {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); };
-  vi.mocked(api.get).mockResolvedValue({ ok: true, data: { items: [], unread: 0 } });
+  vi.mocked(api.get).mockResolvedValue({ ok: true, status: 200, data: { items: [], unread: 0 } });
   vi.mocked(readPanelReleases).mockResolvedValue(status);
   const details = { ...latest, url: "https://github.com/Luxisoft/LUXIPANEL/releases/tag/v2.0.4", comments: [], commentsUnavailable: false };
   vi.mocked(readReleaseDetails).mockResolvedValue(details);
@@ -99,4 +99,70 @@ it("does not show a previous target's late installation error", async () => {
   expect(container.querySelector("dialog[open]")).toBeNull();
   expect(container.textContent).not.toContain("Previous target failure");
   expect(container.querySelector("button .font-mono")?.textContent).toBe("v3.0.0");
+});
+
+const branch = { name: "developer", commit: "a".repeat(40), ahead: 3, updateAvailable: true };
+const branchDetails = { ...branch, installable: true, commits: [{ sha: branch.commit, message: "Selector de agentes", author: "Luximus", date: "2026-10-16", url: "" }] };
+const branchButton = () => Array.from(container.querySelectorAll<HTMLButtonElement>("dialog button")).find(button => button.textContent === labels.community.branchUpdate.replace("{branch}", "developer") || button.textContent === labels.community.updating);
+async function selectBranch(name = "developer") {
+  const select = container.querySelector<HTMLSelectElement>(`select[aria-label="${labels.community.branches}"]`)!;
+  await act(async () => { select.value = name; select.dispatchEvent(new Event("change", { bubbles: true })); });
+}
+it("opens branch changes without installing and pins an explicit update to the displayed SHA", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  let finish!: () => void;
+  vi.mocked(installPanelBranch).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  await render(); await open(); await selectBranch();
+  expect(container.textContent).toContain("Selector de agentes"); expect(installPanelBranch).not.toHaveBeenCalled();
+  const button = branchButton()!;
+  await act(async () => { button.click(); button.click(); });
+  expect(installPanelBranch).toHaveBeenCalledExactlyOnceWith("developer", branch.commit);
+  await act(async () => finish()); expect(branchButton()?.disabled).toBe(true);
+  expect(installPanelRelease).not.toHaveBeenCalled();
+});
+it.each([false, true])("does not install an unsupported branch or allow a reader: reader=%s", async reader => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue({ ...branchDetails, installable: reader });
+  await render(!reader); await open(); await selectBranch();
+  expect(branchButton()).toBeUndefined(); expect(installPanelBranch).not.toHaveBeenCalled();
+});
+it("keeps green release and yellow developer badges and explains their meaning", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  await render(); await open();
+  expect((container.querySelector("[data-release-notification]") as HTMLElement).style.backgroundColor).toMatch(/#15803d|rgb\(21, 128, 61\)/);
+  expect((container.querySelector('[data-branch-notification="developer"]') as HTMLElement).style.backgroundColor).toMatch(/#eab308|rgb\(234, 179, 8\)/);
+  const help = container.querySelector("details")!; await act(async () => help.querySelector("summary")!.click());
+  expect(help.open).toBe(true); expect(help.textContent).toContain(labels.community.releaseColorHelp);
+  expect(help.textContent).toContain(labels.community.branchColorHelp.replace("{branch}", "developer"));
+});
+it("opens the notified branch from its deep link without triggering an update", async () => {
+  window.history.replaceState({}, "", "/panel?updates=developer");
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render();
+  expect(container.querySelector("dialog[open]")).not.toBeNull(); expect(container.textContent).toContain("Selector de agentes");
+  expect(installPanelBranch).not.toHaveBeenCalled(); expect(window.location.search).toBe("");
+});
+it("ignores a branch response after choosing a different branch", async () => {
+  const other = { ...branch, name: "web", commit: "b".repeat(40) };
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch, other] });
+  let finish!: (value: typeof branchDetails) => void;
+  vi.mocked(readPanelBranch).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue({ ...other, installable: true, commits: [] });
+  await render(); await open(); await selectBranch(); await selectBranch("web");
+  await act(async () => finish(branchDetails));
+  expect(container.textContent).not.toContain("Selector de agentes"); expect(installPanelBranch).not.toHaveBeenCalled();
+});
+
+it("selects the notified branch on the current page without navigation or installation", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render();
+  const before = window.location.href;
+  const detail = { branch: "developer", __ack: false };
+  await act(async () => window.dispatchEvent(new CustomEvent("luxipanel:releases-open", { detail })));
+  expect(detail.__ack).toBe(true); expect(window.location.href).toBe(before);
+  expect(container.querySelector("dialog[open]")).not.toBeNull();
+  expect((container.querySelector(`select[aria-label="${labels.community.branches}"]`) as HTMLSelectElement).value).toBe("developer");
+  expect(container.textContent).toContain("Selector de agentes"); expect(installPanelBranch).not.toHaveBeenCalled();
 });

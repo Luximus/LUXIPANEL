@@ -8,14 +8,18 @@ export interface PanelRelease {
 }
 
 export interface PanelReleaseStatus {
+  branches?: PanelBranch[];
+  comparisonKnown?: boolean;
+  branchesError?: string;
+  checkout?: { commit: string; branch: string | null } | null;
   canInstall?: boolean;
   currentVersion?: string;
-  installed: { tag?: string; commit?: string; path?: string } | null;
+  installed: { tag?: string; branch?: string; commit?: string; path?: string } | null;
   latest: PanelRelease | null;
   releases: PanelRelease[];
   updateAvailable: boolean;
   error?: string;
-  operation: { status: string; tag: string; stage?: string; startedAt?: number; error?: string; rollbackError?: string } | null;
+  operation: { status: string; tag?: string; branch?: string; commit?: string; stage?: string; startedAt?: number; error?: string; rollbackError?: string } | null;
   previous: { tag?: string; commit?: string } | null;
 }
 
@@ -62,3 +66,19 @@ export async function readProjectContributors(): Promise<ProjectContributors> {
   if (!result.ok || !result.data) throw new Error(result.error || "Contributors unavailable");
   return result.data;
 }
+
+export interface PanelBranch { name: string; commit: string; updateAvailable: boolean; ahead: number; error?: string }
+export interface PanelBranchDetails extends PanelBranch {
+  installable: boolean;
+  commits: { sha: string; message: string; author: string; date: string | null; url: string }[];
+}
+export async function readPanelBranch(name: string, commit: string): Promise<PanelBranchDetails> {
+  const response = await api.get<PanelBranchDetails>(`/api/ui/releases/branches/${encodeURIComponent(name)}?commit=${encodeURIComponent(commit)}`);
+  if (!response.ok || !response.data) throw new Error(response.error || "No se pudo consultar la rama.");
+  return response.data;
+}
+export async function installPanelBranch(branch: string, commit: string): Promise<void> {
+  const response = await api.post("/api/admin/system/releases/install", { branch, commit });
+  if (!response.ok) throw new Error(response.error || "No se pudo iniciar la actualización de la rama.");
+}
+export const branchColor = (name: string): string => ({ releases: "#15803d", developer: "#eab308", main: "#0369a1", web: "#7e22ce", desktop: "#be185d", mobile: "#c2410c", modules: "#4338ca" }[name] || "#475569");

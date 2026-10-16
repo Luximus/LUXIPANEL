@@ -1,7 +1,7 @@
 import CommunityActivity from "./CommunityActivity";
 import { useEffect, useRef, useState } from "react";
 import { version } from "../../../package.json";
-import { installPanelRelease, readPanelReleases, type PanelReleaseStatus } from "@/lib/panel-releases";
+import { installPanelBranch, installPanelRelease, readPanelReleases, type PanelReleaseStatus } from "@/lib/panel-releases";
 
 export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: boolean; labels: Record<string, string>; locale: string }) {
   const [status, setStatus] = useState<PanelReleaseStatus | null>(null);
@@ -41,6 +41,19 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     catch (cause) { if (current === generation.current) setError(cause instanceof Error ? cause.message : labels.loadError); }
     finally { installing.current = false; setBusy(false); }
   };
+  const updateBranch = async (branch: string, commit: string) => {
+    const row = status?.branches?.find(item => item.name === branch && item.commit === commit);
+    if (installing.current || !isAdmin || !status?.canInstall || !row || row.error || status.branchesError || catalogError || status.operation?.status === "running") return;
+    if (status.installed?.commit === commit) return;
+    const current = generation.current;
+    installing.current = true; setBusy(true); setError("");
+    try {
+      await installPanelBranch(branch, commit);
+      if (current !== generation.current) return;
+      setStatus(prior => prior ? { ...prior, operation: { status: "running", branch, commit, stage: "queued" } } : prior);
+    } catch (cause) { if (current === generation.current) setError(cause instanceof Error ? cause.message : labels.loadError); }
+    finally { installing.current = false; setBusy(false); }
+  };
   return <CommunityActivity labels={labels} locale={locale} status={status} installedVersion={version}
-    canInstall={isAdmin && status?.canInstall === true} busy={busy} error={error} catalogError={catalogError} onInstall={update} />;
+    canInstall={isAdmin && status?.canInstall === true} busy={busy} error={error} catalogError={catalogError} onInstall={update} onInstallBranch={updateBranch} />;
 }

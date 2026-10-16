@@ -87,3 +87,27 @@
 .lxp-community-contributor-avatar { position: relative; display: grid; place-items: center; width: 1.75rem; height: 1.75rem; flex-shrink: 0; border-radius: 50%; background: var(--muted); overflow: hidden; }
 .lxp-community-contributor-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 @media (max-width: 380px) { .lxp-community-tabs [role="tab"] { gap: .25rem; font-size: .75rem; } .lxp-community-version-select select { max-width: 10rem; } }
+/* Color belongs to the update source; the version remains the installed one. */
+.lxp-update-badge { display: inline-flex; align-items: center; flex-shrink: 0; padding: .125rem .375rem; border-radius: .375rem; color: #fff; font-size: .625rem; font-weight: 700; line-height: 1.4; white-space: nowrap; }
+.lxp-update-badge.lxp-update-dot { width: .625rem; height: .625rem; padding: 0; overflow: hidden; border-radius: 50%; font-size: 0; }
+.lxp-update-selects { display: flex; flex: 1; flex-wrap: wrap; gap: .5rem 1rem; min-width: 0; }
+.lxp-update-selects .lxp-community-version-select { flex: 1 1 12rem; }
+.lxp-update-selects select { flex: 1; max-width: 100%; width: 0; }
+.lxp-community-drawer [hidden] { display: none !important; }
+.lxp-update-help { position: relative; align-self: flex-start; flex-shrink: 0; }
+.lxp-update-help summary { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: .75rem; cursor: pointer; list-style: none; color: var(--muted-foreground); font-size: 1.25rem; }
+.lxp-update-help summary::-webkit-details-marker { display: none; }
+.lxp-update-help summary:hover, .lxp-update-help[open] summary { color: var(--foreground); background: var(--muted); }
+.lxp-update-help summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.lxp-update-legend { position: absolute; z-index: 10; inset-inline-end: -2.75rem; top: 3rem; width: min(20rem, 80vw); padding: 1rem; border: 1px solid var(--border); border-radius: .875rem; background: var(--card); box-shadow: 0 12px 32px #0003; font-size: .8125rem; }
+.lxp-update-legend p { display: flex; align-items: flex-start; gap: .625rem; margin-top: .75rem; line-height: 1.5; }
+.lxp-update-legend p > span { flex-shrink: 0; width: .625rem; height: .625rem; margin-top: .25rem; border-radius: 50%; }
+.lxp-branch-changes { display: grid; gap: 1rem; }
+.lxp-branch-changes > button { justify-self: start; }
+.lxp-branch-commits { margin: 0; padding: 0; list-style: none; }
+.lxp-branch-commits li { padding: .875rem 0; border-bottom: 1px solid var(--border); }
+.lxp-branch-commits a { display: flex; align-items: baseline; gap: .75rem; color: var(--foreground); font-size: .8125rem; line-height: 1.6; text-decoration: none; }
+.lxp-branch-commits a:hover { text-decoration: underline; }
+.lxp-branch-commits a > code { flex-shrink: 0; color: var(--muted-foreground); font-size: .6875rem; }
+.lxp-branch-commits a > span { overflow-wrap: anywhere; min-width: 0; }
+.lxp-branch-commits p { margin-top: .375rem; }

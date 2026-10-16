@@ -10,14 +10,14 @@ import { api } from "@/lib/api-client";
 import { readProjectContributors, readReleaseDetails, translateReleaseDetails, type PanelReleaseStatus } from "@/lib/panel-releases";
 let root: Root; let container: HTMLDivElement;
 const details = { tag: "v2.0.4", name: "New release", notes: "Fixed terminal", publishedAt: null, url: "https://github.com/Luxisoft/LUXIPANEL/releases/tag/v2.0.4", commentsUnavailable: false, comments: [{ id: "1", body: "Thanks", author: "user", updatedAt: "2026-10-14", url: "https://github.com/Luxisoft/LUXIPANEL/issues/2#issuecomment-1" }] };
-const status = { currentVersion: "2.0.3", latest: details, releases: [details], updateAvailable: true, operation: null } as PanelReleaseStatus;
+const status = { installed: null, previous: null, currentVersion: "2.0.3", latest: details, releases: [details], updateAvailable: true, operation: null } as PanelReleaseStatus;
 const props = { labels: labels.community, locale: "es", status, installedVersion: "2.0.3", canInstall: false, busy: false, error: "", onInstall: vi.fn() };
 beforeEach(() => {
   vi.resetAllMocks(); (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); };
-  vi.mocked(api.get).mockResolvedValue({ ok: true, data: { items: [], unread: 0 } });
+  vi.mocked(api.get).mockResolvedValue({ ok: true, status: 200, data: { items: [], unread: 0 } });
   vi.mocked(readProjectContributors).mockResolvedValue({ items: [], unavailable: false });
   vi.mocked(readReleaseDetails).mockResolvedValue(details);
   vi.mocked(translateReleaseDetails).mockResolvedValue({ ...details, notes: "Terminal corregida", comments: [{ ...details.comments[0]!, body: "Gracias" }], translation: "translated" });
@@ -73,7 +73,7 @@ it("selects versions from the header and keeps notes, comments and activity scop
   const recent = { ...details, discussionUrl: "https://github.com/Luxisoft/LUXIPANEL/issues/4" };
   const previous = { ...details, tag: "v2.0.3", name: "Previous release", notes: "Previous notes", discussionUrl: "https://github.com/Luxisoft/LUXIPANEL/issues/3", comments: [{ ...details.comments[0]!, body: "Previous comment" }] };
   vi.mocked(readReleaseDetails).mockImplementation(async tag => tag === previous.tag ? previous : recent);
-  vi.mocked(api.get).mockResolvedValue({ ok: true, data: { unread: 2, items: [
+  vi.mocked(api.get).mockResolvedValue({ ok: true, status: 200, data: { unread: 2, items: [
     { id: "recent", url: recent.discussionUrl, title: "Recent activity", author: "user", updatedAt: "2026-10-14", read: false },
     { id: "previous", url: `${previous.discussionUrl}#issuecomment-3`, title: "Previous activity", author: "user", updatedAt: "2026-10-14", read: false },
   ] } });

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 export async function copyRuntimeAssets(source, destination) {
@@ -13,7 +14,16 @@ export async function copyRuntimeAssets(source, destination) {
     }
   }
 }
+export async function writeBuildRevision(root, destination) {
+  let commit = null;
+  try {
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (/^[a-f0-9]{40}$/.test(head)) commit = head;
+  } catch { /* Source archives do not always include Git metadata. */ }
+  await fs.writeFile(path.join(destination, 'build-info.json'), JSON.stringify({ commit }) + '\n');
+}
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   await copyRuntimeAssets(path.join(root, 'src'), path.join(root, 'dist'));
+  await writeBuildRevision(root, path.join(root, 'dist'));
 }

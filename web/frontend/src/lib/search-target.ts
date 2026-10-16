@@ -39,6 +39,7 @@ export interface NotificationTarget {
 
 /** Eventos que una notificación puede despachar. Allowlist CERRADA. */
 export const NOTIFICATION_EVENT_ALLOWLIST = [
+  "luxipanel:releases-open",
   "luxipanel:assistant-open-conversation",
   "luxipanel:assistant-settings-open",
   "luxipanel:assistant-new-conversation",

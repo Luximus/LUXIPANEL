@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install a published tag in a separate worktree and roll back on failed health checks."""
+"""Manually install an official tag or pinned branch revision; recover on health failure."""
 import fcntl
 import hashlib
 import tempfile
@@ -15,7 +15,10 @@ import urllib.request
 
 TAG_RE = re.compile(r"v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?\Z")
 UPSTREAM = "https://github.com/Luxisoft/LUXIPANEL.git"
-PM2 = shutil.which("pm2") or str(Path.home() / ".npm-global" / "bin" / "pm2")
+BRANCHES = ("main", "developer", "web", "desktop", "mobile", "modules")
+PM2 = shutil.which("pm2") or next((str(p) for p in (
+    Path.home() / ".local/share/pnpm/bin/pm2", Path.home() / ".npm-global/bin/pm2"
+) if p.is_file()), "pm2")
 
 
 def run(args, cwd, timeout=900, env=None):
@@ -65,7 +68,7 @@ def healthy(source):
 
 
 def activate(source):
-    ecosystem = source / "ecosystem.config.cjs"
+    ecosystem = application(source) / "ecosystem.config.cjs"
     if not ecosystem.is_file():
         raise RuntimeError("Falta ecosystem.config.cjs en la versión preparada")
     for app in ("luxipanel-backend", "luxipanel-frontend"):
@@ -80,7 +83,7 @@ def activate(source):
     raise RuntimeError("Los procesos no quedaron online o la API y el frontend no respondieron")
 
 
-RUNTIME_PATHS = (".releases/", ".lxp/", "backend/dist/", "frontend/dist/")
+RUNTIME_PATHS = (".releases/", ".lxp/", "backend/dist/", "frontend/dist/", "web/backend/dist/", "web/frontend/dist/")
 
 
 def local_changes(source):
@@ -93,7 +96,7 @@ def local_changes(source):
         name = entry[3:]
         if entry[:2].strip() in ("R", "C", "RM"):
             next(entries, None)
-        if not name.startswith(RUNTIME_PATHS):
+        if not any(name == prefix.rstrip("/") or name.startswith(prefix) for prefix in RUNTIME_PATHS):
             names.append(name)
     return names
 
@@ -176,8 +179,40 @@ def restore_static(previous):
             Path(entry["backup"]).rename(path)
 
 
-def main(root, tag):
-    if not TAG_RE.fullmatch(tag):
+def validate_selection(tag, branch=None, expected_commit=None):
+    if branch is not None:
+        if branch not in BRANCHES or not re.fullmatch(r"[a-f0-9]{40}", expected_commit or ""):
+            raise ValueError("Rama o revisión inválida")
+    elif not TAG_RE.fullmatch(tag):
+        raise ValueError("Etiqueta inválida")
+
+
+def fetch_revision(root, tag, branch=None, expected_commit=None):
+    validate_selection(tag, branch, expected_commit)
+    ref = f"refs/heads/{branch}" if branch else f"refs/tags/{tag}"
+    run(["git", "fetch", "--no-tags", UPSTREAM, f"+{ref}:refs/luxipanel/install-candidate"], root, timeout=180)
+    commit = subprocess.check_output(["git", "rev-parse", "refs/luxipanel/install-candidate^{commit}"], cwd=root, text=True).strip()
+    if branch and commit != expected_commit:
+        raise RuntimeError("La rama cambió desde la selección. Revisa la nueva revisión antes de instalar")
+    return commit
+
+
+def preserve_installed_modules(previous, release):
+    # A branch is not a reviewed release bundle: keep the installation's current
+    # approved modules and private previews instead of activating branch copies.
+    if previous.resolve() == release.resolve():
+        return
+    destination = application(release) / "backend/dist/modules/community/installed"
+    if destination.exists():
+        shutil.rmtree(destination)
+    source = application(previous) / "backend/dist/modules/community/installed"
+    if source.is_dir():
+        shutil.copytree(source, destination, symlinks=True)
+
+
+def main(root, tag, branch=None, expected_commit=None):
+    validate_selection(tag, branch, expected_commit)
+    if branch is None and not TAG_RE.fullmatch(tag):
         raise ValueError("Etiqueta inválida")
     if not Path(PM2).is_file():
         raise RuntimeError("PM2 no está disponible para el usuario de LUXIPANEL")
@@ -194,11 +229,14 @@ def main(root, tag):
         state = json.loads(state_path.read_text()) if state_path.exists() else {}
         prior = state.get("installed")
         previous_path = Path(prior["path"]) if isinstance(prior, dict) and prior.get("path") else root
-        state["operation"] = {"status": "running", "tag": tag, "stage": "preflight", "startedAt": int(time.time() * 1000)}
+        selection = {"branch": branch, "commit": expected_commit} if branch else {"tag": tag}
+        state["operation"] = {"status": "running", **selection, "stage": "preflight", "startedAt": int(time.time() * 1000)}
         write_state(state_path, state)
         switched = False
         static_previous = []
         old_head = None
+        old_branch = None
+        commit = None
         checkout_changed = False
         try:
             changed = local_changes(root)
@@ -207,14 +245,24 @@ def main(root, tag):
             old_head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
             if shutil.disk_usage(root).free < 5 * 1024 ** 3:
                 raise RuntimeError("Espacio insuficiente: se requieren al menos 5 GiB libres")
-            run(["git", "fetch", "--no-tags", UPSTREAM, "refs/heads/main:refs/luxipanel/upstream-main", f"refs/tags/{tag}:refs/luxipanel/releases/{tag}"], root, timeout=180)
-            ancestry = subprocess.run(["git", "merge-base", "--is-ancestor", old_head, "refs/luxipanel/upstream-main"], cwd=root, check=False)
-            if ancestry.returncode != 0:
-                raise RuntimeError("Commits personalizados preservados; intégralos o cambia a una versión oficial antes de actualizar")
-            commit = subprocess.check_output(["git", "rev-parse", f"refs/luxipanel/releases/{tag}^{{commit}}"], cwd=root, text=True).strip()
-            if subprocess.run(["git", "merge-base", "--is-ancestor", commit, "refs/luxipanel/upstream-main"], cwd=root, check=False).returncode != 0:
-                raise RuntimeError("La Release no pertenece al historial oficial de main")
-            release = manager / commit
+            old_branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=root, text=True).strip()
+            commit = fetch_revision(root, tag, branch, expected_commit)
+            # Never drop local-only history. A recorded installed revision, or a
+            # commit contained in its official upstream branch, is recoverable.
+            if not isinstance(prior, dict) or prior.get("commit") != old_head:
+                history_branch = old_branch if old_branch in BRANCHES else "main"
+                run(["git", "fetch", "--no-tags", UPSTREAM, f"refs/heads/{history_branch}:refs/luxipanel/install-history"], root, timeout=180)
+                if subprocess.run(["git", "merge-base", "--is-ancestor", old_head, "refs/luxipanel/install-history"], cwd=root, check=False).returncode != 0:
+                    raise RuntimeError("Commits personalizados preservados; intégralos antes de actualizar")
+            if not branch:
+                run(["git", "fetch", "--no-tags", UPSTREAM, "refs/heads/main:refs/luxipanel/upstream-main"], root, timeout=180)
+                if subprocess.run(["git", "merge-base", "--is-ancestor", commit, "refs/luxipanel/upstream-main"], cwd=root, check=False).returncode != 0:
+                    raise RuntimeError("La Release no pertenece al historial oficial de main")
+            if branch:
+                local_ref = subprocess.run(["git", "rev-parse", "--verify", f"refs/heads/{branch}"], cwd=root, text=True, capture_output=True)
+                if local_ref.returncode == 0 and subprocess.run(["git", "merge-base", "--is-ancestor", local_ref.stdout.strip(), commit], cwd=root, check=False).returncode != 0:
+                    raise RuntimeError("La rama local contiene cambios propios; se han conservado")
+            release = manager / (("branch-" if branch else "") + commit)
             if not (release / ".build-complete").is_file():
                 if release.exists():
                     try:
@@ -223,6 +271,8 @@ def main(root, tag):
                         shutil.rmtree(release)
                         run(["git", "worktree", "prune"], root, timeout=60)
                 run(["git", "worktree", "add", "--detach", str(release), commit], root, timeout=180)
+                if branch and not all((application(release) / name).exists() for name in ("backend/package.json", "frontend/package.json", "ecosystem.config.cjs")):
+                    raise RuntimeError("Esta rama no contiene una instalación completa del panel")
                 for area in ("backend", "frontend"):
                     origin_env = application(previous_path) / area / ".env"
                     if origin_env.is_file():
@@ -242,46 +292,69 @@ def main(root, tag):
                                 ["node", "scripts/build-extracted.mjs"], ["pnpm", "exec", "astro", "build"],
                                 ["node", "scripts/copy-dist-metadata.mjs"]):
                     run(command, application(release) / "frontend", env=env)
-                run(["node", "scripts/build-release-bundle.mjs", "--verify"], application(release), env=env)
-                verify_bundle(release, tag)
+                if not branch:
+                    run(["node", "scripts/build-release-bundle.mjs", "--verify"], application(release), env=env)
+                    verify_bundle(release, tag)
                 (release / ".build-complete").write_text(commit + "\n")
-            preserve_previews(previous_path, release)
-            manifest = verify_bundle(release, tag)
+            if branch:
+                preserve_installed_modules(previous_path, release)
+                manifest = {"modules": prior.get("modules", []) if isinstance(prior, dict) else []}
+            else:
+                preserve_previews(previous_path, release)
+                manifest = verify_bundle(release, tag)
             for area in ("backend", "frontend"):
                 origin_env = application(previous_path) / area / ".env"
                 if origin_env.is_file():
                     destination = application(release) / area / ".env"
-                    shutil.copy2(origin_env, destination)
+                    if origin_env.resolve() != destination.resolve():
+                        shutil.copy2(origin_env, destination)
                     destination.chmod(0o600)
+            if local_changes(root) or subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip() != old_head:
+                raise RuntimeError("El código local cambió durante la preparación; se ha conservado sin activar la actualización")
             state["operation"]["stage"] = "activating"
             write_state(state_path, state)
             static_previous = switch_static(root, release, manager)
             switched = True
             activate(release)
-            # Preserve branch refs while making the clone itself match the chosen official tag.
+            # Make the clone match the selected revision only after healthy activation.
             checkout_changed = True
-            run(["git", "-c", "core.hooksPath=/dev/null", "switch", "--detach", commit], root, timeout=60)
+            if branch:
+                exists = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=root, check=False).returncode == 0
+                run(["git", "-c", "core.hooksPath=/dev/null", "switch", branch] if exists else ["git", "-c", "core.hooksPath=/dev/null", "switch", "-c", branch, commit], root, timeout=60)
+                run(["git", "-c", "core.hooksPath=/dev/null", "merge", "--ff-only", commit], root, timeout=60)
+            else:
+                run(["git", "-c", "core.hooksPath=/dev/null", "switch", "--detach", commit], root, timeout=60)
             state["previous"] = prior
-            state["installed"] = {"tag": tag, "commit": commit, "path": str(release), "modules": [{"id": row["id"], "version": row["version"]} for row in manifest.get("modules", [])]}
-            state["operation"] = {"status": "complete", "tag": tag}
+            state["installed"] = {**selection, "commit": commit, "path": str(release), "modules": [{"id": row["id"], "version": row["version"]} for row in manifest.get("modules", [])]}
+            state["operation"] = {"status": "complete", **selection}
         except Exception as error:
             if switched:
                 try:
                     restore_static(static_previous)
                     if checkout_changed and old_head:
                         run(["git", "-c", "core.hooksPath=/dev/null", "switch", "--detach", old_head], root, timeout=60)
+                        if old_branch:
+                            tip = subprocess.check_output(["git", "rev-parse", f"refs/heads/{old_branch}"], cwd=root, text=True).strip()
+                            if old_branch == branch and tip == commit:
+                                run(["git", "update-ref", f"refs/heads/{old_branch}", old_head, commit], root, timeout=60)
+                                tip = old_head
+                            if tip == old_head:
+                                run(["git", "-c", "core.hooksPath=/dev/null", "switch", old_branch], root, timeout=60)
                     activate(previous_path)
-                    state["operation"] = {"status": "rolled_back", "tag": tag, "error": str(error)}
+                    state["operation"] = {"status": "rolled_back", **selection, "error": str(error)}
                 except Exception as rollback_error:
-                    state["operation"] = {"status": "failed", "tag": tag, "error": str(error), "rollbackError": str(rollback_error)}
+                    state["operation"] = {"status": "failed", **selection, "error": str(error), "rollbackError": str(rollback_error)}
             else:
-                state["operation"] = {"status": "failed", "tag": tag, "error": str(error)}
+                state["operation"] = {"status": "failed", **selection, "error": str(error)}
             raise
         finally:
             write_state(state_path, state)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("usage: release-manager.py ROOT TAG")
-    main(Path(sys.argv[1]).resolve(), sys.argv[2])
+    if len(sys.argv) == 5 and sys.argv[2] == "--branch":
+        main(Path(sys.argv[1]).resolve(), "", sys.argv[3], sys.argv[4])
+    elif len(sys.argv) == 3:
+        main(Path(sys.argv[1]).resolve(), sys.argv[2])
+    else:
+        raise SystemExit("usage: release-manager.py ROOT TAG | ROOT --branch NAME SHA")

@@ -6,6 +6,9 @@ import { releaseDetails, translatedReleaseDetails } from "../services/release-de
 import { releasesService } from "../services/releases.service.js";
 import type { SessionUser } from "../../../shared/types/index.js";
 
+import { releaseBranchDetails } from "../services/release-branches.service.js";
+import { ValidationError } from "../../../shared/errors/index.js";
+
 import { projectContributors } from "../services/release-contributors.service.js";
 
 export const releasesController = {
@@ -21,6 +24,10 @@ export const releasesController = {
     const data = await releasesService.status(req);
     res.json({ ok: true, data: { ...data, canInstall } });
   }),
+  branchDetails: asyncHandler(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, data: await releaseBranchDetails(String(req.params.branch), String(req.query.commit || "")) });
+  }),
   details: asyncHandler(async (req: Request, res: Response) => {
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, data: await releaseDetails(String(req.params.tag)) });
@@ -31,6 +38,9 @@ export const releasesController = {
   }),
   install: asyncHandler(async (req: Request, res: Response) => {
     const tag = typeof req.body?.tag === "string" ? req.body.tag : "";
-    res.status(202).json({ ok: true, data: await releasesService.start(req, tag) });
+    if (req.body?.branch !== undefined) {
+      if (tag || typeof req.body.branch !== "string" || typeof req.body.commit !== "string") throw new ValidationError("Selecciona una rama y su revisión, o una versión publicada.");
+      res.status(202).json({ ok: true, data: await releasesService.start(req, "", { name: req.body.branch, commit: req.body.commit }) });
+    } else res.status(202).json({ ok: true, data: await releasesService.start(req, tag) });
   }),
 };

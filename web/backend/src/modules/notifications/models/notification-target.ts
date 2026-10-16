@@ -42,6 +42,7 @@ export interface NotificationTarget {
 
 /** Únicos CustomEvents que una notificación puede despachar en `window`. */
 export const NOTIFICATION_EVENT_ALLOWLIST = [
+  "luxipanel:releases-open",
   "luxipanel:assistant-open-conversation",
   "luxipanel:assistant-settings-open",
   "luxipanel:assistant-new-conversation",
