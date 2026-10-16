@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as api from "../assistant-api";
@@ -41,8 +41,8 @@ let root: Root | undefined;
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 beforeEach(() => {
-  vi.mocked(api.assistantAgentsApi.list).mockResolvedValue(agents);
-  vi.mocked(api.assistantProjectsApi.list).mockResolvedValue(projects);
+  vi.mocked(api.assistantAgentsApi.list).mockReset().mockResolvedValue(agents);
+  vi.mocked(api.assistantProjectsApi.list).mockReset().mockResolvedValue(projects);
   vi.mocked(api.assistantAgentTeamsApi.list).mockResolvedValue([
     { id: "team-a", name: "Equipo Alpha" }, { id: "team-b", name: "Equipo Beta" }, { id: "empty", name: "Sin proyecto" },
   ] as api.AgentTeam[]);
@@ -145,4 +145,186 @@ it("removes the global Agents section from advanced settings", async () => {
   expect(labels).toContain("General");
   expect(labels).not.toContain("Agentes");
   expect(labels).toHaveLength(4);
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+// Mirror AssistantPanel's conditional mount and fresh key for each opening.
+function ReopenableDialog({ onClose }: { onClose(): void }) {
+  const [request, setRequest] = useState<number | null>(0);
+  const [next, setNext] = useState(1);
+  return createElement("div", null,
+    createElement("button", { onClick: () => { setRequest(next); setNext(next + 1); } }, "Reabrir"),
+    request !== null && createElement(ProjectAgentsDialog, {
+      key: request, projectId: alpha.id, agentId: agents[2].id, locale: "es",
+      onClose: () => { onClose(); setRequest(null); }, onLaunchAgent: vi.fn(),
+    }),
+  );
+}
+
+function observeDrawers() {
+  const opened = new Set<Element>();
+  const collect = (records: MutationRecord[]) => {
+    for (const record of records) for (const node of record.addedNodes) {
+      if (!(node instanceof Element)) continue;
+      if (node.matches('[role="dialog"]')) opened.add(node);
+      node.querySelectorAll('[role="dialog"]').forEach((dialog) => opened.add(dialog));
+    }
+  };
+  const observer = new MutationObserver(collect);
+  observer.observe(document.body, { childList: true, subtree: true });
+  return { count: () => { collect(observer.takeRecords()); return opened.size; }, stop: () => observer.disconnect() };
+}
+
+async function closeDrawer(onClose: ReturnType<typeof vi.fn>, count: number) {
+  await act(async () => {
+    document.querySelector<HTMLButtonElement>('button[aria-label="Cerrar"]')!.click();
+    // Wait for the real drawer close callback, including its exit animation.
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(count));
+  });
+}
+
+it.each(["projects", "agents"] as const)("opens exactly one editor when the %s catalog is delayed", async (catalog) => {
+  const pendingProjects = deferred<api.AssistantProject[]>();
+  const pendingAgents = deferred<api.AssistantAgent[]>();
+  if (catalog === "projects") vi.mocked(api.assistantProjectsApi.list).mockReturnValueOnce(pendingProjects.promise);
+  else vi.mocked(api.assistantAgentsApi.list).mockReturnValueOnce(pendingAgents.promise);
+  const drawers = observeDrawers();
+  try {
+    await mount(createElement(ProjectAgentsDialog, { projectId: alpha.id, agentId: agents[2].id, locale: "es", onClose: vi.fn(), onLaunchAgent: vi.fn() }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(drawers.count()).toBe(0);
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Cargando proyecto");
+    expect(document.body.textContent).not.toContain("Selecciona un proyecto");
+
+    await act(async () => {
+      pendingProjects.resolve(projects);
+      pendingAgents.resolve(agents);
+    });
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(drawers.count()).toBe(1);
+    expect(document.body.textContent).not.toContain("Selecciona un proyecto");
+    expect(document.body.textContent).toContain(beta.title);
+    expect([...document.querySelectorAll("input")].some((input) => input.value === agents[2].name)).toBe(true);
+  } finally { drawers.stop(); }
+});
+
+it.each(["Escape", "close button"] as const)("cancels pending agent loading with %s and ignores its response after reopening", async (method) => {
+  const oldRequest = deferred<api.AssistantProject[]>();
+  const newRequest = deferred<api.AssistantProject[]>();
+  vi.mocked(api.assistantProjectsApi.list).mockReturnValueOnce(oldRequest.promise).mockReturnValueOnce(newRequest.promise);
+  const onClose = vi.fn();
+  await mount(createElement(ReopenableDialog, { onClose }));
+  await act(async () => {
+    if (method === "Escape") window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    else document.querySelector<HTMLButtonElement>('button[aria-label="Cerrar"]')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('[role="dialog"], [role="status"]')).toBeNull();
+
+  await click("Reabrir");
+  await act(async () => oldRequest.resolve(projects));
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(document.querySelector('[role="status"]')?.textContent).toContain("Cargando proyecto");
+  await act(async () => newRequest.resolve(projects));
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  expect([...document.querySelectorAll("input")].some((input) => input.value === agents[2].name)).toBe(true);
+  await closeDrawer(onClose, 2);
+  expect(onClose).toHaveBeenCalledTimes(2);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await click("Reabrir");
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  expect([...document.querySelectorAll("input")].some((input) => input.value === agents[2].name)).toBe(true);
+});
+
+it("ignores a late rejection from a closed request while a fresh editor is open", async () => {
+  const oldRequest = deferred<api.AssistantProject[]>();
+  vi.mocked(api.assistantProjectsApi.list).mockReturnValueOnce(oldRequest.promise);
+  const onClose = vi.fn();
+  await mount(createElement(ReopenableDialog, { onClose }));
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
+  await click("Reabrir");
+  const editor = document.querySelector('[role="dialog"]');
+  expect(editor).not.toBeNull();
+  await act(async () => oldRequest.reject(new Error("Respuesta de una apertura anterior")));
+  expect(document.querySelector('[role="dialog"]')).toBe(editor);
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+  expect(document.body.textContent).not.toContain("Respuesta de una apertura anterior");
+});
+
+it.each(["projects", "agents"] as const)("shows a dismissible %s error without the generic selector and recovers on reopen", async (catalog) => {
+  const pendingProjects = deferred<api.AssistantProject[]>();
+  const pendingAgents = deferred<api.AssistantAgent[]>();
+  if (catalog === "projects") vi.mocked(api.assistantProjectsApi.list).mockReturnValueOnce(pendingProjects.promise);
+  else vi.mocked(api.assistantAgentsApi.list).mockReturnValueOnce(pendingAgents.promise);
+  const onClose = vi.fn();
+  await mount(createElement(ReopenableDialog, { onClose }));
+  await act(async () => {
+    const error = new Error("No se pudo consultar el catálogo");
+    if (catalog === "projects") pendingProjects.reject(error);
+    else pendingAgents.reject(error);
+  });
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe("No se pudo consultar el catálogo");
+  expect(document.body.textContent).not.toContain("Selecciona un proyecto");
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  await closeDrawer(onClose, 1);
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await click("Reabrir");
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+  expect([...document.querySelectorAll("input")].some((input) => input.value === agents[2].name)).toBe(true);
+});
+
+it.each(["missing agent", "missing team"] as const)("reports %s on a direct link without offering unrelated projects", async (missing) => {
+  vi.mocked(api.assistantAgentsApi.list).mockResolvedValueOnce(missing === "missing agent" ? [] : [
+    agent(agents[2].id, "missing-team", [alpha.id]),
+  ]);
+  await mount(createElement(ProjectAgentsDialog, { projectId: alpha.id, agentId: agents[2].id, locale: "es", onClose: vi.fn(), onLaunchAgent: vi.fn() }));
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("No se pudo localizar el equipo");
+  expect(document.body.textContent).not.toContain("Selecciona un proyecto");
+  expect(document.body.textContent).not.toContain(alpha.title);
+});
+
+it("preserves loading and root-project selection for generic links", async () => {
+  const pending = deferred<api.AssistantProject[]>();
+  vi.mocked(api.assistantProjectsApi.list).mockReturnValueOnce(pending.promise);
+  await mount(createElement(ProjectAgentsDialog, { locale: "es", onClose: vi.fn(), onLaunchAgent: vi.fn() }));
+  const selector = document.querySelector('[role="dialog"]');
+  expect(selector).not.toBeNull();
+  expect(selector?.textContent).toContain("Selecciona un proyecto");
+  expect(selector?.querySelector('[role="status"]')?.textContent).toContain("Cargando proyecto");
+  expect(api.assistantAgentsApi.list).not.toHaveBeenCalled();
+  await act(async () => pending.resolve(projects));
+  expect(document.querySelector('[role="dialog"]')).toBe(selector);
+  expect(document.body.textContent).toContain(alpha.title);
+  expect(document.body.textContent).toContain(beta.title);
+  expect(document.body.textContent).not.toContain(child.title);
+  await click(beta.title);
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  expect(document.body.textContent).toContain("Equipo Beta");
+});
+
+it("preserves the generic selector's empty and error states", async () => {
+  vi.mocked(api.assistantProjectsApi.list).mockResolvedValueOnce([]);
+  await mount(createElement(ProjectAgentsDialog, { locale: "es", onClose: vi.fn(), onLaunchAgent: vi.fn() }));
+  expect(document.body.textContent).toContain("Selecciona un proyecto");
+  expect(document.querySelector('[role="status"]')).toBeNull();
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+  expect(document.body.textContent).toContain(mergeAssistantMessages({}).projectModal.noProjectsRegistered);
+  await act(async () => root!.unmount());
+  root = undefined;
+  vi.mocked(api.assistantProjectsApi.list).mockRejectedValueOnce(new Error("Catálogo no disponible"));
+  await mount(createElement(ProjectAgentsDialog, { locale: "es", onClose: vi.fn(), onLaunchAgent: vi.fn() }));
+  expect(document.body.textContent).toContain("Selecciona un proyecto");
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe("Catálogo no disponible");
 });
