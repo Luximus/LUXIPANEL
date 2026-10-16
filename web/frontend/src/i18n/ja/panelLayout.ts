@@ -1,5 +1,7 @@
 const panelLayout = {
   "community": {
+    "branchNotesUnavailable": "これらの更新の公開説明はまだありません。",
+    "branchNotesPartial": "一部の変更には説明がまだありません。",
     "branches": "ブランチ",
     "releases": "公開リリース",
     "branchChanges": "ブランチの変更",

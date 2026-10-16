@@ -1,5 +1,7 @@
 const panelLayout = {
   "community": {
+    "branchNotesUnavailable": "لا يتوفر وصف عام لهذه المستجدات بعد.",
+    "branchNotesPartial": "لا تتوفر ملاحظات توضيحية لبعض التغييرات بعد.",
     "branches": "الفرع",
     "releases": "الإصدارات المنشورة",
     "branchChanges": "تغييرات الفرع",

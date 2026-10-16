@@ -1,0 +1,8 @@
+{
+  "title": "Novedades explicadas para las personas que usan LUXIPANEL",
+  "changes": [
+    "El panel de versiones muestra títulos y descripciones de las mejoras en lugar de códigos de revisiones y mensajes internos.",
+    "Los nuevos aportes del asistente pueden incluir notas públicas que se guardan junto al cambio y aparecen en el historial de actualizaciones.",
+    "Las mejoras anteriores con descripción revisada también se presentan en lenguaje claro."
+  ]
+}

@@ -14,6 +14,7 @@ import { env } from "../../config/env.js";
 import { repositoryRoot } from "../installation-layout.js";
 import { githubStatus, githubToken } from "./user-connection.js";
 import { assertPublishableSource } from "../diagnostics/publication-check.js";
+import { collectChangeNotes, contributionMessage, type PublicChangeNote } from "./change-notes.js";
 import { ForbiddenError } from "../errors/index.js";
 import type { SessionUser } from "../types/index.js";
 import { createModuleLogger } from "../logger/index.js";
@@ -39,6 +40,7 @@ export interface ContributionJob {
  error?:string; attempt?:number; nextAttempt?:number; ci?:"pending"|"success"|"failure"|"missing"; checksUrl?:string; ciCheckedAt?:number; ciRequestedAt?:number;
  teamTaskId?:string; repository?:string; author?:{login:string;id:number}; isolated?:boolean; sourceCommit?:string; workspaceCwd?:string; integratedBy?:string; pushedAt?:string;
  cliBinding?:string;
+ notes?:PublicChangeNote[];
  /** Shared checkout was used by overlapping turns; never publish its aggregate delta. */
  overlapped?:boolean;
 }
@@ -217,6 +219,10 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
    if(!files.length){job.status="empty";await saveContribution(job);return null;}
    const patch=await contributionGit(job.root,["diff","--no-ext-diff","--binary",job.before,after,"--",...files]);
    validateContributionPatch(patch);
+   job.notes=await collectChangeNotes(files, async file => {
+    const exists=(await contributionGit(job.root,["ls-tree","--name-only",after,"--",file])).trim();
+    return exists ? contributionGit(job.root,["show",after+":"+file]) : "";
+   });
    job.files=files;job.patchHash=createHash("sha256").update(patch).digest("hex");
    await fs.writeFile(path.join(outbox(),job.id,"change.patch"),patch,{mode:0o600});
    if(job.isolated){
@@ -226,7 +232,7 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
     const tree=(await contributionGit(job.root,["write-tree"],opts)).trim();
     const identity=job.author??await githubToken(job.user,true);
     const author={GIT_AUTHOR_NAME:identity.login,GIT_AUTHOR_EMAIL:`${identity.id}+${identity.login}@users.noreply.github.com`,GIT_COMMITTER_NAME:identity.login,GIT_COMMITTER_EMAIL:`${identity.id}+${identity.login}@users.noreply.github.com`};
-    job.sourceCommit=(await contributionGit(job.root,["commit-tree",tree,"-p",job.head,"-m",`chore: cambios del asistente ${job.id}\n\nLUXIPANEL-Task: ${job.id}`],author)).trim();
+    job.sourceCommit=(await contributionGit(job.root,["commit-tree",tree,"-p",job.head,"-m",contributionMessage(job.id,job.notes)],author)).trim();
     await contributionGit(job.root,["update-ref",`refs/luxipanel/tasks/${job.id}`,job.sourceCommit]);
    }
    job.status="pending";await saveContribution(job);
@@ -293,7 +299,7 @@ export async function deliverContribution(job:ContributionJob, remoteUrl = REMOT
   }
   const tree=(await contributionGit(cwd,["write-tree"],opts)).trim();
   const author={GIT_AUTHOR_NAME:identity.login,GIT_AUTHOR_EMAIL:`${identity.id}+${identity.login}@users.noreply.github.com`,GIT_COMMITTER_NAME:identity.login,GIT_COMMITTER_EMAIL:`${identity.id}+${identity.login}@users.noreply.github.com`};
-  job.commit=(await contributionGit(cwd,["commit-tree",tree,"-p",remote,"-m",`chore: cambios del asistente ${job.id}\n\nLUXIPANEL-Task: ${job.id}`],author)).trim();
+  job.commit=(await contributionGit(cwd,["commit-tree",tree,"-p",remote,"-m",contributionMessage(job.id,job.notes)],author)).trim();
   await contributionGit(cwd,["update-ref",`refs/luxipanel/contributions/${job.id}`,job.commit]);
   job.base=remote;await saveContribution(job);
  }
@@ -370,7 +376,7 @@ export async function deliverIsolatedContribution(job:ContributionJob,remoteUrl=
  if(files.some(f=>!publishablePath(f)||f.startsWith("web/modules/")))throw new Error("El aporte incluye archivos fuera del flujo del núcleo.");
  for(const f of files){const content=await fs.readFile(path.join(cwd,f),"utf8").catch(e=>{if(e.code==="ENOENT")return "";throw e;});assertPublishableSource(content);if(f.endsWith(".json")&&content)JSON.parse(content);}
  if(!files.length){job.commit=remote;job.integratedBy=remote;job.status="pushed";job.pushedAt??=new Date().toISOString();job.ci="pending";await saveContribution(job);return;}
- await contributionGit(cwd,["-c","user.name="+identity.login,"-c","user.email="+identity.id+"+"+identity.login+"@users.noreply.github.com","commit","--quiet","-m",`chore: cambios del asistente ${job.id}\n\nLUXIPANEL-Task: ${job.id}`]);
+ await contributionGit(cwd,["-c","user.name="+identity.login,"-c","user.email="+identity.id+"+"+identity.login+"@users.noreply.github.com","commit","--quiet","-m",contributionMessage(job.id,job.notes)]);
  job.commit=(await contributionGit(cwd,["rev-parse","HEAD"])).trim();job.base=remote;await saveContribution(job);
  await contributionGit(cwd,["push","--porcelain",remoteUrl,job.commit+":refs/heads/developer"],auth);
  await contributionGit(cwd,["fetch","--quiet","--no-tags",remoteUrl,"refs/heads/developer:refs/remotes/upstream/developer"],auth);

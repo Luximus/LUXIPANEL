@@ -111,3 +111,8 @@
 .lxp-branch-commits a > code { flex-shrink: 0; color: var(--muted-foreground); font-size: .6875rem; }
 .lxp-branch-commits a > span { overflow-wrap: anywhere; min-width: 0; }
 .lxp-branch-commits p { margin-top: .375rem; }
+
+/* Human-readable branch notes share the release notes card. */
+.lxp-branch-note + .lxp-branch-note { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
+.lxp-branch-note h4 { margin: 0 0 .25rem; font-size: .9rem; }
+.lxp-branch-note ul { margin-top: .6rem; padding-inline-start: 1.25rem; list-style: disc; }

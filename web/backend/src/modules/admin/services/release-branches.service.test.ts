@@ -42,3 +42,31 @@ it("does not label an unavailable contents check as a component-only branch", as
   });
   await expect(releaseBranchDetails("developer", sha)).rejects.toThrow("No se pudo comprobar");
 });
+
+it("returns authored update notes and never invents notes from an internal commit title", async () => {
+  const note = { title: "Avisos de actualización", changes: ["El botón muestra solo mejoras pendientes de instalar."] };
+  vi.mocked(publicGithub).mockImplementation(async route => {
+    if (route.includes("/branches?")) return [{ name: "developer", commit: { sha } }];
+    if (route.includes("/commits?")) return [
+      { sha, commit: { message: "Update\nLUXIPANEL-NOTES-BEGIN\n" + JSON.stringify([note]) + "\nLUXIPANEL-NOTES-END", author: { name: "Author", date: "2026-10-16" } } },
+      { sha: base, commit: { message: "chore: cambios del asistente private-task", author: { name: "Author", date: "2026-10-15" } } }
+    ];
+    return [];
+  });
+  const result = await releaseBranchDetails("developer", sha);
+  expect(result.notes).toEqual([{ ...note, id: sha + ":0", date: "2026-10-16" }]);
+  expect(result.notesIncomplete).toBe(true);
+  expect(JSON.stringify(result.notes)).not.toContain("private-task");
+});
+it("uses reviewed historical descriptions only for exact commits in the selected branch", async () => {
+  const known = "def82b35ca0555f7882a460fca0a22de224cd4b9";
+  vi.mocked(publicGithub).mockImplementation(async route => {
+    if (route.includes("/branches?")) return [{ name: "main", commit: { sha } }];
+    if (route.includes("/commits?")) return [{ sha: known, commit: { message: "chore: cambios del asistente", author: { name: "Author", date: "2026-10-16" } } }];
+    return [];
+  });
+  const result = await releaseBranchDetails("main", sha);
+  expect(result.notes).toHaveLength(1);
+  expect(result.notes[0]?.title).toBe("Avisos centrados en las actualizaciones");
+  expect(result.notesIncomplete).toBe(false);
+});

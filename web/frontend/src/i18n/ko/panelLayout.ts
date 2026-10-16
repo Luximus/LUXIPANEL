@@ -1,5 +1,7 @@
 const panelLayout = {
   "community": {
+    "branchNotesUnavailable": "이 업데이트에 대한 공개 설명은 아직 없습니다.",
+    "branchNotesPartial": "일부 변경 사항에는 아직 설명이 없습니다.",
     "branches": "브랜치",
     "releases": "게시된 릴리스",
     "branchChanges": "브랜치 변경 사항",

@@ -70,6 +70,8 @@ export async function readProjectContributors(): Promise<ProjectContributors> {
 export interface PanelBranch { name: string; commit: string; updateAvailable: boolean; ahead: number; error?: string }
 export interface PanelBranchDetails extends PanelBranch {
   installable: boolean;
+  notes?: { id: string; title: string; changes: string[]; date: string | null }[];
+  notesIncomplete?: boolean;
   commits: { sha: string; message: string; author: string; date: string | null; url: string }[];
 }
 export async function readPanelBranch(name: string, commit: string): Promise<PanelBranchDetails> {

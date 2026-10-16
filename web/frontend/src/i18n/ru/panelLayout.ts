@@ -1,5 +1,7 @@
 const panelLayout = {
   "community": {
+    "branchNotesUnavailable": "Публичное описание этих обновлений пока недоступно.",
+    "branchNotesPartial": "Для некоторых изменений пока нет пояснений.",
     "branches": "Ветка",
     "releases": "Опубликованные версии",
     "branchChanges": "Изменения ветки",

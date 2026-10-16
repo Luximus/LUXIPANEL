@@ -1,5 +1,7 @@
 const panelLayout = {
   "community": {
+    "branchNotesUnavailable": "এই আপডেটগুলোর প্রকাশ্য বিবরণ এখনো উপলব্ধ নয়।",
+    "branchNotesPartial": "কিছু পরিবর্তনের ব্যাখ্যামূলক নোট এখনো নেই।",
     "branches": "ব্রাঞ্চ",
     "releases": "প্রকাশিত সংস্করণ",
     "branchChanges": "ব্রাঞ্চের পরিবর্তন",

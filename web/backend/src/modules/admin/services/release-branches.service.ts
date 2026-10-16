@@ -3,6 +3,8 @@ import { publicGithub, CANONICAL_GITHUB } from "../../../shared/github/public-ap
 import { env } from "../../../config/env.js";
 import { AppError, ValidationError } from "../../../shared/errors/index.js";
 import { sanitizePublicText } from "../../../shared/diagnostics/sanitize.js";
+import { publishedChangeNotes, type PublicChangeNote } from "../../../shared/github/change-notes.js";
+import { legacyChangeNotes } from "../../../shared/github/legacy-change-notes.js";
 
 export const BRANCHES = ["main", "developer", "web", "desktop", "mobile", "modules"] as const;
 export const validBranch = (value: string): boolean => (BRANCHES as readonly string[]).includes(value);
@@ -10,6 +12,8 @@ const SHA = /^[a-f0-9]{40}$/;
 export interface PanelBranch { name: string; commit: string; updateAvailable: boolean; ahead: number; error?: string }
 export interface BranchDetails extends PanelBranch {
   installable: boolean;
+  notes: (PublicChangeNote & { id: string; date: string | null })[];
+  notesIncomplete: boolean;
   commits: { sha: string; message: string; author: string; date: string | null; url: string }[];
 }
 export async function releaseBranches(base?: string): Promise<{ branches: PanelBranch[]; error?: string }> {
@@ -48,7 +52,15 @@ export async function releaseBranchDetails(name: string, commit: string): Promis
     // A missing web directory is valid for a component branch. Network failures are not.
     if (!(error instanceof Error && /^GitHub 404:/.test(error.message))) throw new AppError("No se pudo comprobar si esta rama permite actualizar el panel. Reintenta más tarde.", 503);
   }
-  return { ...branch, installable, commits: rows.filter(row => SHA.test(row.sha)).map(row => ({ sha: row.sha,
+  const validRows = rows.filter(row => SHA.test(row.sha));
+  let notesIncomplete = false;
+  const notes = validRows.flatMap(row => {
+    const authored = publishedChangeNotes(row.commit.message);
+    const entries = authored.length ? authored : legacyChangeNotes[row.sha];
+    if (!entries) { notesIncomplete = true; return []; }
+    return entries.map((note, index) => ({ ...note, id: row.sha + ":" + index, date: row.commit.author.date || null }));
+  });
+  return { ...branch, installable, notes, notesIncomplete, commits: validRows.map(row => ({ sha: row.sha,
     message: sanitizePublicText(row.commit.message).slice(0, 2000), author: sanitizePublicText(row.commit.author.name).slice(0, 100),
     date: row.commit.author.date || null, url: `https://github.com/Luxisoft/LUXIPANEL/commit/${row.sha}` })) };
 }

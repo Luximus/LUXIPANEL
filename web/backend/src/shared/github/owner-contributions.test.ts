@@ -227,9 +227,16 @@ describe("original project contributions and legacy worktree compatibility",()=>
   const ticket=await api.beginOwnerContribution(user,"turn",path.join(seed,"web/src"),"local",true);
   expect(ticket!.job.root).toBe(seed);expect(ticket!.job.workspaceCwd).toBeUndefined();expect(ticket!.job.isolated).toBeUndefined();
   await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const b=2;\n");
+  const note={title:"Chats más claros",changes:["El selector permite elegir al agente por nombre y puesto."]};
+  await fs.mkdir(path.join(seed,"docs/changes"),{recursive:true});
+  await fs.writeFile(path.join(seed,"docs/changes/selector.json"),JSON.stringify(note));
   await api.finishOwnerContribution(ticket,true);await new Promise(resolve=>setTimeout(resolve,40));
   await api.deliverContribution(ticket!.job,remote,async u=>u);
   expect(git(remote,"show","developer:web/src/b.ts")).toContain("b=2");
+  const message=git(remote,"log","-1","--format=%B","developer");
+  expect(message.split("\n")[0]).toBe(note.title);
+  expect((await import("./change-notes.js")).publishedChangeNotes(message)).toEqual([note]);
+
   expect(git(remote,"show","developer:web/src/a.ts")).toContain("a=1");
   expect(git(seed,"branch","--show-current").trim()).toBe("developer");
   expect(git(seed,"rev-parse","HEAD")).toBe(head);

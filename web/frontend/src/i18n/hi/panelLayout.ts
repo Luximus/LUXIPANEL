@@ -1,5 +1,7 @@
 const panelLayout = {
   "community": {
+    "branchNotesUnavailable": "इन अपडेट का सार्वजनिक विवरण अभी उपलब्ध नहीं है।",
+    "branchNotesPartial": "कुछ बदलावों के लिए व्याख्यात्मक नोट अभी उपलब्ध नहीं हैं।",
     "branches": "ब्रांच",
     "releases": "प्रकाशित संस्करण",
     "branchChanges": "ब्रांच के बदलाव",
