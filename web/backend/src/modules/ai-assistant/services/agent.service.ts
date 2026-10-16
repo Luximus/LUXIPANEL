@@ -1,5 +1,5 @@
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
-import { assertCoreDeveloper, beginIsolatedOwnerContribution, finishOwnerContribution, saveContribution } from "../../../shared/github/owner-contributions.js";
+import { assertCoreDeveloper, beginOwnerContribution, finishOwnerContribution, saveContribution } from "../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { modelAttachments, type ChatAttachment } from "../models/chat-attachment.js";
@@ -146,14 +146,14 @@ export const agentService = {
     const conversation=options.conversationId?await conversationsRepository.getMeta(executor,options.conversationId):null;
     const mode=options.approvalModeOverride??conversation?.approvalMode??config.approval.mode;
     const cwd=options.forcedCwd??project?.path??options.cwd;
-    const ticket=cwd&&executor&&options.conversationId?await beginIsolatedOwnerContribution(options.user,options.conversationId,cwd,executor.target.id,config.enabled&&mode!=="plan"):null;
+    const ticket=cwd&&executor&&options.conversationId?await beginOwnerContribution(options.user,options.conversationId,cwd,executor.target.id,config.enabled&&mode!=="plan"):null;
     if(ticket&&options.conversationId){
       const worker=await teamTasksRepository.findByWorkerConversation(executor,options.conversationId);
       if(worker?.id){ticket.job.teamTaskId=worker.id;await saveContribution(ticket.job);}
     }
     let completed=false,failed=false;
     try{
-      for await(const event of agentService.runUntracked(messages,{...options,...(ticket?.job.workspaceCwd?{forcedCwd:ticket.job.workspaceCwd}: {})})){
+      for await(const event of agentService.runUntracked(messages,options,ticket?.job.isolated?undefined:ticket?.job.root)){
         if(event.type==="error"||event.type==="ask")failed=true;
         if(event.type==="done")completed=true;
         yield event;
@@ -165,6 +165,7 @@ export const agentService = {
   async *runUntracked(
     messages: AgentMessage[],
     options: AgentRunOptions = {},
+    contributionRoot?: string,
   ): AsyncGenerator<AgentEvent> {
     const { withContext = true, signal, executor, userId, user, providerId, model, projectId, agentId, conversationId, attachments: inputAttachments, outputEnglish, cwd: cwdOverride, forcedCwd, panelOrigin, crossMcpToken, graphMcpToken, delegationDepth = 0 } = options;
 
@@ -428,7 +429,10 @@ export const agentService = {
     tools = [...tools.filter(tool => !agentCapabilityRegistry.findTool(tool.name)), ...moduleDiscoveryTools(moduleScope)];
     const { systemContext, cwd, jailPaths, cliTeamLeader } = built;
     if (cwd && runExecutor) await assertCoreDeveloper(user, cwd, runExecutor.target.id);
-    const systemPrompt = built.systemPrompt + "\n\nModule management: call modules.list, then modules.describe, then modules.read or modules.execute with the discovered revision and exact tool input. These tools enforce the module manager's current state and user permissions. Use these tools for panel module operations.";
+    const contributionPrompt = contributionRoot
+      ? `\n\nTrabaja sobre el proyecto original de LUXIPANEL en ${contributionRoot}, rama developer, sin crear copias temporales ni cambiar de rama. El panel guarda y publica automáticamente el aporte al terminar correctamente: no hagas commit ni push manuales durante este turno. El envío a GitHub lo confirma el panel; no lo anuncies como terminado desde el agente.`
+      : "";
+    const systemPrompt = built.systemPrompt + contributionPrompt + "\n\nModule management: call modules.list, then modules.describe, then modules.read or modules.execute with the discovered revision and exact tool input. These tools enforce the module manager's current state and user permissions. Use these tools for panel module operations.";
 
     log.info(
       {

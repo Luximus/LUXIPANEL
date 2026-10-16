@@ -31,7 +31,7 @@ describe("maintainer contribution snapshots",()=>{
   git("init","-q");git("config","user.email","test@example.invalid");git("config","user.name","Test");
   await fs.mkdir(path.join(root,"web/src"),{recursive:true});
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=1;\n");await fs.writeFile(path.join(root,"web/src/b.ts"),"export const b=1;\n");
-  git("add",".");git("commit","-qm","baseline");
+  git("add",".");git("commit","-qm","baseline");git("branch","-M","developer");
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");git("add","web/src/a.ts");
   const index=await fs.readFile(path.join(root,".git/index"));
   const before=await captureSource(root,path.join(root,"before.index"));
@@ -59,9 +59,15 @@ describe("durable CLI contribution recovery",()=>{
   const git=(...args:string[])=>execFileSync("git",args,{cwd:root,encoding:"utf8"});
   git("init","-q");git("config","user.email","test@example.invalid");git("config","user.name","Test");
   await fs.mkdir(path.join(root,"web/src"),{recursive:true});await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=1;\n");
-  git("add",".");git("commit","-qm","baseline");
+  git("add",".");git("commit","-qm","baseline");git("branch","-M","developer");
  });
- afterEach(async()=>{vi.useRealTimers();vi.mocked(githubStatus).mockResolvedValue({canEditCore:false} as Awaited<ReturnType<typeof githubStatus>>);await fs.rm(root,{recursive:true,force:true});});
+ afterEach(async()=>{
+  // Initialization starts a background outbox scan with a short-lived flock
+  // child. Let it release the fixture before deleting it or changing config.
+  await new Promise(resolve=>setTimeout(resolve,40));
+  vi.useRealTimers();vi.mocked(githubStatus).mockResolvedValue({canEditCore:false} as Awaited<ReturnType<typeof githubStatus>>);
+  await fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:25});
+ });
  it.each([true,false])("reserves the exact task across restart and only seals confirmed success=%s",async success=>{
   let api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
   const ticket=await api.beginOwnerContribution(user,"turn",root,"local",true);expect(ticket).not.toBeNull();
@@ -174,11 +180,14 @@ it.each(["success","missing-base","conflict"])("verifies actual Git delivery wit
 });
 
 
-describe("isolated parallel contributions",()=>{
+describe("original project contributions and legacy worktree compatibility",()=>{
  let root:string,seed:string,remote:string;
  const user={userId:1,username:"maintainer",displayName:"Maintainer",kind:"admin",role:"admin",modules:[]} as ContributionJob["user"];
  const git=(cwd:string,...args:string[])=>execFileSync("git",args,{cwd,encoding:"utf8"});
  const noDelivery=async()=>{throw new Error("Automatic network disabled in tests");};
+ const existingWorktree=async(id:string)=>{
+  const cwd=path.join(root,"team-"+id);git(seed,"worktree","add","--detach",cwd,"HEAD");return cwd;
+ };
  beforeEach(async()=>{
   vi.useFakeTimers({toFake:["setInterval","clearInterval"]});vi.resetModules();
   root=await fs.mkdtemp(path.join(os.tmpdir(),"lxp-isolation-"));seed=path.join(root,"source");remote=path.join(root,"remote.git");await fs.mkdir(seed);
@@ -192,7 +201,7 @@ describe("isolated parallel contributions",()=>{
  afterEach(async()=>{await new Promise(resolve=>setTimeout(resolve,40));vi.useRealTimers();vi.unstubAllGlobals();await fs.rm(root,{recursive:true,force:true});});
  it("publishes both parallel tasks and verifies a retry without duplicate commits",async()=>{
   const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
-  const [a,b]=await Promise.all([api.beginIsolatedOwnerContribution(user,"a",seed,"local",true,remote),api.beginIsolatedOwnerContribution(user,"b",seed,"local",true,remote)]);
+  const [a,b]=await Promise.all([api.beginOwnerContribution(user,"a",await existingWorktree("a"),"local",true),api.beginOwnerContribution(user,"b",await existingWorktree("b"),"local",true)]);
   expect(a!.job.root).not.toBe(b!.job.root);expect(a!.job.overlapped).toBeUndefined();
   await fs.writeFile(path.join(a!.job.root,"web/src/a.ts"),"export const a=2;\n");
   await fs.writeFile(path.join(b!.job.root,"web/src/b.ts"),"export const b=2;\n");
@@ -203,22 +212,79 @@ describe("isolated parallel contributions",()=>{
  });
  it("keeps conflicting task commits and their files",async()=>{
   const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
-  const a=await api.beginIsolatedOwnerContribution(user,"a",seed,"local",true,remote),b=await api.beginIsolatedOwnerContribution(user,"b",seed,"local",true,remote);
+  const a=await api.beginOwnerContribution(user,"a",await existingWorktree("a"),"local",true),b=await api.beginOwnerContribution(user,"b",await existingWorktree("b"),"local",true);
   for(const [ticket,n] of [[a,2],[b,3]] as const){await fs.writeFile(path.join(ticket!.job.root,"web/src/a.ts"),`export const a=${n};\n`);await api.finishOwnerContribution(ticket,true);}
   await new Promise(resolve=>setTimeout(resolve,40));await api.deliverIsolatedContribution(a!.job,remote,async u=>u);
   await expect(api.deliverIsolatedContribution(b!.job,remote,async u=>u)).rejects.toMatchObject({code:"patch-conflict"});
   expect(await fs.readFile(path.join(b!.job.root,"web/src/a.ts"),"utf8")).toContain("a=3");
   expect(git(seed,"show",`refs/luxipanel/tasks/${b!.job.id}:web/src/a.ts`)).toContain("a=3");
  });
- it("resumes an interrupted workspace and does not reserve plan turns",async()=>{
-  let api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
-  expect(await api.beginIsolatedOwnerContribution(user,"plan",seed,"local",false,remote)).toBeNull();
-  const a=await api.beginIsolatedOwnerContribution(user,"a",seed,"local",true,remote);
-  await fs.writeFile(path.join(a!.job.root,"web/src/a.ts"),"export const a=9;\n");await api.finishOwnerContribution(a,false);
-  vi.resetModules();api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
-  const resumed=await api.beginIsolatedOwnerContribution(user,"a",seed,"local",true,remote);
-  expect(resumed!.job.id).toBe(a!.job.id);expect(await fs.readFile(path.join(resumed!.job.root,"web/src/a.ts"),"utf8")).toContain("a=9");
-  await api.finishOwnerContribution(resumed,true);expect(resumed!.job.sourceCommit).toMatch(/^[a-f0-9]{40}$/);
+ it("tracks the original project and publishes without creating a source or delivery checkout",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=9;\n");git(seed,"add","web/src/a.ts");
+  const index=await fs.readFile(path.join(seed,".git/index")),head=git(seed,"rev-parse","HEAD");
+  const worktrees=git(seed,"worktree","list","--porcelain");
+  const ticket=await api.beginOwnerContribution(user,"turn",path.join(seed,"web/src"),"local",true);
+  expect(ticket!.job.root).toBe(seed);expect(ticket!.job.workspaceCwd).toBeUndefined();expect(ticket!.job.isolated).toBeUndefined();
+  await fs.writeFile(path.join(seed,"web/src/b.ts"),"export const b=2;\n");
+  await api.finishOwnerContribution(ticket,true);await new Promise(resolve=>setTimeout(resolve,40));
+  await api.deliverContribution(ticket!.job,remote,async u=>u);
+  expect(git(remote,"show","developer:web/src/b.ts")).toContain("b=2");
+  expect(git(remote,"show","developer:web/src/a.ts")).toContain("a=1");
+  expect(git(seed,"branch","--show-current").trim()).toBe("developer");
+  expect(git(seed,"rev-parse","HEAD")).toBe(head);
+  expect(await fs.readFile(path.join(seed,".git/index"))).toEqual(index);
+  expect(await fs.readFile(path.join(seed,"web/src/a.ts"),"utf8")).toContain("a=9");
+  expect(git(seed,"worktree","list","--porcelain")).toBe(worktrees);
+  await expect(fs.stat(path.join(seed,".lxp"))).rejects.toThrow();
+  const records=await fs.readdir(path.join(root,"github-users/contributions",ticket!.job.id),{withFileTypes:true});
+  expect(records.some(e=>e.isDirectory())).toBe(false);
+  await api.deliverContribution(ticket!.job,remote,async u=>u);
+  expect(git(remote,"rev-list","--count","developer").trim()).toBe("2");
+ });
+ it("leaves plan turns, remote targets and unrelated projects alone",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  expect(await api.beginOwnerContribution(user,"plan",seed,"local",false)).toBeNull();
+  expect(await api.beginOwnerContribution(user,"remote",seed,"remote",true)).toBeNull();
+  expect(await api.beginOwnerContribution(user,"other",remote,"local",true)).toBeNull();
+  await expect(fs.stat(path.join(seed,".lxp"))).rejects.toThrow();
+ });
+ it("keeps core permissions on an explicitly supplied worktree outside the project",async()=>{
+  const api=await import("./owner-contributions.js");
+  await expect(api.assertCoreDeveloper(undefined,await existingWorktree("outside"),"local")).rejects.toThrow();
+ });
+ it("publishes additions and deletions through the private index",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const ticket=await api.beginOwnerContribution(user,"turn",seed,"local",true);
+  await fs.unlink(path.join(seed,"web/src/b.ts"));
+  await fs.writeFile(path.join(seed,"web/src/settings.json"),'{"enabled":true}\n');
+  await api.finishOwnerContribution(ticket,true);await new Promise(resolve=>setTimeout(resolve,40));
+  await api.deliverContribution(ticket!.job,remote,async u=>u);
+  expect(git(remote,"ls-tree","--name-only","developer:web/src")).not.toContain("b.ts");
+  expect(JSON.parse(git(remote,"show","developer:web/src/settings.json"))).toEqual({enabled:true});
+ });
+ it("requires developer without switching branches or losing pending files",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  git(seed,"switch","-c","main");await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=8;\n");
+  await expect(api.beginOwnerContribution(user,"turn",seed,"local",true)).rejects.toThrow("rama developer");
+  expect(git(seed,"branch","--show-current").trim()).toBe("main");
+  expect(await fs.readFile(path.join(seed,"web/src/a.ts"),"utf8")).toContain("a=8");
+ });
+ it("does not publish after the branch changes, even if HEAD is the same commit",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const ticket=await api.beginOwnerContribution(user,"turn",seed,"local",true);
+  git(seed,"switch","-c","main");await fs.writeFile(path.join(seed,"web/src/a.ts"),"export const a=8;\n");
+  await api.finishOwnerContribution(ticket,true);
+  expect(ticket!.job.status).toBe("blocked");expect(ticket!.job.patchHash).toBeUndefined();
+ });
+ it("preserves interrupted legacy work without redirecting the next project turn",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const old=await api.beginOwnerContribution(user,"turn",await existingWorktree("old"),"local",true);
+  await fs.writeFile(path.join(old!.job.root,"web/src/a.ts"),"export const a=9;\n");await api.finishOwnerContribution(old,false);
+  const ticket=await api.beginOwnerContribution(user,"turn",seed,"local",true);
+  expect(ticket!.job.root).toBe(seed);expect(ticket!.job.overlapped).toBeUndefined();
+  expect(await fs.readFile(path.join(old!.job.root,"web/src/a.ts"),"utf8")).toContain("a=9");
+  await api.finishOwnerContribution(ticket,false);
  });
  it("uses a kernel lock to exclude concurrent publishers",async()=>{
   const api=await import("./owner-contributions.js");const release=await api.publisherLock();expect(release).toBeTypeOf("function");

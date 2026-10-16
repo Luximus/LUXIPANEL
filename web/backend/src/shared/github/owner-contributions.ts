@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /** Installation-local outbox for the verified maintainer's chat changes.
- * Snapshot indexes and delivery checkouts never change the running branch/index.
+ * Private Git indexes never change the running branch/index or copy the checkout.
  * Only the delta of a successful, non-overlapping turn is eligible for publication.
  * Concurrent chats continue; shared-workspace deltas require manual review.
  */
@@ -89,7 +89,12 @@ export async function captureSource(root:string,index:string):Promise<string>{
 export async function assertCoreDeveloper(user:SessionUser|undefined,cwd:string,targetId:string):Promise<void>{
  if(targetId!=="local")return;
  const real=await fs.realpath(cwd).catch(()=>path.resolve(cwd));
- if(overlapsCore(real,await fs.realpath(coreRepository()).catch(()=>coreRepository())) && (!user || !(await githubStatus(user)).canEditCore))
+ const core=await fs.realpath(coreRepository()).catch(()=>coreRepository());
+ let belongsToCore=overlapsCore(real,core);
+ if(!belongsToCore){
+  try{belongsToCore=(await contributionGit(real,["rev-parse","--path-format=absolute","--git-common-dir"])).trim()===path.join(core,".git");}catch{/* Unrelated directory. */}
+ }
+ if(belongsToCore && (!user || !(await githubStatus(user)).canEditCore))
   throw new ForbiddenError("La modificación directa de LUXIPANEL está reservada a Luximus. Utiliza el flujo de módulos y fixes para proponer aportes.");
 }
 let initialized:Promise<ContributionJob[]>|undefined, timer:ReturnType<typeof setInterval>|undefined, draining=false;
@@ -117,7 +122,7 @@ export function initializeOwnerContributions(check:(user:SessionUser)=>Promise<S
    }
   }
   for(const job of recovered){
-   if(!job.isolated && recovered.some(other=>!other.isolated && other.id!==job.id && overlapsCore(other.root,job.root)))job.overlapped=true;
+   if(recovered.some(other=>other.id!==job.id && other.root===job.root))job.overlapped=true;
    activeContributions.set(job.id,job);await saveContribution(job);
   }
   // Legacy single-writer metadata no longer controls whether a chat can run.
@@ -129,15 +134,29 @@ export function initializeOwnerContributions(check:(user:SessionUser)=>Promise<S
 }
 export async function beginOwnerContribution(user:SessionUser|undefined,conversationId:string,cwd:string,targetId:string,enabled:boolean):Promise<Ticket|null>{
  await assertCoreDeveloper(user,cwd,targetId);
- if(!enabled || targetId!=="local" || !user || !(await githubStatus(user)).canEditCore || !overlapsCore(await fs.realpath(cwd),await fs.realpath(coreRepository())))return null;
+ if(!enabled || targetId!=="local" || !user || !(await githubStatus(user)).canEditCore)return null;
+ const core=await fs.realpath(coreRepository()),real=await fs.realpath(cwd);
+ let common="",top="";
+ try{
+  common=(await contributionGit(real,["rev-parse","--path-format=absolute","--git-common-dir"])).trim();
+  top=(await contributionGit(real,["rev-parse","--show-toplevel"])).trim();
+ }catch{/* An ancestor project can contain the core repository. */}
+ if(!overlapsCore(real,core)&&common!==path.join(core,".git"))return null;
  if(!initialized)throw new Error("El envío automático todavía no está listo.");
  await initialized;
- const root=await fs.realpath(coreRepository());
+ // An explicitly supplied team/legacy worktree keeps its own lifecycle. Never
+ // allocate one, fetch another checkout, or redirect an ordinary project's cwd.
+ const root=common===path.join(core,".git")&&top!==core?top:core;
+ const isolated=root!==core;
+ if(!isolated && (await contributionGit(root,["branch","--show-current"])).trim()!=="developer")
+  throw new Error("El proyecto LUXIPANEL debe estar en la rama developer. Conserva los cambios pendientes antes de cambiar de rama.");
+ if(await fs.stat(path.join(outbox(),"maintenance.json")).catch(()=>null))
+  throw new Error("Se está sincronizando el código existente. Los cambios están conservados; reintenta esta tarea al finalizar la sincronización.");
  return withContributionState(async()=>{
-  const job:ContributionJob={id:randomUUID(),conversationId,root,user:{userId:user.userId,username:user.username,displayName:user.username,kind:user.kind,role:user.role,modules:user.modules},before:"",head:"",status:"capturing",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  const job:ContributionJob={id:randomUUID(),conversationId,root,user:{userId:user.userId,username:user.username,displayName:user.username,kind:user.kind,role:user.role,modules:user.modules},before:"",head:"",...(isolated?{isolated:true,repository:core}:{}),status:"capturing",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   try{
    for(const active of activeContributions.values()){
-    if(!overlapsCore(active.root,root))continue;
+    if(active.root!==root)continue;
     // Persist on BOTH jobs: finishing either first must not re-enable publication.
     job.overlapped=true;active.overlapped=true;await saveContribution(active);
    }
@@ -145,6 +164,8 @@ export async function beginOwnerContribution(user:SessionUser|undefined,conversa
    if(!job.overlapped){
     job.head=(await contributionGit(root,["rev-parse","HEAD"])).trim();
     job.before=await captureSource(root,path.join(outbox(),job.id,"before.index"));
+    const anchor=(await contributionGit(root,["commit-tree",job.before,"-p",job.head,"-m",`Private snapshot ${job.id}`],{GIT_AUTHOR_NAME:"LUXIPANEL",GIT_AUTHOR_EMAIL:"snapshot@localhost",GIT_COMMITTER_NAME:"LUXIPANEL",GIT_COMMITTER_EMAIL:"snapshot@localhost"})).trim();
+    await contributionGit(root,["update-ref",`refs/luxipanel/snapshots/${job.id}`,anchor]);
     await saveContribution(job);
    }
    activeContributions.set(job.id,job);
@@ -190,7 +211,7 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
     job.status="blocked";job.error="Hubo tareas simultáneas en el mismo repositorio. Los cambios se conservan y requieren revisión antes de publicarse.";
     await saveContribution(job);return null;
    }
-   if(!job.isolated && (await contributionGit(job.root,["rev-parse","HEAD"])).trim()!==job.head)throw new Error("La rama o su historial cambió durante la tarea; el aporte requiere revisión.");
+   if(!job.isolated && ((await contributionGit(job.root,["branch","--show-current"])).trim()!=="developer" || (await contributionGit(job.root,["rev-parse","HEAD"])).trim()!==job.head))throw new Error("La rama o su historial cambió durante la tarea; el aporte requiere revisión.");
    const after=await captureSource(job.root,path.join(outbox(),job.id,"after.index"));
    const files=(await contributionGit(job.root,["diff","--name-only","-z",job.before,after])).split("\0").filter(Boolean);
    if(!files.length){job.status="empty";await saveContribution(job);return null;}
@@ -235,49 +256,55 @@ export async function deliverContribution(job:ContributionJob, remoteUrl = REMOT
  if(job.sourceCommit)return deliverIsolatedContribution(job,remoteUrl,authorizeUser);
  if(!authorizeUser)throw new Error("Autorización no disponible");
  const user=await authorizeUser(job.user),identity=await githubToken(user,true);
- const dir=path.join(outbox(),job.id),cwd=path.join(dir,"delivery"),patch=await fs.readFile(path.join(dir,"change.patch"),"utf8");
+ const dir=path.join(outbox(),job.id),cwd=job.root,patchFile=path.join(dir,"change.patch");
+ const patch=await fs.readFile(patchFile,"utf8");
  if(createHash("sha256").update(patch).digest("hex")!==job.patchHash)throw new Error("La integridad del aporte cambió.");
  validateContributionPatch(patch);
  if(job.files?.some(f=>/^web\/modules\//.test(f)))throw new Error("Los módulos se publican desde Dev mediante su flujo de PR a modules.");
- // Token goes to a short-lived child environment, never argv, remote URLs or logs.
- const auth={GIT_CONFIG_COUNT:"2",GIT_CONFIG_KEY_0:"credential.helper",GIT_CONFIG_VALUE_0:"",GIT_CONFIG_KEY_1:"http.https://github.com/.extraheader",GIT_CONFIG_VALUE_1:"AUTHORIZATION: basic "+Buffer.from("x-access-token:"+identity.token).toString("base64")};
- if(!job.commit)await fs.rm(cwd,{recursive:true,force:true});
- await fs.mkdir(cwd,{recursive:true,mode:0o700});
- await contributionGit(cwd,["init","--quiet"]);
- await contributionGit(cwd,["fetch","--quiet","--no-tags",remoteUrl,"refs/heads/developer:refs/remotes/upstream/developer"],auth);
- const remote=(await contributionGit(cwd,["rev-parse","refs/remotes/upstream/developer"])).trim();
+ const auth=gitAuth(identity.token),remoteRef=`refs/luxipanel/delivery/${job.id}`;
+ // Fetch objects only. Applying and committing use a private index: no copied
+ // source directory, checkout, reset, or changes to the operator's staging area.
+ await contributionGit(cwd,["fetch","--quiet","--no-tags",remoteUrl,`refs/heads/developer:${remoteRef}`],auth);
+ const remote=(await contributionGit(cwd,["rev-parse",remoteRef])).trim();
  if(job.commit){
-  try{await contributionGit(cwd,["merge-base","--is-ancestor",job.commit,remote]);job.status="pushed";job.pushedAt??=new Date().toISOString();job.ci="pending";await saveContribution(job);return;}catch{/* pending or unrelated update */}
+  // Old pending jobs may have their commit only in the former delivery checkout.
+  try{await contributionGit(cwd,["cat-file","-e",job.commit+"^{commit}"]);}
+  catch{await contributionGit(cwd,["fetch","--quiet",path.join(dir,"delivery"),job.commit]);}
+  try{await contributionGit(cwd,["merge-base","--is-ancestor",job.commit,remote]);job.status="pushed";job.pushedAt??=new Date().toISOString();job.ci="pending";job.error=undefined;await saveContribution(job);return;}catch{/* pending or unrelated update */}
   if(job.base!==remote)throw new Error("developer avanzó antes de confirmar el envío. El commit se conserva para revisión.");
  }else{
-  await contributionGit(cwd,["checkout","--quiet","--detach",remote]);
-  try{await contributionGit(cwd,["apply","--check","--index",path.join(dir,"change.patch")]);}
+  const opts={GIT_INDEX_FILE:path.join(dir,"delivery.index")};
+  await contributionGit(cwd,["read-tree",remote],opts);
+  try{await contributionGit(cwd,["apply","--check","--cached",patchFile],opts);}
   catch(error){
    const details=String((error as {stderr?:string}).stderr??"");
    if(/does not exist in index|No such file or directory/.test(details))
     throw new ContributionDeliveryError("base-missing","developer todavía no contiene archivos anteriores de los que depende este aporte. Hay que sincronizar esa base antes de enviarlo; el parche está conservado.");
    throw new ContributionDeliveryError("patch-conflict","El aporte no coincide con el código de developer. Hay cambios previos pendientes o conflictos que deben resolverse antes de enviarlo; el parche está conservado.");
   }
-  await contributionGit(cwd,["apply","--index",path.join(dir,"change.patch")]);
-  await contributionGit(cwd,["diff","--cached","--check"]);
-  const staged=(await contributionGit(cwd,["diff","--cached","--name-only","-z"])).split("\0").filter(Boolean);
-  if(staged.some(f=>!publishablePath(f)))throw new Error("El aporte incluye rutas fuera del código permitido.");
-  for(const f of staged){
-   const content=await fs.readFile(path.join(cwd,f),"utf8").catch(e=>{if(e.code==="ENOENT")return "";throw e;});assertPublishableSource(content);
-   if(f.endsWith(".json")&&content)JSON.parse(content);
+  await contributionGit(cwd,["apply","--cached",patchFile],opts);
+  await contributionGit(cwd,["diff","--cached","--check",remote],opts);
+  const staged=(await contributionGit(cwd,["diff","--cached","--name-only","-z",remote],opts)).split("\0").filter(Boolean);
+  if(staged.some(f=>!publishablePath(f)||f.startsWith("web/modules/")))throw new Error("El aporte incluye rutas fuera del código permitido.");
+  const remaining=(await contributionGit(cwd,["diff","--cached","--diff-filter=d","--name-only","-z",remote],opts)).split("\0").filter(Boolean);
+  for(const f of remaining){
+   const content=await contributionGit(cwd,["show",":"+f],opts);assertPublishableSource(content);
+   if(f.endsWith(".json"))JSON.parse(content);
   }
-  const message="chore: cambios del asistente "+job.id+"\n\nLUXIPANEL-Task: "+job.id+"\n";
-  await fs.writeFile(path.join(dir,"message.txt"),message,{mode:0o600});
-  await contributionGit(cwd,["-c","user.name="+identity.login,"-c","user.email="+identity.id+"+"+identity.login+"@users.noreply.github.com","commit","--quiet","--file",path.join(dir,"message.txt")]);
-  job.commit=(await contributionGit(cwd,["rev-parse","HEAD"])).trim();job.base=remote;await saveContribution(job);
+  const tree=(await contributionGit(cwd,["write-tree"],opts)).trim();
+  const author={GIT_AUTHOR_NAME:identity.login,GIT_AUTHOR_EMAIL:`${identity.id}+${identity.login}@users.noreply.github.com`,GIT_COMMITTER_NAME:identity.login,GIT_COMMITTER_EMAIL:`${identity.id}+${identity.login}@users.noreply.github.com`};
+  job.commit=(await contributionGit(cwd,["commit-tree",tree,"-p",remote,"-m",`chore: cambios del asistente ${job.id}\n\nLUXIPANEL-Task: ${job.id}`],author)).trim();
+  await contributionGit(cwd,["update-ref",`refs/luxipanel/contributions/${job.id}`,job.commit]);
+  job.base=remote;await saveContribution(job);
  }
  await contributionGit(cwd,["push","--porcelain",remoteUrl,job.commit+":refs/heads/developer"],auth);
- await contributionGit(cwd,["fetch","--quiet","--no-tags",remoteUrl,"refs/heads/developer:refs/remotes/upstream/developer"],auth);
- await contributionGit(cwd,["merge-base","--is-ancestor",job.commit!,"refs/remotes/upstream/developer"]);
+ await contributionGit(cwd,["fetch","--quiet","--no-tags",remoteUrl,`refs/heads/developer:${remoteRef}`],auth);
+ await contributionGit(cwd,["merge-base","--is-ancestor",job.commit!,remoteRef]);
  job.status="pushed";job.pushedAt??=new Date().toISOString();job.ci="pending";job.error=undefined;await saveContribution(job);
- await fs.rm(cwd,{recursive:true,force:true});
+ await fs.rm(path.join(dir,"delivery.index"),{force:true});
  await fs.rm(path.join(dir,"before.index"),{force:true});await fs.rm(path.join(dir,"after.index"),{force:true});
 }
+
 async function drain():Promise<void>{
  if(draining||!authorize)return;draining=true;
  let unlock:(()=>void)|undefined;
@@ -318,49 +345,7 @@ export async function publisherLock():Promise<(()=>void)|undefined>{
 }
 const gitAuth=(token:string)=>({GIT_CONFIG_COUNT:"2",GIT_CONFIG_KEY_0:"credential.helper",GIT_CONFIG_VALUE_0:"",GIT_CONFIG_KEY_1:"http.https://github.com/.extraheader",GIT_CONFIG_VALUE_1:"AUTHORIZATION: basic "+Buffer.from("x-access-token:"+token).toString("base64")});
 
-/** New tasks use independent worktrees. Incomplete turns resume the same workspace. */
-export async function beginIsolatedOwnerContribution(user:SessionUser|undefined,conversationId:string,cwd:string,targetId:string,enabled:boolean,remoteUrl=REMOTE):Promise<Ticket|null>{
- await assertCoreDeveloper(user,cwd,targetId);
- if(!enabled||targetId!=="local"||!user||!(await githubStatus(user)).canEditCore)return null;
- const core=await fs.realpath(coreRepository()),real=await fs.realpath(cwd);
- let common="";
- try{common=(await contributionGit(real,["rev-parse","--path-format=absolute","--git-common-dir"])).trim();}catch{}
- if(!overlapsCore(real,core)&&common!==path.join(core,".git"))return null;
- if(!initialized)throw new Error("El envío automático todavía no está listo.");await initialized;
- // Migration guard is installation-local; no reset of any active working tree.
- const maintenance=await fs.stat(path.join(outbox(),"maintenance.json")).catch(()=>null);
- if(maintenance)throw new Error("Se está sincronizando el código existente. Los cambios están conservados; reintenta esta tarea al finalizar la sincronización.");
- return withContributionState(async()=>{
-  const entries=await fs.readdir(outbox(),{withFileTypes:true});
-  const resumable:ContributionJob[]=[];
-  for(const e of entries){
-   if(!e.isDirectory()||!/^[a-f0-9-]{36}$/.test(e.name))continue;
-   const j=JSON.parse(await fs.readFile(path.join(outbox(),e.name,"job.json"),"utf8")) as ContributionJob;
-   if(j.isolated&&j.conversationId===conversationId&&j.user.userId===user.userId&&j.user.username===user.username&&j.status==="interrupted")resumable.push(j);
-  }
-  const resume=resumable.sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
-  if(resume){
-   await fs.access(resume.root);resume.status="capturing";resume.error=undefined;await saveContribution(resume);activeContributions.set(resume.id,resume);return {job:resume};
-  }
-  const identity=await githubToken(user,true);
-  await contributionGit(core,["fetch","--quiet","--no-tags",remoteUrl,"refs/heads/developer:refs/remotes/lxp-owner/developer"],gitAuth(identity.token));
-  const base=(await contributionGit(core,["rev-parse","refs/remotes/lxp-owner/developer"])).trim();
-  const id=randomUUID(),workspace=path.join(core,".lxp","owner-workspaces",id);
-  await fs.mkdir(path.dirname(workspace),{recursive:true,mode:0o700});
-  // Existing team worktrees stay owned by their lifecycle; capture them in place.
-  const top=common===path.join(core,".git")?(await contributionGit(real,["rev-parse","--show-toplevel"])).trim():core;
-  const external=top!==core;
-  const root=external?(await contributionGit(real,["rev-parse","--show-toplevel"])).trim():workspace;
-  if(!external)await contributionGit(core,["worktree","add","--detach",root,base]);
-  const sub=real.startsWith(core+path.sep)&&!real.includes("/.lxp/")?path.relative(core,real):"";
-  const job:ContributionJob={id,conversationId,root,user:{userId:user.userId,username:user.username,displayName:user.username,kind:user.kind,role:user.role,modules:user.modules},before:"",head:(await contributionGit(root,["rev-parse","HEAD"])).trim(),isolated:true,repository:core,author:{login:identity.login,id:identity.id},workspaceCwd:external?real:path.join(root,sub),status:"capturing",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
-  await saveContribution(job);job.before=await captureSource(root,path.join(outbox(),id,"before.index"));
-  const anchor=(await contributionGit(root,["commit-tree",job.before,"-p",job.head,"-m",`Private snapshot ${id}`],{GIT_AUTHOR_NAME:"LUXIPANEL",GIT_AUTHOR_EMAIL:"snapshot@localhost",GIT_COMMITTER_NAME:"LUXIPANEL",GIT_COMMITTER_EMAIL:"snapshot@localhost"})).trim();
-  await contributionGit(root,["update-ref",`refs/luxipanel/snapshots/${id}`,anchor]);await saveContribution(job);
-  activeContributions.set(id,job);return {job};
- });
-}
-
+/** Compatibility delivery for work already captured in an explicit or legacy worktree. */
 export async function deliverIsolatedContribution(job:ContributionJob,remoteUrl=REMOTE,authorizeUser=authorize):Promise<void>{
  if(!authorizeUser)throw new Error("Autorización no disponible");
  const user=await authorizeUser(job.user),identity=await githubToken(user,true),auth=gitAuth(identity.token);
