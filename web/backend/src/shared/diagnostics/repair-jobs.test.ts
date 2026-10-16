@@ -109,7 +109,11 @@ describe("Background Logs repairs (real isolated Git, simulated AI/GitHub)", () 
   it("reports partial publication and retries only the verified commit", async () => {
     failPr = true; const job = await start(); const failed = await settled(job.id, "failed");
     expect(failed.pushed).toBe(true); expect(failed.prUrl).toBeUndefined(); expect(runs).toBe(1);
-    failPr = false; await jobs.retry("job-test", job.id, { ...user, modules: [...user.modules] }); const done = await settled(job.id, "pr-created");
+    failPr = false;
+    // The terminal status is persisted before the worker releases its active
+    // slot. Retry only once cleanup permits it, instead of racing that finally.
+    await vi.waitFor(() => jobs.retry("job-test", job.id, { ...user, modules: [...user.modules] }), { timeout: 10000, interval: 20 });
+    const done = await settled(job.id, "pr-created");
     expect(done.commit).toBe(failed.commit); expect(runs).toBe(1); expect(done.prUrl).toContain("/pull/42");
   });
   it("deduplicates active repair requests and isolates job lookup", async () => {
