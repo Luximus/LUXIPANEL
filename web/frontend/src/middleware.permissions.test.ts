@@ -53,4 +53,14 @@ describe("mandatory GitHub connection",()=>{
   mocked.session.mockResolvedValue({kind:"admin",github:{required:true,connected:true}});
   const {response,rewrite}=await navigate("/assistant");expect(response.status).toBe(200);expect(rewrite).toHaveBeenCalledOnce();
  });
+ it.each(["/files","/assistant","/settings","/module-dev"])("allows an unlinked SSH administrator at %s when GitHub is optional",async route=>{
+  mocked.session.mockResolvedValue({kind:"admin",direct:true,targetId:"remote",github:{required:false,connected:false}});
+  const {response,rewrite}=await navigate(route);
+  expect(response.status).toBe(200);expect(response.headers.get("Location")).toBeNull();expect(rewrite).toHaveBeenCalledOnce();
+ });
+ it("still enforces remote panel permissions when GitHub is optional",async()=>{
+  mocked.session.mockResolvedValue({kind:"user",direct:true,targetId:"remote",permissions:{sidebar:[],views:[],actions:[]},github:{required:false,connected:false}});
+  const {response,rewrite}=await navigate("/files");
+  expect(response.status).toBe(403);expect(rewrite).not.toHaveBeenCalled();
+ });
 });

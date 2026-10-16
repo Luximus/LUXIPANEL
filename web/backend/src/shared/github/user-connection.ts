@@ -27,7 +27,10 @@ export function githubPrincipal(user: GithubPrincipal): string {
   return JSON.stringify([direct ? (user.githubIdentityTargetId ?? user.targetId) : "local", user.userId, user.username]);
 }
 const file = (user: GithubPrincipal) => path.join(root(), sha256(githubPrincipal(user)) + ".json");
-export function githubRequired(): boolean {
+export function githubRequired(user: GithubPrincipal): boolean {
+  // Mandatory onboarding belongs to the installation identity, not SSH accounts.
+  // Scoped tokens retain their signed origin even when their target is remote.
+  if (user.githubIdentityDirect ?? user.direct) return false;
   return process.env.LUXIPANEL_GITHUB_REQUIRED === "true" || (process.env.LUXIPANEL_GITHUB_REQUIRED !== "false" && (process.env.NODE_ENV ?? env.NODE_ENV) !== "test");
 }
 async function read(user: GithubPrincipal): Promise<GithubConnection | null> {
@@ -81,7 +84,7 @@ async function ownerMatches(user: GithubPrincipal, connection: GithubConnection)
 export async function githubStatus(user: GithubPrincipal): Promise<GithubConnectionStatus> {
   const connection = await read(user);
   const connected = !!connection && !connection.revoked;
-  return {required:githubRequired(),connected,
+  return {required:githubRequired(user),connected,
     ...(connected ? {login:connection.login,githubId:connection.githubId} : {}),
     canContribute:connected && (connection.scopes.includes("public_repo") || connection.scopes.includes("repo") || connection.scopes.length === 0),
     canEditCore:connected && await ownerMatches(user,connection),
@@ -89,7 +92,7 @@ export async function githubStatus(user: GithubPrincipal): Promise<GithubConnect
 }
 const refreshing = new Map<string,Promise<unknown>>();
 export async function requireGithub(user: GithubPrincipal): Promise<void> {
-  if (!githubRequired()) return;
+  if (!githubRequired(user)) return;
   const record = await read(user);
   if (record && !record.revoked && Date.now() - record.verifiedAt > 15 * 60_000) {
     const id = githubPrincipal(user);
@@ -97,7 +100,7 @@ export async function requireGithub(user: GithubPrincipal): Promise<void> {
     if (!check) { check = githubToken(user).finally(() => refreshing.delete(id)); refreshing.set(id,check); }
     try { await check; } catch (e) { if (!(e instanceof ForbiddenError)) throw e; }
   }
-  if (githubRequired() && !(await githubStatus(user)).connected) {
+  if (githubRequired(user) && !(await githubStatus(user)).connected) {
     throw new AppError("Conecta tu cuenta GitHub para continuar.", 403, ErrorCodes.GITHUB_CONNECTION_REQUIRED);
   }
 }

@@ -11,9 +11,49 @@ describe("individual GitHub connections",()=>{
  beforeEach(async()=>{config.LUXIPANEL_CONFIG_DIR=await fs.mkdtemp(path.join(os.tmpdir(),"lxp-github-"));process.env.LUXIPANEL_GITHUB_REQUIRED="true";vi.stubGlobal("fetch",vi.fn(async()=>identity()));});
  afterEach(async()=>{await fs.rm(config.LUXIPANEL_CONFIG_DIR,{recursive:true,force:true});vi.unstubAllGlobals();delete process.env.LUXIPANEL_GITHUB_REQUIRED;delete process.env.LUXIPANEL_GITHUB_CLIENT_ID;});
  it("requires connection but preserves setup, session and recovery",async()=>{
+  expect(await githubStatus(owner)).toMatchObject({required:true,connected:false});
   await expect(requireGithub(owner)).rejects.toMatchObject({statusCode:403,code:"GITHUB_CONNECTION_REQUIRED"});
   for(const p of ["/api/session","/api/auth/github","/api/auth/native/authorize","/api/auth/passkeys","/api/auth/totp/status","/api/auth/recovery/status","/api/logout"])expect(githubSetupRoute(p)).toBe(true);
   for(const p of ["/api/files/read","/api/auth/github-evil","/api/auth/ws-token","/api/agent"])expect(githubSetupRoute(p)).toBe(false);
+ });
+ it.each([
+  {direct:true,targetId:"server-A"},
+  {direct:true,targetId:"server-B"},
+  {direct:true,targetId:"server-B",githubIdentityDirect:true,githubIdentityTargetId:"server-A"},
+ ])("does not require GitHub to administer an SSH identity: %j",async context=>{
+  const remote={...owner,...context};
+  expect(await githubStatus(remote)).toMatchObject({required:false,connected:false,canContribute:false,canEditCore:false});
+  await expect(requireGithub(remote)).resolves.toBeUndefined();
+  await expect(githubToken(remote)).rejects.toThrow();
+  expect(fetch).not.toHaveBeenCalled();
+ });
+ it("keeps the installation identity gate when a scoped token selects an SSH target",async()=>{
+  const selected={...owner,direct:true,targetId:"server-B",githubIdentityDirect:false};
+  expect(await githubStatus(selected)).toMatchObject({required:true,connected:false});
+  await expect(requireGithub(selected)).rejects.toMatchObject({code:"GITHUB_CONNECTION_REQUIRED"});
+  await linkGithub(owner,"installation-token");
+  expect(await githubStatus(selected)).toMatchObject({required:true,connected:true});
+  await expect(requireGithub(selected)).resolves.toBeUndefined();
+ });
+ it("does not share the installation grant with an unlinked SSH identity",async()=>{
+  await linkGithub(owner,"installation-token");
+  const remote={...owner,direct:true,targetId:"server-A"};
+  expect(await githubStatus(remote)).toMatchObject({required:false,connected:false,canEditCore:false});
+  await expect(requireGithub(remote)).resolves.toBeUndefined();
+  await expect(githubToken(remote)).rejects.toThrow();
+ });
+ it("keeps optional remote credentials subject to publication checks",async()=>{
+  const remote={...owner,direct:true,targetId:"server-A"};
+  expect(await linkGithub(remote,"remote-token")).toMatchObject({required:false,connected:true,canEditCore:false});
+  vi.mocked(fetch).mockResolvedValue(new Response("{}",{status:401}));
+  await expect(githubToken(remote)).rejects.toThrow();
+  expect(await githubStatus(remote)).toMatchObject({required:false,connected:false});
+  await expect(requireGithub(remote)).resolves.toBeUndefined();
+ });
+ it("honors the installation opt-out",async()=>{
+  process.env.LUXIPANEL_GITHUB_REQUIRED="false";
+  expect(await githubStatus(owner)).toMatchObject({required:false,connected:false});
+  await expect(requireGithub(owner)).resolves.toBeUndefined();
  });
  it("isolates credentials, encrypts them and does not infer owner from username",async()=>{
   const token="test-token-not-a-real-credential";
