@@ -13,6 +13,8 @@ import { quoteArg, type Executor } from "../../../../../shared/executor/index.js
 import { ANSI_RE, loginShell, modelFlag, buildNohupLaunch, sleep } from "./shell.js";
 import { CLI_SPECS, claudeDisallowFlag } from "./cli-specs.js";
 import type { AssistantProviderId } from "../../../models/assistant-config.types.js";
+import { guardCommand } from "../../../../../shared/resource-guard.js";
+import { cliFailureMessage } from "./failure-message.js";
 
 /**
  * One-shot, BLOCKING CLI completion: write the prompt to a temp file on the
@@ -75,11 +77,13 @@ export async function runCliOnce(args: {
   }
 
   const cdPart = args.cwd ? `cd ${quoteArg(args.cwd)} 2>/dev/null || true; ` : "";
-  const full = loginShell(`${cdPart}${cliCmd}`);
+  const timeoutMs = args.timeoutMs ?? 55_000;
+  const full = loginShell(`${cdPart}${guardCommand(cliCmd, { kind: "cli", queueSeconds: 0, runtimeSeconds: Math.max(1, Math.floor((timeoutMs - 15_000) / 1000)) })}`);
   try {
     await args.executor.writeFile(rawPf, Buffer.from(args.prompt, "utf8"));
-    const r = await args.executor.exec(full, { timeoutMs: args.timeoutMs ?? 55_000 });
+    const r = await args.executor.exec(full, { timeoutMs });
     const raw = r.stdout ?? "";
+    if (r.exitCode !== 0) throw new Error(cliFailureMessage(raw, r.exitCode));
     const text = spec.parseFinalAnswer?.(raw) || raw.replace(ANSI_RE, "");
     const trimmed = text.trim();
     if (!trimmed) {
@@ -153,8 +157,11 @@ export async function runCliOnceBackground(args: {
       throw new Error(`Modo CLI no soportado para ${args.id}.`);
   }
 
-  const launch = buildNohupLaunch(cliCmd, rawLog, rawExit, args.cwd);
-  const deadline = Date.now() + (args.timeoutMs ?? 280_000);
+  const timeoutMs = args.timeoutMs ?? 280_000;
+  const launch = buildNohupLaunch(cliCmd, rawLog, rawExit, args.cwd, undefined, undefined, {
+    queueSeconds: 0, runtimeSeconds: Math.max(1, Math.floor((timeoutMs - 30_000) / 1000)),
+  });
+  const deadline = Date.now() + timeoutMs;
   const pollMs = args.pollMs ?? 4_000;
 
   try {
@@ -181,6 +188,7 @@ export async function runCliOnceBackground(args: {
     if (exitCode === null) {
       throw new Error("la generación CLI superó el tiempo límite");
     }
+    if (exitCode !== 0) throw new Error(cliFailureMessage(raw, exitCode));
     const text = spec.parseFinalAnswer?.(raw) || raw.replace(ANSI_RE, "");
     const trimmed = text.trim();
     if (!trimmed) {

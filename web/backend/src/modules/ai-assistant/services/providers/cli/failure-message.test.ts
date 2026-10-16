@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { cliFailureMessage } from "./failure-message.js";
 
 describe("CLI failure explanations", () => {
+  it("explains a verified resource refusal without claiming the command ran", () => {
+    const message = "La tarea no llegó a iniciarse; espera a que haya recursos disponibles.";
+    expect(cliFailureMessage(JSON.stringify({ type: "error", code: "RESOURCE_GUARD_BUSY", message }), 75)).toBe(message);
+  });
   it("does not invent a signal or memory diagnosis when the exit status is missing", () => {
     const text = cliFailureMessage("", -1);
     expect(text).toContain("sin dejar un resultado final");

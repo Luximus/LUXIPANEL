@@ -186,6 +186,7 @@ install_system_dependencies() {
     nginx \
     openssl \
     python3 \
+    dbus-user-session \
     redis-server
 }
 # NOTE: PostgreSQL is intentionally NOT installed. LUXIPANEL has no database
@@ -533,6 +534,17 @@ main() {
 
   pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || warn "pm2 startup could not be configured automatically. Run 'pm2 startup systemd -u root --hp /root' manually."
   pm2 save >/dev/null || true
+
+  # This installer runs PM2 as root. Its assistant workloads need that user's
+  # manager as well as the operator's manager configured by the preview probe.
+  if loginctl enable-linger root && systemctl start user@0.service; then
+    info "Assistant resource isolation: persistent user manager enabled"
+  else
+    warn "Assistant CLI/browser tasks will refuse to start until the systemd user manager is available"
+  fi
+  install -d -m 0755 /etc/systemd/system/pm2-root.service.d
+  printf '[Service]\nOOMPolicy=continue\n' > /etc/systemd/system/pm2-root.service.d/luxipanel-oom.conf
+  systemctl daemon-reload
 
   # Disk hygiene: stop cwd core dumps (an OOM-killed build dumps 2-3GB into the
   # repo) and rotate pm2 logs. Idempotent — see install-common.sh.

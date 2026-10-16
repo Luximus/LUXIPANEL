@@ -8,6 +8,7 @@
  */
 
 import { quoteArg } from "../../../../../shared/executor/index.js";
+import { guardCommand, type ResourceGuardOptions } from "../../../../../shared/resource-guard.js";
 
 // Re-exported so CLI-bridge submodules (and later phases, from other
 // services) can import the shell toolbox from ONE place.
@@ -55,13 +56,16 @@ export function buildNohupLaunch(
   cwd?: string,
   envPrefix?: string,
   cleanup?: string,
+  guardOptions?: Omit<ResourceGuardOptions, "kind">,
 ): string {
   // Inner script: cd if needed, export env (sudo askpass), run CLI, capture
   // the CLI's exit code BEFORE any cleanup, run cleanup, then write the code.
   const cdPart = cwd ? `cd ${quoteArg(cwd)} 2>/dev/null || true; ` : "";
   const envPart = envPrefix ? `${envPrefix} ` : "";
   const cleanupPart = cleanup ? `${cleanup} 2>/dev/null; ` : "";
-  const inner = `${cdPart}${envPart}${cliCmd}; __rc=$?; ${cleanupPart}echo $__rc > ${quoteArg(exitFile)}`;
+  // The supervisor stays outside the scope to preserve the exit file even
+  // when the kernel stops the entire workload for exceeding its memory cap.
+  const inner = `${cdPart}${envPart}${guardCommand(cliCmd, { ...guardOptions, kind: "cli" })}; __rc=$?; ${cleanupPart}echo $__rc > ${quoteArg(exitFile)}`;
 
   // nohup + & + disown ensures the process survives SSH session closure
   const launch = `nohup bash -c ${quoteArg(inner)} > ${quoteArg(logFile)} 2>&1 & PID=$!; disown $PID; echo $PID`;

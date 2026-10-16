@@ -64,6 +64,27 @@ describe("probeChromium", () => {
 });
 
 describe("browser.check", () => {
+  it("rechaza una tarea bloqueada por recursos y no la reintenta sin protección", async () => {
+    const { executor, calls } = makeExecutor([
+      { match: (c) => c.includes("command -v"), stdout: "/usr/bin/chromium\n" },
+      { match: (c) => c.includes("--dump-dom"), stdout: '{"type":"error","code":"RESOURCE_GUARD_BUSY","message":"El navegador está ocupado. La tarea no llegó a iniciarse."}', exitCode: 75 },
+    ]);
+    const res = await runWithExecutor(executor, () => tool("browser.check").handler({ url: "https://x.test/" }));
+    expect(res.ok).toBe(false);
+    expect(String(res.output)).toContain("no llegó a iniciarse");
+    const renders = calls.filter((c) => c.includes("--dump-dom"));
+    expect(renders).toHaveLength(1);
+    expect(renders[0]).toContain('"kind":"browser"');
+  });
+
+  it("no da por correcta una página cuyo proceso terminó con error", async () => {
+    const { executor } = makeExecutor([
+      { match: (c) => c.includes("command -v"), stdout: "/usr/bin/chromium\n" },
+      { match: (c) => c.includes("--dump-dom"), stdout: "<title>Salida parcial</title>", exitCode: 137 },
+    ]);
+    const res = await runWithExecutor(executor, () => tool("browser.check").handler({ url: "https://x.test/" }));
+    expect(res.ok).toBe(false);
+  });
   it("URL inválida → rechazo sin ejecutar nada", async () => {
     const { executor, calls } = makeExecutor([]);
     const res = await runWithExecutor(executor, () => tool("browser.check").handler({ url: "file:///etc/passwd" }));
@@ -104,6 +125,15 @@ describe("browser.check", () => {
 });
 
 describe("browser.screenshot", () => {
+  it("no reutiliza una captura antigua tras fallar el navegador", async () => {
+    const { executor } = makeExecutor([
+      { match: (c) => c.includes("command -v"), stdout: "/usr/bin/chromium\n" },
+      { match: (c) => c.includes("--screenshot="), exitCode: 137 },
+      { match: (c) => c.includes("stat -c"), stdout: "999\n" },
+    ]);
+    const res = await runWithExecutor(executor, () => tool("browser.screenshot").handler({ url: "https://x.test/" }));
+    expect(res.ok).toBe(false);
+  });
   it("construye el comando con window-size y devuelve path + bytes", async () => {
     const { executor, calls } = makeExecutor([
       { match: (c) => c.includes("command -v"), stdout: "/usr/bin/chromium\n" },

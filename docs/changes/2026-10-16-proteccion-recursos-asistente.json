@@ -1,0 +1,8 @@
+{
+  "title": "Protección de recursos para el asistente",
+  "changes": [
+    "Las nuevas tareas CLI del asistente y las verificaciones de navegador cuentan con límites de memoria, CPU y procesos para reducir el riesgo de saturar el servidor.",
+    "Las verificaciones de navegador se ejecutan de una en una por usuario del servidor y esperan cuando no hay recursos disponibles.",
+    "El asistente distingue las tareas que no pudieron iniciarse de las que se interrumpieron y evita presentar resultados parciales como completos."
+  ]
+}

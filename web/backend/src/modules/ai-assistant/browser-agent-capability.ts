@@ -38,6 +38,7 @@ import {
 } from "../../shared/executor/index.js";
 import { createModuleLogger } from "../../shared/logger/index.js";
 import { AVAILABILITY_TTL_MS } from "./shared/constants.js";
+import { execGuardedBrowser } from "../../shared/resource-guard.js";
 
 const log = createModuleLogger("browser-capability");
 
@@ -124,7 +125,7 @@ function clampInt(v: unknown, min: number, max: number, def: number): number {
 function chromiumBase(binPath: string, waitMs: number): string {
   return (
     `${quoteArg(binPath)} --headless=new --disable-gpu --no-sandbox --disable-dev-shm-usage ` +
-    `--hide-scrollbars --no-first-run --virtual-time-budget=${waitMs}`
+    `--hide-scrollbars --no-first-run --renderer-process-limit=2 --virtual-time-budget=${waitMs}`
   );
 }
 
@@ -365,14 +366,14 @@ export const browserAgentCapability: AgentCapability = {
 
         let dump: { stdout: string; stderr: string; exitCode: number };
         try {
-          dump = await executor.exec(
+          dump = await execGuardedBrowser(executor,
             `${chromiumBase(probe.binPath, waitMs)} --enable-logging=stderr --dump-dom ${quoteArg(url)}`,
-            { timeoutMs: env.ASSISTANT_BROWSER_TIMEOUT_MS },
+            env.ASSISTANT_BROWSER_TIMEOUT_MS,
           );
         } catch (err) {
           return { ok: false, output: `Chromium no pudo cargar la página: ${(err as Error).message}` };
         }
-        if (dump.exitCode !== 0 && !dump.stdout.trim()) {
+        if (dump.exitCode !== 0) {
           return {
             ok: false,
             output: `Chromium salió con código ${dump.exitCode}: ${(dump.stderr || "sin salida").trim().slice(-300)}`,
@@ -443,15 +444,15 @@ export const browserAgentCapability: AgentCapability = {
         const dir = outPath.slice(0, outPath.lastIndexOf("/")) || "/";
         try {
           await executor.exec(`mkdir -p ${quoteArg(dir)}`, { timeoutMs: 8_000 });
-          const shot = await executor.exec(
+          const shot = await execGuardedBrowser(executor,
             `${chromiumBase(probe.binPath, waitMs)} --window-size=${width},${height} --screenshot=${quoteArg(outPath)} ${quoteArg(url)}`,
-            { timeoutMs: env.ASSISTANT_BROWSER_TIMEOUT_MS },
+            env.ASSISTANT_BROWSER_TIMEOUT_MS,
           );
           const stat = await executor.exec(`stat -c %s ${quoteArg(outPath)} 2>/dev/null || wc -c < ${quoteArg(outPath)}`, {
             timeoutMs: 8_000,
           });
           const bytes = Number(stat.stdout.trim()) || 0;
-          if (stat.exitCode !== 0 || bytes === 0) {
+          if (shot.exitCode !== 0 || stat.exitCode !== 0 || bytes === 0) {
             return {
               ok: false,
               output: `El screenshot no se generó (exit ${shot.exitCode}): ${(shot.stderr || "sin salida").trim().slice(-300)}`,
