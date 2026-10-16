@@ -96,7 +96,7 @@ export const releasesService = {
     const reason = blocker || (changedFiles.length ? "local-changes" : undefined);
     return { ok: !reason, changedFiles, ...(reason ? { reason } : {}) };
   },
-  async status(_req?: Request) {
+  async status(_req?: Request, fresh = false) {
     const executor = installationExecutor;
     const root = installationRoot();
     const [state, catalog] = await Promise.all([readState(executor, root), githubReleases()]);
@@ -105,7 +105,7 @@ export const releasesService = {
     const checkoutResult = await executor.exec("git rev-parse HEAD && git branch --show-current", { cwd: root, timeoutMs: 10000 });
     const [checkoutCommit, checkoutBranch] = checkoutResult.stdout.trim().split("\n");
     const checkout = checkoutResult.exitCode === 0 && /^[a-f0-9]{40}$/.test(checkoutCommit || "") ? { commit: checkoutCommit!, branch: checkoutBranch || null } : null;
-    const branchCatalog = await releaseBranches(installed?.commit || runningCommit);
+    const branchCatalog = await releaseBranches(installed?.commit || runningCommit, fresh);
     const operation = state.operation && typeof state.operation === "object" ? state.operation as { status?: string; tag?: string; branch?: string; commit?: string; stage?: string; startedAt?: number; error?: string } : null;
     return {
       checkout, comparisonKnown: !!(installed?.commit || runningCommit), branches: branchCatalog.branches, branchesError: branchCatalog.error,

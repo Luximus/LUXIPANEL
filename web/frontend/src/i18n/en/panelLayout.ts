@@ -1,5 +1,6 @@
 const panelLayout = {
   "community": {
+    "branchRefreshed": "The branch changed. The latest changes are now displayed; review them before updating.",
     "updateAssistantActive": "An assistant task is running. Wait for it to finish before updating.",
     "updatePublicationPending": "The panel is sending completed changes. Wait for confirmation, then try updating again.",
     "updateContributionReview": "An interrupted task or blocked contribution has pending changes. Review Automatic contributions and complete its recovery before updating.",

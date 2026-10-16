@@ -1,0 +1,8 @@
+{
+  "title": "Actualizaciones con la revisión más reciente",
+  "changes": [
+    "Al abrir las versiones o intentar actualizar una rama, el panel comprueba su revisión actual sin reutilizar una lista desactualizada.",
+    "Si aparece una revisión nueva durante el intento, el panel carga sus notas y permite continuar desde ellas sin repetir el mismo bloqueo.",
+    "Las respuestas antiguas que llegan con retraso ya no sustituyen las novedades recién consultadas."
+  ]
+}

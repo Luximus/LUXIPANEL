@@ -1,5 +1,6 @@
 const panelLayout = {
   "community": {
+    "branchRefreshed": "La rama cambió. Ya se muestran las novedades más recientes; revísalas antes de actualizar.",
     "updateAssistantActive": "Hay una tarea del asistente en curso. Espera a que termine antes de actualizar.",
     "updatePublicationPending": "El panel está enviando los cambios terminados. Espera la confirmación y vuelve a actualizar.",
     "updateContributionReview": "Una tarea interrumpida o un aporte bloqueado conserva cambios pendientes. Revisa Aportes automáticos y completa su recuperación antes de actualizar.",

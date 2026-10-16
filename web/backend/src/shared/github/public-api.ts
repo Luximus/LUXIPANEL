@@ -1,21 +1,28 @@
 import { env } from "../../config/env.js";
 const cache = new Map<string, { until: number; refreshedAt: number; value: unknown; error?: string; etag?: string }>();
-const pending = new Map<string, Promise<unknown>>();
+const pending = new Map<string, { request: Promise<unknown>; fresh: boolean }>();
 const anonymousRequests: number[] = [];
 const cacheDuration = () => env.LUXIPANEL_GITHUB_TOKEN ? 300000 : 3600000;
-interface GithubCacheOptions { maxAgeMs?: number }
+interface GithubCacheOptions { maxAgeMs?: number; fresh?: boolean }
 export async function publicGithub<T>(route: string, options: GithubCacheOptions = {}): Promise<T> {
   if (!/^\/repos\/Luxisoft\/LUXIPANEL(?:[/?]|$)/i.test(route)) throw new Error("Repositorio no permitido");
   const ttl = Math.max(60000, Math.min(options.maxAgeMs ?? cacheDuration(), cacheDuration()));
   const saved = cache.get(route);
-  if (saved && (saved.error ? saved.until : Math.min(saved.until, saved.refreshedAt + ttl)) > Date.now()) { if (saved.error) throw new Error(saved.error); return saved.value as T; }
-  if (pending.has(route)) return pending.get(route) as Promise<T>;
+  if (!options.fresh && saved && (saved.error ? saved.until : Math.min(saved.until, saved.refreshedAt + ttl)) > Date.now()) { if (saved.error) throw new Error(saved.error); return saved.value as T; }
+  const inflight = pending.get(route);
+  if (inflight) {
+    if (!options.fresh || inflight.fresh) return inflight.request as Promise<T>;
+    // A background read may return a stale value at the anonymous rate limit.
+    // An explicit refresh must perform its own live check after that read.
+    await inflight.request.catch(() => undefined);
+    return publicGithub<T>(route, options);
+  }
   const request = (async () => {
     if (!env.LUXIPANEL_GITHUB_TOKEN) {
       const cutoff = Date.now() - 3600000;
       while (anonymousRequests.length && anonymousRequests[0]! <= cutoff) anonymousRequests.shift();
       if (anonymousRequests.length >= 45) {
-        if (saved?.value !== undefined) { saved.until = Date.now() + 60000; return saved.value; }
+        if (!options.fresh && saved?.value !== undefined) { saved.until = Date.now() + 60000; return saved.value; }
         throw new Error("La comunidad se actualizará al renovar el límite de consultas de GitHub");
       }
       anonymousRequests.push(Date.now());
@@ -29,7 +36,7 @@ export async function publicGithub<T>(route: string, options: GithubCacheOptions
     if (cache.size >= 256) cache.delete(cache.keys().next().value!);
     cache.set(route, { until: Date.now() + ttl, refreshedAt: Date.now(), value, etag: response.headers.get("etag") || undefined }); return value;
   })().catch((error) => { cache.set(route, { until: Date.now() + 300000, refreshedAt: saved?.refreshedAt ?? 0, value: saved?.value, etag: saved?.etag, error: String((error as Error).message) }); throw error; }).finally(() => pending.delete(route));
-  pending.set(route, request); return request as Promise<T>;
+  pending.set(route, { request, fresh: options.fresh === true }); return request as Promise<T>;
 }
 export async function publicGithubPages<T>(path: string, options: GithubCacheOptions = {}): Promise<T[]> {
   const result: T[] = [];

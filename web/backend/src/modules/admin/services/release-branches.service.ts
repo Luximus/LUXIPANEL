@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { publicGithub, CANONICAL_GITHUB } from "../../../shared/github/public-api.js";
 import { env } from "../../../config/env.js";
-import { AppError, ValidationError } from "../../../shared/errors/index.js";
+import { AppError, ErrorCodes, ValidationError } from "../../../shared/errors/index.js";
 import { sanitizePublicText } from "../../../shared/diagnostics/sanitize.js";
 import { publishedChangeNotes, type PublicChangeNote } from "../../../shared/github/change-notes.js";
 import { legacyChangeNotes } from "../../../shared/github/legacy-change-notes.js";
@@ -16,9 +16,9 @@ export interface BranchDetails extends PanelBranch {
   notesIncomplete: boolean;
   commits: { sha: string; message: string; author: string; date: string | null; url: string }[];
 }
-export async function releaseBranches(base?: string): Promise<{ branches: PanelBranch[]; error?: string }> {
+export async function releaseBranches(base?: string, fresh = false): Promise<{ branches: PanelBranch[]; error?: string }> {
   try {
-    const rows = await publicGithub<{ name: string; commit: { sha: string } }[]>(`${CANONICAL_GITHUB}/branches?per_page=100`, { maxAgeMs: 300000 });
+    const rows = await publicGithub<{ name: string; commit: { sha: string } }[]>(`${CANONICAL_GITHUB}/branches?per_page=100`, { maxAgeMs: 300000, ...(fresh ? { fresh: true } : {}) });
     if (!Array.isArray(rows)) throw new Error();
     const candidates = BRANCHES.flatMap(name => {
       const row = rows.find(r => r?.name === name && SHA.test(r.commit?.sha));
@@ -76,7 +76,13 @@ export async function verifyBranchRevision(name: string, commit: string, install
   }).catch(() => { throw new AppError("GitHub no respondió a tiempo. La actualización no se ha iniciado.", 503); });
   if (!response.ok) throw new AppError("No se pudo verificar la rama en GitHub. La actualización no se ha iniciado.", 503);
   const row = await response.json() as { commit?: { sha?: string } };
-  if (row.commit?.sha !== commit) throw new AppError("Hay una revisión más reciente. Revisa los nuevos cambios antes de actualizar.", 409);
+  if (!row.commit?.sha || !SHA.test(row.commit.sha)) throw new AppError("No se pudo verificar la rama en GitHub. La actualización no se ha iniciado.", 503);
+  if (row.commit.sha !== commit) {
+    // Refresh the shared catalog as well, so already-open older clients do not
+    // keep receiving the rejected revision on their next background poll.
+    await releaseBranches(undefined, true);
+    throw new AppError("Hay una revisión más reciente. Revisa los nuevos cambios antes de actualizar.", 409, ErrorCodes.RELEASE_BRANCH_CHANGED);
+  }
   await verifyForwardUpdate(installedCommit, commit);
 }
 

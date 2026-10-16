@@ -23,8 +23,8 @@ export interface PanelReleaseStatus {
   previous: { tag?: string; commit?: string } | null;
 }
 
-export async function readPanelReleases(): Promise<PanelReleaseStatus> {
-  const response = await api.get<PanelReleaseStatus>("/api/ui/releases");
+export async function readPanelReleases(fresh = false): Promise<PanelReleaseStatus> {
+  const response = await api.get<PanelReleaseStatus>("/api/ui/releases", { fresh: true, ...(fresh ? { params: { fresh: "1" } } : {}) });
   if (!response.ok || !response.data) throw new Error(response.error || "No se pudo consultar las versiones.");
   return response.data;
 }
@@ -92,6 +92,6 @@ export async function readPanelBranch(name: string, commit: string): Promise<Pan
 }
 export async function installPanelBranch(branch: string, commit: string): Promise<void> {
   const response = await api.post("/api/admin/system/releases/install", { branch, commit });
-  if (!response.ok) throw new Error(response.error || "No se pudo iniciar la actualización de la rama.");
+  if (!response.ok) throw Object.assign(new Error(response.error || "No se pudo iniciar la actualización de la rama."), { code: response.code });
 }
 export const branchColor = (name: string): string => ({ releases: "#15803d", developer: "#eab308", main: "#0369a1", web: "#7e22ce", desktop: "#be185d", mobile: "#c2410c", modules: "#4338ca" }[name] || "#475569");

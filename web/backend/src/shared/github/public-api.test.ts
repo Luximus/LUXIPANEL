@@ -32,3 +32,52 @@ it("follows actual comment pages instead of a cached announcement count", async 
   expect(rows).toHaveLength(101);
   expect(fetcher.mock.calls[1]?.[0]).toContain("per_page=100&page=2");
 });
+
+it("refreshes an unexpired catalog and makes later background reads see the new revision", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(new Response('[{"sha":"old"}]', { headers: { etag: "old" } }))
+    .mockResolvedValueOnce(new Response('[{"sha":"new"}]'));
+  vi.stubGlobal("fetch", fetcher);
+  const { publicGithub } = await import("./public-api.js");
+  expect(await publicGithub(route)).toEqual([{ sha: "old" }]);
+  expect(await publicGithub(route, { fresh: true })).toEqual([{ sha: "new" }]);
+  expect(await publicGithub(route)).toEqual([{ sha: "new" }]);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("retries a cached failure on an explicit refresh", async () => {
+  const fetcher = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(new Response("[]"));
+  vi.stubGlobal("fetch", fetcher);
+  const { publicGithub } = await import("./public-api.js");
+  await expect(publicGithub(route)).rejects.toThrow("offline");
+  expect(await publicGithub(route, { fresh: true })).toEqual([]);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("never presents a stale fallback as a successful live refresh at the anonymous limit", async () => {
+  const fetcher = vi.fn(async () => new Response('[{"sha":"old"}]'));
+  vi.stubGlobal("fetch", fetcher);
+  const { publicGithub } = await import("./public-api.js");
+  await publicGithub(route, { maxAgeMs: 60000 });
+  for (let i = 0; i < 44; i++) await publicGithub(`/repos/Luxisoft/LUXIPANEL/issues/${i + 10}`);
+  vi.advanceTimersByTime(61000);
+  expect(await publicGithub(route, { maxAgeMs: 60000 })).toEqual([{ sha: "old" }]);
+  await expect(publicGithub(route, { fresh: true })).rejects.toThrow("límite");
+  expect(fetcher).toHaveBeenCalledTimes(45);
+});
+
+it("waits for an older background request then coalesces strict refreshes", async () => {
+  let finish!: (response: Response) => void;
+  const fetcher = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+    .mockResolvedValueOnce(new Response('[{"sha":"new"}]'));
+  vi.stubGlobal("fetch", fetcher);
+  const { publicGithub } = await import("./public-api.js");
+  const background = publicGithub(route);
+  const first = publicGithub(route, { fresh: true });
+  const second = publicGithub(route, { fresh: true });
+  finish(new Response('[{"sha":"old"}]'));
+  expect(await background).toEqual([{ sha: "old" }]);
+  expect(await first).toEqual([{ sha: "new" }]);
+  expect(await second).toEqual([{ sha: "new" }]);
+  expect(await publicGithub(route)).toEqual([{ sha: "new" }]);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});

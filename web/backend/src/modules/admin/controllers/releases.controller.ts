@@ -21,7 +21,7 @@ export const releasesController = {
     res.set("Cache-Control", "no-store");
     const base = (res.locals.authBaseUser || res.locals.user) as SessionUser | undefined;
     const canInstall = !!base && base.kind === "admin" && !base.tenantId && !base.direct && (!base.targetId || base.targetId === "local");
-    const data = await releasesService.status(req);
+    const data = await releasesService.status(req, req.query.fresh === "1");
     res.json({ ok: true, data: { ...data, canInstall } });
   }),
   branchDetails: asyncHandler(async (req, res) => {

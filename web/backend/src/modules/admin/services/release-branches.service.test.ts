@@ -30,8 +30,20 @@ it.each([["../main", sha], ["developer", "--upload-pack=bad"], ["developer;id", 
 });
 it("revalidates mutations without the catalog cache and rejects an advanced branch", async () => {
   const fetch = vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("/compare/") ? { ahead_by: 1, behind_by: 0 } : { commit: { sha: base } } })); vi.stubGlobal("fetch", fetch);
-  await expect(verifyBranchRevision("developer", sha, base)).rejects.toThrow("más reciente"); expect(publicGithub).not.toHaveBeenCalled();
+  await expect(verifyBranchRevision("developer", sha, base)).rejects.toMatchObject({ statusCode: 409, code: "RELEASE_BRANCH_CHANGED" });
+  expect(publicGithub).toHaveBeenCalledExactlyOnceWith("/repos/Luxisoft/LUXIPANEL/branches?per_page=100", { maxAgeMs: 300000, fresh: true });
   await expect(verifyBranchRevision("developer", base, sha)).resolves.toBeUndefined();
+});
+
+it("requests live branch heads when the user refreshes the catalog", async () => {
+  vi.mocked(publicGithub).mockResolvedValue([{ name: "developer", commit: { sha } }]);
+  expect((await releaseBranches(sha, true)).branches[0]?.commit).toBe(sha);
+  expect(publicGithub).toHaveBeenCalledExactlyOnceWith("/repos/Luxisoft/LUXIPANEL/branches?per_page=100", { maxAgeMs: 300000, fresh: true });
+});
+
+it("does not describe an invalid GitHub response as a new revision", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ commit: {} }) }));
+  await expect(verifyBranchRevision("developer", sha, base)).rejects.toMatchObject({ statusCode: 503 });
 });
 
 it("does not label an unavailable contents check as a component-only branch", async () => {

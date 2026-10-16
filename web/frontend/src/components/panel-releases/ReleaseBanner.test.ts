@@ -284,3 +284,104 @@ it("removes the update action when a refreshed comparison has no pending changes
   expect(branchButton()).toBeUndefined();
   expect(installPanelBranch).not.toHaveBeenCalled();
 });
+
+const newBranch = { ...branch, commit: "c".repeat(40), ahead: 4 };
+const newDetails = { ...branchDetails, ...newBranch, notes: [{ ...branchDetails.notes[0]!, id: newBranch.commit + ":0", title: "Novedades recién publicadas" }] };
+const oldStatus = { ...status, branches: [branch] };
+const newStatus = { ...status, branches: [newBranch] };
+
+it("refreshes the catalog when opening the drawer and shows the new notes without installing", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue(oldStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(newDetails);
+  await render();
+  vi.mocked(readPanelReleases).mockResolvedValue(newStatus);
+  await open(); await selectBranch();
+  expect(readPanelReleases).toHaveBeenLastCalledWith(true);
+  expect(container.textContent).toContain("Novedades recién publicadas");
+  expect(installPanelBranch).not.toHaveBeenCalled();
+});
+
+it("replaces an outdated selection before installation and lets the next click install the displayed revision", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue(oldStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render(); await open(); await selectBranch();
+  vi.mocked(readPanelReleases).mockResolvedValue(newStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(newDetails);
+  await act(async () => branchButton()!.click());
+  expect(installPanelBranch).not.toHaveBeenCalled();
+  expect(container.querySelector('dialog > [role="alert"]')).toBeNull();
+  expect(container.textContent).toContain(labels.community.branchRefreshed);
+  expect(container.textContent).toContain("Novedades recién publicadas");
+  expect(container.textContent).not.toContain("Selector de agentes");
+  await act(async () => branchButton()!.click());
+  expect(installPanelBranch).toHaveBeenCalledExactlyOnceWith("developer", newBranch.commit);
+});
+
+it("recovers when the branch advances between the live check and the install request", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue(oldStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render(); await open(); await selectBranch();
+  vi.mocked(installPanelBranch).mockRejectedValueOnce(Object.assign(new Error("Hay una revisión más reciente"), { code: "RELEASE_BRANCH_CHANGED" }));
+  vi.mocked(readPanelReleases).mockResolvedValueOnce(oldStatus).mockResolvedValue(newStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(newDetails);
+  await act(async () => branchButton()!.click());
+  expect(installPanelBranch).toHaveBeenCalledExactlyOnceWith("developer", branch.commit);
+  expect(container.querySelector('dialog > [role="alert"]')).toBeNull();
+  expect(container.textContent).toContain(labels.community.branchRefreshed);
+  expect(container.textContent).toContain("Novedades recién publicadas");
+  await act(async () => branchButton()!.click());
+  expect(installPanelBranch).toHaveBeenCalledTimes(2);
+  expect(installPanelBranch).toHaveBeenLastCalledWith("developer", newBranch.commit);
+});
+
+it("does not overwrite a refreshed catalog with a background response started earlier", async () => {
+  let finish!: (value: PanelReleaseStatus) => void;
+  vi.mocked(readPanelReleases).mockResolvedValue(oldStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(newDetails);
+  await render();
+  vi.mocked(readPanelReleases).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue(newStatus);
+  await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+  await open(); await selectBranch();
+  expect(container.textContent).toContain("Novedades recién publicadas");
+  await act(async () => finish(oldStatus));
+  expect(container.textContent).toContain("Novedades recién publicadas");
+  expect(container.querySelector(".lxp-branch-note a")?.textContent).toBe(newBranch.commit.slice(0, 8));
+});
+
+it("does not let a background timer replace an explicit refresh still in progress", async () => {
+  let finish!: (value: PanelReleaseStatus) => void;
+  vi.mocked(readPanelReleases).mockResolvedValue(oldStatus);
+  await render();
+  vi.mocked(readPanelReleases).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await open();
+  const requests = vi.mocked(readPanelReleases).mock.calls.length;
+  await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+  expect(readPanelReleases).toHaveBeenCalledTimes(requests);
+  vi.mocked(readPanelBranch).mockResolvedValue(newDetails);
+  await act(async () => finish(newStatus)); await selectBranch();
+  expect(container.textContent).toContain("Novedades recién publicadas");
+});
+
+it("does not install when the live catalog check fails", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue(oldStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render(); await open(); await selectBranch();
+  vi.mocked(readPanelReleases).mockRejectedValue(new Error("No se pudo renovar la lista"));
+  await act(async () => branchButton()!.click());
+  expect(installPanelBranch).not.toHaveBeenCalled();
+  expect(container.querySelector('dialog > [role="alert"]')?.textContent).toContain("No se pudo renovar la lista");
+});
+
+it("does not install or show a late refresh after switching servers", async () => {
+  let finish!: (value: PanelReleaseStatus) => void;
+  vi.mocked(readPanelReleases).mockResolvedValue(oldStatus);
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  await render(); await open(); await selectBranch();
+  vi.mocked(readPanelReleases).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue(status);
+  await act(async () => branchButton()!.click());
+  await act(async () => window.dispatchEvent(new Event("luxipanel:target-changed")));
+  await act(async () => finish(newStatus));
+  expect(installPanelBranch).not.toHaveBeenCalled();
+  expect(container.querySelector("dialog[open]")).toBeNull();
+  expect(container.textContent).not.toContain("Novedades recién publicadas");
+});

@@ -8,11 +8,13 @@ type Tab = "notes" | "comments" | "activity";
 interface Entry { id: string; kind: string; title: string; author: string; url: string; updatedAt: string; read: boolean }
 interface Activity { items: Entry[]; unread: number; error?: string }
 interface Props {
+  onRefresh?: () => Promise<void>;
+  notice?: string;
   onInstallBranch?: (branch: string, commit: string) => Promise<void>;
   labels: Record<string, string>; locale: string; status: PanelReleaseStatus | null; installedVersion: string;
   canInstall: boolean; busy: boolean; error: string; catalogError?: string; onInstall: (tag: string) => Promise<void>;
 }
-export default function CommunityActivity({ labels: L, locale, status, installedVersion, canInstall, busy, error: installError, catalogError, onInstall, onInstallBranch }: Props) {
+export default function CommunityActivity({ labels: L, locale, status, installedVersion, canInstall, busy, error: installError, notice, catalogError, onRefresh, onInstall, onInstallBranch }: Props) {
   const [feed, setFeed] = useState<Activity>();
   const [error, setError] = useState("");
   const [targetEpoch, setTargetEpoch] = useState(0);
@@ -39,6 +41,7 @@ export default function CommunityActivity({ labels: L, locale, status, installed
     if (requested) { const url = new URL(window.location.href); url.searchParams.delete("updates"); window.history.replaceState(window.history.state, "", url); }
     setSelected(status?.latest?.tag || ""); setTab("notes");
     if (!dialog.current?.open) dialog.current?.showModal(); setOpened(true);
+    void onRefresh?.();
   };
   useEffect(() => { if (status && new URLSearchParams(window.location.search).has("updates")) open(); }, [status]);
   useEffect(() => {
@@ -49,7 +52,7 @@ export default function CommunityActivity({ labels: L, locale, status, installed
     };
     window.addEventListener("luxipanel:releases-open", onNotification);
     return () => window.removeEventListener("luxipanel:releases-open", onNotification);
-  }, [status, branch]);
+  }, [status, branch, onRefresh]);
   useEffect(() => {
     const closeHelp = (event: MouseEvent) => { if (help.current && !help.current.contains(event.target as Node)) help.current.open = false; };
     document.addEventListener("click", closeHelp);
@@ -57,7 +60,7 @@ export default function CommunityActivity({ labels: L, locale, status, installed
   }, []);
   const installed = versionTag(status?.installed?.tag || status?.currentVersion || installedVersion);
   const catalogFailure = catalogError || status?.error;
-  const feedbackError = installError || status?.operation?.error || error;
+  const feedbackError = installError || status?.operation?.error || error || catalogError;
   const updating = busy || status?.operation?.status === "running";
   const update = !!status?.updateAvailable && !!status.latest && !catalogFailure;
   const tag = selected || status?.latest?.tag || "";
@@ -190,6 +193,7 @@ export default function CommunityActivity({ labels: L, locale, status, installed
       </header>
       {updating ? <p role="status" className="lxp-community-feedback"><i className="ti ti-loader-2 animate-spin" aria-hidden="true" /><span>{L.updating}</span></p>
         : feedbackError && <p role="alert" className="lxp-community-feedback lxp-community-feedback--error"><i className="ti ti-alert-circle" aria-hidden="true" /><span>{feedbackError}</span></p>}
+      {!updating && !feedbackError && notice && <p role="status" className="lxp-community-feedback"><i className="ti ti-refresh" aria-hidden="true" /><span>{notice}</span></p>}
       <div ref={content} className="lxp-community-content min-h-0 flex-1 overflow-auto p-4">
         {branch !== "releases" && selectedBranch && status && <BranchChanges key={`${targetEpoch}:${branch}`} branch={selectedBranch} locale={locale} status={status} labels={L} canInstall={canInstall} busy={busy} unavailable={!!catalogError || !!status.branchesError} onInstall={onInstallBranch} />}
         {branch !== "releases" && !selectedBranch && <p role="status" className="text-sm text-muted-foreground">{!status ? L.loading : L.branchLoadError}</p>}

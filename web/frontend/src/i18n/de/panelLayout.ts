@@ -1,5 +1,6 @@
 const panelLayout = {
   "community": {
+    "branchRefreshed": "Der Branch hat sich geändert. Die neuesten Änderungen werden jetzt angezeigt. Prüfe sie vor dem Aktualisieren.",
     "updateAssistantActive": "Eine Assistentenaufgabe läuft. Warten Sie vor dem Update auf ihren Abschluss.",
     "updatePublicationPending": "Das Panel sendet abgeschlossene Änderungen. Warten Sie auf die Bestätigung und versuchen Sie das Update erneut.",
     "updateContributionReview": "Eine unterbrochene Aufgabe oder ein blockierter Beitrag enthält ausstehende Änderungen. Prüfen Sie Automatische Beiträge und schließen Sie die Wiederherstellung vor dem Update ab.",

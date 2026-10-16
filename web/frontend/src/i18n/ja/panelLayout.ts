@@ -1,5 +1,6 @@
 const panelLayout = {
   "community": {
+    "branchRefreshed": "ブランチが更新されました。最新の変更が表示されています。更新する前に確認してください。",
     "updateAssistantActive": "アシスタントのタスクが実行中です。完了してから更新してください。",
     "updatePublicationPending": "完了した変更を送信しています。確認を待ってから更新を再試行してください。",
     "updateContributionReview": "中断したタスクまたはブロックされた貢献に未処理の変更があります。自動貢献を確認し、復旧を完了してから更新してください。",

@@ -1,5 +1,6 @@
 const panelLayout = {
   "community": {
+    "branchRefreshed": "Il ramo è cambiato. Le ultime novità sono ora visibili; consultale prima di aggiornare.",
     "updateAssistantActive": "È in corso un’attività dell’assistente. Attendi che termini prima di aggiornare.",
     "updatePublicationPending": "Il pannello sta inviando le modifiche completate. Attendi la conferma e riprova ad aggiornare.",
     "updateContributionReview": "Un’attività interrotta o un contributo bloccato contiene modifiche in sospeso. Controlla Contributi automatici e completa il recupero prima di aggiornare.",

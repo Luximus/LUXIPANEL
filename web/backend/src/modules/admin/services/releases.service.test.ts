@@ -16,25 +16,31 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
 });
 describe("installation status", () => {
+  it("refreshes the branch catalog without changing installation state", async () => {
+    const { releasesService } = await import("./releases.service.js");
+    await releasesService.status(undefined, true);
+    expect(mocks.branches).toHaveBeenCalledExactlyOnceWith(built, true);
+    expect(mocks.exec).toHaveBeenCalledExactlyOnceWith("git rev-parse HEAD && git branch --show-current", expect.any(Object));
+  });
   it("compares with the built revision even when the checkout has advanced", async () => {
     const { releasesService } = await import("./releases.service.js");
     const status = await releasesService.status();
-    expect(mocks.branches).toHaveBeenCalledWith(built); expect(status.checkout?.commit).toBe(head);
+    expect(mocks.branches).toHaveBeenCalledWith(built, false); expect(status.checkout?.commit).toBe(head);
     expect(status.installed).toBeNull(); expect(status.comparisonKnown).toBe(true);
     mocks.build.mockReturnValue(JSON.stringify({ commit: head }));
-    await releasesService.status(); expect(mocks.branches).toHaveBeenLastCalledWith(built);
+    await releasesService.status(); expect(mocks.branches).toHaveBeenLastCalledWith(built, false);
   });
   it("uses the verified installation record when available", async () => {
     mocks.state.mockResolvedValue(JSON.stringify({ installed: { commit: head, branch: "developer" } }));
     const { releasesService } = await import("./releases.service.js");
-    const status = await releasesService.status(); expect(mocks.branches).toHaveBeenCalledWith(head);
+    const status = await releasesService.status(); expect(mocks.branches).toHaveBeenCalledWith(head, false);
     expect(status.installed?.branch).toBe("developer");
   });
   it("does not treat an unregistered checkout as an installed build", async () => {
     mocks.build.mockImplementation(() => { throw new Error("missing metadata"); });
     const { releasesService } = await import("./releases.service.js");
     expect((await releasesService.status()).comparisonKnown).toBe(false);
-    expect(mocks.branches).toHaveBeenCalledWith(undefined);
+    expect(mocks.branches).toHaveBeenCalledWith(undefined, false);
   });
   it("preserves source edits while allowing runtime dist symlinks in preflight", async () => {
     const { releasesService } = await import("./releases.service.js");
