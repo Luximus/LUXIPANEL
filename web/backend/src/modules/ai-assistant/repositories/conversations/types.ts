@@ -110,7 +110,7 @@ export interface ConversationMessage {
 export interface ConversationMeta {
   /** Durable composer choices owned by this conversation. Empty = automatic. */
   model?: string;
-  effort?: "" | "low" | "medium" | "high" | "xhigh";
+  effort?: "" | "low" | "medium" | "high" | "xhigh" | "max";
   approvalMode?: "manual" | "auto" | "plan";
 
   id?: string;
@@ -179,7 +179,7 @@ export interface ConversationDoc {
 export interface EmbeddedConversationMeta {
   /** Durable composer choices owned by this conversation. Empty = automatic. */
   model?: string;
-  effort?: "" | "low" | "medium" | "high" | "xhigh";
+  effort?: "" | "low" | "medium" | "high" | "xhigh" | "max";
   approvalMode?: "manual" | "auto" | "plan";
 
   agentId?: string | null;

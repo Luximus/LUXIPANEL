@@ -39,7 +39,7 @@ import { useChatProjectVisibility, visibleChatProjects } from "../chat-project-v
 const PROMPT_EFFORTS: Record<string, string[]> = {
   default: [],
   claude: ["Auto", "Low", "Medium", "High", "Extra"],
-  codex: ["Auto", "Low", "Medium", "High", "Extra"],
+  codex: ["Auto", "Low", "Medium", "High", "Extra", "Max"],
   grok: ["Auto", "Low", "Medium", "High", "Extra"],
 };
 
@@ -620,7 +620,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               chatUiState.patchConversationChoice(provider, activeId, { model: value });
             }}
             efforts={mode === "api" || provider === "codex" || provider === "claude" ? (PROMPT_EFFORTS[provider] ?? PROMPT_EFFORTS.default) : PROMPT_EFFORTS.default}
-            effortLabels={{ Auto: ct.modelAuto ?? "Auto", Low: ct.reasoningLow ?? "Bajo", Medium: ct.reasoningMedium ?? "Medio", High: ct.reasoningHigh ?? "Alto", Extra: ct.reasoningExtra ?? "Extra" }}
+            effortLabels={{ Auto: ct.modelAuto ?? "Auto", Low: ct.reasoningLow ?? "Bajo", Medium: ct.reasoningMedium ?? "Medio", High: ct.reasoningHigh ?? "Alto", Extra: ct.reasoningExtra ?? "Extra", Max: ct.reasoningMax ?? "Max" }}
             effortTitle={ct.reasoningEffort ?? "Esfuerzo"}
             effortHelp={ct.reasoningEffortHelp ?? "Un nivel más alto dedica más tiempo al razonamiento antes de responder"}
             reasoningLabel={ct.reasoning ?? "razonamiento"}
@@ -640,9 +640,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             stopDictationLabel={ct.sttStop ?? "Detener dictado"}
             dictateHint={`${ct.sttStart ?? "Dictar por voz"} · OpenAI`}
             externalAttachmentCount={attachments.length}
-            onSend={(text, detail) => { const level = detail.effort ?? "Auto"; return send(text, { ...(detail.recording ? { attachmentsOverride: [detail.recording], queue: true } : {}), reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" }); }}
+            onSend={(text, detail) => { const level = detail.effort ?? "Auto"; return send(text, { ...(detail.recording ? { attachmentsOverride: [detail.recording], queue: true } : {}), reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" | "max" }); }}
             onStop={() => chatEngine.stop(chatKey)}
-            onQueue={() => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" })}
+            onQueue={() => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" | "max" })}
             queueLabel={ct.queueMessage ?? "Encolar mensaje"}
             busy={streaming}
             width={780}

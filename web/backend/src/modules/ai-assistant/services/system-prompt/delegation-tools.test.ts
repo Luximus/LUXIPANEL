@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantAgent } from "../../models/assistant-agent.types.js";
 import type { AgentRunOptions } from "../agent.service.js";
 
 vi.mock("../team-tasks.service.js", () => ({ spawnWorker: vi.fn(), validateWorkerProject: vi.fn() }));
+const defaults: { defaultChatEffort?: "" | "high" | "xhigh" | "max" } = {};
+vi.mock("../../repositories/assistant-config.repository.js", () => ({
+  assistantConfigRepository: { load: async () => ({ ...defaults }) },
+}));
 
 import { buildDelegateTool } from "./delegation-tools.js";
 
@@ -14,7 +18,24 @@ const leader: AssistantAgent = {
 };
 const worker: AssistantAgent = { ...leader, id: "worker", parentAgentId: "leader" };
 
+beforeEach(() => { delete defaults.defaultChatEffort; });
+
 describe("synchronous delegation scope", () => {
+  it.each(["max", "xhigh", "high", "", undefined] as const)("passes the configured reasoning choice %s to the delegate", async effort => {
+    if (effort !== undefined) defaults.defaultChatEffort = effort;
+    let received: AgentRunOptions | undefined;
+    const built = buildDelegateTool({
+      agent: leader, allAgents: [leader, worker], executor: undefined, user: undefined,
+      userId: undefined, depth: 0, signal: undefined,
+      runAgent: async function* (_messages, options) {
+        received = options;
+        yield { type: "text", delta: "done" };
+      },
+    })!;
+    expect(await built.tool.handler({ agentId: "worker", task: "Inspect the project" })).toEqual({ ok: true, output: "done" });
+    expect(received?.effort).toBe(effort || undefined);
+  });
+
   it.each(["auto", "manual", "plan"] as const)("preserves the isolated workspace and %s approval mode", async mode => {
     let received: AgentRunOptions | undefined;
     const built = buildDelegateTool({

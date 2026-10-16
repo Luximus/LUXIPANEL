@@ -74,7 +74,7 @@ interface AddendumItem {
   userText: string;
   attachments?: ChatAttachment[];
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   buildMessages: (priorTurns: ChatTurn[], overrideText?: string) => AgentMessage[];
   onClear?: (key: string) => void;
   onSettled?: (key: string) => void;
@@ -269,7 +269,7 @@ function drainQueue(key: string): void {
 export async function enqueueServerTurn(
   key: string,
   conversationId: string,
-  p: { provider: string; projectId?: string | null; agentId?: string | null; userText: string; attachments?: ChatAttachment[]; model?: string; effort?: "low" | "medium" | "high" | "xhigh"; planDecision?: "approve" },
+  p: { provider: string; projectId?: string | null; agentId?: string | null; userText: string; attachments?: ChatAttachment[]; model?: string; effort?: "low" | "medium" | "high" | "xhigh" | "max"; planDecision?: "approve" },
 ): Promise<void> {
   const optimisticId = `tmp-${Math.random().toString(36).slice(2)}`;
   const cur = serverQueued.get(key) ?? [];
@@ -368,7 +368,7 @@ export async function dispatchSend(
     attachments?: ChatAttachment[];
     /** Per-turn model override (in-chat selector); absent → provider default. */
     model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
     /** "approve" cuando este turno responde a un ask plan-approval con su
      *  primera opción — el backend re-valida y ejecuta con gate manual. */
     planDecision?: "approve";

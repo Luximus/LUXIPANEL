@@ -63,16 +63,21 @@ vi.mock("../repositories/team-tasks.repository.js", () => ({
 }));
 
 const conversationMessages = new Map<string, Array<{ role: string; content: string; ts: string }>>();
+const conversationChoices = new Map<string, Record<string, unknown>>();
+const assistantDefaults: { defaultChatEffort?: "" | "low" | "medium" | "high" | "xhigh" | "max" } = {};
 let convSeq = 0;
 // Meta del líder (panelOrigin heredable) + registro de patchRuntime por conv.
 const leaderMeta = { current: null as Record<string, unknown> | null };
 const patchedRuntime: Array<[string, Record<string, unknown>]> = [];
-vi.mock("../repositories/assistant-config.repository.js", () => ({ assistantConfigRepository: {load: async () => ({approval:{mode:"plan"}})} }));
+vi.mock("../repositories/assistant-config.repository.js", () => ({
+  assistantConfigRepository: { load: async () => ({ approval: { mode: "plan" }, ...assistantDefaults }) },
+}));
 vi.mock("../repositories/conversations.repository.js", () => ({
   conversationsRepository: {
-    async create() {
+    async create(_e: unknown, _provider: string, _task: string, _project: unknown, _agent: unknown, choices: Record<string, unknown> = {}) {
       const id = `conv-w-${++convSeq}`;
       conversationMessages.set(id, []);
+      conversationChoices.set(id, choices);
       return { id };
     },
     async appendMessages(_e: unknown, id: string, msgs: Array<{ role: string; content: string; ts: string }>) {
@@ -235,6 +240,8 @@ beforeEach(() => {
   board.clear();
   plans.clear();
   conversationMessages.clear();
+  conversationChoices.clear();
+  delete assistantDefaults.defaultChatEffort;
   registryState.started.length = 0;
   registryState.stopped.length = 0;
   registryState.has.mockReturnValue(false);
@@ -252,6 +259,30 @@ beforeEach(() => {
 });
 
 describe("teamTasksService.assignTask", () => {
+  it("persists the configured reasoning effort for a delegated chat", async () => {
+    assistantDefaults.defaultChatEffort = "max";
+    const task = await assign();
+    expect(task.status).toBe("running");
+    expect(conversationChoices.get(task.workerConversationId)).toEqual({ effort: "max" });
+  });
+
+  it("keeps the queued task's reasoning choice when the default changes before dispatch", async () => {
+    for (let i = 0; i < 4; i++) await assign();
+    assistantDefaults.defaultChatEffort = "max";
+    const task = await assign();
+    expect(task.status).toBe("pending");
+    assistantDefaults.defaultChatEffort = "low";
+    await registryState.started[0]?.onComplete?.("hecho", false);
+    await vi.waitFor(() => expect(board.get(task.id ?? "")?.status).toBe("running"));
+    expect(conversationChoices.get(task.workerConversationId)).toEqual({ effort: "max" });
+  });
+
+  it.each([undefined, ""] as const)("keeps automatic reasoning when the configured effort is %s", async (effort) => {
+    if (effort !== undefined) assistantDefaults.defaultChatEffort = effort;
+    const task = await assign();
+    expect(conversationChoices.get(task.workerConversationId)).not.toHaveProperty("effort");
+  });
+
   it("creates the board record BEFORE starting the run and returns it running", async () => {
     const task = await assign();
     expect(task.status).toBe("running");

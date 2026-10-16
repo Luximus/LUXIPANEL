@@ -289,7 +289,7 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
        *  Lo usa el effect del bridge externo tras `assistantConversationsApi.create`. */
       conversationIdOverride?: string | null;
       attachmentsOverride?: ChatAttachment[];
-      reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+      reasoningEffort?: "low" | "medium" | "high" | "xhigh" | "max";
     },
   ) {
     const voiceInput = !!opts?.attachmentsOverride?.some(a => a.voice);

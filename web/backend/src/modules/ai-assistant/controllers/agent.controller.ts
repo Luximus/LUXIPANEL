@@ -101,7 +101,7 @@ const agentSchema = z.object({
    * sidecar. Contract shared with the frontend track.
    */
   model: z.string().max(64).optional(),
-  effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
   /** Project context (working dir + instructions) for this turn. */
   projectId: z.string().max(64).nullable().optional(),
   /** Custom agent driving this turn (system prompt + tool subset + provider/model). */
@@ -145,7 +145,7 @@ const enqueueSchema = z.object({
   /** Per-turn model override (in-chat picker), persisted so the background
    *  drain reuses it. Shared contract with the frontend track. */
   model: z.string().max(64).optional(),
-  effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
   projectId: z.string().max(64).nullable().optional(),
   agentId: z.string().max(64).nullable().optional(),
   withContext: z.boolean().default(true),

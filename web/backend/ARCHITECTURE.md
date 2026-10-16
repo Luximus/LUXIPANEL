@@ -76,3 +76,6 @@ El supervisor externo conserva el estado de salida aunque el kernel termine el s
 
 ### Historial de tareas delegadas (2026-10-16)
 Los trabajadores y los turnos generales usan `assistant-message-persistence` para guardar consola CLI, duración, tokens, traducciones, preguntas y resultado. Los errores sin texto también se conservan y su motivo llega al tablero. El bridge reconoce los eventos estructurados de rechazo de autenticación del proveedor y orienta a reconectar la cuenta, sin atribuirlos a MCP ni a una caída del servidor.
+
+### Esfuerzo de tareas delegadas (2026-10-16)
+`createWorkerConversation` guarda `defaultChatEffort` en los metadatos del nuevo chat cuando hay una selección explícita. Los trabajadores inmediatos, diferidos y sus reintentos leen ese valor como cualquier conversación; cambiar el valor predeterminado no altera las tareas ya creadas. `agents.delegate`, que no crea conversación, pasa la selección como opción de su ejecución. Un valor vacío o ausente conserva el razonamiento automático. El modelo sigue resolviéndose desde la configuración del agente.

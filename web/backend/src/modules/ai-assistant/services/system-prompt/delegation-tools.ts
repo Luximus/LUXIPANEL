@@ -11,6 +11,7 @@
 import type { Executor } from "../../../../shared/executor/index.js";
 import type { SessionUser } from "../../../../shared/types/index.js";
 import type { AssistantAgent } from "../../models/assistant-agent.types.js";
+import { assistantConfigRepository } from "../../repositories/assistant-config.repository.js";
 import type { AgentTool } from "../../../../shared/agent-capability/index.js";
 import { MAX_DELEGATION_DEPTH } from "../agent-targets.js";
 import { spawnWorker, validateWorkerProject } from "../team-tasks.service.js";
@@ -91,6 +92,7 @@ export function buildDelegateTool(ctx: {
       }
       const target = byId.get(targetId);
       try {
+        const config = await assistantConfigRepository.load(executor);
         // The sub-run blocks the superior's turn: bound it by the leader's own
         // abort AND a hard timeout so a hung delegate can't hang the chain.
         const subSignal = AbortSignal.any([
@@ -105,6 +107,7 @@ export function buildDelegateTool(ctx: {
           agentId: targetId,
           withContext: false,
           delegationDepth: depth + 1,
+          ...(config.defaultChatEffort ? { effort: config.defaultChatEffort } : {}),
           signal: subSignal,
           ...(ctx.forcedCwd ? { forcedCwd: ctx.forcedCwd } : {}),
           ...(ctx.approvalModeOverride ? { approvalModeOverride: ctx.approvalModeOverride } : {}),

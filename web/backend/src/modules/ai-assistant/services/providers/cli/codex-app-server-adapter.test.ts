@@ -9,7 +9,7 @@ import { join } from "node:path";
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
-function runAdapter(finalAnswer: string): { status: number; events: Array<Record<string, unknown>> } {
+function runAdapter(finalAnswer: string, effort?: string): { status: number; events: Array<Record<string, unknown>> } {
   const dir = mkdtempSync(join(tmpdir(), "lxp-codex-final-"));
   dirs.push(dir);
   const bin = join(dir, "codex");
@@ -21,6 +21,9 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(x.method==='initialize')send({id:x.id,result:{}});
   else if(x.method==='thread/start')send({id:x.id,result:{thread:{id:'fake-thread',model:'fake'}}});
   else if(x.method==='turn/start'){
+    if(process.env.FAKE_EFFORT && (x.params.collaborationMode?.settings?.reasoning_effort!==process.env.FAKE_EFFORT || x.params.collaborationMode?.settings?.model!=='gpt-6-astra')){
+      send({id:x.id,error:{code:-32602,message:'Incorrect reasoning/model'}});return;
+    }
     send({id:x.id,result:{turn:{id:'fake-turn'}}});
     send({method:'item/completed',params:{item:{type:'agentMessage',text:'Voy a desplegarlo.',phase:'commentary'}}});
     send({method:'turn/completed',params:{threadId:'fake-thread',turn:{id:'fake-turn',status:'completed',items:[]}}});
@@ -31,13 +34,13 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const promptFile = join(dir, "prompt.txt");
   const configFile = join(dir, "config.json");
   writeFileSync(promptFile, "Verificar despliegue");
-  writeFileSync(configFile, JSON.stringify({ promptFile, approvalDir: dir, approvalMode: "auto", resume: false, cwd: dir }));
+  writeFileSync(configFile, JSON.stringify({ promptFile, approvalDir: dir, approvalMode: "auto", resume: false, cwd: dir, model: "gpt-6-astra", effort }));
   const adapter = new URL("./codex-app-server-adapter.mjs", import.meta.url).pathname;
   let status = 0;
   let stdout = "";
   try {
     stdout = execFileSync(process.execPath, [adapter, configFile], {
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}`, FAKE_FINAL: finalAnswer },
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}`, FAKE_FINAL: finalAnswer, FAKE_EFFORT: effort ?? "" },
       encoding: "utf8",
       timeout: 10_000,
     });
@@ -50,6 +53,12 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 }
 
 describe("Codex app-server final answer", () => {
+  it("sends Astra with exact max reasoning to the native Codex turn", () => {
+    const { status, events } = runAdapter("Verificado.", "max");
+    expect(status).toBe(0);
+    expect(events.some(e => e.type === "turn.failed")).toBe(false);
+  });
+
   it("recovers a persisted final answer after a commentary-only stream", () => {
     const { status, events } = runAdapter("Desplegado y verificado.");
     expect(status).toBe(0);

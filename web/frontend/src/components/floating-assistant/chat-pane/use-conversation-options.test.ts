@@ -11,7 +11,7 @@ const data: Record<string, any> = {
   a: { id: "a", provider: "codex", projectId: "pa", model: "ma", effort: "high", approvalMode: "plan" },
   b: { id: "b", provider: "codex", projectId: null, model: "mb", effort: "low", approvalMode: "manual" },
 };
-function View({ id, provider = "codex", effort = "" }: { id: string | null; provider?: string; effort?: "" | "low" | "high" | "xhigh" }) {
+function View({ id, provider = "codex", effort = "" }: { id: string | null; provider?: string; effort?: "" | "low" | "high" | "xhigh" | "max" }) {
   value = useConversationOptions({ id, provider, active: true, defaultModel: "default", defaultEffort: effort, defaultApproval: "manual", onRestoreProvider: restore });
   return null;
 }
@@ -72,11 +72,11 @@ it("uses the latest reasoning default for a new chat while preserving saved choi
   expect(value.snapshot().effort).toBe("low");
   await act(async () => root.render(createElement(View, { id: "b", effort: "high" })));
   expect(value.selectedEffort).toBe("Low");
-  await act(async () => root.render(createElement(View, { id: null, effort: "xhigh" })));
-  expect(value.selectedEffort).toBe("Extra");
+  await act(async () => root.render(createElement(View, { id: null, effort: "max" })));
+  expect(value.selectedEffort).toBe("Max");
   await act(async () => value.setSelectedEffort("Low"));
   await act(async () => value.resetNew("default"));
-  expect(value.snapshot().effort).toBe("xhigh");
+  expect(value.snapshot().effort).toBe("max");
 });
 it("keeps legacy and explicitly automatic conversations automatic", async () => {
   for (const effort of [undefined, ""] as const) {

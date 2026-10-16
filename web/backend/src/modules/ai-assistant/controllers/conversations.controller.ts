@@ -34,7 +34,7 @@ import { isAssistantProviderId, DEFAULT_PROVIDER_ID } from "../models/assistant-
 
 const choiceSchema = {
   model: z.string().max(200).optional(),
-  effort: z.enum(["", "low", "medium", "high", "xhigh"]).optional(),
+  effort: z.enum(["", "low", "medium", "high", "xhigh", "max"]).optional(),
   approvalMode: z.enum(["manual", "auto", "plan"]).optional(),
 };
 const createSchema = z.object({

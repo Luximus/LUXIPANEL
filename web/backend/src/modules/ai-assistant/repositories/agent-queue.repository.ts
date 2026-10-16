@@ -42,7 +42,7 @@ export interface QueuedTurn {
   provider?: AssistantProviderId;
   /** Per-turn model override (in-chat picker) preserved for the background drain. */
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   projectId?: string | null;
   /** Custom agent bound to the conversation, preserved for the background drain. */
   agentId?: string | null;

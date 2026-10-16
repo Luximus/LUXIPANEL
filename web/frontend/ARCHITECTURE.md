@@ -451,3 +451,6 @@ El badge verde indica una versión publicada; amarillo identifica cambios de `de
 
 ### Paridad del chat con agente (2026-10-16)
 `ChatMain` comparte la bienvenida y las sugerencias del chat general con los chats de agente. El agente sustituye la marca central por su avatar; se elimina la franja redundante superior y se conservan el selector, el chip del compositor y el tablero incrustado en `TurnView`.
+
+### Razonamiento Max en Codex (2026-10-16)
+Los ajustes generales y el compositor de Codex admiten `max` como nivel independiente de `xhigh` (Extra). La normalización, los metadatos del chat y los envíos inmediatos o en cola conservan el valor exacto. No se modifica la elección guardada en conversaciones anteriores.

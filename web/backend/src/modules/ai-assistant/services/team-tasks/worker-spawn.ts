@@ -15,6 +15,7 @@ import { mintCrossMcpToken, mintGraphMcpToken } from "../mcp-run-tokens.js";
 import { persistAssistantMessage } from "../assistant-message-persistence.js";
 import { makeUsageRecorder } from "../usage-recorder.js";
 import { projectClosure } from "../project-closure.js";
+import { assistantConfigRepository } from "../../repositories/assistant-config.repository.js";
 import { cliJobsRepository } from "../../repositories/cli-jobs.repository.js";
 import { conversationsRepository } from "../../repositories/conversations.repository.js";
 import { projectsRepository } from "../../repositories/projects.repository.js";
@@ -110,7 +111,13 @@ export async function createWorkerConversation(
   opts: { appendUserMessage: boolean },
 ): Promise<string> {
   const provider = worker.providerId;
-  const meta = await conversationsRepository.create(executor, provider, task, projectId, worker.id);
+  const config = await assistantConfigRepository.load(executor);
+  // Delegation has no composer to send the configured reasoning choice.
+  // Persist it with the chat so immediate runs, queued tasks and retries use
+  // the same selection even if the default changes before dispatch.
+  const meta = await conversationsRepository.create(executor, provider, task, projectId, worker.id, {
+    ...(config.defaultChatEffort ? { effort: config.defaultChatEffort } : {}),
+  });
   const convId = String(meta.id);
   if (opts.appendUserMessage) {
     await conversationsRepository

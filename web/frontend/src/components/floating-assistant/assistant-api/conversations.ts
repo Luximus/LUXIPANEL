@@ -8,7 +8,7 @@ import type { AskQuestion } from "./agent-stream";
 
 export interface ConversationMeta {
   model?: string;
-  effort?: "" | "low" | "medium" | "high" | "xhigh";
+  effort?: "" | "low" | "medium" | "high" | "xhigh" | "max";
   approvalMode?: "manual" | "auto" | "plan";
 
   id: string;

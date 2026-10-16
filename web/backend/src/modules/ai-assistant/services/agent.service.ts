@@ -72,7 +72,7 @@ export interface AgentRunOptions {
    * Assistant's saved provider config.
    */
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** Project whose path (cwd) + instructions scope this run. */
   projectId?: string;
   /**
@@ -326,7 +326,7 @@ export const agentService = {
     //    whether to deploy multiple agents. CLI mode keeps its own `--model`.
     // Patches the in-memory config only — never persisted back to the sidecar.
     const hasAttachments = (attachments?.length ?? 0) > 0;
-    let runEffort: "low" | "medium" | "high" | "xhigh" | undefined;
+    let runEffort: "low" | "medium" | "high" | "xhigh" | "max" | undefined;
     let decision: RoutingDecision | undefined;
     if (effModel) {
       const slot = config.providers[effId];

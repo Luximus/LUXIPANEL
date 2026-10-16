@@ -183,7 +183,7 @@ export async function* streamAgent(
   // "approve" cuando este turno responde a un ask `kind:"plan-approval"` con su
   // primera opción (botón "Aprobar plan"). El backend lo re-valida server-side.
   planDecision?: "approve",
-  effort?: "low" | "medium" | "high" | "xhigh",
+  effort?: "low" | "medium" | "high" | "xhigh" | "max",
 ): AsyncGenerator<AgentEventFrame> {
   const res = await fetch("/api/ai/agent", {
     method: "POST",
@@ -318,7 +318,7 @@ export interface QueuedTurnRef {
  */
 export async function enqueueAgentTurn(
   conversationId: string,
-  p: { provider?: string; projectId?: string | null; agentId?: string | null; userText: string; attachments?: ChatAttachment[]; model?: string; effort?: "low" | "medium" | "high" | "xhigh"; planDecision?: "approve" },
+  p: { provider?: string; projectId?: string | null; agentId?: string | null; userText: string; attachments?: ChatAttachment[]; model?: string; effort?: "low" | "medium" | "high" | "xhigh" | "max"; planDecision?: "approve" },
 ): Promise<{ id: string; pending: QueuedTurnRef[] }> {
   const res = await fetch("/api/ai/agent/enqueue", {
     method: "POST",

@@ -210,7 +210,7 @@ export interface QueuedSend {
   attachments?: ChatAttachment[];
   /** Per-turn model override (in-chat selector); absent → provider default. */
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** Keep the structured plan decision if a prior run is still settling. */
   planDecision?: "approve";
   buildMessages: (priorTurns: ChatTurn[], overrideText?: string) => AgentMessage[];
@@ -235,7 +235,7 @@ export interface PendingAddenda {
   projectId?: string | null;
   agentId?: string | null;
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   buildMessages: (priorTurns: ChatTurn[], overrideText?: string) => AgentMessage[];
   onClear?: (key: string) => void;
   onSettled?: (key: string) => void;

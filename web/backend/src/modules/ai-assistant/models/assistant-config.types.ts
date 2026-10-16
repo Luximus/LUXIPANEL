@@ -277,7 +277,7 @@ export interface RedactedIntegrationsConfig {
   elevenlabs: RedactedElevenLabsIntegration;
 }
 
-export const CHAT_REASONING_EFFORTS = ["", "low", "medium", "high", "xhigh"] as const;
+export const CHAT_REASONING_EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
 export type ChatReasoningEffort = typeof CHAT_REASONING_EFFORTS[number];
 
 export interface AssistantConfig {

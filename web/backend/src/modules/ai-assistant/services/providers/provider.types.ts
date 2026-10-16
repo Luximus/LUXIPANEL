@@ -147,7 +147,7 @@ export interface ProviderRunOptions {
    * `output_config.effort` + adaptive thinking on Opus/Sonnet-4.6; OpenAI-compat
    * `reasoning_effort` on reasoning models). Absent → provider sends nothing.
    */
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /**
    * CLI TEAM-LEADER run: the system prompt carries the delegation protocol and
    * the `team.*` tools ride the cross MCP channel. The CLI bridge must carve

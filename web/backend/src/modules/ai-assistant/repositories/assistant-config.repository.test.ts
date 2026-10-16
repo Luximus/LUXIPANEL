@@ -183,15 +183,15 @@ describe("assistantConfigRepository — full modal round-trip", () => {
     expect(red.defaultChatModel).toBe("MiniMax-M3[1m]");
   });
 
-  it("persists reasoning per user and preserves it through unrelated patches", async () => {
+  it.each(["xhigh", "max"] as const)("persists reasoning %s per user and preserves it through unrelated patches", async effort => {
     ctx.uid = 21;
-    await assistantConfigRepository.patch({ defaultChatEffort: "xhigh" });
+    await assistantConfigRepository.patch({ defaultChatEffort: effort });
     await assistantConfigRepository.patch({ defaultChatModel: "example-model" });
-    expect((await assistantConfigRepository.load()).defaultChatEffort).toBe("xhigh");
+    expect((await assistantConfigRepository.load()).defaultChatEffort).toBe(effort);
     ctx.uid = 22;
     expect(redactAssistantConfig(await assistantConfigRepository.load()).defaultChatEffort).toBe("");
     ctx.uid = 21;
-    expect(redactAssistantConfig(await assistantConfigRepository.load()).defaultChatEffort).toBe("xhigh");
+    expect(redactAssistantConfig(await assistantConfigRepository.load()).defaultChatEffort).toBe(effort);
   });
 
   it.each(["", undefined] as const)("clears reasoning back to Auto with %s", async (value) => {

@@ -101,7 +101,7 @@ export interface ChatPaneActions {
       projectIdOverride?: string | null;
       conversationIdOverride?: string | null;
       attachmentsOverride?: import("../assistant-api").ChatAttachment[];
-      reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+      reasoningEffort?: "low" | "medium" | "high" | "xhigh" | "max";
     },
   ) => Promise<void>;
   openConversation: (id: string) => Promise<void>;

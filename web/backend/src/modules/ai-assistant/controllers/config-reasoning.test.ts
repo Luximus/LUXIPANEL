@@ -20,7 +20,7 @@ async function invoke(body: unknown) {
     assistantConfigController.patch({ body } as Request, res as Response, ((error: unknown) => resolve({ error })) as NextFunction);
   });
 }
-it.each(["", "low", "medium", "high", "xhigh"])("accepts %s and writes to the connected target", async effort => {
+it.each(["", "low", "medium", "high", "xhigh", "max"])("accepts %s and writes to the connected target", async effort => {
   const result = await invoke({ defaultChatEffort: effort });
   expect(result.error).toBeUndefined();
   expect(result.data.config.defaultChatEffort).toBe(effort);

@@ -144,7 +144,7 @@ export function startConversationRun(args: {
   provider?: AssistantProviderId;
   /** Per-turn model override (in-chat picker). Not persisted by the agent. */
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   projectId?: string | null;
   /** Custom agent bound to this conversation (system prompt + tools + provider/model). */
   agentId?: string | null;

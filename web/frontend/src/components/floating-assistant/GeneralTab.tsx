@@ -52,6 +52,7 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
     ["", ct.modelAuto ?? "Auto"], ["low", ct.reasoningLow ?? "Bajo"],
     ["medium", ct.reasoningMedium ?? "Medio"], ["high", ct.reasoningHigh ?? "Alto"],
     ["xhigh", ct.reasoningExtra ?? "Extra"],
+    ["max", ct.reasoningMax ?? "Max"],
   ];
 
   // Providers offered as a default = those toggled "show in chat" (active),

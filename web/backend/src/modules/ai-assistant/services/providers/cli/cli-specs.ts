@@ -32,7 +32,7 @@ export interface CliBuildCtx {
    *  Mirrors the BACKEND file-jail so the subprocess sandbox matches. */
   jailPaths?: string[];
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   apiKey?: string;
   /** True when continuing an existing upstream session (memory). */
   resume: boolean;

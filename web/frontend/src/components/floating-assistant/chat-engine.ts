@@ -487,7 +487,7 @@ export const chatEngine = {
     attachments?: ChatAttachment[];
     /** Per-turn model override (in-chat selector); absent → provider default. */
     model?: string;
-    effort?: "low" | "medium" | "high" | "xhigh";
+    effort?: "low" | "medium" | "high" | "xhigh" | "max";
     /** "approve" cuando este turno responde a un ask `askKind:"plan-approval"`
      *  con su PRIMERA opción (botón "Aprobar plan"). Viaja como flag
      *  estructurado (sobrevive a la traducción) y el backend lo re-valida. */

@@ -35,10 +35,13 @@ it("places reasoning after the model and persists both a level and Auto", async 
   const model = document.querySelector("#lxp-assistant-default-chat-model")!;
   const effort = document.querySelector<HTMLSelectElement>("#lxp-assistant-default-chat-effort")!;
   expect(model.parentElement?.nextElementSibling).toBe(effort.parentElement);
-  expect([...effort.options].map(option => option.value)).toEqual(["", "low", "medium", "high", "xhigh"]);
+  expect([...effort.options].map(option => option.value)).toEqual(["", "low", "medium", "high", "xhigh", "max"]);
   await select("high");
   expect(save).toHaveBeenCalledWith({ defaultChatEffort: "high" });
   expect(effort.value).toBe("high"); expect(uiPrefs.get().defaultChatEffort).toBe("high");
+  await select("max");
+  expect(save).toHaveBeenCalledWith({ defaultChatEffort: "max" });
+  expect(effort.value).toBe("max"); expect(uiPrefs.get().defaultChatEffort).toBe("max");
   await select("");
   expect(effort.value).toBe(""); expect(uiPrefs.get().defaultChatEffort).toBe("");
 });
@@ -54,4 +57,5 @@ it("normalizes missing and invalid preferences to Auto", () => {
   expect(normalizeReasoningEffort(undefined)).toBe("");
   expect(normalizeReasoningEffort("invalid")).toBe("");
   expect(normalizeReasoningEffort("xhigh")).toBe("xhigh");
+  expect(normalizeReasoningEffort("max")).toBe("max");
 });

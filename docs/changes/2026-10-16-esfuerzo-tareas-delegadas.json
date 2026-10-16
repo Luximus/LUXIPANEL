@@ -1,0 +1,8 @@
+{
+  "title": "Esfuerzo de razonamiento en tareas delegadas",
+  "changes": [
+    "El chat permite seleccionar y conservar el nivel de razonamiento Max para Codex.",
+    "Las nuevas tareas delegadas usan el esfuerzo de razonamiento configurado para los chats.",
+    "Las tareas en espera conservan esa selección aunque cambie la configuración antes de comenzar."
+  ]
+}

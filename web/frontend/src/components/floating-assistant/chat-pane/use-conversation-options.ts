@@ -6,8 +6,8 @@ import { normalizeReasoningEffort, type ChatReasoningEffort } from "../reasoning
 import { chatUiState } from "../chat-ui-state";
 
 type Options = Required<Pick<ConversationMeta, "model" | "effort" | "approvalMode">>;
-const toEffort = (value: string): Options["effort"] => ({ Auto: "", Low: "low", Medium: "medium", High: "high", Extra: "xhigh" }[value] ?? "") as Options["effort"];
-const effortLabel = (value: Options["effort"]) => ({ "": "Auto", low: "Low", medium: "Medium", high: "High", xhigh: "Extra" }[value]);
+const toEffort = (value: string): Options["effort"] => ({ Auto: "", Low: "low", Medium: "medium", High: "high", Extra: "xhigh", Max: "max" }[value] ?? "") as Options["effort"];
+const effortLabel = (value: Options["effort"]) => ({ "": "Auto", low: "Low", medium: "Medium", high: "High", xhigh: "Extra", max: "Max" }[value]);
 
 /** Server metadata owns saved choices; local storage only migrates legacy model picks. */
 export function useConversationOptions(input: {
