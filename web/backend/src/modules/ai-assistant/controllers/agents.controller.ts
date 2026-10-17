@@ -9,9 +9,8 @@
  *   PUT    /api/ai/agents/:id      update
  *   DELETE /api/ai/agents/:id      delete
  *
- * Agents are PANEL-HOST/global (see agents.repository.ts); the repo pins the
- * panel-host executor itself, so handlers don't pass `getExecutor(req)`. Owner
- * name resolution is best-effort against the per-server user list (display only).
+ * Profiles remain in the contextual connected-target sidecar. Owner name
+ * resolution is best-effort against that target\'s user list (display only).
  */
 
 import { z } from "zod";
@@ -27,7 +26,7 @@ import { assistantNotFound } from "./not-found-i18n.js";
 import { apiModuleMessage } from "../../../shared/i18n/module-messages.js";
 import { aiOutputLanguage } from "../../../shared/i18n/ai-output-language.js";
 import { agentMarketService, assertAssignmentIdle } from "../services/agent-market.service.js";
-import { assertProjectAccess, effectiveAssignment } from "../services/agent-context.service.js";
+import { assertProjectAccess, assertProjectScope, effectiveAssignment } from "../services/agent-context.service.js";
 import { withAssignmentLock } from "../services/agent-assignment-lock.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentTeamsRepository } from "../repositories/agent-teams.repository.js";
@@ -251,7 +250,7 @@ export async function loadAssistantAgents(req: Request, res: Response) {
   const executor = getExecutor(req), user = res.locals["user"] as SessionUser | undefined;
   const uid = getContextUserId(), all = await projectsRepository.list(executor);
   const projectId = typeof req.query["projectId"] === "string" ? req.query["projectId"] : undefined;
-  if (projectId) assertProjectAccess(all.find(p => p.id === projectId), user);
+  if (projectId) assertProjectScope(all, projectId, user);
   const q = String(req.query["q"] ?? "").trim().toLocaleLowerCase();
   const technology = String(req.query["technology"] ?? "").trim().toLocaleLowerCase();
   const agents = (await agentsRepository.list()).filter(a =>
@@ -343,7 +342,7 @@ export const agentsController = {
     if (req.body?.assignments !== undefined) throw new ValidationError("Usa los endpoints de asignaciones.");
     for (const projectId of parsed.data.graphProjectIds ?? []) assertProjectAccess(await projectsRepository.get(getExecutor(req), projectId), res.locals["user"]);
     const agent = await agentMarketService.updateProfile(getExecutor(req), id, parsed.data, res.locals["user"]);
-    res.json({ ok: true, agent: agent ? redactAgent(agent) : agent });
+    res.json({ ok: true, agent: agent ? redactAgent(await agentMarketService.present(getExecutor(req), agent, res.locals["user"])) : agent });
   }),
 
   remove: asyncHandler(async (req: Request, res: Response) => {

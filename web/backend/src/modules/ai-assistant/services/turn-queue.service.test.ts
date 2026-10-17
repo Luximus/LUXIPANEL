@@ -47,6 +47,7 @@ vi.mock("../repositories/agent-queue.repository.js", () => ({
       queue.items.push(doc);
       return doc;
     }),
+    listFor: vi.fn(async (_e: unknown, id: string) => queue.items.filter(item => item.conversationId === id)),
     takeNext: vi.fn(async () => {
       calls.push("drain:takeNext");
       return queue.items.shift() ?? null;
@@ -61,9 +62,11 @@ const meta = vi.hoisted(() => ({
 vi.mock("../repositories/conversations.repository.js", () => ({
   conversationsRepository: {
     getMeta: vi.fn(async (_e: unknown, id: string) => (id in meta.byId ? meta.byId[id] : meta.current)),
-    create: vi.fn(async (_e: unknown, provider: string, firstMessage: string) => {
+    create: vi.fn(async (_e: unknown, provider: string, firstMessage: string, projectId: string | null, agentId: string | null) => {
       calls.push("createConversation");
-      return { id: "conv-nuevo", title: firstMessage, provider };
+      const created = { id: "conv-nuevo", title: firstMessage, provider, projectId, agentId, messageCount: 0 };
+      meta.byId["conv-nuevo"] = created;
+      return created;
     }),
     appendMessages: vi.fn(async () => {
       calls.push("appendMessages");
@@ -76,12 +79,13 @@ vi.mock("../repositories/conversations.repository.js", () => ({
   },
 }));
 
-const runOptions = vi.hoisted(() => ({ last: null as Record<string, unknown> | null }));
+const runOptions = vi.hoisted(() => ({ last: null as Record<string, unknown> | null, targetId: null as string | null }));
 vi.mock("./agent.service.js", () => ({
   agentService: {
     // eslint-disable-next-line require-yield
     run: vi.fn(async function* (_msgs: unknown, options: Record<string, unknown>) {
       runOptions.last = options;
+      runOptions.targetId = getContextExecutor()?.target.id ?? null;
       return;
     }),
   },
@@ -139,8 +143,13 @@ vi.mock("./slash-commands.service.js", () => ({
   slashCommandsService: { isSlash: vi.fn(() => false) },
 }));
 
+vi.mock("../repositories/projects.repository.js", () => ({
+  projectsRepository: { list: async () => ["p1", "proj-1"].map(id => ({ id, ownerId: 7, title: id, path: "/" + id })) },
+}));
+vi.mock("../repositories/agent-roles.repository.js", () => ({ agentRolesRepository: { get: async () => null } }));
+
 import { eventBus, Events } from "../../../shared/events/index.js";
-import { localExecutor } from "../../../shared/executor/index.js";
+import { getContextExecutor, localExecutor, runWithExecutor } from "../../../shared/executor/index.js";
 import { drainConversationQueue, initAgentMessageListener } from "./turn-queue.service.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
@@ -204,7 +213,7 @@ beforeEach(() => {
   teamState.byWorkerConv = null;
   teamState.forLeaderConv = [];
   steerState.result = false;
-  runOptions.last = null;
+  runOptions.last = null; runOptions.targetId = null;
   recipient.current = { id: "a-mateo", name: "Mateo", providerId: "claude" };
   messageStore.current = mkMessage();
   vi.mocked(conversationsRepository.create).mockClear();
@@ -232,6 +241,7 @@ describe("initAgentMessageListener", () => {
   it("REUSES the pair's existing mailbox when its conversation still exists", async () => {
     pairStore.items = [mkMessage({ id: "msg-0", status: "read", deliveryConversationId: "conv-buzon" })];
     meta.current = { id: "conv-buzon", provider: "claude", agentId: "a-mateo", projectId: "proj-1" };
+    recipient.current!.projectIds = ["proj-1"];
 
     emit();
     await settle();
@@ -317,6 +327,8 @@ describe("initAgentMessageListener — destino: chat de equipo / run activo (sin
   it("worker → líder: entrega en la conversación del LÍDER (leaderConversationId) sin crear chat", async () => {
     teamState.byWorkerConv = { leaderAgentId: "a-mateo", leaderConversationId: "conv-lider", workerAgentId: "a-santiago", workerConversationId: "conv-santiago", status: "running" };
     meta.byId["conv-lider"] = { agentId: "a-mateo", provider: "claude", projectId: "p1" };
+    meta.byId["conv-santiago"] = { agentId: "a-santiago", projectId: "p1" };
+    recipient.current!.projectIds = ["p1"];
     emit();
     await settle();
     expect(conversationsRepository.create).not.toHaveBeenCalled();
@@ -386,7 +398,7 @@ describe("drainConversationQueue — isWorker (cap por usuario)", () => {
       isWorker: true,
       ts: new Date().toISOString(),
     } as QueuedTurn);
-    await drainConversationQueue(localExecutor, "conv-worker-drain");
+    await runWithExecutor(localExecutor, () => drainConversationQueue(localExecutor, "conv-worker-drain"), 7, sender);
     const startArgs = vi.mocked(agentRunRegistry.start).mock.calls.at(-1)?.[0] as { isWorker?: boolean };
     expect(startArgs.isWorker).toBe(true);
   });
@@ -399,7 +411,7 @@ describe("drainConversationQueue — isWorker (cap por usuario)", () => {
       withContext: true,
       ts: new Date().toISOString(),
     } as QueuedTurn);
-    await drainConversationQueue(localExecutor, "conv-user-drain");
+    await runWithExecutor(localExecutor, () => drainConversationQueue(localExecutor, "conv-user-drain"), 7, sender);
     const startArgs = vi.mocked(agentRunRegistry.start).mock.calls.at(-1)?.[0] as { isWorker?: boolean };
     expect(startArgs.isWorker).toBeUndefined();
   });
@@ -440,4 +452,46 @@ it("does not silently persist a text-only message if saving its recording fails"
   vi.mocked(conversationsRepository.appendMessages).mockClear();
   await expect(persistUserMessage(localExecutor, "voice-conv", "Hola", "codex", [{ name: "audio.webm", mimeType: "audio/webm", dataBase64: "YXVkaW8=", voice: { transcript: "Hola" } }])).rejects.toThrow("write failed");
   expect(conversationsRepository.appendMessages).not.toHaveBeenCalled();
+});
+
+it("revalidates a recovered queued turn before consuming it", async () => {
+  recipient.current!.projectIds = ["p1"];
+  recipient.current!.assignments = [{ projectId: "p1", status: "removed" }];
+  queue.items.push({ id: "blocked", conversationId: "chat", agentId: "a-mateo", projectId: "p1", user: sender, userText: "old work", ts: "" } as QueuedTurn);
+  await expect(runWithExecutor(localExecutor, () => drainConversationQueue(localExecutor, "chat"), 7, sender)).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_REMOVED" });
+  expect(queue.items.map(q => q.id)).toEqual(["blocked"]);
+  expect(calls).not.toContain("run:start");
+  expect(calls).not.toContain("drain:takeNext");
+});
+it("does not deliver X into the same pair's mailbox in Y", async () => {
+  recipient.current!.projectIds = ["p1", "proj-1"];
+  messageStore.current = mkMessage({ projectId: "p1" });
+  pairStore.items = [mkMessage({ id: "old", projectId: "proj-1", status: "read", deliveryConversationId: "mailbox-Y" })];
+  meta.byId["mailbox-Y"] = { id: "mailbox-Y", agentId: "a-mateo", projectId: "proj-1", provider: "claude" };
+  emit(); await settle();
+  expect(conversationsRepository.create).toHaveBeenCalledOnce();
+  expect(vi.mocked(agentQueueRepository.enqueue).mock.calls[0]?.[1]).toMatchObject({ conversationId: "conv-nuevo", projectId: "p1" });
+});
+
+it("serializes concurrent drains and leaves the second turn queued once a run starts", async () => {
+  queue.items.push(
+    { id: "first", conversationId: "serial-chat", user: sender, userText: "one", ts: "1" } as QueuedTurn,
+    { id: "second", conversationId: "serial-chat", user: sender, userText: "two", ts: "2" } as QueuedTurn,
+  );
+  vi.mocked(agentRunRegistry.start).mockImplementationOnce(args => {
+    calls.push("run:start");
+    registryState.active.add("serial-chat");
+    void args.makeGen().next();
+    return {} as never;
+  });
+  await Promise.all([drainConversationQueue(localExecutor, "serial-chat"), drainConversationQueue(localExecutor, "serial-chat")]);
+  expect(calls.filter(call => call === "run:start")).toHaveLength(1);
+  expect(queue.items.map(turn => turn.id)).toEqual(["second"]);
+});
+it("restores a queued sender's target and user context before validating a project agent", async () => {
+  recipient.current!.projectIds = ["p1"];
+  queue.items.push({ id: "recover", conversationId: "restored", user: sender, userId: "7", agentId: "a-mateo", projectId: "p1", userText: "work", ts: "" } as QueuedTurn);
+  await drainConversationQueue(localExecutor, "restored");
+  expect(runOptions.last).toMatchObject({ user: sender, agentId: "a-mateo", projectId: "p1" });
+  expect(runOptions.targetId).toBe(localExecutor.target.id);
 });

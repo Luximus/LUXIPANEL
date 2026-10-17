@@ -38,6 +38,13 @@ vi.mock("../repositories/conversations.repository.js", () => ({
   },
 }));
 
+vi.mock("../../../shared/executor/index.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../shared/executor/index.js")>();
+  return { ...actual, getContextUser: () => ({ userId: 7, role: "admin" }), getContextUserId: () => 7,
+    getContextExecutor: () => ({ target: { id: "target" } }) };
+});
+vi.mock("../repositories/agent-roles.repository.js", () => ({ agentRolesRepository: { get: async () => null } }));
+
 const { graphScopeService } = await import("./graph-scope.service.js");
 
 /** A project with a READY graph. */
@@ -45,7 +52,7 @@ function ready(id: string, path: string, graph: string, parentId?: string): AnyP
   return { id, title: id, path, parentId: parentId ?? null, graphIndex: { enabled: true, project: graph, status: "ready" } };
 }
 
-const exec = {} as never;
+const exec = { target: { id: "target" } } as never;
 
 beforeEach(() => {
   projects.length = 0;
@@ -108,7 +115,7 @@ describe("graphScopeService.resolve — agent isolation", () => {
     metas.set("conv-a", { agentId: "agent-a", projectId: "lp" });
 
     const scope = await graphScopeService.resolve(exec, "conv-a");
-    expect(scope.projects.map((p) => p.graphName)).toEqual(["var-www-LUXIPANEL"]);
+    expect(scope.projects).toEqual([]);
     expect(graphScopeService.allows(scope, "var-www-LP")).toBe(false);
   });
 

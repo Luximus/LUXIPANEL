@@ -11,7 +11,10 @@ const agents = new Map<string, Record<string, any>>();
 const chats = new Map<string, Record<string, any>>();
 const markers = new Map<string, Record<string, any>>();
 
-vi.mock("../../../shared/executor/index.js", () => ({ getContextUserId: () => uid }));
+vi.mock("../../../shared/executor/index.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../shared/executor/index.js")>();
+  return { ...actual, getContextUserId: () => uid };
+});
 vi.mock("../../../shared/data-store/index.js", () => ({
   dataStore: () => ({
     get: async (id: string) => markers.get(id) ?? null,
@@ -148,8 +151,13 @@ describe("project workspace", () => {
     await expect(projectWorkspaceService.remove(executor, root)).rejects.toThrow("subproyectos");
     projects.delete("child");
     chats.set("c1", { id: "c1", projectId: root.id, agentId: [...agents.keys()][0] });
+    await expect(projectWorkspaceService.remove(executor, root)).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_BUSY" });
+    expect(projects.has(root.id!)).toBe(true);
+    const leader = [...agents.values()][0]!;
+    leader.projectIds = [];
+    leader.assignments = [{ projectId: root.id, status: "removed" }];
     await projectWorkspaceService.remove(executor, root);
-    expect(chats.get("c1")?.projectId).toBeNull();
+    expect(chats.get("c1")?.projectId).toBe(root.id);
     expect(teams.size).toBe(1);
     expect(agents.size).toBe(1);
     expect([...agents.values()][0]?.projectIds).toEqual([]);
@@ -179,4 +187,32 @@ it("rolls back an incomplete root without leaving a stray team or leader", async
   expect(projects.size).toBe(0);
   expect(teams.size).toBe(0);
   expect(agents.size).toBe(0);
+});
+
+it("does not pick the first project or regroup a multiproject profile during legacy repair", async () => {
+  projects.set("X", { id: "X", ownerId: uid, title: "X" });
+  projects.set("Y", { id: "Y", ownerId: uid, title: "Y" });
+  agents.set("a", { id: "a", ownerId: uid, name: "Shared", projectIds: ["X", "Y"] });
+  chats.set("chat", { id: "chat", agentId: "a", projectId: null });
+  await projectWorkspaceService.repair(executor);
+  expect(chats.get("chat")?.projectId).toBeNull();
+  expect(agents.size).toBe(1); expect(teams.size).toBe(0);
+  expect(agents.get("a")?.projectIds).toEqual(["X", "Y"]);
+});
+it("does not resurrect a removed Market leader or rewrite its history", async () => {
+  projects.set("X", { id: "X", ownerId: uid, title: "X", leaderAgentId: "a", teamId: "team" });
+  teams.set("team", { id: "team", ownerId: uid, name: "X" });
+  agents.set("a", { id: "a", ownerId: uid, name: "A", teamId: "team", projectIds: [], assignments: [{ projectId: "X", status: "removed" }] });
+  chats.set("chat", { id: "chat", agentId: "a", projectId: null });
+  await projectWorkspaceService.repair(executor);
+  expect(agents.get("a")?.projectIds).toEqual([]);
+  expect(agents.size).toBe(1); expect(projects.size).toBe(1); expect(teams.size).toBe(1);
+  expect(chats.get("chat")?.projectId).toBeNull();
+});
+it("does not bypass inherited assignment withdrawal through child project deletion", async () => {
+  projects.set("X", { id: "X", ownerId: uid, title: "X" });
+  projects.set("child", { id: "child", ownerId: uid, parentId: "X", title: "Child" });
+  agents.set("a", { id: "a", ownerId: uid, projectIds: ["X"] });
+  await expect(projectWorkspaceService.remove(executor, projects.get("child") as any)).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_BUSY" });
+  expect(projects.has("child")).toBe(true);
 });

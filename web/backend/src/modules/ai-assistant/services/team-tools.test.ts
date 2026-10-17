@@ -35,17 +35,24 @@ vi.mock("../repositories/agents.repository.js", () => ({
   agentsRepository: { get: repoMocks.agentGet, list: repoMocks.agentList },
 }));
 vi.mock("../repositories/agent-roles.repository.js", () => ({
-  agentRolesRepository: { list: repoMocks.rolesList },
+  agentRolesRepository: { list: repoMocks.rolesList, get: async (id: string) => (await repoMocks.rolesList())?.find((r: { id: string }) => r.id === id) ?? null },
 }));
+
+vi.mock("../../../shared/executor/index.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../shared/executor/index.js")>();
+  return { ...actual, getContextUser: () => ({ userId: 7, role: "admin" }), getContextUserId: () => 7,
+    getContextExecutor: () => ({ target: { id: "target" } }) };
+});
 
 import { buildTeamTools, buildTeamToolsForConversation, TEAM_TOOL_WIRE_NAMES } from "./team-tools.js";
 import type { AssistantAgent } from "../models/assistant-agent.types.js";
 
-const executor = {} as Executor;
+const executor = { target: { id: "target" } } as Executor;
 
 const leader: AssistantAgent = {
   id: "lead-1",
   name: "Líder",
+  projectIds: ["proj-ok"],
   description: "coordina",
   systemPrompt: "",
   providerId: "claude",
@@ -68,6 +75,7 @@ const workerA: AssistantAgent = {
 const workerB: AssistantAgent = {
   id: "w-b",
   name: "Frontend",
+  projectIds: ["proj-ok"],
   description: "UI",
   systemPrompt: "",
   providerId: "gemini",
@@ -121,6 +129,9 @@ async function build() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  repoMocks.convMeta.mockResolvedValue({ id: "conv-leader", projectId: "proj-ok" });
+  repoMocks.agentGet.mockImplementation(async (id: string) => [leader, workerA, workerB, stranger].find(a => a.id === id) ?? null);
+  repoMocks.rolesList.mockResolvedValue([{ id: "r-1", name: "Ingeniero Backend", description: "", systemPrompt: "", allowedTools: null }]);
 });
 
 describe("buildTeamTools", () => {
@@ -168,7 +179,7 @@ describe("team.assign", () => {
     const assign = tools.find((t) => t.name === "team.assign")!;
     const res = await assign.handler({ agentId: "w-a", task: "algo", projectId: "proj-ajeno" });
     expect(res.ok).toBe(false);
-    expect(String(res.output)).toContain("proj-ajeno");
+    expect(String(res.output)).toContain("proyecto activo");
     expect(svc.assignTask).not.toHaveBeenCalled();
   });
 
@@ -277,9 +288,7 @@ describe("team.collect", () => {
 describe("buildTeamToolsForConversation (per-run cross MCP channel / CLI leaders)", () => {
   it("resolves the toolkit for a conversation bound to a leader agent", async () => {
     repoMocks.convMeta.mockResolvedValue({ id: "conv-leader", agentId: "lead-1" });
-    repoMocks.agentGet.mockResolvedValue(leader);
     repoMocks.agentList.mockResolvedValue([leader, workerA, workerB]);
-    repoMocks.rolesList.mockResolvedValue([]);
     const built = await buildTeamToolsForConversation({
       executor,
       user: undefined,
@@ -292,7 +301,7 @@ describe("buildTeamToolsForConversation (per-run cross MCP channel / CLI leaders
     expect(built!.tools.map((t) => t.name).sort()).toEqual(["team.assign", "team.collect", "team.integrate", "team.note", "team.plan", "team.status"]);
   });
 
-  it("returns null for loose chats, non-leader agents and missing agents", async () => {
+  it("returns null for loose/non-leader chats and rejects missing bound agents", async () => {
     const base = {
       executor,
       user: undefined,
@@ -305,13 +314,12 @@ describe("buildTeamToolsForConversation (per-run cross MCP channel / CLI leaders
     expect(await buildTeamToolsForConversation(base)).toBeNull();
     // Bound agent without supervisor permission.
     repoMocks.convMeta.mockResolvedValue({ id: "conv-x", agentId: "w-a" });
-    repoMocks.agentGet.mockResolvedValue(workerA);
     repoMocks.agentList.mockResolvedValue([leader, workerA]);
-    repoMocks.rolesList.mockResolvedValue([]);
+    repoMocks.rolesList.mockResolvedValue([{ id: "r-1", name: "Ingeniero Backend", systemPrompt: "", allowedTools: null }]);
     expect(await buildTeamToolsForConversation(base)).toBeNull();
     // Deleted agent.
     repoMocks.agentGet.mockResolvedValue(null);
-    expect(await buildTeamToolsForConversation(base)).toBeNull();
+    await expect(buildTeamToolsForConversation(base)).rejects.toMatchObject({ code: "ASSISTANT_AGENT_NOT_FOUND" });
   });
 
   it("renders the CLI prompt block with the MCP wire names", async () => {

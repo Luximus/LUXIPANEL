@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import path from "node:path";
-import { AppError } from "../../../shared/errors/index.js";
+import { AppError, type ErrorCode } from "../../../shared/errors/index.js";
 import { getContextExecutor, getContextUser, getContextUserId, type Executor } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
@@ -9,14 +9,12 @@ import { agentRolesRepository } from "../repositories/agent-roles.repository.js"
 import { projectsRepository, type AssistantProject } from "../repositories/projects.repository.js";
 import { agentAssignments, type AssistantAgent, type EffectiveAssignment } from "../models/assistant-agent.types.js";
 import type { AssistantRole } from "../models/assistant-role.types.js";
+import { normalizeAllowedTools } from "./tool-allowlist.js";
 import { projectClosure } from "./project-closure.js";
-import { markAssignmentAdmission, withAssignmentLock } from "./agent-assignment-lock.js";
+import { assertAssignmentTarget, markAssignmentAdmission, withAssignmentLock } from "./agent-assignment-lock.js";
 
-export function assignmentError(code: string, message: string, status = 409): AppError {
-  // Domain codes are additive; the shared HTTP error mapper preserves them.
-  const error = new AppError(message, status);
-  Object.defineProperty(error, "code", { value: code, enumerable: true });
-  return error;
+export function assignmentError(code: ErrorCode, message: string, status = 409): AppError {
+  return new AppError(message, status, code);
 }
 export function mayUseProject(project: { ownerId?: number | null }, user: SessionUser | null | undefined = getContextUser()): boolean {
   const uid = user?.userId ?? getContextUserId();
@@ -38,6 +36,13 @@ export function projectAncestors(all: AssistantProject[], id: string): Assistant
   }
   return out;
 }
+export function assertProjectScope(all: AssistantProject[], projectId: string, user?: SessionUser): AssistantProject[] {
+  assertProjectAccess(all.find(p => p.id === projectId), user);
+  const ancestors = projectAncestors(all, projectId);
+  for (const project of ancestors) assertProjectAccess(project, user);
+  return ancestors;
+}
+
 export function effectiveAssignment(agent: AssistantAgent, all: AssistantProject[], projectId: string): EffectiveAssignment | null {
   const assignments = agentAssignments(agent);
   for (const project of projectAncestors(all, projectId).reverse()) {
@@ -49,6 +54,10 @@ export function effectiveAssignment(agent: AssistantAgent, all: AssistantProject
 export function intersectLists<T>(base: T[] | null | undefined, limit: T[] | null | undefined): T[] | null {
   if (limit == null) return base ?? null;
   return base == null ? [...limit] : base.filter(v => limit.includes(v));
+}
+function intersectToolLimits(...lists: (string[] | null | undefined)[]): string[] | null {
+  return lists.reduce<string[] | null>((current, list) => intersectLists(current,
+    normalizeAllowedTools(list, { onUnknown: "drop", context: "agent-assignment" })?.valid ?? null), null);
 }
 const within = (child: string, parent: string) => child === parent || child.startsWith(parent === "/" ? "/" : parent + "/");
 export function intersectPaths(base: string[], limit: string[] | null | undefined): string[] {
@@ -69,6 +78,7 @@ export interface AgentContext {
 /** Fail closed. Fresh on every admission and protected tool dispatch. */
 export async function resolveAgentContext(executor: Executor | null | undefined, agentId?: string | null, requestedProjectId?: string | null, user?: SessionUser): Promise<AgentContext> {
   if (!executor) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "Se requiere el servidor conectado.", 403);
+  assertAssignmentTarget(executor);
   const original = agentId ? await agentsRepository.get(agentId) : null;
   if (agentId && !original) throw assignmentError("ASSISTANT_AGENT_NOT_FOUND", "Agente no encontrado.", 404);
   if (original && !mayUseProject(original, user ?? getContextUser())) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "No tienes acceso a este agente.", 403);
@@ -85,9 +95,7 @@ export async function resolveAgentContext(executor: Executor | null | undefined,
   let ancestors: AssistantProject[] = [], contextProjects: AssistantProject[] = [];
   let assignment: EffectiveAssignment | null = null;
   if (projectId) {
-    assertProjectAccess(all.find(p => p.id === projectId), user);
-    ancestors = projectAncestors(all, projectId);
-    for (const p of ancestors) assertProjectAccess(p, user);
+    ancestors = assertProjectScope(all, projectId, user);
     if (original) {
       assignment = effectiveAssignment(original, all, projectId);
       if (!assignment) {
@@ -109,13 +117,13 @@ export async function resolveAgentContext(executor: Executor | null | undefined,
     if (assignment.roleId && (!localRole || !mayUseProject(localRole, user ?? getContextUser()))) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "No se pudo verificar el rol de la asignación.", 403);
     if (localRole) role = { ...localRole,
       systemPrompt: [baseRole?.systemPrompt, localRole.id === baseRole?.id ? "" : localRole.systemPrompt].filter(Boolean).join("\n\n"),
-      allowedTools: intersectLists(baseRole?.allowedTools, localRole.allowedTools),
+      allowedTools: intersectToolLimits(baseRole?.allowedTools, localRole.allowedTools),
       canSpawnChats: Boolean(baseRole?.canSpawnChats),
     };
     const supervisor = Boolean(agent.canSpawnChats || baseRole?.canSpawnChats) && assignment.canSpawnChats !== false;
     if (role) role = { ...role, canSpawnChats: supervisor };
     agent = { ...agent, canSpawnChats: supervisor, roleId: assignment.roleId ?? agent.roleId,
-      allowedTools: intersectLists(intersectLists(agent.allowedTools, baseRole?.allowedTools), assignment.allowedTools),
+      allowedTools: intersectToolLimits(agent.allowedTools, baseRole?.allowedTools, assignment.allowedTools),
       systemPrompt: [agent.systemPrompt, assignment.jobTitle ? "Cargo en este proyecto: " + assignment.jobTitle : "", assignment.instructions].filter(Boolean).join("\n\n"),
       projectIds: [projectId!],
       projectPaths: intersectPaths(intersectPaths(contextProjects.map(p => p.path).filter(Boolean), agent.projectPaths?.length ? agent.projectPaths : null), assignment.projectPaths),
@@ -124,7 +132,7 @@ export async function resolveAgentContext(executor: Executor | null | undefined,
         servers.findIndex(s => s.id === server.id) === index &&
         (assignment.serverIds == null || assignment.serverIds.includes(server.id)) &&
         (!original!.servers?.length || original!.servers.some(s => s.id === server.id))),
-      teamId: ancestors[0]?.teamId ?? agent.teamId,
+      teamId: ancestors[0]?.teamId ?? (assignment.source === "legacy" ? agent.teamId : null),
       parentAgentId: assignment.parentAgentId !== undefined ? assignment.parentAgentId :
         assignment.source === "legacy" ? agent.parentAgentId :
         ancestors[0]?.leaderAgentId === agent.id ? null : ancestors[0]?.leaderAgentId ?? null,

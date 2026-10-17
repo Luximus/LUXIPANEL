@@ -5,6 +5,12 @@ import type { AssistantAgent } from "../models/assistant-agent.types.js";
 import type { AgentMessage } from "../models/agent-message.types.js";
 import type { SessionUser } from "../../../shared/types/index.js";
 
+// These unit calls run on the explicitly selected test target.
+vi.mock("../../../shared/executor/index.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../shared/executor/index.js")>();
+  return { ...actual, getContextExecutor: () => actual.localExecutor };
+});
+
 // In-memory message store: the repository is the only persistence the service
 // touches, so we drive it directly (no sidecar / SSH).
 const messages = vi.hoisted(() => [] as AgentMessage[]);

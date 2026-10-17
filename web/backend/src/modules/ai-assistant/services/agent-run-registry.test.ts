@@ -284,6 +284,27 @@ describe("agentRunRegistry", () => {
     await waitFor(() => !agentRunRegistry.isActive(cliKey));
   });
 
+  it("detaches a recovered CLI before its first event, including consecutive shutdowns", async () => {
+    const key = `conv-recovered-before-replay-${Math.random()}`;
+    const onComplete = vi.fn();
+    let release!: () => void;
+    const recovering = new Promise<void>(resolve => { release = resolve; });
+    agentRunRegistry.start({
+      key, executor, cli: true,
+      makeGen: async function* () { await recovering; yield { type: "done" }; },
+      onComplete,
+    });
+    try {
+      for (let restart = 0; restart < 2; restart++) {
+        const result = await agentRunRegistry.gracefulShutdown(10);
+        expect(result).toEqual({ flushed: 0, cliDetached: 1 });
+        expect(agentRunRegistry.isActive(key)).toBe(true);
+        expect(onComplete).not.toHaveBeenCalled();
+      }
+    } finally { release(); }
+    await waitFor(() => !agentRunRegistry.isActive(key));
+  });
+
   it("stop() aborts an in-flight run", async () => {
     const key = `conv-stop-${Math.random()}`;
     let sawAbort = false;

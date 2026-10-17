@@ -12,13 +12,13 @@ vi.mock("ws", async () => {
     close() { this.readyState = 3; this.emit("close"); }
   }};
 });
-vi.mock("../../../shared/executor/context.js", () => ({ getContextUserId: () => 1, runWithExecutor: (_e: unknown, fn: () => unknown) => fn() }));
+vi.mock("../../../shared/executor/context.js", () => ({ getContextUserId: () => 1, getContextExecutor: () => ({ target: { id: "target-a" } }), runWithExecutor: (_e: unknown, fn: () => unknown) => fn() }));
 vi.mock("./execution-scope.js", () => ({ executionKey: (id: string, target: string) => JSON.stringify([target, id]) }));
 vi.mock("../repositories/assistant-config.repository.js", () => ({ assistantConfigRepository: { load: () => m.cfg } }));
 vi.mock("../repositories/projects.repository.js", () => ({ projectsRepository: { list: m.projects } }));
 vi.mock("../repositories/agents.repository.js", () => ({ agentsRepository: {
   list: m.agents,
-  get: async (id: string) => id === "a1" ? { id, name: "Worker", ownerId: 1, teamId: "t1", projectIds: ["p1"] } : null,
+  get: async (id: string) => (await m.agents()).find((a: any) => a.id === id) ?? null,
 } }));
 vi.mock("../repositories/conversations.repository.js", () => ({ conversationsRepository: {
   listIds: async () => new Set(["chat"]), getMeta: m.meta, messages: m.messages, appendMessages: m.append, patchRuntime: vi.fn(),
@@ -158,6 +158,7 @@ it.each(["webrtc","pcm"] as const)("supports a general chat using %s without loa
 });
 it("uses the chat's custom agent for general voice and denies an unavailable agent",async()=>{
   m.meta.mockResolvedValue({provider:"codex",projectId:null,agentId:"a1"});
+  m.agents.mockResolvedValue([{ id: "a1", name: "Worker", ownerId: 1, projectIds: [] }]);
   id=(await realtimeService.start(executor,user,input)).id;
   const socket=m.sockets[0];
   socket.emit("message",Buffer.from(JSON.stringify({type:"response.function_call_arguments.done",name:"task_assign",call_id:"custom",arguments:JSON.stringify({agentId:"a1",task:"Revisar"})})));
@@ -165,7 +166,7 @@ it("uses the chat's custom agent for general voice and denies an unavailable age
   expect(m.assign.mock.calls[0][0]).toMatchObject({projectId:null,worker:{id:"a1"}});
   await realtimeService.stop(id,executor,user);id=undefined;
   m.meta.mockResolvedValue({projectId:null,agentId:"private"});
-  await expect(realtimeService.start(executor,user,input)).rejects.toThrow("agente");
+  await expect(realtimeService.start(executor,user,input)).rejects.toMatchObject({ code: "ASSISTANT_AGENT_NOT_FOUND" });
 });
 it("keeps project tasks outside a general chat and supports its approval buttons",async()=>{
   m.meta.mockResolvedValue({provider:"codex"});
@@ -201,4 +202,22 @@ it("emits a transcript only after history persistence so clients can refresh it 
  await vi.waitFor(()=>expect(m.append).toHaveBeenCalledTimes(1));
  expect(realtimeService.snapshot(id,executor,user,0).events.some(e=>e.type==="transcript")).toBe(false);
  saved();await vi.waitFor(()=>expect(realtimeService.snapshot(id!,executor,user,0).events.filter(e=>e.type==="transcript")).toHaveLength(1));
+});
+
+it("requires a project for multiproject voice and rejects withdrawn assignments", async () => {
+  m.agents.mockResolvedValue([{ id: "a1", ownerId: 1, projectIds: ["p1", "other"] }]);
+  m.meta.mockResolvedValue({ agentId: "a1", projectId: null });
+  await expect(realtimeService.start(executor, user, input)).rejects.toMatchObject({ code: "ASSISTANT_PROJECT_REQUIRED" });
+  m.meta.mockResolvedValue({ agentId: "a1", projectId: "p1" });
+  m.agents.mockResolvedValue([{ id: "a1", ownerId: 1, projectIds: ["p1"], assignments: [{ projectId: "p1", status: "removed" }] }]);
+  await expect(realtimeService.start(executor, user, input)).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_REMOVED" });
+  expect(fetch).not.toHaveBeenCalled();
+});
+it("holds the bound assignment while voice is active and releases it on close", async () => {
+  const { hasAssignmentAdmission } = await import("./agent-assignment-lock.js");
+  m.meta.mockResolvedValue({ agentId: "a1", projectId: "p1" });
+  id = (await realtimeService.start(executor, user, input)).id;
+  expect(hasAssignmentAdmission(executor, "a1", new Set(["p1"]))).toBe(true);
+  await realtimeService.stop(id, executor, user); id = undefined;
+  expect(hasAssignmentAdmission(executor, "a1", new Set(["p1"]))).toBe(false);
 });

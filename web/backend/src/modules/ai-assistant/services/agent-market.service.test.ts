@@ -33,7 +33,12 @@ vi.mock("../repositories/agent-queue.repository.js", () => ({ agentQueueReposito
   enqueue: async (_e: unknown, item: any) => { state.queue.push(item); return item; },
 } }));
 vi.mock("../repositories/team-tasks.repository.js", () => ({ teamTasksRepository: { listActive: async () => { await state.waitTasks?.(); return state.tasks; } } }));
-vi.mock("../repositories/cli-jobs.repository.js", () => ({ cliJobsRepository: { list: async () => state.jobs } }));
+vi.mock("../repositories/agent-activity.repository.js", () => ({ agentActivityRepository: {
+  forAssignment: async (_e: unknown, agentId: string, projects: Set<string>) => state.metas
+    .filter(m => m.agentId === agentId && (!m.projectId || projects.has(m.projectId)))
+    .map(m => ({ conversationId: m.id, pendingQuestion: !!state.messages.get(m.id)?.at(-1)?.ask?.length,
+      pendingCliJob: state.jobs.some(j => j.conversationId === m.id) })),
+} }));
 vi.mock("../repositories/agent-messages.repository.js", () => ({ agentMessagesRepository: { listPending: async () => state.handoffs } }));
 vi.mock("../repositories/conversations.repository.js", () => ({ conversationsRepository: {
   getMeta: async (_e: unknown, id: string) => state.metas.find(m => m.id === id) ?? null,
@@ -42,13 +47,12 @@ vi.mock("../repositories/conversations.repository.js", () => ({ conversationsRep
 } }));
 vi.mock("./agent-run-registry.js", () => ({ agentRunRegistry: { isActive: (id: string) => state.active.has(id) } }));
 vi.mock("./permission-broker.js", () => ({ permissionBroker: { pendingCount: (id: string) => state.active.has("approval:" + id) ? 1 : 0 } }));
-vi.mock("./tool-allowlist.js", () => ({ normalizeAllowedTools: (values: string[]) => ({ valid: values }) }));
+vi.mock("./tool-allowlist.js", () => ({ normalizeAllowedTools: (values: string[] | null | undefined) => values == null ? null : ({ valid: values }) }));
 vi.mock("./team-tools.js", () => ({ buildTeamTools: async () => null, TEAM_TOOL_WIRE_NAMES: {} }));
 vi.mock("./agent-messages.service.js", () => ({ buildSendMessageTool: () => null, buildAgentMessagePromptBlock: () => "", SEND_MESSAGE_TOOL_WIRE_NAME: "" }));
 vi.mock("./system-prompt/delegation-tools.js", () => ({ buildDelegateTool: () => null, buildSpawnChatsTool: () => null }));
 vi.mock("../repositories/assistant-skills.repository.js", () => ({ assistantSkillsRepository: { load: async () => ({}) } }));
 vi.mock("./assistant-skills.service.js", () => ({ assistantSkillsService: { resolveFromMap: () => ({ isEnabled: () => false, promptBlocks: () => "" }) } }));
-vi.mock("../../../../shared/marketplace-link/index.js", () => ({}));
 vi.mock("../../../shared/marketplace-link/index.js", () => ({ marketplaceLinkRepository: { getByProjectId: async () => null } }));
 vi.mock("./graph-index.service.js", () => ({ graphIndexService: { probeAvailability: async () => ({ available: true, binPath: "/graph" }) } }));
 vi.mock("./providers/cli/cli-sudo-askpass.js", () => ({ hasSudoCredential: async () => false }));
@@ -278,5 +282,55 @@ describe("effective runtime scope", () => {
     expect((await graphScopeService.resolve(executor, "chat")).projects.map(p => p.graphName)).toEqual(["graph-X", "graph-child"]);
     await agentMarketService.remove(executor, "a", "X", user);
     expect((await graphScopeService.resolve(executor, "chat")).projects).toEqual([]);
+  });
+});
+
+describe("assignment hierarchy and access validation", () => {
+  it("changes the superior in X while keeping the hierarchy in Y", async () => {
+    state.agents.get("a").parentAgentId = "leader-Y";
+    state.agents.set("leader-X", profile({ id: "leader-X", projectIds: ["X"] }));
+    await agentMarketService.put(executor, "a", "X", { parentAgentId: "leader-X", connections: [] }, user);
+    expect((await resolveAgentContext(executor, "a", "X", user)).agent?.parentAgentId).toBe("leader-X");
+    expect((await resolveAgentContext(executor, "a", "Y", user)).agent?.parentAgentId).toBe("leader-Y");
+  });
+  it("rejects references to another root and hierarchy cycles", async () => {
+    state.agents.set("only-Y", profile({ id: "only-Y", projectIds: ["Y"] }));
+    await expect(agentMarketService.put(executor, "a", "X", { connections: ["only-Y"] }, user)).rejects.toMatchObject({ statusCode: 403 });
+    state.agents.set("cyclic", profile({ id: "cyclic", projectIds: ["X"], parentAgentId: "a" }));
+    await expect(agentMarketService.put(executor, "a", "X", { parentAgentId: "cyclic" }, user)).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("rejects graph/server references outside the active root", async () => {
+    await expect(agentMarketService.put(executor, "a", "X", { graphProjectIds: ["Y"] }, user)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(agentMarketService.put(executor, "a", "X", { serverIds: ["server-Y"] }, user)).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("does not reveal or incorporate a child under an unauthorized root", async () => {
+    state.projects.find(p => p.id === "X").ownerId = 99;
+    await expect(agentMarketService.put(executor, "a", "child", {}, user)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(agentMarketService.assignments(executor, "a", "child", user)).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
+
+it("fails closed when an explicit target differs from the contextual executor", async () => {
+  await expect(resolveAgentContext({ target: { id: "other-target" } } as Executor, "a", "X", user))
+    .rejects.toMatchObject({ code: "ASSISTANT_PROJECT_FORBIDDEN" });
+  await expect(agentMarketService.remove({ target: { id: "other-target" } } as Executor, "a", "X", user))
+    .rejects.toMatchObject({ code: "ASSISTANT_PROJECT_FORBIDDEN" });
+  expect(state.agents.get("a").projectIds).toContain("X");
+});
+
+it("preserves a legacy superior when configuring or reincorporating its assignment", async () => {
+  state.agents.get("a").parentAgentId = "legacy-superior";
+  state.projects.find(p => p.id === "X").leaderAgentId = "new-project-leader";
+  await agentMarketService.put(executor, "a", "X", { jobTitle: "Backend" }, user);
+  expect((await resolveAgentContext(executor, "a", "X", user)).agent?.parentAgentId).toBe("legacy-superior");
+  await agentMarketService.remove(executor, "a", "Y", user);
+  await agentMarketService.put(executor, "a", "Y", {}, user);
+  expect((await resolveAgentContext(executor, "a", "Y", user)).agent?.parentAgentId).toBe("legacy-superior");
+});
+it("preserves actionable status and code in the shared HTTP envelope", async () => {
+  const { mapErrorToResponse } = await import("../../../shared/errors/error-handler.js");
+  const error = await resolveAgentContext(executor, "a", null, user).catch(error => error);
+  expect(mapErrorToResponse(error, "es")).toMatchObject({
+    statusCode: 400, body: { ok: false, code: "ASSISTANT_PROJECT_REQUIRED", error: expect.any(String) },
   });
 });

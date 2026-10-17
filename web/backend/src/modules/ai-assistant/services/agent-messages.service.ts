@@ -1,3 +1,4 @@
+import { admitAgentWork, resolveConversationBinding, resolveAgentContext, scopedAgents } from "./agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -99,8 +100,11 @@ export const agentMessagesService = {
       );
     }
 
-    const allAgents = input.allAgents ?? (await agentsRepository.list());
-    const targets = computeAgentTargets(fromAgent, allAgents, { includeParent: true });
+    const binding = await resolveConversationBinding(executor, { conversationId: senderConversationId ?? undefined, agentId: fromId }, user);
+    const source = await admitAgentWork(executor, fromId, binding.projectId, user);
+    try {
+    const allAgents = await scopedAgents(executor, await agentsRepository.list(), binding.projectId, user);
+    const targets = computeAgentTargets(source.agent!, allAgents, { includeParent: true });
     const target = targets.find((a) => a.id === toAgentId);
     if (!target?.id) {
       throw new ValidationError(
@@ -111,7 +115,7 @@ export const agentMessagesService = {
     // Mailbox cap + dedupe over the SAME ordered pair. Both read the pair's
     // non-terminal messages: a recipient that isn't draining must not be
     // flooded, and a model that retries the same handoff must not duplicate it.
-    const pair = await agentMessagesRepository.listForPair(executor, fromId, toAgentId);
+    const pair = (await agentMessagesRepository.listForPair(executor, fromId, toAgentId)).filter(m => (m.projectId ?? null) === binding.projectId);
     const open = pair.filter((m) => m.status === "pending" || m.status === "delivered");
     const duplicate = open.find((m) => m.status === "pending" && m.text === text);
     if (duplicate?.id) {
@@ -125,7 +129,10 @@ export const agentMessagesService = {
       );
     }
 
+    const admission = await admitAgentWork(executor, toAgentId, binding.projectId, user);
+    try {
     const message = await agentMessagesRepository.create(executor, {
+      projectId: binding.projectId,
       fromAgentId: fromId,
       fromAgentName: fromAgent.name,
       toAgentId,
@@ -154,6 +161,8 @@ export const agentMessagesService = {
       "agent-message: queued for delivery",
     );
     return { message, deduped: false };
+    } finally { admission.release(); }
+    } finally { source.release(); }
   },
 
   /**
@@ -328,10 +337,9 @@ export async function buildSendMessageToolForConversation(args: {
   const meta = await conversationsRepository.getMeta(executor, conversationId);
   const agentId = meta?.agentId ?? null;
   if (!agentId) return null;
-  const [agent, allAgents] = await Promise.all([
-    agentsRepository.get(agentId).catch(() => null),
-    agentsRepository.list().catch(() => [] as AssistantAgent[]),
-  ]);
+  const context = await resolveAgentContext(executor, agentId, meta?.projectId, user);
+  const agent = context.agent;
+  const allAgents = await scopedAgents(executor, await agentsRepository.list(), context.projectId, user);
   if (!agent?.id) return null;
   return buildSendMessageTool({ agent, allAgents, executor, user, userId, depth: 0, conversationId });
 }

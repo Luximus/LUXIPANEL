@@ -5,13 +5,20 @@ import { agentCapabilityRegistry } from "../../../shared/agent-capability/regist
 import { runWithExecutor, setContextFileJail, getFileJailPaths } from "../../../shared/executor/context.js";
 import type { Executor } from "../../../shared/executor/types.js";
 import type { SessionUser } from "../../../shared/types/index.js";
-const state = vi.hoisted(() => ({ enabled: { demo: true } as Record<string, boolean>, access: {} as any, mode: "manual", decision: null as null | (() => Promise<"allow" | "deny">), liveCalls: 0, blockOn: 0, release: undefined as undefined | ((user: SessionUser) => void), catalog: [] as {id:string;name:string;description:string}[], live: null as SessionUser | null }));
+const state = vi.hoisted(() => ({ profiles: [] as any[], projects: [] as any[], meta: null as any, enabled: { demo: true } as Record<string, boolean>, access: {} as any, mode: "manual", decision: null as null | (() => Promise<"allow" | "deny">), liveCalls: 0, blockOn: 0, release: undefined as undefined | ((user: SessionUser) => void), catalog: [] as {id:string;name:string;description:string}[], live: null as SessionUser | null }));
 vi.mock("../../../shared/module-state/index.js", () => ({ getModuleCatalog: () => state.catalog, getModuleEnabledMap: async () => state.enabled }));
 vi.mock("../repositories/assistant-module-access.repository.js", () => ({ assistantModuleAccessRepository: { load: async () => state.access } }));
 vi.mock("../../auth/services/live-authorization.service.js", () => ({ resolveLiveAuthorization: async (user: SessionUser) => { state.liveCalls++; if (state.liveCalls === state.blockOn) return new Promise<SessionUser>(resolve => { state.release = resolve; }); return state.live ?? user; } }));
 vi.mock("./agent-run-registry.js", () => ({ agentRunRegistry: { inject: vi.fn(), getApproval: () => ({ mode: state.mode, autoApprove: new Set() }) } }));
 vi.mock("./permission-broker.js", () => ({ permissionBroker: { request: () => state.decision ? state.decision() : Promise.resolve("deny") } }));
 vi.mock("../repositories/assistant-audit.repository.js", () => ({ assistantAuditRepository: { append: vi.fn(async () => {}) } }));
+// External GitHub entitlement is tested separately; this suite exercises dispatch.
+vi.mock("../../../shared/github/user-connection.js", () => ({ requireGithub: async () => {} }));
+vi.mock("../repositories/conversations.repository.js", () => ({ conversationsRepository: { getMeta: async () => state.meta } }));
+vi.mock("../repositories/agents.repository.js", () => ({ agentsRepository: { get: async (id: string) => state.profiles.find(a => a.id === id) ?? null } }));
+vi.mock("../repositories/projects.repository.js", () => ({ projectsRepository: { list: async () => state.projects } }));
+vi.mock("../repositories/agent-roles.repository.js", () => ({ agentRolesRepository: { get: async () => null } }));
+import { hasAssignmentAdmission } from "./agent-assignment-lock.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { executeModuleTool, moduleDiscoveryTools, moduleToolRevision } from "./module-tools.service.js";
 const executor = { target: { id: "A", name: "A" } } as Executor;
@@ -19,7 +26,7 @@ const user = { userId: 7, username: "admin", displayName: "Admin", role: "admin"
 const handler = vi.fn(async () => ({ ok: true, output: getFileJailPaths() }));
 function register() { agentCapabilityRegistry.register({ moduleId: "demo", catalogModuleId: "demo", version: 1, tools: [{ name: "demo.read", title: "Read", description: "Read demo", kind: "read", permission: "demo.read", inputSchema: { type: "object" }, handler }, { name: "demo.edit", title: "Edit", description: "Edit demo", kind: "action", permission: "demo.edit", inputSchema: { type: "object" }, handler }] }); }
 const scoped = <T>(fn: () => T) => runWithExecutor(executor, fn, 7, user);
-beforeEach(() => { agentCapabilityRegistry._resetForTest(); state.liveCalls = 0; state.blockOn = 0; state.release = undefined; state.catalog = []; state.enabled = { demo: true }; state.access = {}; state.mode = "manual"; state.decision = null; state.live = null; handler.mockClear(); register(); });
+beforeEach(() => { state.profiles = []; state.projects = []; state.meta = null; agentCapabilityRegistry._resetForTest(); state.liveCalls = 0; state.blockOn = 0; state.release = undefined; state.catalog = []; state.enabled = { demo: true }; state.access = {}; state.mode = "manual"; state.decision = null; state.live = null; handler.mockClear(); register(); });
 describe("live module dispatch", () => {
   it("discovers schemas dynamically and preserves the project jail", async () => scoped(async () => {
     setContextFileJail(["/srv/project"]);
@@ -102,4 +109,63 @@ it("rejects a module disabled during the final identity check", async () => scop
   await vi.waitFor(() => expect(state.release).toBeTypeOf("function"));
   state.enabled.demo = false; notifyModulesChanged("demo", "A"); state.release!(user);
   await expect(pending).rejects.toThrow("changed"); expect(handler).not.toHaveBeenCalled();
+}));
+
+describe("project assignment at protected tool dispatch", () => {
+  function setupContext() {
+    state.profiles = [{ id: "a", ownerId: 7, name: "A", systemPrompt: "", allowedTools: null, projectIds: ["X", "Y"] }];
+    state.projects = ["X", "Y"].map(id => ({ id, ownerId: 7, title: id, path: "/" + id, servers: [{ id: "server-" + id }] }));
+    state.meta = { id: "chat", agentId: "a", projectId: "X", messageCount: 0 };
+    return { executor, user, conversationId: "chat" };
+  }
+  it("denies a foreign project path and an explicit empty path scope", async () => scoped(async () => {
+    const scope = setupContext();
+    await expect(executeModuleTool("demo.read", { path: "/Y/source" }, scope)).rejects.toThrow("Path outside");
+    state.profiles[0].assignments = [{ projectId: "X", status: "active", projectPaths: [] }];
+    await expect(executeModuleTool("demo.read", { path: "/X/source" }, scope)).rejects.toThrow("Path outside");
+    expect(handler).not.toHaveBeenCalled();
+  }));
+  it("denies a server from Y while executing X", async () => scoped(async () => {
+    const scope = setupContext();
+    state.enabled.servers = true;
+    agentCapabilityRegistry.register({ moduleId: "servers", version: 1, tools: [{ name: "servers.read_file", title: "Read", description: "Read", kind: "read", permission: "servers.read", inputSchema: { type: "object" }, handler }] });
+    expect(await executeModuleTool("servers.read_file", { serverId: "server-Y" }, scope)).toMatchObject({ ok: false });
+    expect(handler).not.toHaveBeenCalled();
+    expect(await executeModuleTool("servers.read_file", { serverId: "server-X" }, scope)).toMatchObject({ ok: true });
+  }));
+  it("revalidates withdrawal after waiting for approval", async () => scoped(async () => {
+    const scope = setupContext();
+    state.decision = async () => {
+      state.profiles[0].assignments = [{ projectId: "X", status: "removed" }];
+      return "allow";
+    };
+    await expect(executeModuleTool("demo.edit", {}, scope)).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_REMOVED" });
+    expect(handler).not.toHaveBeenCalled();
+  }));
+  it("holds admission until the protected operation finishes", async () => scoped(async () => {
+    const scope = setupContext();
+    handler.mockImplementationOnce(async () => {
+      expect(hasAssignmentAdmission(executor, "a", new Set(["X"]))).toBe(true);
+      expect(hasAssignmentAdmission(executor, "a", new Set(["Y"]))).toBe(false);
+      return { ok: true, output: null };
+    });
+    expect(await executeModuleTool("demo.read", { path: "/X/source" }, scope)).toMatchObject({ ok: true });
+    expect(hasAssignmentAdmission(executor, "a", new Set(["X"]))).toBe(false);
+  }));
+  it("intersects profile and assignment tool restrictions", async () => scoped(async () => {
+    const scope = setupContext();
+    state.profiles[0].allowedTools = ["demo.read"];
+    state.profiles[0].assignments = [{ projectId: "X", status: "active", allowedTools: ["demo.edit"] }];
+    expect(await executeModuleTool("demo.read", {}, scope)).toMatchObject({ ok: false });
+    expect(handler).not.toHaveBeenCalled();
+  }));
+});
+
+it("intersects normalized legacy tool aliases with assignment limits", async () => scoped(async () => {
+  state.enabled.files = true;
+  agentCapabilityRegistry.register({ moduleId: "files", version: 1, tools: [{ name: "files.list_dir", title: "List", description: "List", kind: "read", permission: "files.view", inputSchema: { type: "object" }, handler }] });
+  state.profiles = [{ id: "a", ownerId: 7, name: "A", systemPrompt: "", allowedTools: ["files.list"], projectIds: ["X"], assignments: [{ projectId: "X", status: "active", allowedTools: ["files.list_dir"] }] }];
+  state.projects = [{ id: "X", ownerId: 7, title: "X", path: "/X" }];
+  state.meta = { id: "chat", agentId: "a", projectId: "X" };
+  expect(await executeModuleTool("files.list_dir", { path: "/X" }, { executor, user, conversationId: "chat" })).toMatchObject({ ok: true });
 }));

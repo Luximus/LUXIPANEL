@@ -1,9 +1,8 @@
 import type { Executor } from "../../../shared/executor/index.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
-import { agentsRepository } from "../repositories/agents.repository.js";
-import { projectsRepository, type AssistantProject } from "../repositories/projects.repository.js";
-import { projectClosure } from "./project-closure.js";
+import { type AssistantProject } from "../repositories/projects.repository.js";
+import { resolveAgentContext } from "./agent-context.service.js";
 
 const log = createModuleLogger("ai-assistant:graph-scope");
 
@@ -42,14 +41,7 @@ function toScopeProjects(projects: AssistantProject[]): GraphScopeProject[] {
   return out;
 }
 
-// Per-conversation cache. Without it every single graph tool call would re-read
-// two sidecars over SSH (conversation meta + agent + projects). Short TTL: an
-// agent's projects change rarely, and a stale grant window of 60s is acceptable
-// because narrowing a scope mid-run is not a security-critical transition (a
-// WIDENED scope only takes effect a minute later, which is the safe direction).
-const TTL_MS = 60_000;
-const cache = new Map<string, { at: number; scope: GraphScope }>();
-
+// Scope is revalidated per call; revocation never waits for a TTL.
 export const graphScopeService = {
   /**
    * Resolve which code graphs a conversation may query. This is the AUTHORITY:
@@ -59,42 +51,20 @@ export const graphScopeService = {
    * what gets validated against this scope.
    *
    * Rules:
-   *  • Agent-bound run  → the transitive closure of `agent.projectIds`. If the
-   *    conversation ALSO carries a projectId, it must belong to that closure;
-   *    otherwise it is ignored (the agent's assignment wins). Letting the
-   *    conversation's project widen the scope would reopen the hole from behind.
-   *  • Plain chat       → the conversation's project plus its descendants.
-   *    ANCESTORS ARE DELIBERATELY EXCLUDED: an ancestor of a subproject is how
-   *    the monorepo root (`/var/www`) would end up silently in scope. Reaching
-   *    an ancestor's graph now requires an explicit user approval.
-   *  • No project / no graph ready → empty scope (fail-closed: no graph at all).
+   *  • One active project and its authorized descendants, subject to profile
+   *    and assignment graph limits. Conflicting/removed scopes fail closed.
+   *  • Ancestor and other-root graphs are never implicitly included.
+   *  • No project / no ready graph yields an empty scope.
    */
   async resolve(executor: Executor | null | undefined, conversationId: string): Promise<GraphScope> {
     if (!conversationId) return EMPTY;
-    const hit = cache.get(conversationId);
-    if (hit && Date.now() - hit.at < TTL_MS) return hit.scope;
-
     let scope: GraphScope = EMPTY;
     try {
       const meta = await conversationsRepository.getMeta(executor, conversationId);
       const agentId = meta?.agentId ?? null;
-      const all = await projectsRepository.list(executor);
-
-      if (agentId) {
-        const agent = await agentsRepository.get(agentId);
-        const rootIds = agent?.projectIds ?? [];
-        if (rootIds.length > 0) {
-          const closure = projectClosure(all, rootIds);
-          const projects = toScopeProjects(all.filter((p) => p.id && closure.has(p.id)));
-          scope = { agentId, projects, roots: projects.map((p) => p.path) };
-        } else {
-          // Agent with no projects attached: it inherits the conversation's
-          // project (that is where it was told to work), but nothing wider.
-          scope = { ...conversationScope(all, meta?.projectId ?? null), agentId };
-        }
-      } else {
-        scope = conversationScope(all, meta?.projectId ?? null);
-      }
+      const context = await resolveAgentContext(executor, agentId, meta?.projectId);
+      const projects = toScopeProjects(context.contextProjects.filter(p => !context.agent || context.agent.graphProjectIds?.includes(p.id!)));
+      scope = { agentId, projects, roots: projects.map(p => p.path) };
     } catch (err) {
       // Fail-CLOSED. A scope we cannot prove is a scope we do not grant: the
       // caller turns an empty scope into "no graph for this run", never into
@@ -103,7 +73,6 @@ export const graphScopeService = {
       scope = EMPTY;
     }
 
-    cache.set(conversationId, { at: Date.now(), scope });
     return scope;
   },
 
@@ -113,20 +82,8 @@ export const graphScopeService = {
   },
 
   /** Drop a conversation's cached scope (project/agent edits, run teardown). */
-  invalidate(conversationId: string): void {
-    cache.delete(conversationId);
-  },
+  invalidate(_conversationId: string): void {},
 
   /** @internal — tests. */
-  _clearCache(): void {
-    cache.clear();
-  },
+  _clearCache(): void {},
 };
-
-/** Conversation project + its descendants. No ancestors — see `resolve` docs. */
-function conversationScope(all: AssistantProject[], projectId: string | null): GraphScope {
-  if (!projectId) return EMPTY;
-  const closure = projectClosure(all, [projectId]);
-  const projects = toScopeProjects(all.filter((p) => p.id && closure.has(p.id)));
-  return { agentId: null, projects, roots: projects.map((p) => p.path) };
-}

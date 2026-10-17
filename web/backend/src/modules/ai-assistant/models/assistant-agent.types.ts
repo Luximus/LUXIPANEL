@@ -16,7 +16,7 @@ import type { AssistantSkillsMap } from "./assistant-skills.types.js";
 /**
  * Credencial de PRUEBAS del agente (UNA sola por agente): usuario+clave que el
  * usuario define para los flujos QA que requieren iniciar sesión en la app
- * bajo prueba antes de verificar. Vive en el sidecar 0600 del panel-host
+ * bajo prueba antes de verificar. Vive en el sidecar 0600 del target
  * (mismo modelo que las API keys del asistente); la API HTTP SIEMPRE la
  * devuelve REDACTADA (`{label?, username, hasSecret:true}` — el secret nunca
  * sale del backend); el runtime la inyecta en el system prompt del agente con
@@ -83,12 +83,9 @@ export const AVATAR_CONFIG_KEYS: readonly (keyof AvatarConfig)[] = [
 ] as const;
 
 /**
- * Project reference exposed by the agents-list API (`project` field of each
- * entry). Populated ONLY for a TEAM LEADER agent (one with subordinates) from
- * its first associated project (`projectIds[0]` that resolves to an existing
- * project); `null` for everyone else. Additive — the frontend renders it
- * conditionally (`agent.project?.name`). `id` is the project id, `name` its
- * human title. */
+ * Compatibility reference for the agents-list API. Present only when exactly
+ * one visible direct assignment is active; never selects the first of several.
+ * `id` is the project id and `name` its title. */
 export interface AssistantAgentProjectRef {
   id: string;
   name: string;
@@ -150,16 +147,15 @@ export interface AssistantAgent {
   projectPaths?: string[];
   /** Remote servers this agent may act on (servers.* tools), like a project. */
   servers?: AssistantProjectServer[];
-  /** Attach existing projects (their instructions/path/servers/vault are
-   *  merged in at run time). May reference any node of the project tree —
-   *  attaching a parent implicitly includes its whole subtree at run time. */
+  /** Direct active memberships. Runtime resolves ONE selected project; an
+   *  assigned ancestor also authorizes its descendants. Never union contexts. */
   projectIds?: string[];
   /**
    * Ids de proyectos cuyo ÍNDICE del grafo de código (codebase-memory-mcp)
    * usa este agente: en cada run se anuncian esos grafos en el prompt (y se
    * monta el MCP en CLI) para que el agente explore código por el grafo en
-   * vez de grep/lecturas completas (menos tokens). Se suman a los índices
-   * que ya aporten los proyectos adjuntos. Solo cuentan proyectos con
+   * vez de grep/lecturas completas (menos tokens). Acotan los índices del
+   * proyecto activo y sus descendientes; no amplían a otra raíz. Solo cuentan proyectos con
    * `graphIndex.status === "ready"` en el target conectado.
    */
   graphProjectIds?: string[];

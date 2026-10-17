@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { admitAgentWork, resolveConversationBinding, intersectPaths } from "./agent-context.service.js";
 import { randomUUID } from "node:crypto";
 import { assistantAuditRepository } from "../repositories/assistant-audit.repository.js";
 import { redactModuleData } from "../../../shared/module-operations/redact.js";
 import path from "node:path";
 import { pathInFileJail } from "../../../shared/executor/context.js";
-import { agentsRepository } from "../repositories/agents.repository.js";
-import { agentRolesRepository } from "../repositories/agent-roles.repository.js";
 import { normalizeAllowedTools } from "./tool-allowlist.js";
 import { moduleStateRevision } from "../../../shared/module-state/lifecycle.js";
 import type { AgentTool } from "../../../shared/agent-capability/types.js";
@@ -31,7 +30,7 @@ export function moduleToolRevision(moduleId: string, executor = getContextExecut
 
 interface Scope {
   executor?: Executor | null; user?: SessionUser; conversationId?: string;
-  agentId?: string; signal?: AbortSignal; trace?: boolean; revision?: string; allowlists?: readonly (readonly string[] | null | undefined)[];
+  agentId?: string; projectId?: string; signal?: AbortSignal; trace?: boolean; revision?: string; allowlists?: readonly (readonly string[] | null | undefined)[];
 }
 const runScopes = new Map<string, { allowlists: Scope["allowlists"]; jail: string[] | null; owner: number; agentId?: string; signal?: AbortSignal; tokenHash?: string; alive?: () => boolean }>();
 const key = (conversationId: string, executor: Executor) => JSON.stringify([executor.target.id, conversationId]);
@@ -48,12 +47,9 @@ async function currentTools(scope: Scope): Promise<AgentTool[]> {
   const executor = scope.executor ?? getContextExecutor(), user = scope.user ?? getContextUser();
   if (!executor || !user || getContextExecutor() !== executor || scope.signal?.aborted) return [];
   const currentAllowlists = [...(scope.allowlists ?? [])];
-  if (scope.agentId) {
-    const agent = await agentsRepository.get(scope.agentId);
-    if (!agent) return [];
-    const role = agent.roleId ? await agentRolesRepository.get(agent.roleId) : null;
-    if (agent.roleId && !role) return [];
-    for (const list of [agent.allowedTools, role?.allowedTools]) if (list) currentAllowlists.push(normalizeAllowedTools([...list], { onUnknown: "drop", context: "module-dispatch" })?.valid ?? []);
+  if (scope.agentId || scope.conversationId || scope.projectId) {
+    const context = await resolveConversationBinding(executor, scope, user);
+    for (const list of [context.agent?.allowedTools, context.role?.allowedTools]) if (list) currentAllowlists.push(normalizeAllowedTools([...list], { onUnknown: "drop", context: "module-dispatch" })?.valid ?? []);
   }
   const live = await resolveLiveAuthorization(user, executor);
   const tools = await runWithToolIdentity(live, () => assistantModulesService.permittedTools(executor, live));
@@ -80,10 +76,21 @@ export async function executeModuleTool(name: string, input: unknown, scope: Sco
       if (decision !== "allow") return { ok: false, output: "Operation denied" };
     }
   }
-  tool = await valid(); // includes revision, live identity, activation and sidecar after approval
+  const bound = scope.agentId || scope.conversationId || scope.projectId
+    ? await resolveConversationBinding(scope.executor ?? getContextExecutor(), scope, scope.user ?? getContextUser() ?? undefined) : undefined;
+  const admission = bound?.agentId ? await admitAgentWork(scope.executor ?? getContextExecutor(), bound.agentId, bound.projectId, scope.user ?? getContextUser() ?? undefined) : undefined;
+  try {
+  tool = await valid(); // revision, live identity, activation and sidecar after approval
   if (!tool) return { ok: false, output: "Module tool changed or access was revoked while awaiting approval" };
+  const context = admission ?? bound;
+  if (name.startsWith("servers.") && context?.projectId) {
+    const serverId = (snapshot as { serverId?: string }).serverId;
+    const servers = context.agent?.servers ?? context.ancestors.flatMap(p => p.servers ?? []);
+    if (!serverId || !servers.some(s => s.id === serverId)) return { ok: false, output: "El servidor no pertenece al proyecto activo." };
+  }
+  const scopedPaths = context?.projectId ? context.agent?.projectPaths ?? context.contextProjects.map(p => p.path).filter(Boolean) : undefined;
   const checkPaths = (value: unknown, key = "") => {
-    if (typeof value === "string" && /(?:paths?|directory|destination|source|root|cwd)$/i.test(key) && value.startsWith("/") && !pathInFileJail(path.posix.resolve(value))) throw new Error("Path outside the agent's project scope");
+    if (typeof value === "string" && /(?:paths?|directory|destination|source|root|cwd)$/i.test(key) && value.startsWith("/") && (!pathInFileJail(path.posix.resolve(value)) || (scopedPaths !== undefined && !intersectPaths([value], scopedPaths).includes(path.posix.resolve(value))))) throw new Error("Path outside the agent's project scope");
     if (Array.isArray(value)) for (const item of value) checkPaths(item, key);
     else if (value && typeof value === "object") for (const [key, item] of Object.entries(value)) checkPaths(item, key);
   };
@@ -102,6 +109,7 @@ export async function executeModuleTool(name: string, input: unknown, scope: Sco
   finally {
     if (scope.trace && !name.startsWith("servers.")) void assistantAuditRepository.append({ ts: new Date().toISOString(), provider: "module-tools", tool: name, success, durationMs: Date.now() - started, userId: String((scope.user ?? getContextUser())?.userId ?? "") }, scope.executor);
   }
+  } finally { admission?.release(); }
 }
 export function moduleDiscoveryTools(scope: Scope): AgentTool[] {
   const make = (name: string, description: string, properties: Record<string, unknown>, required: string[], handler: AgentTool["handler"], kind: "read" | "action" = "read"): AgentTool => ({ name: `modules.${name}`, title: name, description, inputSchema: { type: "object", properties, required, additionalProperties: false }, kind, dangerous: false, handler });

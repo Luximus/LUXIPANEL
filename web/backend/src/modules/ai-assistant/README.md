@@ -116,6 +116,35 @@ so the wrapper reads the env instead; no selection → wrapper default). An
 agent-bound run stays LOCKED to the agent's provider/model (overrides ignored);
 with no override and API mode, the auto-router picks the tier.
 
+## Market interno y perfiles multiproyecto
+
+Contrato de backend: [agent-market-contract.md](docs/agent-market-contract.md).
+Se reutilizan agents/projectIds del target conectado: specialty/technologies en
+el perfil, profile/technologies declarados en el proyecto y assignments dentro
+del mismo agente. No hay publicación, pagos, copias de agentes ni migración de
+datos al host del panel.
+
+agent-context.service resuelve un proyecto y su asignación para chat, equipo,
+delegación, mensajes, voz, cola y recuperación. Nunca une otros projectIds raíz:
+rutas/grafos del proyecto activo y sus descendientes; instrucciones/skills y
+servidores de sus ancestros autorizados. Las restricciones intersectan la sesión,
+el perfil y la asignación. Varios vínculos sin selección devuelven
+ASSISTANT_PROJECT_REQUIRED; herencia y campos exactos están en el contrato.
+
+agent-market.service serializa retirada/admisión por target/agente y bloquea
+con ASSISTANT_ASSIGNMENT_BUSY ante runs, tareas, colas, preguntas/aprobaciones
+o mensajes pendientes. agent-activity.repository comprueba estado durable en el
+mismo target sin exponer otros historiales. Retirar conserva id e historial;
+el projectIds antiguo pasa por el mismo guard. La reparación del workspace no
+reasigna perfiles multiproyecto ni revive vínculos retirados, y borrar un
+proyecto requiere retirar sus miembros efectivos primero.
+
+El mutex presupone el backend de una instancia configurado en el ecosystem;
+no coordina dos procesos/nodos. Los controles de rutas/herramientas del panel
+no son un sandbox Linux: no inspeccionan shell libre ni accesos nativos del CLI.
+No cambia el contrato de login, SSO, SSH o Executor; no requiere cambios en
+LP-LICENSE-SERVER ni variables de entorno nuevas.
+
 ## Endpoints
 
 ### Chat / agent
@@ -748,7 +777,14 @@ Only active when the connected target ships the `codebase-memory-mcp` binary
 npx vitest run src/shared/agent-capability src/modules/ai-assistant
 ```
 
-Coverage today: registry (7), modules-service (4), mcp-server (6).
+Market/contexto: agent-market.service.test.ts cubre perfil compartido X/Y,
+herencia, permisos, legado, idempotencia, retirada y carreras de admisión.
+agent-activity.repository.test.ts prueba estado durable per-target/per-user.
+Los tests de module-tools, team-tools, turn-queue, realtime, agent-messages,
+agents.controller y project-workspace cubren los puntos de entrada y despacho.
+Verificar con pnpm run typecheck y pnpm exec vitest run
+src/modules/ai-assistant --pool=threads --maxWorkers=2 --minWorkers=1.
+Build/restart y QA desplegado se realizan en la fase de despliegue autorizada.
 
 ## Approval modes (manual / auto / plan)
 

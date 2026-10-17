@@ -112,6 +112,9 @@ export interface StartRunParams {
   key: string;
   /** Provider owning the run (surfaced by the active-runs feed). */
   provider?: string;
+  /** Trusted recovery callers know the CLI exists before its first replayed
+   * event. Keep it detached if another shutdown happens during recovery. */
+  cli?: boolean;
   /** Project the conversation belongs to (run identity completeness). */
   projectId?: string | null;
   /** Per-server executor; the run is pinned to it for its whole lifetime. */
@@ -310,7 +313,7 @@ export const agentRunRegistry = {
       projectId: params.projectId ?? null,
       userId: params.user?.userId,
       ...(params.isWorker ? { isWorker: true } : {}),
-      cli: false,
+      cli: params.cli === true,
       events: [],
       done: false,
       assistantText: "",

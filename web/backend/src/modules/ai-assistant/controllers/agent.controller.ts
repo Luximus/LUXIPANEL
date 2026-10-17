@@ -1,3 +1,4 @@
+import { enqueueAgentTurn } from "../services/queued-turn-admission.js";
 import { resolveConversationBinding } from "../services/agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -38,7 +39,6 @@ import type { Executor } from "../../../shared/executor/index.js";
 import { panelOriginFromRequest } from "../../../shared/http/panel-origin.js";
 import { openSse } from "../../../shared/http/sse.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
-import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
 import { slashCommandsService } from "../services/slash-commands.service.js";
@@ -804,7 +804,7 @@ export const agentController = {
       agentId: body.agentId ?? null,
     });
 
-    const item = await agentQueueRepository.enqueue(executor, {
+    const item = await enqueueAgentTurn(executor, {
       conversationId: body.conversationId,
       provider: resolvedTarget.provider,
       model: resolvedTarget.model,

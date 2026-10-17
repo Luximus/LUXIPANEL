@@ -1,0 +1,10 @@
+{
+  "title": "Seguimiento completo de aportes de agentes",
+  "changes": [
+    "Los agentes que trabajan desde una carpeta asignada también registran sus cambios cuando no tienen un proyecto seleccionado.",
+    "El envío automático espera a que los trabajadores del equipo terminen y se verifique su resultado, evitando capturar sus cambios incompletos en otros turnos.",
+    "La recuperación desde el asistente permite revisar también las correcciones posteriores a una interrupción y conservarlas juntas, sin eliminar la instantánea original.",
+    "Las ejecuciones CLI recuperadas se identifican desde el inicio para conservar su continuidad ante reinicios consecutivos del panel.",
+    "Un trabajador con ejecución pendiente de recuperar no se marca como fallido solo porque el panel haya reiniciado o una lectura no responda."
+  ]
+}

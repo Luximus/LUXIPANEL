@@ -1,4 +1,5 @@
-import { admitAgentWork } from "../agent-context.service.js";
+import { enqueueAgentTurn } from "../queued-turn-admission.js";
+import { admitAgentWork, resolveConversationBinding } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -35,6 +36,7 @@ import {
 import type { AssistantAgent } from "../../models/assistant-agent.types.js";
 import { type RunAgentFn, createWorkerConversation, startWorkerRun } from "./worker-spawn.js";
 import { hasWorkerSlot, resetWorkerQuota } from "./worker-quota.js";
+import { preserveWorkerExecution } from "./worker-recovery.js";
 import { waitForPing, pingWaiters } from "./waiters.js";
 import { emitTaskUpdate, injectTaskUpdate } from "./task-events.js";
 import { isInterruptionPlaceholder, TASK_INTERRUPTED_ERROR } from "./interruption.js";
@@ -168,9 +170,18 @@ export const teamTasksService = {
 
   /** Spawn a worker chat AND anchor a TeamTask on the board. */
   async assignTask(input: AssignTaskInput): Promise<TeamTask> {
-    const admission = await admitAgentWork(input.executor, input.worker.id, input.projectId, input.user);
-    try { return await this.assignAdmittedTask({ ...input, projectId: admission.projectId }); }
-    finally { admission.release(); }
+    const binding = await resolveConversationBinding(input.executor, {
+      conversationId: input.leaderConversationId,
+      // Voice has a synthetic coordinator; its conversation remains authoritative.
+      agentId: input.leaderAgentId.startsWith("realtime:") ? undefined : input.leaderAgentId,
+      projectId: input.projectId,
+    }, input.user);
+    const leader = await admitAgentWork(input.executor, binding.agentId, binding.projectId, input.user);
+    try {
+      const worker = await admitAgentWork(input.executor, input.worker.id, leader.projectId, input.user);
+      try { return await this.assignAdmittedTask({ ...input, worker: worker.agent ?? input.worker, projectId: worker.projectId }); }
+      finally { worker.release(); }
+    } finally { leader.release(); }
   },
   async assignAdmittedTask(input: AssignTaskInput): Promise<TeamTask> {
     const { executor, user, userId, leaderConversationId, leaderAgentId, worker, title, task, projectId, planId, stepIndex, depth, runAgent, verifyCommands, budgetTokens } = input;
@@ -379,7 +390,7 @@ export const teamTasksService = {
       // Diferida: el turno inicial queda PERSISTIDO en agent-queue (sobrevive
       // reinicios vía recoverServerRuns); la FIFO ordena el despacho en vida
       // del proceso. Cierra por el listener AI_CHAT_FINISHED (sin onDone).
-      await agentQueueRepository.enqueue(executor, {
+      await enqueueAgentTurn(executor, {
         conversationId: convId,
         userText: workText,
         provider: worker.providerId,
@@ -545,6 +556,7 @@ export const teamTasksService = {
       if (queued.length > 0) return null;
       const created = Date.parse(task.createdAt);
       if (Number.isFinite(created) && Date.now() - created < STALE_RUNNING_MS) return null;
+      if (await preserveWorkerExecution(executor, task.workerConversationId)) return null;
       removeFromDispatchQueue(task.id);
       return finalizeTask(
         executor,
@@ -559,6 +571,7 @@ export const teamTasksService = {
     if (agentRunRegistry.has(task.workerConversationId, executor.target.id)) return null;
     // Background CLI job still polling → alive.
     if (cliJobTracker.hasJobForConversation(task.workerConversationId, executor.target.id)) return null;
+    if (await preserveWorkerExecution(executor, task.workerConversationId)) return null;
     // Verificación en curso (corre SIN run vivo en el registry) → no cerrarla.
     if (task.verify?.state === "running" && task.verify.startedAt) {
       const startedVerify = Date.parse(task.verify.startedAt);

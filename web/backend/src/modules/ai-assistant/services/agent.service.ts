@@ -20,17 +20,13 @@ import { agentCapabilityRegistry } from "../../../shared/agent-capability/regist
 import type { Executor } from "../../../shared/executor/index.js";
 import { getContextExecutor, setContextFileJail } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
-import { projectsRepository } from "../repositories/projects.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
 import { resolveAgentRunModel, resolveAgentRunProvider, type AssistantProviderId } from "../models/assistant-config.types.js";
 import { assistantAuditRepository } from "../repositories/assistant-audit.repository.js";
 import { assistantModulesService } from "./assistant-modules.service.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
-import { agentRolesRepository } from "../repositories/agent-roles.repository.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
-import type { AssistantAgent } from "../models/assistant-agent.types.js";
-import type { AssistantRole } from "../models/assistant-role.types.js";
 import { buildProvider, ProviderUnavailableError } from "./providers/provider-factory.js";
 import { modelSupportsVision, modelSupportsPdf } from "./providers/vision.js";
 import { classifyComplexity, clampTier, resolveModel, effortForTier, type RoutingDecision } from "./auto-router.service.js";
@@ -146,19 +142,20 @@ export const agentService = {
     options = { ...options, agentId: binding.agentId ?? undefined, projectId: binding.projectId ?? undefined, executor };
     const admission = await admitAgentWork(executor, options.agentId, options.projectId, options.user);
     try {
-    const project=options.projectId?await projectsRepository.get(executor,options.projectId):null;
-    const config=await assistantConfigRepository.load(executor);
-    const conversation=options.conversationId?await conversationsRepository.getMeta(executor,options.conversationId):null;
-    const mode=options.approvalModeOverride??conversation?.approvalMode??config.approval.mode;
-    const cwd=options.forcedCwd??project?.path??options.cwd;
-    const ticket=cwd&&executor&&options.conversationId?await beginOwnerContribution(options.user,options.conversationId,cwd,executor.target.id,config.enabled&&mode!=="plan"):null;
-    if(ticket&&options.conversationId){
-      const worker=await teamTasksRepository.findByWorkerConversation(executor,options.conversationId);
-      if(worker?.id){ticket.job.teamTaskId=worker.id;await saveContribution(ticket.job);}
-    }
+    let ticket:Awaited<ReturnType<typeof beginOwnerContribution>>=null;
     let completed=false,failed=false;
     try{
-      for await(const event of agentService.runUntracked(messages,options,ticket?.job.isolated?undefined:ticket?.job.root)){
+      for await(const event of agentService.runUntracked(messages,options,async(cwd,mode)=>{
+        // Use the same resolved workspace and approval mode as the provider.
+        // Agent-only workers can get their cwd from projectPaths without a
+        // projectId or options.cwd; they must join the batch before editing.
+        ticket=cwd&&executor&&options.conversationId?await beginOwnerContribution(options.user,options.conversationId,cwd,executor.target.id,mode!=="plan"):null;
+        if(ticket&&options.conversationId){
+          const worker=await teamTasksRepository.findByWorkerConversation(executor,options.conversationId);
+          if(worker?.id){ticket.job.teamTaskId=worker.id;await saveContribution(ticket.job);}
+        }
+        return ticket?.job.isolated?undefined:ticket?.job.root;
+      })){
         if(event.type==="error"||event.type==="ask")failed=true;
         if(event.type==="done")completed=true;
         yield event;
@@ -171,7 +168,7 @@ export const agentService = {
   async *runUntracked(
     messages: AgentMessage[],
     options: AgentRunOptions = {},
-    contributionRoot?: string,
+    onWorkspaceResolved?: (cwd:string|undefined,mode:"auto"|"manual"|"plan")=>Promise<string|undefined>,
   ): AsyncGenerator<AgentEvent> {
     const { withContext = true, signal, executor, userId, user, providerId, model, projectId, agentId, conversationId, attachments: inputAttachments, outputEnglish, cwd: cwdOverride, forcedCwd, panelOrigin, crossMcpToken, graphMcpToken, delegationDepth = 0 } = options;
 
@@ -416,6 +413,7 @@ export const agentService = {
     tools = [...tools.filter(tool => !agentCapabilityRegistry.findTool(tool.name)), ...moduleDiscoveryTools(moduleScope)];
     const { systemContext, cwd, jailPaths, cliTeamLeader } = built;
     if (cwd && runExecutor) await assertCoreDeveloper(user, cwd, runExecutor.target.id);
+    const contributionRoot = await onWorkspaceResolved?.(cwd, effectiveApprovalMode);
     const contributionPrompt = contributionRoot
       ? `\n\nTrabaja sobre el proyecto original de LUXIPANEL en ${contributionRoot}, rama developer, sin crear copias temporales ni cambiar de rama. El panel guarda y publica automáticamente el aporte al terminar correctamente: no hagas commit ni push manuales durante este turno. El envío a GitHub lo confirma el panel; no lo anuncies como terminado desde el agente. Si cambias el producto, añade un archivo NUEVO docs/changes/AAAA-MM-DD-descripcion-breve.json dentro del proyecto, con {"title":"Título de la mejora","changes":["Qué mejora para el usuario y qué problema resuelve"]}. Consulta docs/changes/README.md si existe. Escribe de una a ocho frases verificadas y aptas para publicación; no incluyas conversaciones, datos privados, servidores, rutas internas, identificadores de tareas ni códigos de commits. Las tareas de solo lectura no requieren notas.`
       : "";

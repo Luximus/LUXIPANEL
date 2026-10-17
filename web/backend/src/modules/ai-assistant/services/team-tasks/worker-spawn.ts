@@ -15,11 +15,9 @@ import { agentRunRegistry } from "../agent-run-registry.js";
 import { mintCrossMcpToken, mintGraphMcpToken } from "../mcp-run-tokens.js";
 import { persistAssistantMessage } from "../assistant-message-persistence.js";
 import { makeUsageRecorder } from "../usage-recorder.js";
-import { projectClosure } from "../project-closure.js";
 import { assistantConfigRepository } from "../../repositories/assistant-config.repository.js";
 import { cliJobsRepository } from "../../repositories/cli-jobs.repository.js";
 import { conversationsRepository } from "../../repositories/conversations.repository.js";
-import { projectsRepository } from "../../repositories/projects.repository.js";
 import type { AssistantAgent } from "../../models/assistant-agent.types.js";
 import type { AssistantProviderId } from "../../models/assistant-config.types.js";
 import type { AgentEvent, AgentMessage } from "../providers/provider.types.js";
@@ -231,7 +229,6 @@ export async function spawnWorker(input: SpawnWorkerInput): Promise<{ conversati
   const { executor, user, userId, worker, task, projectId, depth, runAgent, panelOrigin, beforeStart, onDone } = input;
   const admission = await admitAgentWork(executor, worker.id, projectId, user);
   try {
-  input.projectId = admission.projectId;
   const convId = await createWorkerConversation(executor, worker, task, admission.projectId, { appendUserMessage: true });
   const pre = await beforeStart?.(convId);
   startWorkerRun({
@@ -240,7 +237,7 @@ export async function spawnWorker(input: SpawnWorkerInput): Promise<{ conversati
     userId,
     worker,
     task,
-    projectId,
+    projectId: admission.projectId,
     conversationId: convId,
     depth,
     runAgent,

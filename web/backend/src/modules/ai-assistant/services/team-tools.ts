@@ -714,13 +714,13 @@ export async function buildTeamToolsForConversation(args: {
   const meta = await conversationsRepository.getMeta(executor, conversationId);
   const agentId = meta?.agentId ?? null;
   if (!agentId) return null;
-  const [agent, allAgents, roles] = await Promise.all([
-    agentsRepository.get(agentId).catch(() => null),
+  const [context, allAgents, roles] = await Promise.all([
+    resolveAgentContext(executor, agentId, meta?.projectId, user),
     agentsRepository.list().catch(() => [] as AssistantAgent[]),
     agentRolesRepository.list().catch(() => [] as AssistantRole[]),
   ]);
+  const { agent, role } = context;
   if (!agent?.id) return null;
-  const role = agent.roleId ? roles.find((r) => r.id === agent.roleId) : undefined;
   if (!agent.canSpawnChats && !role?.canSpawnChats) return null;
   return buildTeamTools({
     agent,
@@ -732,6 +732,7 @@ export async function buildTeamToolsForConversation(args: {
     depth: 0,
     maxDepth: 3,
     conversationId,
+    projectId: context.projectId,
     // Líder CLI (canal MCP): su meta guarda el último panelOrigin visto —
     // heredado por los workers de team.assign para su propio canal cross.
     ...(meta?.panelOrigin ? { panelOrigin: meta.panelOrigin } : {}),

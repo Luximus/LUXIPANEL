@@ -57,6 +57,8 @@ export function clampMessageText(text: string): string {
 }
 
 export interface AgentMessage {
+  /** Project fixed by the sender context, never by tool arguments. */
+  projectId?: string | null;
   id?: string;
   /** Sender agent (the one that called `agents.send_message`). */
   fromAgentId: string;

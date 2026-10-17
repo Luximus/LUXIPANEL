@@ -41,6 +41,12 @@ async function evidence(job: ContributionJob) {
  return { id: job.id, snapshotHash, files, patch };
 }
 
+/** Shared by the assistant's explicit continuation review; preserves the original evidence. */
+export async function verifiedContributionInterruption(user: SessionUser, id: string) {
+ const { job, jobs } = await ownedInterruption(user, id);
+ return { job, jobs, snapshot: await evidence(job) };
+}
+
 export async function previewContributionRecovery(user: SessionUser, id: string) {
  const { job } = await ownedInterruption(user, id);
  return evidence(job);

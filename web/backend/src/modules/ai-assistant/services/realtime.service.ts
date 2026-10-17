@@ -1,19 +1,18 @@
+import { enqueueAgentTurn } from "./queued-turn-admission.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { RealtimePcmRelay } from "./realtime-pcm.js";
 import type { Executor } from "../../../shared/executor/index.js";
-import { runWithExecutor, getContextUserId } from "../../../shared/executor/context.js";
+import { runWithExecutor } from "../../../shared/executor/context.js";
 import type { SessionUser } from "../../../shared/types/index.js";
 import { ValidationError, ForbiddenError } from "../../../shared/errors/index.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
-import { projectsRepository } from "../repositories/projects.repository.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
-import { projectClosure } from "./project-closure.js";
+import { admitAgentWork, resolveConversationBinding, scopedAgents } from "./agent-context.service.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { usageRepository } from "../repositories/usage.repository.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
-import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
 import { deferDispatch } from "./team-tasks/lifecycle.js";
 import { teamTasksService, validateWorkerProject } from "./team-tasks.service.js";
 import { agentService } from "./agent.service.js";
@@ -28,6 +27,7 @@ export const REALTIME_MODEL = "gpt-realtime-2.1";
 export interface RealtimeEvent { seq: number; type: string; [key: string]: unknown }
 interface LiveSession {
   id: string; conversationId: string; executor: Executor; user: SessionUser;
+  releaseAssignment?: () => void;
   projectId: string | null; origin: string; createdAt: number; closed: boolean; remoteClosed?: boolean; closing?: Promise<void>; error?: string;
   pcm?: RealtimePcmRelay; socket?: WebSocket; callId?: string; apiKey: string; events: RealtimeEvent[]; nextSeq: number;
   seen: Set<string>; calls: Map<string, Promise<unknown>>;
@@ -69,20 +69,11 @@ async function projectContext(executor: Executor, user: SessionUser, conversatio
   if (!(await conversationsRepository.listIds(executor)).has(conversationId)) throw new ForbiddenError("Conversación no autorizada.");
   const meta = await conversationsRepository.getMeta(executor, conversationId);
   if (!meta) throw new ForbiddenError("Conversación no disponible.");
-  const uid = getContextUserId();
-  const own = (v: { ownerId?: number | null }) => v.ownerId === uid || (v.ownerId == null && user.role === "admin");
-  if (!meta.projectId) {
-    if (!meta.agentId) return { project: null, workers: [generalWorker(meta)] };
-    const agent = await agentsRepository.get(meta.agentId);
-    if (!agent || !own(agent)) throw new ForbiddenError("El agente de esta conversación ya no está disponible.");
-    return { project: null, workers: [agent] };
-  }
-  const [projects, agents] = await Promise.all([projectsRepository.list(executor), agentsRepository.list()]);
-  const allowedProjects = projects.filter(own);
-  const project = allowedProjects.find(p => p.id === meta.projectId);
-  if (!project) throw new ForbiddenError("El proyecto de esta conversación ya no está disponible.");
-  const workers = agents.filter(a => own(a) && projectClosure(allowedProjects, a.projectIds ?? []).has(project.id!));
-  return { project, workers };
+  const binding = await resolveConversationBinding(executor, { conversationId }, user);
+  if (!binding.projectId) return { project: null, agentId: binding.agentId, workers: [binding.agent ?? generalWorker(meta)] };
+  const project = binding.projects.find(p => p.id === binding.projectId)!;
+  const workers = await scopedAgents(executor, await agentsRepository.list(), binding.projectId, user);
+  return { project, agentId: binding.agentId, workers };
 }
 async function validateContext(s: LiveSession) {
   const context = await projectContext(s.executor, s.user, s.conversationId);
@@ -183,8 +174,8 @@ async function poll(s: LiveSession) {
   if (s.closed || s.polling) return;
   s.polling = true;
   try {
-    const meta = await conversationsRepository.getMeta(s.executor, s.conversationId);
-    if (!meta || (meta.projectId ?? null) !== s.projectId) { emit(s,"warning",{message:"El proyecto del chat cambió. Vuelve a iniciar la voz."}); await close(s); return; }
+    try { await validateContext(s); }
+    catch { emit(s, "warning", { message: "El contexto del chat cambió. Vuelve a iniciar la voz." }); await close(s); return; }
     const config = await assistantConfigRepository.load(s.executor);
     if (!config.enabled || !config.voice.enabled || !config.voice.realtimeEnabled) { await close(s); return; }
     // A native media connection remains alive in background; polling is not a lease.
@@ -239,6 +230,7 @@ async function close(s: LiveSession): Promise<void> {
 }
 async function closeInner(s: LiveSession): Promise<void> {
   s.closed = true;
+  s.releaseAssignment?.(); s.releaseAssignment = undefined;
   s.pcm?.close();
   clearInterval(s.timer);
   for (const off of s.unsubscribe.values()) off();
@@ -308,7 +300,7 @@ export const realtimeService = {
     const worker = task.workerAgentId ? await agentsRepository.get(task.workerAgentId).catch(() => null)
       : workerMeta && !workerMeta.agentId && !workerMeta.projectId && !task.projectId ? generalWorker(workerMeta) : null;
     if (!worker) { s.seen.delete(key); throw new ValidationError("El agente ya no está disponible."); }
-    const queued = await agentQueueRepository.enqueue(executor, {
+    const queued = await enqueueAgentTurn(executor, {
       conversationId: task.workerConversationId, userText: question.text + ": " + question.options[choice],
       provider: worker.providerId, agentId: worker.id ?? null, projectId: task.projectId,
       user, userId: String(user.userId), withContext: true, isWorker: true,
@@ -337,8 +329,12 @@ export const realtimeService = {
     if ([...sessions.values()].filter(s => !s.closed && s.user.userId === user.userId).length >= 2) throw new ValidationError("Ya tienes dos sesiones de voz activas.");
     await conversationsRepository.patchRuntime(executor, input.conversationId, { panelOrigin: input.panelOrigin });
     const id = randomUUID();
-    if (!claimLiveVoice(input.conversationId, id, executor.target.id)) throw new ValidationError("Esta conversación ya tiene una sesión de voz activa.");
-    const s: LiveSession = { id, conversationId: input.conversationId, executor, user, projectId, origin: input.panelOrigin,
+    const admission = await admitAgentWork(executor, context.agentId, projectId, user);
+    if (!claimLiveVoice(input.conversationId, id, executor.target.id)) {
+      admission.release();
+      throw new ValidationError("Esta conversación ya tiene una sesión de voz activa.");
+    }
+    const s: LiveSession = { releaseAssignment: admission.release, id, conversationId: input.conversationId, executor, user, projectId, origin: input.panelOrigin,
       apiKey, createdAt: Date.now(), lastSeenAt: Date.now(), closed: false, events: [], nextSeq: 1,
       seen: new Set(), calls: new Map(), runSignals: new Map(), taskVersions: new Map(), unsubscribe: new Map(),
       queue: Promise.resolve(), polling: false, responding: false, needsResponse: false };

@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { Executor } from "../../../shared/executor/index.js";
+import { getContextExecutor, type Executor } from "../../../shared/executor/index.js";
+
+import { AppError } from "../../../shared/errors/index.js";
+
+export function assertAssignmentTarget(executor: Executor): void {
+  const contextual = getContextExecutor();
+  if (!contextual || contextual.target.id !== executor.target.id) {
+    throw new AppError("El contexto no coincide con el servidor conectado.", 403, "ASSISTANT_PROJECT_FORBIDDEN");
+  }
+}
 
 /** Same process/target discipline as the existing run registry and task dispatcher. */
 const locks = new Map<string, Promise<unknown>>();
 const admitted = new Map<string, Set<{ projectId: string | null }>>();
 const keyOf = (executor: Executor, agentId: string) => JSON.stringify([executor.target.id, agentId]);
 export async function withAssignmentLock<T>(executor: Executor, agentId: string, work: () => Promise<T>): Promise<T> {
+  assertAssignmentTarget(executor);
   const key = keyOf(executor, agentId);
   const previous = locks.get(key) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(work);

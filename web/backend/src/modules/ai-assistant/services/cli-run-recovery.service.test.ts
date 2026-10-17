@@ -5,7 +5,7 @@ import type { Executor } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
 import type { CliJobDescriptor } from "../repositories/cli-jobs.repository.js";
 const state = vi.hoisted(() => ({
-  active: false, owner: 7, ac: new AbortController(), starts: 0,
+  active: false, owner: 7, ac: new AbortController(), starts: 0, cliAtStart: false,
   desc: null as CliJobDescriptor | null, generator: null as AsyncGenerator | null,
   complete: null as null | ((...args:unknown[])=>Promise<void>),
   approval: null as null | { mode: string; autoApprove: Set<string> },
@@ -17,9 +17,10 @@ vi.mock("./agent-run-registry.js", () => ({ agentRunRegistry: {
   setApproval: (_id: string, value: { mode: string; autoApproveTools: string[] }) => {
     state.approval = { mode: value.mode, autoApprove: new Set(value.autoApproveTools) };
   },
-  start: (params: { makeGen: () => AsyncGenerator; onComplete:(...args:unknown[])=>Promise<void> }) => {
+  start: (params: { cli?: boolean; makeGen: () => AsyncGenerator; onComplete:(...args:unknown[])=>Promise<void> }) => {
     if (state.active) return;
     state.active = true; state.starts++;
+    state.cliAtStart = params.cli === true;
     state.complete=params.onComplete;
     state.generator = params.makeGen(); void state.generator.next();
   },
@@ -28,7 +29,9 @@ vi.mock("../repositories/cli-jobs.repository.js", () => ({ cliJobsRepository: {
   get: async () => state.desc, set: vi.fn(async()=>undefined), delete: vi.fn(async()=>true),
 } }));
 vi.mock("../repositories/cli-sessions.repository.js", () => ({ cliSessionsRepository: { getProvider: async () => null } }));
+vi.mock("../repositories/team-tasks.repository.js", () => ({ teamTasksRepository: { findByWorkerConversation: vi.fn(async () => null) } }));
 vi.mock("./providers/cli/cli-session.js", () => ({ discoverCodexOrphanJob: async () => null }));
+vi.mock("./agent-context.service.js", () => ({ resolveConversationBinding: vi.fn(async () => ({ agentId: null, projectId: null })) }));
 vi.mock("./providers/cli/recovered-run.js", () => ({ makeRecoveredCliGen: async function* () { yield { type: "tool_use", name: "codex.cli" }; yield { type: "done" }; } }));
 vi.mock("./turn-queue.service.js", () => ({ makeUsageRecorder: () => () => {}, persistAssistantMessage: vi.fn(), drainConversationQueue: vi.fn() }));
 vi.mock("../../../shared/github/owner-contributions.js",()=>({
@@ -37,7 +40,8 @@ vi.mock("../../../shared/github/owner-contributions.js",()=>({
 import { runWithExecutor, setContextFileJail } from "../../../shared/executor/context.js";
 import { bindModuleToolRun, moduleToolRunScope } from "./module-tools.service.js";
 import { captureModuleRunRecovery, readModuleRunRecovery } from "./module-run-recovery.service.js";
-import { ensureModuleToolRun } from "./cli-run-recovery.service.js";
+import { ensureModuleToolRun, recoverConversation } from "./cli-run-recovery.service.js";
+import { cliJobsRepository } from "../repositories/cli-jobs.repository.js";
 import { finishOwnerContribution } from "../../../shared/github/owner-contributions.js";
 const user = { userId: 7, username: "test", kind: "admin", role: "admin", modules: ["assistant"] } as SessionUser;
 const token = "original-token-never-persisted";
@@ -46,6 +50,7 @@ const scoped = <T>(fn: () => T) => runWithExecutor(executor, fn, user.userId, us
 const recover = (bearer = token) => scoped(() => ensureModuleToolRun(executor, "conversation", user, bearer));
 beforeEach(() => {
   state.active = false; state.owner = 7; state.ac = new AbortController(); state.starts = 0; state.generator = null;state.complete=null;
+  state.cliAtStart = false;
   vi.mocked(finishOwnerContribution).mockClear();
   state.approval = { mode: "plan", autoApprove: new Set(["files.read"]) };
   state.desc = { conversationId: "conversation", jobId: "lxp-cli-123-abcdef", logFile: "/tmp/lxp-cli-123-abcdef.log", exitFile: "/tmp/lxp-cli-123-abcdef.exit", provider: "codex", serverName: "Test", pid: "123", startedAt: 123 };
@@ -60,6 +65,15 @@ beforeEach(() => {
 });
 afterEach(async () => { await state.generator?.return(undefined); state.active = false; vi.restoreAllMocks(); });
 describe("module channel after a backend restart", () => {
+  it.each(["timeout", "bad-exit", "unexpected-output"])("retains the signed descriptor after %s while checking artifacts", async kind => {
+    vi.mocked(cliJobsRepository.delete).mockClear();
+    if (kind === "timeout") vi.mocked(executor.exec).mockRejectedValueOnce(new Error("timed out"));
+    else vi.mocked(executor.exec).mockResolvedValueOnce({ stdout: kind === "bad-exit" ? "N" : "", stderr: "", exitCode: kind === "bad-exit" ? 1 : 0 });
+    const original = state.desc;
+    expect(await scoped(() => recoverConversation(executor, "conversation", user))).toBe(false);
+    expect(cliJobsRepository.delete).not.toHaveBeenCalled();
+    expect(state.desc).toBe(original); expect(state.starts).toBe(0);
+  });
   it.each([
     {errored:false,ask:undefined,outcome:undefined,success:true},
     {errored:true,ask:undefined,outcome:undefined,success:false},
@@ -78,6 +92,7 @@ describe("module channel after a backend restart", () => {
     });
     expect(state.approval).toEqual({ mode: "plan", autoApprove: new Set(["files.read"]) });
     expect(state.starts).toBe(1);
+    expect(state.cliAtStart).toBe(true);
     expect(await recover()).toBe(true);
     expect(state.starts).toBe(1);
     expect(executor.exec).not.toHaveBeenCalledWith(expect.stringMatching(/nohup|restart|build/), expect.anything());

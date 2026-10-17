@@ -1,0 +1,7 @@
+{
+  "title": "Recuperación de aportes publicados parcialmente",
+  "changes": [
+    "La recuperación de una tarea interrumpida puede partir de sus cambios ya publicados para evitar duplicados y conflictos al conservar las correcciones pendientes.",
+    "La revisión mantiene intactos los archivos locales y comprueba que la base publicada pertenece al mismo usuario y al historial del proyecto."
+  ]
+}

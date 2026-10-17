@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { resolveConversationBinding } from "./agent-context.service.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { teamIsolationService } from "./team-isolation.service.js";
 import { workerRunStarted, workerRunEnded } from "./team-tasks/worker-quota.js";
@@ -36,7 +37,10 @@ export async function resumeOwnerContribution(job:ContributionJob):Promise<void>
   if(agentRunRegistry.has(job.conversationId,"local"))return;
   const desc=await cliJobsRepository.get(localExecutor,job.conversationId);
   if(!desc || contributionCliBinding(desc)!==job.cliBinding)return;
-  const recoverTools=!!readModuleRunRecovery(localExecutor,desc,job.user) && await moduleRecoveryJobIsAlive(localExecutor,desc);
+  let bindingValid = false;
+  try { await resolveConversationBinding(localExecutor, { conversationId: job.conversationId }, job.user); bindingValid = true; }
+  catch { /* Preserve history recovery; never restore a removed assignment's tools. */ }
+  const recoverTools=bindingValid && !!readModuleRunRecovery(localExecutor,desc,job.user) && await moduleRecoveryJobIsAlive(localExecutor,desc);
   if(!agentRunRegistry.has(job.conversationId,"local"))resumeCliRun(localExecutor,job.conversationId,desc,job.user,recoverTools);
  },job.user.userId,job.user);
 }
@@ -64,6 +68,9 @@ function resumeCliRun(
   agentRunRegistry.start({
     key: conversationId,
     provider: desc.provider,
+    // A second restart can happen while the generator is still restoring its
+    // scope. Protect the live CLI and descriptor before any replayed event.
+    cli: true,
     executor,
     user,
     makeGen: async function* () {
@@ -138,9 +145,13 @@ export async function recoverConversation(
   let artifactsExist = false;
   try {
     const r = await executor.exec(`test -e ${quoteArg(desc.logFile)} && echo Y || echo N`, { timeoutMs: 8_000 });
-    artifactsExist = r.stdout.trim() === "Y";
+    const observed = r.stdout.trim();
+    if (r.exitCode !== 0 || (observed !== "Y" && observed !== "N")) return false;
+    artifactsExist = observed === "Y";
   } catch {
-    artifactsExist = false;
+    // A timeout or rejected connection does not prove that the CLI artifacts
+    // disappeared. Keep the signed descriptor and retry observation later.
+    return false;
   }
 
   // A concurrent recovery may have started the run while we awaited.
@@ -159,7 +170,9 @@ export async function recoverConversation(
     return false;
   }
 
-  const recoverTools = !!user && !!readModuleRunRecovery(executor, desc, user) && await moduleRecoveryJobIsAlive(executor, desc);
+  // Reattach logs even when a binding was withdrawn; never restore its tool authority.
+  const bindingValid = await resolveConversationBinding(executor, { conversationId }, user).then(() => true, () => false);
+  const recoverTools = bindingValid && !!user && !!readModuleRunRecovery(executor, desc, user) && await moduleRecoveryJobIsAlive(executor, desc);
   // Recheck after probing the target; another callback may have reattached.
   if (agentRunRegistry.has(conversationId, executor.target.id)) return true;
   resumeCliRun(executor, conversationId, desc, user, recoverTools);
@@ -176,6 +189,7 @@ export async function ensureModuleToolRun(executor: Executor, conversationId: st
   if (moduleToolRunScope(conversationId, executor, user)) return false;
   const desc = await cliJobsRepository.get(executor, conversationId).catch(() => null);
   if (!desc || !readModuleRunRecovery(executor, desc, user, token)) return false;
+  if (!await resolveConversationBinding(executor, { conversationId }, user).then(() => true, () => false)) return false;
   const context = agentRunRegistry.runContext(conversationId, executor.target.id);
   if (context && context.ownerUserId !== user.userId) return false;
   if (!await moduleRecoveryJobIsAlive(executor, desc)) return false;

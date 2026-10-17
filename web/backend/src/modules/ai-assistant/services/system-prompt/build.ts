@@ -17,7 +17,6 @@ import { resolveAgentContext, scopedAgents, intersectPaths, assignmentError } fr
  * separators/whitespace.
  */
 
-import { projectsRepository, type AssistantProject, type AssistantProjectServer } from "../../repositories/projects.repository.js";
 import { agentsRepository } from "../../repositories/agents.repository.js";
 import { agentRolesRepository } from "../../repositories/agent-roles.repository.js";
 import type { AssistantRole } from "../../models/assistant-role.types.js";
@@ -50,7 +49,6 @@ import {
   buildAssociatedServersBlock,
   collectGraphProjects,
   collectSystemContext,
-  mergeProjectServers,
   capText,
 } from "./blocks.js";
 import { buildDelegateTool, buildSpawnChatsTool } from "./delegation-tools.js";

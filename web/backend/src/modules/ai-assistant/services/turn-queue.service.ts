@@ -1,3 +1,5 @@
+import { admitAgentWork, resolveConversationBinding, resolveAgentContext } from "./agent-context.service.js";
+import { enqueueAgentTurn } from "./queued-turn-admission.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -16,7 +18,7 @@ import { workerRunStarted, workerRunEnded } from "./team-tasks/worker-quota.js";
 import { liveVoiceSession } from "./realtime-state.js";
 import { agentService } from "./agent.service.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
-import type { Executor } from "../../../shared/executor/index.js";
+import { getContextUser, runWithExecutor, type Executor } from "../../../shared/executor/index.js";
 import { eventBus, Events } from "../../../shared/events/index.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
@@ -250,13 +252,7 @@ export function startConversationRun(args: {
       // del proyecto del chat (args.projectId) O, en chats ligados a un agente con
       // `autoCapture`, al vault de su primer proyecto adjunto. Best-effort,
       // fail-open: nunca rompe la persistencia ni el drain.
-      let captureProjectId: string | null = args.projectId ?? null;
-      if (!captureProjectId && args.agentId) {
-        try {
-          const ag = await agentsRepository.get(args.agentId);
-          if (ag?.autoCapture && ag.projectIds?.length) captureProjectId = ag.projectIds[0] ?? null;
-        } catch { /* fail-open: sin captura */ }
-      }
+      const captureProjectId = args.projectId ?? null;
       if (!errored && captureProjectId && assistantText.trim()) {
         try {
           // Capture the CLEAN, user-language answer: prefer the translated
@@ -292,11 +288,27 @@ export function startConversationRun(args: {
  * and start its run. No-op when a run is already active (its own onComplete
  * will drain) or the queue is empty.
  */
+const drainingConversations = new Map<string, Promise<void>>();
 export async function drainConversationQueue(executor: Executor, conversationId: string): Promise<void> {
+  const key = JSON.stringify([executor.target.id, conversationId]);
+  const previous = drainingConversations.get(key) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(() => drainNextTurn(executor, conversationId));
+  drainingConversations.set(key, current);
+  try { await current; }
+  finally { if (drainingConversations.get(key) === current) drainingConversations.delete(key); }
+}
+async function drainNextTurn(executor: Executor, conversationId: string): Promise<void> {
   if (liveVoiceSession(conversationId, executor.target.id) || agentRunRegistry.isActive(conversationId, executor.target.id)) return;
+  const candidate = (await agentQueueRepository.listFor(executor, conversationId))[0];
+  if (!candidate) return;
+  const queuedIdentity = candidate.user ?? getContextUser() ?? undefined;
+  await runWithExecutor(executor, async () => {
+  const binding = await resolveConversationBinding(executor, candidate, queuedIdentity);
+  const admission = await admitAgentWork(executor, binding.agentId, binding.projectId, queuedIdentity);
+  try {
   let next;
   try {
-    next = await agentQueueRepository.takeNext(executor, conversationId);
+    next = await agentQueueRepository.takeNext(executor, conversationId, candidate.id);
   } catch (err) {
     log.warn({ err: (err as Error).message }, "agent: queue takeNext failed");
     return;
@@ -354,8 +366,8 @@ export async function drainConversationQueue(executor: Executor, conversationId:
     provider: next.provider,
     model: next.model,
     effort: next.effort,
-    projectId: next.projectId ?? null,
-    agentId: next.agentId ?? null,
+    projectId: binding.projectId,
+    agentId: binding.agentId,
     withContext: next.withContext,
     attachments: next.attachments,
     user: next.user ?? undefined,
@@ -368,6 +380,8 @@ export async function drainConversationQueue(executor: Executor, conversationId:
     ...(crossMcpToken ? { crossMcpToken } : {}),
     ...(graphMcpToken ? { graphMcpToken } : {}),
   });
+  } finally { admission.release(); }
+  }, queuedIdentity?.userId, queuedIdentity);
 }
 
 // ── Team leader wake-up (nudge) ─────────────────────────────────────────────
@@ -431,7 +445,7 @@ export function initTeamNudgeListener(): void {
           "[EQUIPO] Tus subordinados terminaron las tareas delegadas. Resultados:\n\n" +
           lines.join("\n\n") +
           "\n\nSintetiza y entrega al usuario la respuesta final consolidada (breve y accionable; NO pegues la salida cruda).";
-        await agentQueueRepository.enqueue(executor, {
+        await enqueueAgentTurn(executor, {
           conversationId: leaderConversationId,
           ...(provider ? { provider } : {}),
           projectId: meta.projectId ?? null,
@@ -487,7 +501,11 @@ export async function resolveAgentMessageDelivery(
   executor: Executor,
   message: AgentMessage,
 ): Promise<AgentMessageDeliveryTarget | null> {
-  const metaOf = (id: string) => conversationsRepository.getMeta(executor, id).catch(() => null);
+  const source = message.projectId !== undefined ? message.projectId : message.senderConversationId ? (await conversationsRepository.getMeta(executor, message.senderConversationId))?.projectId ?? null : null;
+  const metaOf = async (id: string) => {
+    const meta = await conversationsRepository.getMeta(executor, id);
+    return meta && (meta.projectId ?? null) === source ? meta : null;
+  };
   const senderConv = message.senderConversationId ?? null;
   if (senderConv) {
     // 1. Worker → leader.
@@ -562,16 +580,21 @@ export function initAgentMessageListener(): void {
         const message = await agentMessagesRepository.get(executor, messageId);
         // Already delivered/read (retry or duplicate emit) → nothing to do.
         if (!message?.id || message.status !== "pending") return;
+        const storedMessageId = message.id;
+        const identity = message.user ?? payload.user ?? getContextUser() ?? undefined;
+        await runWithExecutor(executor, async () => {
 
         const recipient = await agentsRepository.get(message.toAgentId).catch(() => null);
         if (!recipient?.id) {
-          await agentMessagesRepository.update(executor, message.id, {
+          await agentMessagesRepository.update(executor, storedMessageId, {
             status: "failed",
             error: `El agente destinatario "${message.toAgentId}" ya no existe.`,
           });
           return;
         }
 
+        const sourceProject = message.projectId !== undefined ? message.projectId : message.senderConversationId ? (await conversationsRepository.getMeta(executor, message.senderConversationId))?.projectId ?? null : null;
+        const recipientContext = await resolveAgentContext(executor, recipient.id, sourceProject, message.user ?? undefined);
         // 1. Destino: chat de equipo / run activo del destinatario / buzón del
         //    par. Solo se CREA un buzón cuando nada de lo anterior aplica —
         //    nunca un chat nuevo mientras hay relación de equipo o run en curso.
@@ -584,10 +607,10 @@ export function initAgentMessageListener(): void {
             executor,
             recipient.providerId,
             mailboxTitle(message.fromAgentName, message.text),
-            null,
+            recipientContext.projectId,
             recipient.id,
           );
-          target = { conversationId: String(created.id), projectId: null, provider: null, kind: "new-mailbox" };
+          target = { conversationId: String(created.id), projectId: recipientContext.projectId, provider: null, kind: "new-mailbox" };
         }
         const isTeamChat = target.kind === "team-leader" || target.kind === "team-worker";
 
@@ -618,7 +641,7 @@ export function initAgentMessageListener(): void {
                 { role: "user", provider, content: userText, ts: new Date().toISOString(), auto: true },
               ])
               .catch(() => undefined);
-            await agentMessagesRepository.update(executor, message.id, {
+            await agentMessagesRepository.update(executor, storedMessageId, {
               status: "delivered",
               deliveredAt: new Date().toISOString(),
               deliveryConversationId: target.conversationId,
@@ -634,7 +657,7 @@ export function initAgentMessageListener(): void {
         // 4. Sin steering posible → turno automático en el destino. Si hay run
         //    activo, `drainConversationQueue` no hace nada y el onComplete del
         //    run drena la cola al terminar (agent.controller).
-        await agentQueueRepository.enqueue(executor, {
+        await enqueueAgentTurn(executor, {
           conversationId: target.conversationId,
           provider,
           projectId: target.projectId,
@@ -648,7 +671,7 @@ export function initAgentMessageListener(): void {
         });
 
         // 5. Mark delivered BEFORE the drain (the drain can close it as `read`).
-        await agentMessagesRepository.update(executor, message.id, {
+        await agentMessagesRepository.update(executor, storedMessageId, {
           status: "delivered",
           deliveredAt: new Date().toISOString(),
           deliveryConversationId: target.conversationId,
@@ -660,6 +683,7 @@ export function initAgentMessageListener(): void {
           { messageId: message.id, toAgentId: message.toAgentId, conversationId: target.conversationId, kind: target.kind },
           "agent-message: delivered",
         );
+        }, identity?.userId, identity);
       })().catch(async (err) => {
         log.warn({ err: (err as Error).message, messageId }, "agent-message: delivery failed");
         await agentMessagesRepository
@@ -737,7 +761,7 @@ export function initTeamVerifyRetryListener(): void {
           "\n--- fin ---\n" +
           `Corrige el problema ${cwdNote} y deja el proyecto pasando esos comandos. No repitas trabajo ya hecho; ` +
           "haz commit de tus correcciones al terminar.";
-        await agentQueueRepository.enqueue(executor, {
+        await enqueueAgentTurn(executor, {
           conversationId: workerConversationId,
           userText,
           agentId: payload.workerAgentId || null,

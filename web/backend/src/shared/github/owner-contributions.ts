@@ -16,6 +16,7 @@ import { legacyRecoveryBatches, legacyActiveBatches, sameContributionPrincipal }
 import { githubStatus, githubToken } from "./user-connection.js";
 import { assertPublishableSource } from "../diagnostics/publication-check.js";
 import { collectChangeNotes, contributionMessage, type PublicChangeNote } from "./change-notes.js";
+import { applyContributionContinuation, type ContributionContinuationReview } from "./contribution-continuation.js";
 import { ForbiddenError } from "../errors/index.js";
 import type { SessionUser } from "../types/index.js";
 import { createModuleLogger } from "../logger/index.js";
@@ -48,6 +49,7 @@ export interface ContributionJob {
  interruption?:{observedAt:string;patchHash?:string};
  /** A separate, explicitly reviewed delivery never changes the failed task's outcome. */
  recoveryOf?:string; recoveredBy?:string; reviewedAt?:string;
+ continuationReview?:ContributionContinuationReview;
  legacyRecovery?:{members:string[];after:string};
  overlapped?:boolean;
 }
@@ -258,6 +260,7 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
    job.after=after;
    const anchor=(await contributionGit(job.root,["commit-tree",after,"-m",`Private completed snapshot ${job.id}`],{GIT_AUTHOR_NAME:"LUXIPANEL",GIT_AUTHOR_EMAIL:"snapshot@localhost",GIT_COMMITTER_NAME:"LUXIPANEL",GIT_COMMITTER_EMAIL:"snapshot@localhost"})).trim();
    await contributionGit(job.root,["update-ref",`refs/luxipanel/snapshots/${job.id}-after`,anchor]);
+   await applyContributionContinuation(job,after);
    job.status="pending";await saveContribution(job);
    if(job.batchId)return await sealBatch(job.batchId);
    return await prepareContribution(job,after)?job.id:null;
@@ -294,7 +297,12 @@ async function preserveInterruptedContribution(job:ContributionJob):Promise<void
 
 export type ContributionUpdateBlocker="assistant-active"|"publication-pending"|"contribution-review"|"checkout-sync";
 export function reviewedContribution(job:ContributionJob,jobs:ContributionJob[]):ContributionJob|undefined{
- return jobs.find(next=>next.recoveryOf===job.id && sameContributionPrincipal(next,job) && next.before===job.before && next.after===job.after && !!next.patchHash && !!next.reviewedAt);
+ return jobs.find(next=>sameContributionPrincipal(next,job) && !!next.patchHash && !!next.reviewedAt && (
+  (next.recoveryOf===job.id && next.before===job.before && next.after===job.after) ||
+  (next.succeeded===true && !!next.completedAt && !!job.interruption?.patchHash &&
+   next.continuationReview?.sources?.some(source=>source.id===job.id&&source.snapshotHash===job.interruption?.patchHash) &&
+   next.continuationReview.after===next.after && next.continuationReview.patchHash===next.patchHash)
+ ));
 }
 /** Read-only diagnosis. No source is published, discarded, or reset by preflight. */
 export async function contributionUpdateBlocker(root:string,changedFiles:string[]):Promise<ContributionUpdateBlocker|undefined>{
@@ -324,9 +332,10 @@ export async function contributionUpdateBlocker(root:string,changedFiles:string[
  });
 }
 async function prepareContribution(job:ContributionJob,after:string):Promise<boolean>{
-   const files=(await contributionGit(job.root,["diff","--name-only","-z",job.before,after])).split("\0").filter(Boolean);
+   const before=job.continuationReview?.before??job.before;
+   const files=(await contributionGit(job.root,["diff","--name-only","-z",before,after])).split("\0").filter(Boolean);
    if(!files.length){job.status="empty";await saveContribution(job);return false;}
-   const patch=await contributionGit(job.root,["diff","--no-ext-diff","--binary",job.before,after,"--",...files]);
+   const patch=await contributionGit(job.root,["diff","--no-ext-diff",...(job.continuationReview?["--full-index"]:[]),"--binary",before,after,"--",...files]);
    validateContributionPatch(patch);
    job.notes=await collectChangeNotes(files, async file => {
     const exists=(await contributionGit(job.root,["ls-tree","--name-only",after,"--",file])).trim();

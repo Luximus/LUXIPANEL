@@ -1,4 +1,3 @@
-import { admitAgentWork, resolveConversationBinding } from "../services/agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -99,11 +98,7 @@ export const agentQueueRepository = {
 
   /** Append a follow-up turn. Returns the created record (with id). */
   async enqueue(executor: Executor | null | undefined, item: Omit<QueuedTurn, "id" | "ts">): Promise<QueuedTurn> {
-    const binding = await resolveConversationBinding(executor, item, item.user ?? undefined);
-    const admission = await admitAgentWork(executor, binding.agentId, binding.projectId, item.user ?? undefined);
-    try {
-      return await store(executor).create({ ...item, agentId: binding.agentId, projectId: binding.projectId, ts: new Date().toISOString() });
-    } finally { admission.release(); }
+    return store(executor).create({ ...item, ts: new Date().toISOString() });
   },
 
   /** Fetch one queued turn by id (full content incl. attachments) — for editing. */
@@ -128,12 +123,11 @@ export const agentQueueRepository = {
   },
 
   /** Remove and return the oldest pending turn for a conversation (or null). */
-  async takeNext(executor: Executor | null | undefined, conversationId: string): Promise<QueuedTurn | null> {
+  async takeNext(executor: Executor | null | undefined, conversationId: string, expectedId?: string): Promise<QueuedTurn | null> {
     const pending = await this.listFor(executor, conversationId);
     const next = pending[0];
-    if (!next?.id) return null;
-    await store(executor).delete(next.id).catch(() => undefined);
-    return next;
+    if (!next?.id || (expectedId !== undefined && next.id !== expectedId)) return null;
+    return await store(executor).delete(next.id) ? next : null;
   },
 
   /** Cancel a queued turn by id. */

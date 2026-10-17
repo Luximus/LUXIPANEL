@@ -8,7 +8,8 @@ import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentTeamsRepository } from "../repositories/agent-teams.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { projectsRepository, type AssistantProject } from "../repositories/projects.repository.js";
-import type { AssistantAgent } from "../models/assistant-agent.types.js";
+import { agentAssignments, type AssistantAgent } from "../models/assistant-agent.types.js";
+import { assignmentError, effectiveAssignment } from "./agent-context.service.js";
 import type { AgentTeam } from "../models/assistant-team.types.js";
 
 type CreateProject = Parameters<typeof projectsRepository.create>[1] & {
@@ -95,6 +96,10 @@ export const projectWorkspaceService = {
       const allProjects = await projectsRepository.list(executor);
       const projects = allProjects.filter((p) => own(p.ownerId, uid));
       const agents = (await agentsRepository.list()).filter((a) => own(a.ownerId, uid));
+      // Market links and multiproject profiles require an explicit user choice.
+      // The legacy repair must never create/merge teams or rewrite these chats.
+      const explicitAgentIds = new Set(agents.filter(agent => !!agent.assignments?.length || (agent.projectIds?.length ?? 0) > 1).map(agent => agent.id));
+      const explicitScope = (agent: AssistantAgent) => explicitAgentIds.has(agent.id);
       const originalProjectIds = new Map(agents.map((a) => [a.id!, [...(a.projectIds ?? [])]]));
       const teams = (await agentTeamsRepository.list()).filter((t) => own(t.ownerId, uid) || t.ownerId == null);
       const byProject = new Map(projects.map((p) => [p.id!, p]));
@@ -119,6 +124,12 @@ export const projectWorkspaceService = {
       // Existing root folders take precedence. An agent's explicit project
       // association is reused when it uniquely identifies a root for its team.
       for (const project of projects.filter((p) => !p.parentId)) {
+        if (agents.some(agent => explicitScope(agent) &&
+          (agent.id === project.leaderAgentId || agent.teamId === project.teamId && !!project.teamId ||
+            agentAssignments(agent).some(link => link.projectId === project.id)))) {
+          if (project.teamId) teamProject.set(project.teamId, teamProject.has(project.teamId) ? null : project);
+          continue;
+        }
         let team = project.teamId ? byTeam.get(project.teamId) : undefined;
         if (!team) {
           const matching = teams.filter((t) => agents.some((a) => a.teamId === t.id && a.projectIds?.some((id) => belongsToRoot(id, project.id!))));
@@ -156,6 +167,7 @@ export const projectWorkspaceService = {
       // A team without a root receives one; an ungrouped agent receives its own
       // team and root. Existing projectIds are respected, never rewritten.
       for (const agent of agents) {
+        if (explicitScope(agent)) continue;
         if (agent.teamId && byTeam.has(agent.teamId)) continue;
         const team = await agentTeamsRepository.create({ name: agent.name, description: `Equipo de ${agent.name}` });
         byTeam.set(team.id!, team);
@@ -165,7 +177,7 @@ export const projectWorkspaceService = {
       for (const team of byTeam.values()) {
         if (teamProject.has(team.id!)) continue;
         const members = agents.filter((a) => a.teamId === team.id);
-        if (!members.length) continue; // A global team may belong to another target.
+        if (!members.length || members.some(explicitScope)) continue; // Never convert Market or multiproject profiles.
         const leader = members.find((a) => !a.parentAgentId) ?? members[0]!;
         const candidateIds = new Set(members.flatMap((a) => a.projectIds ?? []));
         let project = projects.find((p) => !p.parentId && candidateIds.has(p.id!) && !p.teamId);
@@ -197,7 +209,9 @@ export const projectWorkspaceService = {
         for (const chat of page.items) {
           if (chat.projectId && validProjectIds.has(chat.projectId)) continue;
           const agent = chat.agentId ? byAgent.get(chat.agentId) : undefined;
-          const explicit = agent ? originalProjectIds.get(agent.id!)?.map((id) => byProject.get(id)).find(Boolean) : undefined;
+          if (agent && explicitScope(agent)) continue;
+          const candidates = agent ? (originalProjectIds.get(agent.id!) ?? []).map(id => byProject.get(id)).filter((p): p is AssistantProject => !!p) : [];
+          const explicit = candidates.length === 1 ? candidates[0] : undefined;
           const project = explicit ?? (agent?.teamId ? teamProject.get(agent.teamId) : undefined);
           if (project?.id) {
             await conversationsRepository.patchRuntime(executor, chat.id!, { projectId: project.id });
@@ -220,13 +234,20 @@ export const projectWorkspaceService = {
     if (all.some((p) => p.parentId === project.id)) {
       throw new ValidationError("Mueve o elimina los subproyectos antes de borrar este proyecto");
     }
-    // Preserve chats and agents. Only their project association is removed.
+    // Deletion must not bypass guarded withdrawal or silently make a formerly
+    // assigned profile runnable as an unassigned agent.
+    const agents = await agentsRepository.list();
+    if (agents.some(agent => effectiveAssignment(agent, all, project.id!))) {
+      throw assignmentError("ASSISTANT_ASSIGNMENT_BUSY", "Retira las asignaciones de agentes (incluidas las heredadas) antes de eliminar el proyecto.");
+    }
+    // Preserve bound agent history with its original project identity. A
+    // deleted project remains unreadable for NEW runs, while history is kept.
     const ids = await conversationsRepository.listIds(executor);
     for (const id of ids) {
       const chat = await conversationsRepository.getMeta(executor, id);
-      if (chat?.projectId === project.id) await conversationsRepository.moveToLoose(executor, id);
+      if (chat && chat.projectId === project.id && !chat.agentId) await conversationsRepository.moveToLoose(executor, id);
     }
-    for (const agent of (await agentsRepository.list()).filter((a) => own(a.ownerId, uid ?? -1))) {
+    for (const agent of agents.filter((a) => own(a.ownerId, uid ?? -1))) {
       if (agent.projectIds?.includes(project.id!)) {
         await agentsRepository.update(agent.id!, { projectIds: agent.projectIds.filter((id) => id !== project.id) });
       }

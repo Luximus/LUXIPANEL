@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 process.env.JWT_SECRET ??= "x".repeat(40);
 process.env.LICENSE_SERVER_URL ??= "http://127.0.0.1:3300";
 
-interface Agent { id: string; name: string; providerId?: string; ownerId?: number | null; teamId?: string | null; parentAgentId?: string | null; projectIds?: string[] }
+interface Agent { id: string; name: string; providerId?: string; ownerId?: number | null; teamId?: string | null; parentAgentId?: string | null; projectIds?: string[]; specialty?: string; technologies?: string[] }
 
 const agents = new Map<string, Agent>();
 const teams = new Map<string, { id: string; name: string }>();
@@ -71,7 +71,9 @@ vi.mock("../../../shared/executor/index.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../shared/executor/index.js")>();
   return {
     ...actual,
-    getExecutor: vi.fn(() => ({}) as never),
+    getExecutor: vi.fn(() => ({ target: { id: "target" } }) as never),
+    getContextExecutor: vi.fn(() => ({ target: { id: "target" } })),
+    getContextUser: vi.fn(() => ({ userId: currentUserId, role: "admin" })),
     getContextUserId: vi.fn(() => currentUserId),
   };
 });
@@ -84,9 +86,9 @@ async function invoke(
 ): Promise<{ body?: Record<string, unknown>; error?: { statusCode?: number; message: string } }> {
   let body: Record<string, unknown> | undefined;
   let error: { statusCode?: number; message: string } | undefined;
-  const res = { json: (b: Record<string, unknown>) => { body = b; return res; }, locals: { locale: "es" } };
+  const res = { json: (b: Record<string, unknown>) => { body = b; return res; }, locals: { locale: "es", user: { userId: currentUserId, role: "admin" } } };
   const next = (e: { statusCode?: number; message: string }) => { error = e; };
-  handler({ params: {}, body: {}, ...req }, res, next);
+  handler({ params: {}, body: {}, query: {}, ...req }, res, next);
   await new Promise((r) => setImmediate(r));
   return { body, error };
 }
@@ -106,7 +108,7 @@ describe("agentsController.list — team leader project annotation", () => {
     agents.set(report.id, report);
   }
 
-  it("annotates a leader from its first resolvable projectIds entry", async () => {
+  it("annotates a unique visible assignment without guessing among multiple projects", async () => {
     projects.set("p-lux", { id: "p-lux", title: "LUXIPANEL" });
     leaderWithReport(
       { id: "martin", name: "Martín", projectIds: ["p-lux"], teamId: "t-lux" },
@@ -119,7 +121,7 @@ describe("agentsController.list — team leader project annotation", () => {
     expect(martin["project"]).toEqual({ id: "p-lux", name: "LUXIPANEL" });
   });
 
-  it("falls back to the leader's team name → project title when projectIds is empty/deleted", async () => {
+  it("does not infer assignments from matching team and project names", async () => {
     // projectIds points at a deleted project; the team name mirrors a real project.
     projects.set("p-navai", { id: "p-navai", title: "NAVAI" });
     teams.set("t-navai", { id: "t-navai", name: "NAVAI" });
@@ -130,19 +132,33 @@ describe("agentsController.list — team leader project annotation", () => {
     const { body } = await invoke(agentsController.list, {});
     const list = body?.["agents"] as Array<Record<string, unknown>>;
     const renata = list.find((a) => a["id"] === "renata")!;
-    expect(renata["project"]).toEqual({ id: "p-navai", name: "NAVAI" });
+    expect(renata["project"]).toBeNull();
   });
 
-  it("leaves a non-leader agent with project:null even if it has projectIds", async () => {
+  it("annotates a unique assignment for a non-leader profile too", async () => {
     projects.set("p-lux", { id: "p-lux", title: "LUXIPANEL" });
-    // No subordinates → not a team leader → no project annotation.
+    // The catalog describes every reusable profile, including workers.
     agents.set("solo", { id: "solo", name: "Solo", projectIds: ["p-lux"], teamId: "t-lux" });
     const { body } = await invoke(agentsController.list, {});
     const list = body?.["agents"] as Array<Record<string, unknown>>;
     const solo = list.find((a) => a["id"] === "solo")!;
     expect(solo["isTeamLeader"]).toBe(false);
-    expect(solo["project"]).toBeNull();
+    expect(solo["project"]).toEqual({ id: "p-lux", name: "LUXIPANEL" });
   });
+  it("keeps project null for multiple visible assignments", async () => {
+    projects.set("X", { id: "X", title: "X" }); projects.set("Y", { id: "Y", title: "Y" });
+    agents.set("a", { id: "a", name: "A", projectIds: ["X", "Y"] });
+    const { body, error } = await invoke(agentsController.list, {});
+    expect(error).toBeUndefined();
+    expect((body?.agents as Agent[] & Array<{ project: unknown }>)[0]?.project).toBeNull();
+  });
+  it("searches specialty and declared technologies without inspecting source", async () => {
+    agents.set("a", { id: "a", name: "A", specialty: "Backend", technologies: ["TypeScript"] });
+    agents.set("b", { id: "b", name: "B", specialty: "Diseño", technologies: ["CSS"] });
+    const { body } = await invoke(agentsController.list, { query: { q: "back", technology: "typescript" } });
+    expect((body?.agents as Agent[]).map(a => a.id)).toEqual(["a"]);
+  });
+
 });
 
 describe("agentsController.create — teamId", () => {

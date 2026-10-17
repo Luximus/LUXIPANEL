@@ -4,8 +4,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LOCAL_TARGET_ID, type Executor } from "../../../shared/executor/index.js";
 import type { AgentEvent } from "./providers/provider.types.js";
 import type { StartRunParams } from "./agent-run-registry.js";
+import { preserveWorkerExecution } from "./team-tasks/worker-recovery.js";
+vi.mock("./team-tasks/worker-recovery.js", () => ({ preserveWorkerExecution: vi.fn(async () => false) }));
 
 // ── Mocks (before importing the service) ────────────────────────────────────
+
+// These tests isolate task lifecycle from assignment authorization, exercised
+// with real context/admission code in agent-market.service.test.ts.
+vi.mock("./agent-context.service.js", () => ({
+  admitAgentWork: async (_e: unknown, _id: unknown, projectId: string | null) => ({ projectId: projectId ?? null, release: () => {} }),
+  resolveConversationBinding: async (_e: unknown, input: { agentId?: string; projectId?: string }) => ({ agentId: input.agentId, projectId: input.projectId ?? null }),
+}));
 
 // In-memory task board + plans (double of team-tasks.repository).
 interface AnyTask { [k: string]: unknown; id?: string; status: string; leaderConversationId: string; workerConversationId: string; createdAt: string }
@@ -459,6 +468,14 @@ describe("teamTasksService.waitForTasks", () => {
 });
 
 describe("teamTasksService reconciliation", () => {
+  it("does not fail a stale worker whose persisted CLI is recovering", async () => {
+    const task = await assign();
+    const stored = board.get(task.id ?? "");
+    if (stored) stored["startedAt"] = new Date(Date.now() - 10 * 60_000).toISOString();
+    vi.mocked(preserveWorkerExecution).mockResolvedValueOnce(true);
+    const list = await teamTasksService.listForLeaderConversation(executor, "conv-leader");
+    expect(list[0]?.status).toBe("running");
+  });
   it("closes a STALE running task from the persisted worker chat (restart orphan)", async () => {
     const task = await assign();
     // Simulate the worker having answered before the panel died.

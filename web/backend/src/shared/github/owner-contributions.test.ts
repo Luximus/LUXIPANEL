@@ -56,6 +56,20 @@ describe("maintainer contribution snapshots",()=>{
   expect(git("diff","--name-only",before,after).trim()).toBe("web/src/b.ts");
   expect(await fs.readFile(path.join(root,".git/index"))).toEqual(index);
  });
+ it("filters the committed recovery baseline just like the live snapshot without changing the index",async()=>{
+  const git=(...args:string[])=>execFileSync("git",args,{cwd:root,encoding:"utf8"});
+  git("init","-q");git("config","user.email","test@example.invalid");git("config","user.name","Test");
+  await fs.mkdir(path.join(root,"web/src"),{recursive:true});
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=1;\n");
+  await fs.writeFile(path.join(root,"web/.env.example"),"EXAMPLE=placeholder\n");
+  git("add","web");git("commit","-qm","baseline");
+  const index=await fs.readFile(path.join(root,".git/index"));
+  const {committedContributionSource}=await import("./contribution-continuation.js");
+  const before=await committedContributionSource(root,git("rev-parse","HEAD").trim(),path.join(root,"committed.index"));
+  const after=await captureSource(root,path.join(root,"live.index"));
+  expect(before).toBe(after);expect(await fs.readFile(path.join(root,".git/index"))).toEqual(index);
+  expect(git("ls-tree","-r","--name-only",before)).not.toContain(".env.example");
+ });
  it("denies direct core development to unverified users including ancestor and symlink paths",async()=>{
   expect(overlapsCore("/var/www","/var/www/LUXIPANEL")).toBe(true);expect(overlapsCore("/var/www/LUXIPANEL-other","/var/www/LUXIPANEL")).toBe(false);
   await expect(assertCoreDeveloper(undefined,root,"local")).rejects.toThrow();
@@ -162,6 +176,120 @@ describe("durable CLI contribution recovery",()=>{
    await expect(fs.stat(path.join(memberDir,"change.patch"))).rejects.toThrow();
   }
   expect(await api.finishOwnerContribution(third,true)).toBeNull();
+ });
+ it("waits for the worker's verified outcome after its leader and provider finish",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const leader=await api.beginOwnerContribution(user,"leader",root,"local",true);
+  const worker=await api.beginOwnerContribution(user,"worker",path.join(root,"web"),"local",true);
+  worker!.job.teamTaskId="worker-task";await api.saveContribution(worker!.job);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=4;\n");
+  expect(await api.finishOwnerContribution(leader,true)).toBeNull();
+  expect(await api.finishOwnerContribution(worker,true)).toBeNull();
+  await api.finishOwnerTeamContribution("worker","wrong-task",true);
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  const dir=path.join(root,"github-users/contributions",leader!.job.id);
+  await expect(fs.stat(path.join(dir,"change.patch"))).rejects.toThrow();
+  // Edits made after the leader returns must still be part of the worker's batch.
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=5;\n");
+  await api.finishOwnerTeamContribution("worker","worker-task",true);
+  expect(await fs.readFile(path.join(dir,"change.patch"),"utf8")).toContain("+export const a=5;");
+  expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
+ });
+ it("recovers explicitly reviewed later edits and missing dependencies only when the continuation succeeds",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const review=await import("./contribution-continuation.js");
+  const old=await api.beginOwnerContribution(user,"interrupted",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");await api.finishOwnerContribution(old,false);
+  const original=await fs.readFile(path.join(root,"github-users/contributions",old!.job.id,"interrupted.patch"),"utf8");
+  const second=await api.beginOwnerContribution(user,"also-interrupted",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/second.ts"),"export const second=true;\n");await api.finishOwnerContribution(second,false);
+  const sources=[old!.job.id,second!.job.id];
+  // An untracked worker left a dependency before the repairing turn began.
+  await fs.writeFile(path.join(root,"web/src/dependency.ts"),"export const dependency=true;\n");
+  const current=await api.beginOwnerContribution(user,"repair",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=3;\n");
+  const index=await fs.readFile(path.join(root,".git/index"));
+  const snapshot=await review.previewContributionContinuation(user,sources,current!.job.id);
+  expect(snapshot.patch).toContain("+export const a=3;");expect(snapshot.patch).toContain("+export const dependency=true;");
+  await review.reviewContributionContinuation(user,sources,current!.job.id,snapshot.review.patchHash);
+  expect(await fs.readFile(path.join(root,".git/index"))).toEqual(index);
+  const dir=path.join(root,"github-users/contributions",current!.job.id);
+  await expect(fs.stat(path.join(dir,"change.patch"))).rejects.toThrow();
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  expect(await api.finishOwnerContribution(current,true)).toBe(current!.job.id);
+  expect(await fs.readFile(path.join(dir,"change.patch"),"utf8")).toBe(snapshot.patch);
+  const jobs=await api.readContributionJobs();
+  expect(api.reviewedContribution(old!.job,jobs)?.id).toBe(current!.job.id);
+  expect(api.reviewedContribution(second!.job,jobs)?.id).toBe(current!.job.id);
+  expect(jobs.find(job=>job.id===old!.job.id)).toMatchObject({status:"interrupted",succeeded:false});
+  expect(await fs.readFile(path.join(root,"github-users/contributions",old!.job.id,"interrupted.patch"),"utf8")).toBe(original);
+ });
+ it("reviews against an already published partial contribution without duplicating additions or changing HEAD",async()=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const review=await import("./contribution-continuation.js");
+  const old=await api.beginOwnerContribution(user,"interrupted",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");await api.finishOwnerContribution(old,false);
+  await fs.writeFile(path.join(root,"web/src/existing.ts"),"export const existing=true;\n");
+  const publicationIndex=path.join(root,"published.index");
+  const publishedTree=await api.captureSource(root,publicationIndex);
+  const publicationBase=(await api.contributionGit(root,["commit-tree",publishedTree,"-p",old!.job.head,"-m","Published partial contribution"])).trim();
+  const published:ContributionJob={...old!.job,id:randomUUID(),status:"pushed",succeeded:true,commit:publicationBase,after:publishedTree};
+  await api.saveContribution(published);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=3;\n");
+  await fs.writeFile(path.join(root,"web/src/dependency.ts"),"export const dependency=true;\n");
+  const current=await api.beginOwnerContribution(user,"repair",root,"local",true);
+  const realIndex=await fs.readFile(path.join(root,".git/index"));
+  const snapshot=await review.previewContributionContinuation(user,old!.job.id,current!.job.id,publicationBase);
+  expect(snapshot.files).not.toContain("web/src/existing.ts");
+  expect(snapshot.patch).toContain("-export const a=2;");
+  expect(snapshot.patch).toContain("+export const a=3;");
+  expect(snapshot.patch).toContain("+export const dependency=true;");
+  await review.reviewContributionContinuation(user,old!.job.id,current!.job.id,snapshot.review.patchHash,publicationBase);
+  await api.finishOwnerContribution(current,true);
+  const patchFile=path.join(root,"github-users/contributions",current!.job.id,"change.patch");
+  const options={GIT_INDEX_FILE:publicationIndex};
+  await api.contributionGit(root,["read-tree",publicationBase],options);
+  await api.contributionGit(root,["apply","--check","--cached",patchFile],options);
+  await api.contributionGit(root,["apply","--cached",patchFile],options);
+  expect((await api.contributionGit(root,["write-tree"],options)).trim()).toBe(snapshot.review.after);
+  expect(await fs.readFile(path.join(root,".git/index"))).toEqual(realIndex);
+  expect((await api.contributionGit(root,["rev-parse","HEAD"])).trim()).toBe(old!.job.head);
+  expect(api.reviewedContribution(old!.job,await api.readContributionJobs())?.id).toBe(current!.job.id);
+ });
+ it.each(["unpublished","foreign","unrelated"])("rejects a %s publication baseline",async reason=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const review=await import("./contribution-continuation.js");
+  const old=await api.beginOwnerContribution(user,"interrupted",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");await api.finishOwnerContribution(old,false);
+  const publicationBase=(await api.contributionGit(root,["commit-tree",old!.job.after!,...(reason==="unrelated"?[]:["-p",old!.job.head]),"-m","Candidate baseline"])).trim();
+  if(reason!=="unpublished")await api.saveContribution({...old!.job,id:randomUUID(),status:"pushed",commit:publicationBase,user:reason==="foreign"?{...user,userId:2}:user});
+  const current=await api.beginOwnerContribution(user,"repair",root,"local",true);
+  await expect(review.previewContributionContinuation(user,old!.job.id,current!.job.id,publicationBase)).rejects.toThrow();
+  await api.finishOwnerContribution(current,false);
+  expect(api.reviewedContribution(old!.job,await api.readContributionJobs())).toBeUndefined();
+ });
+ it.each(["stale-preview","later-edit","foreign","overlap","failed-turn","tampered-evidence"])("preserves the interruption when continuation review has %s",async reason=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const review=await import("./contribution-continuation.js");
+  const old=await api.beginOwnerContribution(user,"interrupted",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");await api.finishOwnerContribution(old,false);
+  const current=await api.beginOwnerContribution(user,"repair",root,"local",true);
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=3;\n");
+  const snapshot=await review.previewContributionContinuation(user,old!.job.id,current!.job.id);
+  if(reason==="later-edit"||reason==="failed-turn"){
+   await review.reviewContributionContinuation(user,old!.job.id,current!.job.id,snapshot.review.patchHash);
+   if(reason==="later-edit")await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=4;\n");
+   await api.finishOwnerContribution(current,reason!=="failed-turn");
+   await expect(fs.stat(path.join(root,"github-users/contributions",current!.job.id,"change.patch"))).rejects.toThrow();
+  }else{
+   let writer:Awaited<ReturnType<typeof api.beginOwnerContribution>>=null;
+   if(reason==="overlap")writer=await api.beginOwnerContribution(user,"other",root,"local",true);
+   if(reason==="tampered-evidence")await fs.appendFile(path.join(root,"github-users/contributions",old!.job.id,"interrupted.patch"),"tampered");
+   await expect(review.reviewContributionContinuation(reason==="foreign"?{...user,userId:2}:user,old!.job.id,current!.job.id,reason==="stale-preview"?"f".repeat(64):snapshot.review.patchHash)).rejects.toThrow();
+   await api.finishOwnerContribution(current,false);await api.finishOwnerContribution(writer,false);
+  }
+  expect(api.reviewedContribution(old!.job,await api.readContributionJobs())).toBeUndefined();
+  expect(old!.job.status).toBe("interrupted");expect(old!.job.succeeded).toBe(false);
  });
  it.each(["failed","foreign"])("does not publish a shared group with a %s participant",async reason=>{
   const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
