@@ -37,6 +37,8 @@ export interface ConversationMeta {
    * survives a panel reload (the in-memory engine flag does not).
    */
   unreviewed?: boolean;
+  unreadCount?: number;
+  lastReplyState?: "done" | "failed" | "waiting";
   /**
    * ISO timestamp of the last successful MCP-session repair for this chat.
    * Set by `POST /api/ai/mcp/repair` and echoed on GET meta; the chat banner
@@ -45,6 +47,11 @@ export interface ConversationMeta {
    */
   mcpRepairedAt?: string;
 }
+
+export type ConversationActivity = Pick<ConversationMeta, "id" | "agentId" | "unreviewed" | "unreadCount" | "lastReplyState" | "updatedAt"> & {
+  running?: boolean;
+  pendingPermission?: boolean;
+};
 
 export interface MessageAttachmentRef {
   id: string;
@@ -178,6 +185,16 @@ if (typeof window !== "undefined") {
 }
 
 export const assistantConversationsApi = {
+  /** All notification metadata in the requested scope, without loading history pages. */
+  async activity(projectIds: string[], agentIds: string[]): Promise<ConversationActivity[]> {
+    if (!projectIds.length || !agentIds.length) return [];
+    const qs = new URLSearchParams({ includeActivity: "1", withAgent: "1", limit: "1",
+      projectIds: projectIds.join(","), agentIds: agentIds.join(",") });
+    const res = await api.get<{ ok: boolean; activity: ConversationActivity[] }>(`/api/ai/conversations?${qs}`, { fresh: true });
+    const data = unwrap(res, "Failed to load agent activity");
+    if (!Array.isArray(data.activity)) throw new Error("Invalid agent activity snapshot");
+    return data.activity;
+  },
   async list(
     q = "",
     limit = 50,
@@ -285,7 +302,8 @@ export const assistantConversationsApi = {
   },
   /** Clear the server-side "ended but unreviewed" flag (fire-and-forget on open). */
   async markReviewed(id: string): Promise<void> {
-    await api.post(`/api/ai/conversations/${id}/reviewed`, {});
+    const res = await api.post(`/api/ai/conversations/${id}/reviewed`, {});
+    if (res.ok && typeof window !== "undefined") window.dispatchEvent(new Event("lxp:assistant:conversations-updated"));
   },
 };
 

@@ -1,0 +1,10 @@
+{
+  "title": "Accesos directos a los agentes del proyecto",
+  "changes": [
+    "La bienvenida de cada proyecto muestra tarjetas con el avatar, nombre y rol de sus agentes en lugar de preguntas sugeridas.",
+    "Al pulsar una tarjeta se selecciona el agente en la barra de mensajes y se conservan el proyecto, el borrador y los adjuntos preparados.",
+    "Las tarjetas indican las ejecuciones activas, las solicitudes de atención, los resultados pendientes de leer y la cantidad de respuestas sin leer.",
+    "Los contadores se conservan al recargar y se limpian al abrir la conversación, sin marcar mensajes como leídos al seleccionar un agente.",
+    "Todos los agentes siguen accesibles en pantallas pequeñas y los textos están disponibles en los doce idiomas del panel."
+  ]
+}

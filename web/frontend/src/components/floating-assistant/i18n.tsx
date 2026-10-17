@@ -71,6 +71,11 @@ export type AssistantMessages = {
     };
   };
   chatTab: {
+    agentShortcuts: {
+      heading: string; description: string; empty: string; select: string; unread: string;
+      available: string; running: string; waiting: string; failed: string; done: string;
+      loading: string; unavailable: string;
+    };
     loadingTitle: string;
     loadingDescription: string;
     disabledTitle: string;

@@ -104,6 +104,20 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentShortcuts": {
+      "heading": "وكلاء المشروع",
+      "description": "اختر وكيلاً للمحادثة أو اكتب رسالتك أدناه.",
+      "empty": "لا يوجد وكلاء في هذا المشروع بعد.",
+      "select": "اختيار {name}",
+      "unread": "الرسائل غير المقروءة: {count}",
+      "available": "متاح",
+      "running": "قيد التنفيذ",
+      "waiting": "يتطلب انتباهك",
+      "failed": "فشل التنفيذ",
+      "done": "الرد جاهز",
+      "loading": "جارٍ تحميل الحالة…",
+      "unavailable": "الحالة غير متاحة"
+    },
     "agentHistoryAll": "جميع الوكلاء",
     "agentHistoryHelp": "تصفية السجل حسب العضو وبدء محادثة معه.",
     "agentRoleLeader": "القائد",

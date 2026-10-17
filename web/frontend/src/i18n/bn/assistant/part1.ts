@@ -104,6 +104,20 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentShortcuts": {
+      "heading": "প্রকল্পের এজেন্ট",
+      "description": "কথা বলার জন্য এজেন্ট বেছে নিন বা নিচে বার্তা লিখুন।",
+      "empty": "এই প্রকল্পে এখনও কোনো এজেন্ট নেই।",
+      "select": "{name} নির্বাচন করুন",
+      "unread": "অপঠিত বার্তা: {count}",
+      "available": "উপলব্ধ",
+      "running": "চলছে",
+      "waiting": "আপনার মনোযোগ প্রয়োজন",
+      "failed": "কার্যক্রম ব্যর্থ",
+      "done": "উত্তর প্রস্তুত",
+      "loading": "অবস্থা লোড হচ্ছে…",
+      "unavailable": "অবস্থা পাওয়া যাচ্ছে না"
+    },
     "agentHistoryAll": "সব এজেন্ট",
     "agentHistoryHelp": "সদস্য অনুযায়ী ইতিহাস ফিল্টার করুন এবং তাঁর সাথে চ্যাট শুরু করুন।",
     "agentRoleLeader": "নেতা",

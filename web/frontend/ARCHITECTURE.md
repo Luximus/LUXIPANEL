@@ -457,6 +457,10 @@ El badge verde indica una versión publicada; amarillo identifica cambios de `de
 ### Paridad del chat con agente (2026-10-16)
 `ChatMain` comparte la bienvenida y las sugerencias del chat general con los chats de agente. El agente sustituye la marca central por su avatar; se elimina la franja redundante superior y se conservan el selector, el chip del compositor y el tablero incrustado en `TurnView`.
 
+### Accesos a agentes del proyecto (2026-10-17)
+La bienvenida de proyecto sustituye las sugerencias por `ProjectAgentShortcuts` y comparte su acción con el selector de `PromptBar`: conserva borrador, adjuntos y subproyecto, también al cambiar de proveedor. Los chats sueltos conservan las sugerencias. La cuadrícula muestra todos los miembros del equipo en móvil.
+`useAgentShortcutActivity` consulta una proyección compacta del historial de todos los agentes del proyecto raíz y sus hijos, independiente de la paginación y del agente seleccionado. Incluye buzones antiguos solo cuando el equipo pertenece a una única raíz, igual que el historial. Renueva cada diez segundos mientras la bienvenida está visible, al recuperar foco y al marcar conversaciones leídas; descarta respuestas de proyectos, usuarios y targets anteriores. Si falla la consulta muestra estado no disponible, sin afirmar que los agentes están libres. `unreadCount` cuenta respuestas persistidas, excluye resúmenes de mantenimiento y se limpia en `markReviewed`; el indicador anterior se interpreta como una respuesta conocida pendiente en historiales sin contador. Los estados activos usan el registro del target y el motor local. Verificación visual reproducible: `scripts/qa-agent-shortcuts.mjs`, con la vista real y datos simulados.
+
 ### Razonamiento Max en Codex (2026-10-16)
 Los ajustes generales y el compositor de Codex admiten `max` como nivel independiente de `xhigh` (Extra). La normalización, los metadatos del chat y los envíos inmediatos o en cola conservan el valor exacto. No se modifica la elección guardada en conversaciones anteriores.
 

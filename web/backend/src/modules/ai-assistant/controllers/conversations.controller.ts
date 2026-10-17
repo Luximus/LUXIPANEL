@@ -21,6 +21,7 @@ import { zodIssues } from "../../../shared/validators/index.js";
 import { eventBus, Events } from "../../../shared/events/index.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { agentRunRegistry } from "../services/agent-run-registry.js";
+import { permissionBroker } from "../services/permission-broker.js";
 import { cliJobTracker } from "../services/cli-job-tracker.service.js";
 import { cliJobsRepository } from "../repositories/cli-jobs.repository.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
@@ -94,8 +95,15 @@ export const conversationsController = {
     const projectIds = typeof req.query["projectIds"] === "string" ? req.query["projectIds"].split(",").filter(Boolean).slice(0, 1000) : undefined;
     const agentIds = typeof req.query["agentIds"] === "string" ? req.query["agentIds"].split(",").filter(Boolean).slice(0, 1000) : undefined;
     const includeSummary = req.query["includeSummary"] === "1";
+    const includeActivity = req.query["includeActivity"] === "1";
     const summaryScope = req.query["summaryScope"] === "filtered" ? "filtered" : undefined;
-    const result = await conversationsRepository.list(executor, { q, provider, projectId, projectIds, agentId, agentIds, withAgent, limit, offset, cursor, paged, includeSummary, summaryScope });
+    const result = await conversationsRepository.list(executor, { q, provider, projectId, projectIds, agentId, agentIds, withAgent, limit, offset, cursor, paged, includeSummary, includeActivity, summaryScope });
+    if (result.activity) {
+      const running = new Set(agentRunRegistry.activeRuns().filter(run => run.targetId === executor.target.id).map(run => run.key));
+      result.activity = result.activity.map(row => ({ ...row, running: running.has(String(row.id)),
+        pendingPermission: running.has(String(row.id)) && permissionBroker.pendingCount(String(row.id)) > 0 }));
+      res.setHeader("Cache-Control", "no-store");
+    }
     res.json({ ok: true, ...result });
 
     // On the initial, unfiltered load, self-heal any "orphan" chats (a CLI/

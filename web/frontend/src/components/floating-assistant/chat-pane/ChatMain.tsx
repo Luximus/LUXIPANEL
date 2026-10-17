@@ -38,6 +38,9 @@ import { ChatNavbar } from "./ChatNavbar";
 import { useIsMobile } from "./use-is-mobile";
 import { projectLocation } from "./project-location";
 import { useChatProjectVisibility, visibleChatProjects } from "../chat-project-visibility";
+import { ProjectAgentShortcuts } from "./ProjectAgentShortcuts";
+import { useAgentShortcutActivity } from "./use-agent-shortcut-activity";
+import type { AssistantAgent } from "../assistant-api";
 
 const PROMPT_EFFORTS: Record<string, string[]> = {
   default: [],
@@ -195,6 +198,22 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     return project ?? null;
   }, [currentProjectId, projects]);
   const rootProjects = visibleChatProjects(projects, hiddenProjectIds, selectedRootProject?.id);
+  const shortcutProjectIds = useMemo(() => {
+    if (!selectedRootProject || !projectTeam) return [];
+    const ids = [...projectScopeIds(selectedRootProject.id!, projects)];
+    // Match the history selector's legacy mailboxes only for a uniquely owned team.
+    if (projects.filter(project => !project.parentId && project.teamId === projectTeam.teamId).length === 1) ids.push("none");
+    return ids;
+  }, [selectedRootProject, projectTeam, projects]);
+  const shortcutActivity = useAgentShortcutActivity(shortcutProjectIds, projectTeamAgents.map(agent => agent.id!),
+    active !== false && !chatLoading && turns.length === 0 && agentCatalogReady && !!projectTeam);
+  const agentRoleLabel = (agent: AssistantAgent) => (agent.roleId && rolesById.get(agent.roleId)?.name)
+    || (agent.id === projectTeam?.root.leaderAgentId ? (ct.agentRoleLeader ?? "Líder") : (ct.agentBadgeModel ?? "Agente"));
+  const selectProjectAgent = (key: string) => {
+    if (key === (currentAgentId ?? "")) return;
+    if (key) handleNewAgentChat(key, true);
+    else { newConversation(); setDraft(draft); setAttachments(attachments); }
+  };
   // An open conversation owns its project; sidebar navigation is only the
   // draft scope when no conversation is open.
   const locationNames = useMemo(() => projectLocation(
@@ -307,9 +326,11 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                           ? formatAssistantMessage(ct.newProjectChatAria ?? "Nueva conversación en {project}", { project: currentProject.title })
                           : welcomeTitle} highlightedName={currentAgent?.name ?? currentProject?.title} />
                       </h2>
-                      <p className="mt-2 text-sm text-muted-foreground">{ct.startPointsDescription ?? "Elige un punto de partida o escribe tu propia pregunta abajo."}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{currentProject ? ct.agentShortcuts.description : (ct.startPointsDescription ?? "Elige un punto de partida o escribe tu propia pregunta abajo.")}</p>
                     </div>
-                    {quickStartSuggestions.length > 0 && (
+                    {currentProject ? <ProjectAgentShortcuts agents={projectTeam ? projectTeamAgents : []} selectedId={currentAgentId ?? null}
+                      roleLabel={agentRoleLabel} onSelect={selectProjectAgent} labels={ct.agentShortcuts}
+                      {...shortcutActivity} loading={!agentCatalogReady || (!!projectTeam && shortcutActivity.loading)} /> : quickStartSuggestions.length > 0 && (
                       <div className="lxp-chat-start-actions mt-4 flex flex-wrap items-center justify-center gap-2">
                         {quickStartSuggestions.map((s, i) => {
                           const tile = START_TILES[i % START_TILES.length];
@@ -441,13 +462,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               icon: <i className="ti ti-users text-sm opacity-80" aria-hidden />,
               options: [
                 { key: "", name: ct.agentHistoryAll ?? "Todos los agentes" },
-                ...projectTeamAgents.map(agent => ({ key: agent.id!, name: `[${(agent.roleId && rolesById.get(agent.roleId)?.name) || (agent.id === projectTeam.root.leaderAgentId ? (ct.agentRoleLeader ?? "Líder") : (ct.agentBadgeModel ?? "Agente"))}] ${agent.name}` })),
+                ...projectTeamAgents.map(agent => ({ key: agent.id!, name: `[${agentRoleLabel(agent)}] ${agent.name}` })),
               ],
-              onChange: (key: string) => {
-                if (key === (currentAgentId ?? "")) return;
-                if (key) handleNewAgentChat(key, true);
-                else { newConversation(); setDraft(draft); setAttachments(attachments); }
-              },
+              onChange: selectProjectAgent,
             }] : []),
             ...(onApprovalModeChange ? [{
               key: "approval", label: ct.approvalModeLabel ?? "Modo de aprobación del agente",

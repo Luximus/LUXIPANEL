@@ -18,6 +18,7 @@ import {
   type ConversationMeta,
   type ConversationMessage,
   type ConversationDoc,
+  type ConversationActivity,
 } from "./types.js";
 import {
   listMetaDocs,
@@ -82,11 +83,12 @@ export const conversationsRepository = {
       cursor?: string;
       paged?: boolean;
       includeSummary?: boolean;
+      includeActivity?: boolean;
       summaryScope?: "filtered";
       limit?: number;
       offset?: number;
     } = {},
-  ): Promise<{ items: ConversationMeta[]; total: number; hasMore?: boolean; nextCursor?: string | null; searchStatus?: { state: string; indexed: number; total: number }; summary?: { projects: Record<string, number>; agents: Record<string, number> } }> {
+  ): Promise<{ items: ConversationMeta[]; total: number; activity?: ConversationActivity[]; hasMore?: boolean; nextCursor?: string | null; searchStatus?: { state: string; indexed: number; total: number }; summary?: { projects: Record<string, number>; agents: Record<string, number> } }> {
     // Reconstruction is a readdir + a transcript read per unknown id over the
     // per-server executor (SSH/SFTP). Awaiting it here put that I/O in the
     // critical path of EVERY list — the main contributor to the p95 of
@@ -154,14 +156,18 @@ export const conversationsRepository = {
     // Transcript indexing is demand-driven by a non-empty search.
     const searchStatus = q && opts.paged ? conversationSearchStatus(executor, all) : undefined;
     const total = items.length;
+    // Notifications cover the whole filtered scope, independent of history pagination.
+    const activity = opts.includeActivity ? items.map(({ id, agentId, unreviewed, unreadCount, lastReplyState, updatedAt }) =>
+      ({ id, agentId, unreviewed, unreadCount, lastReplyState, updatedAt })) : undefined;
+    const extra = { ...(summary ? { summary } : {}), ...(activity ? { activity } : {}) };
     const offset = Number.isFinite(opts.offset) ? Math.max(0, Math.trunc(opts.offset!)) : 0;
     const limit = Number.isFinite(opts.limit) ? Math.max(1, Math.min(200, Math.trunc(opts.limit!))) : 50;
     if (opts.paged || opts.cursor) {
       const scope = JSON.stringify([executor?.target?.id ?? "local", getContextUserId()]);
       const query = JSON.stringify([q, opts.provider, opts.projectId, opts.projectIds, opts.agentId, opts.agentIds, opts.withAgent]);
-      return { ...pageConversations(items, scope, query, limit, opts.cursor), ...(searchStatus ? { searchStatus } : {}), ...(summary ? { summary } : {}) };
+      return { ...pageConversations(items, scope, query, limit, opts.cursor), ...(searchStatus ? { searchStatus } : {}), ...extra };
     }
-    return { items: items.slice(offset, offset + limit), total, hasMore: offset + limit < total, ...(summary ? { summary } : {}) };
+    return { items: items.slice(offset, offset + limit), total, hasMore: offset + limit < total, ...extra };
   },
 
   async create(
@@ -483,6 +489,7 @@ export const conversationsRepository = {
     // messages write costs zero extra SSH round-trips; the header lets a later
     // index loss be reconstructed WITHOUT dropping the chat's agent binding.
     let nextLen = 0;
+    let appendedReplies = 0;
     let indexedMessages: ConversationMessage[] = [];
     await store.transaction(async (current) => {
       const curMap = current as Record<string, ConversationDoc & Record<string, unknown>>;
@@ -490,6 +497,7 @@ export const conversationsRepository = {
       const alreadySaved = opts.queueTurnId !== undefined &&
         curMap[QUEUE_RECEIPT_DOC_ID]?.["queueTurnId"] === opts.queueTurnId;
       const nextMessages = alreadySaved ? prev : [...prev, ...normalizedBatch];
+      appendedReplies = alreadySaved ? 0 : normalizedBatch.filter(m => m.role === "assistant" && !m.compacted).length;
       last = nextMessages.at(-1) ?? last;
       nextLen = nextMessages.length;
       indexedMessages = nextMessages;
@@ -518,12 +526,26 @@ export const conversationsRepository = {
     // Flag the conversation as needing review when an answer just landed (set
     // by the run-completion path). Omitted for the user turn so a fresh send
     // doesn't mark its own conversation unreviewed.
-    if (opts.unreviewed !== undefined) patch.unreviewed = opts.unreviewed;
+    if (appendedReplies > 0) {
+      const reply = normalizedBatch.filter(m => m.role === "assistant" && !m.compacted).at(-1)!;
+      patch.lastReplyState = reply.error || reply.interrupted ? "failed" : reply.ask?.length || reply.pending ? "waiting" : "done";
+    }
     // If the conversation had no title yet, derive it from the first user msg.
     if (existingMeta && !hasGoodTitle && firstUserInBatch) {
       patch.title = effectiveTitle;
     }
-    const updated = await storeForScope(executor, scope).update(id, patch);
+    // Read the latest counter inside the metadata transaction: an answer can
+    // settle while another request reviews the same conversation.
+    const updated = await storeForScope(executor, scope).transaction(async current => {
+      const meta = current[id];
+      if (!meta) return { next: current, result: null };
+      const unreadCount = opts.unreviewed === false ? 0 : opts.unreviewed && appendedReplies > 0
+        ? (meta.unreadCount ?? (meta.unreviewed ? 1 : 0)) + appendedReplies : meta.unreadCount;
+      const next = { ...meta, ...patch, unreadCount,
+        ...(opts.unreviewed === false ? { unreviewed: false } : opts.unreviewed && appendedReplies > 0 ? { unreviewed: true } : {}),
+        updatedAt: new Date().toISOString() };
+      return { next: { ...current, [id]: next }, result: { ...next, id } };
+    });
     if (updated) updateConversationSearch(executor, updated, indexedMessages);
     return updated;
   },
@@ -583,7 +605,7 @@ export const conversationsRepository = {
    *  ordering timestamp only moves on a real message/answer, not on a read. */
   async markReviewed(executor: Executor | null | undefined, id: string): Promise<ConversationMeta | null> {
     const scope = await resolveScope(executor, id);
-    return storeForScope(executor, scope).update(id, { unreviewed: false }, { touch: false });
+    return storeForScope(executor, scope).update(id, { unreviewed: false, unreadCount: 0 }, { touch: false });
   },
 
   /**

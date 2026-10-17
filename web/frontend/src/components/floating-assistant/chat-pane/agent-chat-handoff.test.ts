@@ -11,6 +11,7 @@ import { chatEngine } from "../chat-engine";
 const staged = { name: "contexto.txt", mimeType: "text/plain", dataBase64: "UVQ=" };
 const legacy = vi.hoisted(() => ({ id: "legacy", title: "Buzón antiguo", provider: "claude", projectId: null, agentId: "agent", preview: "", messageCount: 0 }));
 const conversationApi = vi.hoisted(() => ({
+  activity: vi.fn(async () => [{ id: "worker-chat", agentId: "worker", unreviewed: true, unreadCount: 3, running: true }]),
   list: vi.fn(async (...args: Parameters<typeof import("../assistant-api/conversations").assistantConversationsApi.list>) => ({ items: args[6]?.agentId ? [legacy] : [], total: 1, summary: { agents: { agent: 1 }, projects: {} } })),
   get: vi.fn(async () => legacy),
   messages: vi.fn(async () => ({ items: [], total: 0, hasMore: false })),
@@ -233,5 +234,21 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
       expect.objectContaining({ projectIds: ["child", "root"], summaryScope: "filtered" }));
     expect(host.querySelector('[data-agent-group]')).toBeNull();
     expect(host.querySelector('[data-selected-project-convos]')).not.toBeNull();
+    // Cards are shortcuts to the same picker, never send/mark-read actions.
+    expect(host.querySelector('.lxp-chat-start-actions')).toBeNull();
+    expect(host.querySelectorAll('[data-agent-shortcut]')).toHaveLength(3);
+    expect(host.querySelector('[data-agent-shortcut="worker"]')?.textContent).toContain("En ejecución");
+    const reviewCalls = conversationApi.markReviewed.mock.calls.length;
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-agent-shortcut="worker"]')!.click());
+    expect(vm.currentAgentId).toBe("worker");
+    expect(vm.currentProjectId).toBe("root");
+    expect(vm.draft).toBe("Mensaje para otro proveedor");
+    expect(vm.attachments).toEqual([staged]);
+    expect(host.querySelector('[data-picker="agent"]')?.textContent).toContain("Sofía");
+    expect(host.querySelector('[data-agent-shortcut="worker"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(conversationApi.markReviewed.mock.calls.length).toBe(reviewCalls);
+    onLaunchAgent.mockClear();
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-agent-shortcut="other-provider"]')!.click());
+    expect(onLaunchAgent).toHaveBeenCalledWith(expect.objectContaining({ id: "other-provider" }), "root", { text: "Mensaje para otro proveedor", attachments: [staged] });
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

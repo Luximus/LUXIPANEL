@@ -771,3 +771,43 @@ describe("queued history receipts", () => {
     expect((await conversationsRepository.allMessages(executor, String(conversation.id))).filter(item => item.content === queued.content)).toHaveLength(2);
   });
 });
+
+describe("agent shortcut notifications", () => {
+  it("counts assistant replies, preserves them through user turns and compaction, and clears only on review", async () => {
+    const executor = makeExecutor([]);
+    const conversation = await conversationsRepository.create(executor, "codex", "Inicio", "project", "agent");
+    const id = String(conversation.id);
+    await conversationsRepository.appendMessages(executor, id, [msg("assistant", "Primera respuesta", "1"), msg("assistant", "Segunda respuesta", "2")], { unreviewed: true });
+    await conversationsRepository.appendMessages(executor, id, [msg("user", "Continuar", "3")]);
+    expect(await conversationsRepository.getMeta(executor, id)).toMatchObject({ unreadCount: 2, unreviewed: true, lastReplyState: "done" });
+    await conversationsRepository.replaceMessages(executor, id, [{ ...msg("assistant", "Resumen", "4"), compacted: true }]);
+    expect(await conversationsRepository.getMeta(executor, id)).toMatchObject({ unreadCount: 2 });
+    const before = await conversationsRepository.getMeta(executor, id);
+    expect(await conversationsRepository.markReviewed(executor, id)).toMatchObject({ unreadCount: 0, unreviewed: false, updatedAt: before?.updatedAt });
+    await conversationsRepository.appendMessages(executor, id, [{ ...msg("assistant", "Error", "5"), error: "Falló" }], { unreviewed: true });
+    expect(await conversationsRepository.getMeta(executor, id)).toMatchObject({ unreadCount: 1, lastReplyState: "failed" });
+  });
+
+  it("does not count duplicate saved replies or maintenance summaries", async () => {
+    const executor = makeExecutor([]);
+    const conversation = await conversationsRepository.create(executor, "codex");
+    const id = String(conversation.id), reply = msg("assistant", "Respuesta", "1");
+    await conversationsRepository.appendMessages(executor, id, [reply], { unreviewed: true, queueTurnId: "reply-1" });
+    await conversationsRepository.appendMessages(executor, id, [reply], { unreviewed: true, queueTurnId: "reply-1" });
+    await conversationsRepository.appendMessages(executor, id, [{ ...reply, compacted: true }], { unreviewed: true });
+    expect(await conversationsRepository.getMeta(executor, id)).toMatchObject({ unreadCount: 1, unreviewed: true });
+  });
+
+  it("returns all scoped notification rows beyond pagination, without message content or other users", async () => {
+    const executor = makeExecutor([], "agent-notifications");
+    for (let i = 0; i < 205; i++) seedMeta("conversations-u1", `c-${i}`, { title: "Private title", preview: "Private preview", projectId: i % 2 ? "child" : "root", agentId: "a", unreadCount: 2, unreviewed: true });
+    seedMeta("conversations-u1", "elsewhere", { projectId: "other", agentId: "a" });
+    seedMeta("conversations-u1", "other-agent", { projectId: "root", agentId: "b" });
+    seedMeta("conversations-u2", "other-user", { projectId: "root", agentId: "a" });
+    const result = await conversationsRepository.list(executor, { projectIds: ["root", "child"], agentIds: ["a"], includeActivity: true, limit: 1 });
+    expect(result.items).toHaveLength(1);
+    expect(result.activity).toHaveLength(205);
+    expect(result.activity?.reduce((sum, row) => sum + (row.unreadCount ?? 0), 0)).toBe(410);
+    expect(result.activity?.every(row => !('preview' in row) && !('title' in row))).toBe(true);
+  });
+});

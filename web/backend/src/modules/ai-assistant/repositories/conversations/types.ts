@@ -150,6 +150,9 @@ export interface ConversationMeta {
    * after a panel reload (the in-memory engine flag doesn't survive that).
    */
   unreviewed?: boolean;
+  /** Assistant replies received since the conversation was last reviewed. */
+  unreadCount?: number;
+  lastReplyState?: "done" | "failed" | "waiting";
   /**
    * User-pinned conversation. Pinned chats sort to the top of the list (ahead of
    * the normal updatedAt-desc ordering) so important threads stay reachable.
@@ -179,6 +182,9 @@ export interface ConversationDoc {
   id?: string;
   messages: ConversationMessage[];
 }
+
+/** Lightweight notification projection; never includes transcript or preview. */
+export type ConversationActivity = Pick<ConversationMeta, "id" | "agentId" | "unreviewed" | "unreadCount" | "lastReplyState" | "updatedAt">;
 
 /** Embedded identity header persisted alongside a conversation's messages. */
 export interface EmbeddedConversationMeta {

@@ -104,6 +104,20 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentShortcuts": {
+      "heading": "프로젝트 에이전트",
+      "description": "에이전트를 선택하거나 아래에 메시지를 입력하세요.",
+      "empty": "이 프로젝트에는 아직 에이전트가 없습니다.",
+      "select": "{name} 선택",
+      "unread": "읽지 않은 메시지: {count}",
+      "available": "대기 중",
+      "running": "실행 중",
+      "waiting": "확인이 필요합니다",
+      "failed": "실행 실패",
+      "done": "답변 도착",
+      "loading": "상태 불러오는 중…",
+      "unavailable": "상태를 확인할 수 없음"
+    },
     "agentHistoryAll": "모든 에이전트",
     "agentHistoryHelp": "멤버별로 기록을 필터링하고 해당 멤버와 채팅을 시작합니다.",
     "agentRoleLeader": "리더",

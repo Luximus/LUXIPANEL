@@ -104,6 +104,20 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentShortcuts": {
+      "heading": "Агенты проекта",
+      "description": "Выберите агента или напишите сообщение ниже.",
+      "empty": "В этом проекте пока нет агентов.",
+      "select": "Выбрать {name}",
+      "unread": "Непрочитанные сообщения: {count}",
+      "available": "Доступен",
+      "running": "Выполняется",
+      "waiting": "Требуется ваше внимание",
+      "failed": "Ошибка выполнения",
+      "done": "Ответ готов",
+      "loading": "Загрузка статуса…",
+      "unavailable": "Статус недоступен"
+    },
     "agentHistoryAll": "Все агенты",
     "agentHistoryHelp": "Фильтровать историю по участнику и начать с ним чат.",
     "agentRoleLeader": "Руководитель",

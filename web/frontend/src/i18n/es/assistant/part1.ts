@@ -104,6 +104,20 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentShortcuts": {
+      "heading": "Agentes del proyecto",
+      "description": "Selecciona un agente para conversar o escribe tu mensaje abajo.",
+      "empty": "Este proyecto aún no tiene agentes.",
+      "select": "Seleccionar a {name}",
+      "unread": "Mensajes sin leer: {count}",
+      "available": "Disponible",
+      "running": "En ejecución",
+      "waiting": "Necesita tu atención",
+      "failed": "Ejecución con error",
+      "done": "Respuesta lista",
+      "loading": "Cargando estado…",
+      "unavailable": "Estado no disponible"
+    },
     "agentHistoryAll": "Todos los agentes",
     "agentHistoryHelp": "Filtra el historial por miembro e inicia un chat con él.",
     "agentRoleLeader": "Líder",

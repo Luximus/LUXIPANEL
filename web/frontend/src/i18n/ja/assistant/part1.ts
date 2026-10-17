@@ -104,6 +104,20 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentShortcuts": {
+      "heading": "プロジェクトのエージェント",
+      "description": "エージェントを選択するか、下にメッセージを入力してください。",
+      "empty": "このプロジェクトにはまだエージェントがいません。",
+      "select": "{name}を選択",
+      "unread": "未読メッセージ：{count}",
+      "available": "待機中",
+      "running": "実行中",
+      "waiting": "確認が必要です",
+      "failed": "実行エラー",
+      "done": "返信あり",
+      "loading": "状態を読み込み中…",
+      "unavailable": "状態を取得できません"
+    },
     "agentHistoryAll": "すべてのエージェント",
     "agentHistoryHelp": "メンバーで履歴を絞り込み、そのメンバーとチャットを開始します。",
     "agentRoleLeader": "リーダー",

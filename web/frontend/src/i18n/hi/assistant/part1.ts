@@ -104,6 +104,20 @@ const assistantPart1 = {
     }
   },
   "chatTab": {
+    "agentShortcuts": {
+      "heading": "प्रोजेक्ट के एजेंट",
+      "description": "बात करने के लिए एजेंट चुनें या नीचे अपना संदेश लिखें।",
+      "empty": "इस प्रोजेक्ट में अभी कोई एजेंट नहीं है।",
+      "select": "{name} चुनें",
+      "unread": "अपठित संदेश: {count}",
+      "available": "उपलब्ध",
+      "running": "चल रहा है",
+      "waiting": "आपके ध्यान की आवश्यकता है",
+      "failed": "निष्पादन विफल",
+      "done": "जवाब तैयार है",
+      "loading": "स्थिति लोड हो रही है…",
+      "unavailable": "स्थिति उपलब्ध नहीं है"
+    },
     "agentHistoryAll": "सभी एजेंट",
     "agentHistoryHelp": "सदस्य के अनुसार इतिहास फ़िल्टर करें और उनसे चैट शुरू करें।",
     "agentRoleLeader": "प्रमुख",
