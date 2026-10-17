@@ -9,9 +9,10 @@ import {
   teamTemplatesMessagesFallback,
 } from "./team-templates.i18n";
 
+type MessageShape<T> = { [K in keyof T]: T[K] extends string ? string : MessageShape<T[K]> };
 export type AssistantMessages = {
-  agentMarket: typeof esAssistant.agentMarket;
-  agentsTab: typeof esAssistant.agentsTab;
+  agentMarket: MessageShape<typeof esAssistant.agentMarket>;
+  agentsTab: MessageShape<typeof esAssistant.agentsTab>;
   welcomeTitle: string;
   drawer: {
     openAriaLabel: string;

@@ -44,6 +44,7 @@ import type { ProjectAgentScope } from "../project-modal/agent-scope";
 
 export type AgentsTabProps = {
   editorOnly?: boolean;
+  initialAgent?: AssistantAgent;
   onEditorDone?: () => void;
   projectScope?: ProjectAgentScope;
   onLaunchAgent: (agent: AssistantAgent) => void;
@@ -55,7 +56,7 @@ export type AgentsTabProps = {
   initialEditAgentId?: string | null;
 };
 
-export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone }: AgentsTabProps) {
+export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, initialAgent }: AgentsTabProps) {
   const _i18n = useAssistantI18n() as ReturnType<typeof useAssistantI18n> & { agentsTab?: Partial<AgentsTabMessages> };
   const _over = _i18n.agentsTab ?? {};
   const t: AgentsTabMessages = {
@@ -76,7 +77,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   const [agents, setAgents] = useState<AssistantAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<DraftAgent | null>(editorOnly && !initialEditAgentId ? emptyDraft : null);
+  const [draft, setDraft] = useState<DraftAgent | null>(() => initialAgent ? toDraft(initialAgent) : editorOnly && !initialEditAgentId ? emptyDraft() : null);
   // Active tab in the agent editor — the create/edit form is split into focused tabs.
   const [editorTab, setEditorTab] = useState<"general" | "model" | "hierarchy" | "tools" | "resources" | "access">("general");
   const [saving, setSaving] = useState(false);
@@ -209,7 +210,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   // Deep-link from the chat header chip: once the agents list is in, jump
   // straight into the editor for the requested agent (same view the list's
   // "Editar" button opens). Consumed once so in-modal navigation stays free.
-  const initialEditConsumed = useRef(false);
+  const initialEditConsumed = useRef(!!initialAgent);
   useEffect(() => {
     if (!initialEditAgentId || initialEditConsumed.current || loading) return;
     initialEditConsumed.current = true;

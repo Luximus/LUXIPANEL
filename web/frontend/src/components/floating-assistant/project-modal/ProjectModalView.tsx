@@ -577,7 +577,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   key={project.id}
                   projectId={project.id}
                   locale={props.locale}
-                  initialEditAgentId={props.initialEditAgentId}
+                  initialEditAgentId={props.initialEditAgentId ?? undefined}
                 />
               </Suspense>
           )}

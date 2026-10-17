@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Search, Store, RefreshCw } from "lucide-react";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { openConfirm } from "@/lib/confirm";
@@ -11,7 +11,7 @@ import { AgentAvatar } from "./AgentAvatar";
 import { formatAssistantMessage, useAssistantI18n } from "./i18n";
 import { assignedInProject, emptyMarketFilters, filterMarket } from "./agent-market-state";
 import { AgentAssignmentEditor } from "./AgentAssignmentEditor";
-const AgentsTab = lazy(() => import("./AgentsTab").then(module => ({ default: module.AgentsTab })));
+import { AgentProfileDialog } from "./AgentProfileDialog";
 
 export const marketControl = "min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 const scopeKey = () => JSON.stringify([resolveTargetScope(), scopeHeaders(true)]);
@@ -24,7 +24,7 @@ export function AgentMarket(props: { projectId?: string; initialEditAgentId?: st
     resetEvents.forEach(event => window.addEventListener(event, reset));
     return () => resetEvents.forEach(event => window.removeEventListener(event, reset));
   }, []);
-  return <MarketContent key={`${scopeKey()}:${epoch}:${props.projectId ?? ""}`} {...props} />;
+  return <MarketContent key={`${scopeKey()}:${epoch}:${props.projectId ?? ""}`} {...props} projectId={epoch ? undefined : props.projectId} initialEditAgentId={epoch ? undefined : props.initialEditAgentId} />;
 }
 
 function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parameters<typeof AgentMarket>[0]) {
@@ -43,7 +43,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
   const mounted = useRef(true), sequence = useRef(0), busy = useRef(false);
   const scope = useRef(scopeKey());
   const current = () => mounted.current && scope.current === scopeKey();
-  useEffect(() => () => { mounted.current = false; ++sequence.current; }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++sequence.current; }; }, []);
   const errorText = (err: unknown) => {
     if (err instanceof AgentRequestError) {
       if (!err.status) return t.uncertain;
@@ -146,9 +146,6 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
       {error && <p role="alert" className="px-4 pt-4 text-sm text-destructive">{error}</p>}
       <AgentAssignmentEditor agent={editor} agents={agents} projects={projects} roles={roles} pending={!!pending} onSave={data => void mutate(editor, "configure", data)} />
     </ModalShell>}
-    {profile && <ModalShell title={profile === "new" ? t.newProfile : t.editProfile} description={t.profileHint} closeLabel={i18n.drawer.close} onClose={() => setProfile(null)}>
-      <p className="px-4 pt-4 text-sm text-muted-foreground">{t.profileHint}</p>
-      <Suspense fallback={<p role="status" className="p-4">{t.loading}</p>}><AgentsTab editorOnly initialEditAgentId={profile === "new" ? undefined : profile} locale={locale} onEditorDone={() => { setProfile(null); void reload(); }} onLaunchAgent={() => undefined} /></Suspense>
-    </ModalShell>}
+    {profile && <AgentProfileDialog agentId={profile === "new" ? undefined : profile} locale={locale} onClose={() => setProfile(null)} onSaved={() => void reload()} />}
   </section>;
 }
