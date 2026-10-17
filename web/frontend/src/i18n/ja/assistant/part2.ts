@@ -39,6 +39,7 @@ const assistantPart2 = {
     "minimaxVoiceHint": "使用する MiniMax の音声。"
   },
   "agentMarket": {
+    "overrideHint": "保存すると、このプロジェクトの継承された設定がこれらの設定に置き換わります。",
     "title": "Market",
     "description": "このサーバーのプロジェクトで再利用できるプロフィール。",
     "search": "名前、説明、専門分野、技術で検索",

@@ -6,6 +6,20 @@ import PromptBar from "./PromptBar";
 
 afterEach(() => document.body.replaceChildren());
 
+it("preserves historical drafts while disabling send and queue and allowing navigation", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const onSend = vi.fn(), onQueue = vi.fn(), onChange = vi.fn();
+  try {
+    await act(async () => root.render(createElement(PromptBar, { value: "Borrador histórico", readOnly: true, onSend, onQueue, onChange, sources: [], models: [], efforts: [], toolbarPickers: [{ key: "agent", label: "Agente", value: "old", options: [{ key: "old", name: "Histórico" }], onChange: vi.fn() }] })));
+    const input = host.querySelector("textarea")!;
+    expect(input.readOnly).toBe(true); expect(input.value).toBe("Borrador histórico");
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="Send"]')?.disabled).toBe(true);
+    expect(host.querySelector('[data-picker="agent"]')).not.toBeNull();
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onSend).not.toHaveBeenCalled(); expect(onQueue).not.toHaveBeenCalled(); expect(input.value).toBe("Borrador histórico");
+  } finally { await act(async () => root.unmount()); }
+});
+
 it("places mobile settings and send beside the draft and restores desktop controls without losing it", async () => {
   const host = document.createElement("div");
   document.body.append(host);

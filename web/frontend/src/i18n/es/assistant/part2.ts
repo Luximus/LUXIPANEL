@@ -40,6 +40,7 @@ const assistantPart2 = {
     "retry": "Reintentar"
   },
   "agentMarket": {
+    "overrideHint": "Al guardar, esta configuración sustituye la heredada en este proyecto.",
     "title": "Market",
     "description": "Perfiles reutilizables para los proyectos de este servidor.",
     "search": "Buscar por nombre, descripción, especialidad o tecnología",

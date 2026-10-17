@@ -95,10 +95,17 @@ requestAssistant({
 });
 ```
 
-`tab` ∈ `"chat" | "agentes" | "providers" | "modules" | "stats" | "servers" | "access"`.
+`tab` ∈ `"chat" | "market" | "agentes" | "providers" | "modules" | "stats" | "servers" | "access"`.
 
 No lleva `prompt`, `target` ni `conversation` — sólo cambia la pestaña visible
 del consumidor. Es lo que sustituye al legacy `lxp:assistant:open`.
+
+`market` abre el catálogo de perfiles y asignaciones del target en la vista
+dedicada o en el drawer. `agentes` se mantiene como alias. Para editar un perfil
+desde un chip se conserva `luxipanel:assistant-settings-open` con
+`{section:"agentes",agentId}`: abre un único editor global, independiente del
+proyecto del chat. La pestaña Agentes de `ProjectModal` configura las asignaciones
+en ese proyecto; no mueve el perfil global ni cambia chats anteriores.
 
 ## 3. Cómo consumir el bus desde un caller nuevo
 

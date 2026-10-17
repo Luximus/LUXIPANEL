@@ -39,6 +39,7 @@ const assistantPart2 = {
     "minimaxVoiceHint": "صوت MiniMax المستخدم."
   },
   "agentMarket": {
+    "overrideHint": "يؤدي الحفظ إلى استبدال الإعدادات الموروثة في هذا المشروع بهذه الإعدادات.",
     "title": "Market",
     "description": "ملفات تعريف قابلة لإعادة الاستخدام لمشاريع هذا الخادم.",
     "search": "البحث بالاسم أو الوصف أو التخصص أو التقنية",

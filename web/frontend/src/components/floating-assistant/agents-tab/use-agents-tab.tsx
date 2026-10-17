@@ -11,6 +11,7 @@ import { useModuleCatalog } from "../use-module-catalog";
  * read this VM. Public props (`AgentsTabProps`) are unchanged.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { resolveTargetScope, scopeHeaders } from "@/lib/api-client";
 import {
   agentGroupBucket,
   assistantAgentsApi,
@@ -57,6 +58,11 @@ export type AgentsTabProps = {
 };
 
 export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, initialAgent }: AgentsTabProps) {
+  const requestScope = () => JSON.stringify([resolveTargetScope(), scopeHeaders(true)]);
+  const initialScope = useRef(requestScope());
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const isCurrent = () => alive.current && initialScope.current === requestScope();
   const _i18n = useAssistantI18n() as ReturnType<typeof useAssistantI18n> & { agentsTab?: Partial<AgentsTabMessages> };
   const _over = _i18n.agentsTab ?? {};
   const t: AgentsTabMessages = {
@@ -81,6 +87,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   // Active tab in the agent editor — the create/edit form is split into focused tabs.
   const [editorTab, setEditorTab] = useState<"general" | "model" | "hierarchy" | "tools" | "resources" | "access">("general");
   const [saving, setSaving] = useState(false);
+  const savingProfile = useRef(false);
   const [modules, setModules] = useState<ResolvedModule[]>([]);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestArchetype, setSuggestArchetype] = useState("");
@@ -147,6 +154,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   }
 
   async function reload() {
+    if (!isCurrent()) return;
     setLoading(true);
     try {
       const [ags, rls, tms] = await Promise.all([
@@ -154,14 +162,15 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
         assistantAgentRolesApi.list().catch(() => [] as AssistantAgentRole[]),
         assistantAgentTeamsApi.list().catch(() => [] as AgentTeam[]),
       ]);
+      if (!isCurrent()) return;
       setAgents(ags);
       setRoles(rls);
       setTeams(projectScope ? tms.filter((team) => team.id === projectScope.teamId) : tms);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      if (isCurrent()) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }
 
@@ -321,7 +330,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   }
 
   async function save() {
-    if (!draft || !draft.name.trim()) return;
+    if (!draft || !draft.name.trim() || saving || savingProfile.current || !isCurrent()) return;
     // Group (team) is now mandatory: bounce to the Hierarchy tab if missing so
     // the required selector is in view. (UI-only guard — programmatic agent
     // creation paths still allow a null teamId; see the multi-agent/template flows.)
@@ -330,6 +339,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       setEditorTab("hierarchy");
       return;
     }
+    savingProfile.current = true;
     setSaving(true);
     try {
       const payload = toPayload(draft);
@@ -339,14 +349,17 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       }
       if (draft.id) await assistantAgentsApi.update(draft.id, payload);
       else await assistantAgentsApi.create(payload);
+      if (!isCurrent()) return;
       setDraft(null);
       await reload();
+      if (!isCurrent()) return;
       window.dispatchEvent(new CustomEvent("lxp:assistant:agents-updated"));
       onEditorDone?.();
     } catch (e) {
-      setError((e as Error).message);
+      if (isCurrent()) setError((e as Error).message);
     } finally {
-      setSaving(false);
+      savingProfile.current = false;
+      if (isCurrent()) setSaving(false);
     }
   }
 

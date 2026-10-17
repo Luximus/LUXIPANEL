@@ -27,12 +27,13 @@ export function summarizeAgentActivity(rows: ConversationActivity[]): Map<string
 const scopeEvents = ["luxipanel:target-changed", "luxipanel:logout", "luxipanel:session-ended", "luxipanel:session-started", "luxipanel:permissions-changed"];
 const identity = () => JSON.stringify([resolveTargetScope(), scopeHeaders()]);
 
-export function useAgentShortcutActivity(projectIds: string[], agentIds: string[], enabled: boolean) {
+export function useAgentShortcutActivity(projectIds: string[], agentIds: string[], enabled: boolean, legacyAgentIds: string[] = []) {
   const [epoch, setEpoch] = useState(0);
   const scope = identity();
   const projectsKey = JSON.stringify(projectIds.slice().sort());
   const agentsKey = JSON.stringify(agentIds.slice().sort());
-  const key = JSON.stringify([scope, projectsKey, agentsKey, epoch]);
+  const legacyAgentsKey = JSON.stringify(legacyAgentIds.filter(id => agentIds.includes(id)).sort());
+  const key = JSON.stringify([scope, projectsKey, agentsKey, legacyAgentsKey, epoch]);
   const [snapshot, setSnapshot] = useState<{ key: string; rows: ConversationActivity[]; error: boolean }>();
   useSyncExternalStore(chatEngine.subscribe, chatEngine.getVersion, chatEngine.getVersion);
   useEffect(() => {
@@ -50,7 +51,14 @@ export function useAgentShortcutActivity(projectIds: string[], agentIds: string[
       if (pending) { refreshAgain = true; return; }
       pending = true;
       try {
-        const rows = await assistantConversationsApi.activity(JSON.parse(projectsKey), JSON.parse(agentsKey));
+        // Legacy mailboxes belong only to agents with an unambiguous original
+        // project. A shared member must not import its loose history here.
+        const legacyIds: string[] = JSON.parse(legacyAgentsKey);
+        const batches = await Promise.all([
+          assistantConversationsApi.activity(JSON.parse(projectsKey), JSON.parse(agentsKey)),
+          ...(legacyIds.length ? [assistantConversationsApi.activity(["none"], legacyIds)] : []),
+        ]);
+        const rows = [...new Map(batches.flat().map(row => [row.id, row])).values()];
         if (!disposed && identity() === scope) setSnapshot({ key, rows, error: false });
       } catch {
         if (!disposed && identity() === scope) setSnapshot({ key, rows: [], error: true });

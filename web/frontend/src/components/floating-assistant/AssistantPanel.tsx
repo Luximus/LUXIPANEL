@@ -292,7 +292,10 @@ export default function AssistantPanel({
       const available = (await assistantAgentsApi.list(selectedProjectId ? { contextProjectId: selectedProjectId } : {})).find(item => item.id === agent.id);
       if (!isCurrent()) return;
       if (!available?.capabilities?.canExecute || (!selectedProjectId && available.execution?.projectId)) {
-        setAgentLaunchError(messages.agentMarket.chooseProject);
+        const code = available?.execution?.error?.code;
+        setAgentLaunchError(code === "ASSISTANT_ASSIGNMENT_REMOVED" ? messages.agentMarket.historical
+          : code === "ASSISTANT_PROJECT_REQUIRED" || (!selectedProjectId && available?.execution?.projectId)
+            ? messages.agentMarket.chooseProject : messages.agentMarket.forbidden);
         return;
       }
       // ChatTab only mounts active providers. Explicitly selecting an agent
@@ -318,7 +321,7 @@ export default function AssistantPanel({
         setAgentLaunchError(error instanceof Error ? error.message : messages.assistantErrorBoundary.errorMessage);
       }
     }
-  }, [config, messages.assistantErrorBoundary.errorMessage, messages.agentMarket.chooseProject]);
+  }, [config, messages.assistantErrorBoundary.errorMessage, messages.agentMarket]);
 
   const openSettings = useCallback((section?: AssistantSettingsSection | "agentes" | null, agentId?: string | null) => {
     if (section === "agentes" && !agentId) { setTab("market"); return; }

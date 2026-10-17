@@ -268,18 +268,16 @@ describe("streamAgent — agentId/projectId null se propagan explícitamente", (
 describe("assistantConversationsApi.create — agentId/projectId null se respetan", () => {
   it("(a) create acepta agentId:null y projectId:null sin reinyectar state", async () => {
     const { assistantConversationsApi } = await import("../components/floating-assistant/assistant-api");
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ ok: true, conversation: { id: "c1", provider: "claude", messageCount: 0, preview: "" } }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const { api } = await import("./api-client");
+    const post = vi.spyOn(api, "post").mockResolvedValue({ ok: true, status: 200,
+      data: { ok: true, conversation: { id: "c1", provider: "claude", messageCount: 0, preview: "" } },
+    });
 
     await assistantConversationsApi.create("claude", "hola", null, null);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][0]).toBe("/api/ai/conversations");
+    const body = post.mock.calls[0][1] as Record<string, unknown>;
     expect(body.provider).toBe("claude");
     expect(body.firstMessage).toBe("hola");
     // Tanto projectId como agentId deben viajar como null LITERAL, NO omitidos.

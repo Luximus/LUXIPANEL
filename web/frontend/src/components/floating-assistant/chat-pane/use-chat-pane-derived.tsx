@@ -342,14 +342,20 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   const agentsLoaded = agentsLoadedScope === catalogScope;
   const [agentsError, setAgentsError] = useState<unknown>(null);
   const catalogScopeRef = useRef(catalogScope);
+  const catalogSequence = useRef(0);
   catalogScopeRef.current = catalogScope;
   const reloadAgents = useCallback(() => {
+    const sequence = ++catalogSequence.current;
+    const identity = () => JSON.stringify([resolveTargetScope(), scopeHeaders()]);
+    const scope = identity();
+    const isCurrent = () => identity() === scope && catalogScopeRef.current === catalogScope && sequence === catalogSequence.current;
+    setAgentsLoadedScope(null);
     void assistantAgentsApi.list(currentProjectId ? { contextProjectId: currentProjectId } : {}).then(items => {
-      if (catalogScopeRef.current !== catalogScope) return;
+      if (!isCurrent()) return;
       setAgents(items); setAgentsLoadedScope(catalogScope); setAgentsError(null);
-    }).catch(error => { if (catalogScopeRef.current === catalogScope) setAgentsError(error); });
+    }).catch(error => { if (isCurrent()) { setAgentsError(error); setAgentsLoadedScope(null); } });
     // Roles power the header agent pill's role chip; refreshed alongside agents.
-    void assistantAgentRolesApi.list().then(items => { if (catalogScopeRef.current === catalogScope) setRoles(items); }).catch(() => { /* ignore */ });
+    void assistantAgentRolesApi.list().then(items => { if (isCurrent()) setRoles(items); }).catch(() => { /* ignore */ });
   }, [catalogScope, currentProjectId]);
   const projectTeam = useMemo(() => currentProject ? projectAgentScope(currentProject, projects) : null, [currentProject, projects]);
   const projectTeamAgents = useMemo(() => agents.filter(a => a.id && availableInProject(a, currentProjectId))
@@ -463,15 +469,28 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     onRename: (id, t) => void renameConversation(id, t),
     onTogglePin: (id, p) => void togglePin(id, p),
   };
+  const projectChatSequence = useRef(0);
   // Acciones de las cabeceras collapsables del árbol "Sueltos / Proyectos":
   // botón + (nueva conversación suelta / de proyecto) y lápiz (editar proyecto).
   const looseTreeActions = {
     onNewLoose: () => { setCurrentProjectId(null); newConversation(); },
-    onNewProjectChat: (pid: string) => {
+    onNewProjectChat: async (pid: string) => {
       const project = projectById.get(pid);
       if (!project) return;
+      const sequence = ++projectChatSequence.current;
+      let preserveAgent = false;
+      if (historyAgentId) {
+        try {
+          const members = await assistantAgentsApi.list({ projectId: pid });
+          if (catalogScopeRef.current !== catalogScope || sequence !== projectChatSequence.current) return;
+          preserveAgent = members.some(agent => agent.id === historyAgentId && availableInProject(agent, pid));
+        } catch {
+          if (catalogScopeRef.current === catalogScope && sequence === projectChatSequence.current) setAttachError(s.i18n.agentMarket.error);
+          return;
+        }
+      }
       setCurrentProjectId(pid);
-      newConversation({ preserveAgent: !!historyAgentId && agents.some(agent => agent.id === historyAgentId && availableInProject(agent, pid)) });
+      newConversation({ preserveAgent });
     },
     onEditProject: (pid: string) => { const p = projectById.get(pid); if (p) setModalProject(p); },
   };
@@ -716,7 +735,12 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     reloadAgents();
     const onUpd = () => reloadAgents();
     window.addEventListener("lxp:assistant:agents-updated", onUpd);
-    return () => window.removeEventListener("lxp:assistant:agents-updated", onUpd);
+    window.addEventListener("luxipanel:permissions-changed", onUpd);
+    return () => {
+      ++catalogSequence.current;
+      window.removeEventListener("lxp:assistant:agents-updated", onUpd);
+      window.removeEventListener("luxipanel:permissions-changed", onUpd);
+    };
   }, [reloadAgents, needsAgents]);
   const currentAgent = useMemo(
     () => (currentAgentId ? agents.find((a) => a.id === currentAgentId) ?? null : null),
@@ -875,6 +899,8 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     historyError: projectTeam && agentsError ? agentsError : historyData.error,
     projectTeam,
     agentCatalogReady: agentsLoaded,
+    agentCatalogError: agentsError,
+    retryAgentCatalog: reloadAgents,
     projectTeamAgents: agentsLoaded ? projectTeamAgents : [],
     historicalProjectAgents: agentsLoaded ? historicalProjectAgents : [],
     sidebarConvos,

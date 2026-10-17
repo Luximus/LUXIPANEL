@@ -47,6 +47,27 @@ it("counts messages across chats and prioritizes attention and running over fini
   expect(result.get("c")).toEqual({ state: "available", unreadCount: 0 });
 });
 
+it("queries legacy activity only for its owners and deduplicates overlapping results", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const row = { id: "owned", agentId: "owner", unreadCount: 2, unreviewed: true };
+  const api = vi.spyOn(assistantConversationsApi, "activity")
+    .mockResolvedValueOnce([row, { id: "shared-project", agentId: "shared", unreadCount: 1, unreviewed: true }])
+    .mockResolvedValueOnce([row]);
+  let state!: ReturnType<typeof useAgentShortcutActivity>;
+  function Probe() {
+    state = useAgentShortcutActivity(["root", "child"], ["owner", "shared"], true, ["owner", "outside"]);
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    expect(api).toHaveBeenNthCalledWith(1, ["child", "root"], ["owner", "shared"]);
+    expect(api).toHaveBeenNthCalledWith(2, ["none"], ["owner"]);
+    expect(state.activity.get("owner")?.unreadCount).toBe(2);
+    expect(state.activity.get("shared")?.unreadCount).toBe(1);
+  } finally { await act(async () => root.unmount()); }
+});
+
 it("hides the previous target immediately and ignores its pending response", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   let resolveOld!: (rows: ConversationActivity[]) => void;

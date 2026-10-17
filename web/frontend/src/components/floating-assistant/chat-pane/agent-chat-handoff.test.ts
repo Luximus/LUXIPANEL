@@ -7,6 +7,7 @@ import { chatUiState } from "../chat-ui-state";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatMain } from "./ChatMain";
 import { chatEngine } from "../chat-engine";
+import { assistantAgentsApi } from "../assistant-api";
 
 const staged = { name: "contexto.txt", mimeType: "text/plain", dataBase64: "UVQ=" };
 const legacy = vi.hoisted(() => ({ id: "legacy", title: "Buzón antiguo", provider: "claude", projectId: null, agentId: "agent", preview: "", messageCount: 0 }));
@@ -25,7 +26,13 @@ vi.mock("../assistant-api", async original => ({
   assistantProjectsApi: { list: vi.fn().mockResolvedValue([
     { id: "root", title: "Root", teamId: "team", leaderAgentId: "agent" }, { id: "child", title: "Child", parentId: "root" },
   ]) },
-  assistantAgentsApi: { list: vi.fn().mockResolvedValue([{ id: "agent", teamId: "team", name: "Oscar", providerId: "claude", model: "" }, { id: "worker", teamId: "team", name: "Sofía", roleId: "dev", providerId: "claude", model: "agent-model" }, { id: "other-provider", teamId: "team", name: "Ana", roleId: "dev", providerId: "codex", model: "" }]) },
+  assistantAgentsApi: { list: vi.fn().mockImplementation(async (query: { contextProjectId?: string; projectId?: string } = {}) => {
+    const projectId = query.contextProjectId ?? query.projectId;
+    return [{ id: "agent", teamId: "team", name: "Oscar", providerId: "claude", model: "" }, { id: "worker", teamId: "different-global-team", relation: "shared", name: "Sofía", roleId: "dev", providerId: "claude", model: "agent-model" }, { id: "other-provider", teamId: "team", name: "Ana", roleId: "dev", providerId: "codex", model: "" }].map(agent => ({ ...agent,
+      assignments: [{ projectId: "root", status: "active", source: "explicit" }],
+      capabilities: { canExecute: true }, context: projectId ? { projectId, membership: projectId === "root" ? "direct" : "inherited" } : null,
+    }));
+  }) },
   assistantAgentRolesApi: { list: vi.fn().mockResolvedValue([{ id: "dev", name: "Desarrollo" }]) },
   assistantConversationsApi: conversationApi,
 }));
@@ -63,6 +70,36 @@ it("keeps an incoming agent and child on initial mount and provider activation",
   } finally { await act(async () => root.unmount()); }
 });
 
+it("keeps the selected agent and draft as read-only history when its assignment is removed", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "worker", draft: "Borrador conservado", attachments: [] });
+  const list = vi.mocked(assistantAgentsApi.list), original = list.getMockImplementation()!;
+  let removed = false;
+  list.mockImplementation(async query => (await original(query)).map(agent => !removed || agent.id !== "worker" ? agent : {
+    ...agent, capabilities: { ...agent.capabilities!, canExecute: false },
+    context: { ...agent.context!, membership: "removed", effectiveAssignment: null, effectiveConfig: null },
+    assignments: [{ projectId: "root", status: "removed", source: "explicit" }],
+  }));
+  const host = document.createElement("div"), root = createRoot(host);
+  let vm!: ChatPaneVM;
+  function Probe() {
+    vm = useChatPane({ provider: "claude", mode: "api", active: true });
+    return createElement(ChatMain, { vm, attachmentImages: new Map() });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    expect(host.querySelector<HTMLTextAreaElement>("textarea")?.readOnly).toBe(false);
+    removed = true;
+    await act(async () => window.dispatchEvent(new Event("lxp:assistant:agents-updated")));
+    expect(vm.currentProjectId).toBe("child"); expect(vm.currentAgentId).toBe("worker");
+    expect(vm.draft).toBe("Borrador conservado");
+    expect(vm.projectTeamAgents.some(agent => agent.id === "worker")).toBe(false);
+    expect(vm.historicalProjectAgents.some(agent => agent.id === "worker")).toBe(true);
+    expect(host.querySelector<HTMLTextAreaElement>("textarea")?.readOnly).toBe(true);
+    expect(host.textContent).toContain("Histórico: no disponible para nuevos chats");
+  } finally { await act(async () => root.unmount()); list.mockImplementation(original); }
+});
+
 it("opens an existing chat from the sidebar and keeps its messages and team visible", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
@@ -90,10 +127,12 @@ it("opens an existing chat from the sidebar and keeps its messages and team visi
     expect(vm.chatLoading).toBe(false);
     expect(vm.turns.map(turn => turn.text)).toEqual(["Consulta anterior del proyecto", "Respuesta guardada del agente"]);
     expect(host.querySelector('[data-agent-shortcut]')).toBeNull();
-    expect(host.textContent).toContain("Respuesta guardada del agente");
+    await vi.waitFor(() => expect(host.textContent).toContain("Respuesta guardada del agente"));
     expect(vm.currentProjectId).toBe("child");
     expect(vm.activeMeta?.projectId).toBeNull();
     expect(vm.currentAgentId).toBe("agent");
+    expect(host.querySelector<HTMLTextAreaElement>("textarea")?.readOnly).toBe(true);
+    expect(host.textContent).toContain("Histórico: no disponible para nuevos chats");
     expect(host.querySelector("[data-agent-group]")).toBeNull();
     expect(host.querySelector("[data-selected-project-convos]")?.textContent).toContain("Buzón antiguo");
   } finally { await act(async () => root.unmount()); }

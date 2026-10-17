@@ -108,12 +108,28 @@ it.each([[409, "ASSISTANT_ASSIGNMENT_BUSY", "Hay trabajo"], [0, undefined, "No s
   await click("Reintentar"); expect(mock.remove).toHaveBeenCalledTimes(1);
 });
 it("offers inherited configuration and source management without a misleading remove action", async () => {
-  records = [profile("Heredado", "inherited")]; await mount();
+  records = [profile("Heredado", "inherited")];
+  records[0].context!.effectiveAssignment!.instructions = "Instrucciones del padre";
+  await mount();
   expect(button("Retirar del proyecto")).toBeUndefined(); expect(host.textContent).toContain("Heredado de Raíz");
   await click("Configurar asignación");
+  expect(document.body.textContent).toContain("sustituye la heredada");
+  expect(document.querySelector<HTMLTextAreaElement>('textarea[maxlength="20000"]')?.value).toBe("");
   const input = [...document.querySelectorAll("input")].find(item => item.maxLength === 200)!;
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Revisor"); input.dispatchEvent(new Event("input", { bubbles: true })); });
   await click("Guardar cambios"); expect(mock.put).toHaveBeenCalledExactlyOnceWith("Heredado", "child", { jobTitle: "Revisor" });
+});
+it("requires reviewing the catalog before repeating an unconfirmed configuration", async () => {
+  mock.put.mockRejectedValueOnce(new AgentRequestError(0, undefined, "offline"));
+  await mount(); await click("Configurar asignación", article("Miembro"));
+  const input = document.querySelector<HTMLInputElement>('input[maxlength="200"]')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Revisor"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await click("Guardar cambios");
+  expect(button("Guardar cambios").closest("fieldset")?.disabled).toBe(true);
+  await click("Guardar cambios"); expect(mock.put).toHaveBeenCalledTimes(1);
+  await click("Reintentar", document.querySelector('[role="dialog"]')!);
+  expect(mock.put).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 it("discards old catalog results and project selection after target change", async () => {
   const old = deferred<AssistantAgent[]>(); mock.list.mockReturnValueOnce(old.promise); await mount();

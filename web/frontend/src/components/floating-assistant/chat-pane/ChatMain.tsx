@@ -17,7 +17,7 @@ import { createPortal } from "react-dom";
 import { formatAssistantMessage, useAssistantI18n } from "../i18n";
 import { chatEngine } from "../chat-engine";
 import { resolveTargetScope } from "@/lib/api-client";
-import { legacyHistoryAgentIds } from "../agent-market-state";
+import { availableInProject, legacyHistoryAgentIds } from "../agent-market-state";
 import { groupTeamNotices, isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
 import { ExecutionDisclosure } from "./tool-disclosure";
 import { assistantConversationsApi, type ConversationMeta } from "../assistant-api";
@@ -201,18 +201,20 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
   const rootProjects = visibleChatProjects(projects, hiddenProjectIds, selectedRootProject?.id);
   const shortcutProjectIds = useMemo(() => {
     if (!selectedRootProject || !projectTeam) return [];
-    const ids = [...projectScopeIds(selectedRootProject.id!, projects)];
-    // Match the history selector's legacy mailboxes only for a uniquely owned team.
-    if (legacyHistoryAgentIds(projectTeamAgents, projects, selectedRootProject.id).length) ids.push("none");
-    return ids;
-  }, [selectedRootProject, projectTeam, projects, projectTeamAgents]);
+    return [...projectScopeIds(selectedRootProject.id!, projects)];
+  }, [selectedRootProject, projectTeam, projects]);
+  const shortcutLegacyAgents = useMemo(() => selectedRootProject
+    ? legacyHistoryAgentIds(projectTeamAgents, projects, selectedRootProject.id) : [],
+  [selectedRootProject, projectTeamAgents, projects]);
   // The project landing offers agents; a selected agent or an opened chat
   // uses the regular conversation view, including when its history is empty.
   const showAgentShortcuts = !!currentProject && !currentAgentId && !activeId && !chatLoading && turns.length === 0;
   const shortcutActivity = useAgentShortcutActivity(shortcutProjectIds, projectTeamAgents.map(agent => agent.id!),
-    active !== false && showAgentShortcuts && agentCatalogReady && !!projectTeam);
-  const agentRoleLabel = (agent: AssistantAgent) => (agent.roleId && rolesById.get(agent.roleId)?.name)
-    || (agent.id === projectTeam?.root.leaderAgentId ? (ct.agentRoleLeader ?? "Líder") : (ct.agentBadgeModel ?? "Agente"));
+    active !== false && showAgentShortcuts && agentCatalogReady && !!projectTeam, shortcutLegacyAgents);
+  const agentRoleId = (agent: AssistantAgent) => agent.context?.effectiveConfig?.roleId ?? agent.roleId;
+  const agentRoleLabel = (agent: AssistantAgent) => agent.context?.effectiveAssignment?.jobTitle
+    || (agentRoleId(agent) && rolesById.get(agentRoleId(agent)!)?.name)
+    || (agent.id === projectTeam?.root.leaderAgentId ? ct.agentRoleLeader : ct.agentBadgeModel);
   const selectProjectAgent = (key: string) => {
     if (key === (currentAgentId ?? "")) return;
     if (vm.historicalProjectAgents.some(agent => agent.id === key)) {
@@ -221,8 +223,11 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     if (key) handleNewAgentChat(key, true);
     else { newConversation(); setDraft(draft); setAttachments(attachments); }
   };
-  const historicalOnly = !!currentAgentId && agentCatalogReady && !!currentProjectId &&
-    vm.historicalProjectAgents.some(agent => agent.id === currentAgentId);
+  const boundProjectId = activeId ? vm.activeMeta?.projectId ?? null : currentProjectId;
+  const boundAgentAvailable = !!currentAgent && (boundProjectId ? availableInProject(currentAgent, boundProjectId)
+    : currentAgent.capabilities?.canExecute === true && currentAgent.execution?.projectId === null);
+  const historicalOnly = !!currentAgentId && agentCatalogReady && !boundAgentAvailable;
+  const agentInputBlocked = !!currentAgentId && (!agentCatalogReady || historicalOnly);
   // An open conversation owns its project; sidebar navigation is only the
   // draft scope when no conversation is open.
   const locationNames = useMemo(() => projectLocation(
@@ -523,7 +528,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                 >
                   <AgentAvatar agent={headerAgent} size={14} />
                   <span className="max-w-[9rem] truncate font-medium">{headerAgent.name}</span>
-                  <RoleChip role={headerAgent.roleId ? rolesById.get(headerAgent.roleId) ?? null : null} className="shrink-0" />
+                  <RoleChip role={agentRoleId(headerAgent) ? rolesById.get(agentRoleId(headerAgent)!) ?? null : null} className="shrink-0" />
                   <i className="ti ti-info-circle text-[10px] shrink-0 opacity-70" aria-hidden />
                 </button>
               )}
@@ -627,12 +632,15 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
           {attachError && <p className="lxp-chat-alert lxp-chat-alert--attachment" role="alert">⚠ {attachError}</p>}
 
           {support.enabled && <input ref={fileInputRef} type="file" multiple accept={support.acceptAttr} className="hidden" onChange={(event) => void onFilesPicked(event.target.files)} />}
+          {!!currentAgentId && !agentCatalogReady && (vm.agentCatalogError
+            ? <div role="alert" className="flex items-center justify-center gap-2 text-sm"><span>{marketMessages.error}</span><button type="button" className="min-h-11 rounded-md border border-border px-3 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring" onClick={vm.retryAgentCatalog}>{marketMessages.retry}</button></div>
+            : <p role="status" className="text-center text-sm text-muted-foreground">{marketMessages.loading}</p>)}
           {historicalOnly && <p role="status" className="text-center text-sm text-muted-foreground">{marketMessages.historical}</p>}
           <PromptBar
             key={`${provider}:${currentAgent?.id ?? "loose"}`}
             className="lxp-chat-prompt"
             mobileLayout={mobileNavigation}
-            readOnly={historicalOnly}
+            readOnly={agentInputBlocked}
             value={draft}
             onChange={(text) => { setDraft(text); requestAnimationFrame(autosizeTextarea); }}
             inputRef={textareaRef}
@@ -664,9 +672,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               setSelectedEffort(value);
               chatUiState.patchConversationChoice(provider, activeId, { effort: value });
             }}
-            realtime={!historicalOnly && voiceEnabled && voice?.realtimeEnabled ? realtime : undefined}
+            realtime={!agentInputBlocked && voiceEnabled && voice?.realtimeEnabled ? realtime : undefined}
             onAudioPhaseChange={onAudioPhaseChange}
-            onDictate={!historicalOnly && voiceEnabled && !voice?.realtimeEnabled && canHoldRecord ? promptDictation.dictate : undefined}
+            onDictate={!agentInputBlocked && voiceEnabled && !voice?.realtimeEnabled && canHoldRecord ? promptDictation.dictate : undefined}
             onStopDictation={promptDictation.stop}
             onCancelDictation={promptDictation.cancel}
             cancelDictationLabel={ct.cancelAudio ?? "Cancelar audio"}
@@ -674,9 +682,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             stopDictationLabel={ct.sttStop ?? "Detener dictado"}
             dictateHint={`${ct.sttStart ?? "Dictar por voz"} · OpenAI`}
             externalAttachmentCount={attachments.length}
-            onSend={(text, detail) => { if (historicalOnly) return; const level = detail.effort ?? "Auto"; return send(text, { ...(detail.recording ? { attachmentsOverride: [detail.recording], queue: true } : {}), reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" | "max" }); }}
+            onSend={(text, detail) => { if (agentInputBlocked) return; const level = detail.effort ?? "Auto"; return send(text, { ...(detail.recording ? { attachmentsOverride: [detail.recording], queue: true } : {}), reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" | "max" }); }}
             onStop={() => chatEngine.stop(chatKey)}
-            onQueue={historicalOnly ? undefined : () => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" | "max" })}
+            onQueue={agentInputBlocked ? undefined : () => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" | "max" })}
             queueLabel={ct.queueMessage ?? "Encolar mensaje"}
             busy={streaming || backgroundRunning}
             width={780}

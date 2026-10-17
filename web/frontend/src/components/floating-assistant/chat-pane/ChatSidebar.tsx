@@ -110,7 +110,8 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     const agent = chat.agentId ? agentById.get(chat.agentId) : undefined;
     const legacyRoot = !chat.projectId && agent
       ? projects.find(project => !project.parentId && legacyHistoryAgentIds([agent], projects, project.id).includes(agent.id)) : null;
-    setCurrentProjectId(chat.projectId && projectById.has(chat.projectId) ? chat.projectId : legacyRoot?.id ?? null);
+    const legacyDisplayId = legacyRoot && rootProjectId(currentProjectId, projectById) === legacyRoot.id ? currentProjectId : legacyRoot?.id;
+    setCurrentProjectId(chat.projectId && projectById.has(chat.projectId) ? chat.projectId : legacyDisplayId ?? null);
   }, [activeId, activeMeta, convos, projectById, agentById, agentCatalogReady, projects, currentProjectId, setCurrentProjectId]);
   // In the workspace, the existing conversation tree lives in the left rail.
   // Elsewhere it keeps its original collapsible desktop/mobile behavior.

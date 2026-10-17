@@ -66,6 +66,7 @@ const assistantPart2 = {
     "minimaxVoiceHint": "MiniMax voice to use."
   },
   "agentMarket": {
+    "overrideHint": "Saving replaces the inherited configuration in this project with these settings.",
     "title": "Market",
     "description": "Reusable profiles for projects on this server.",
     "search": "Search by name, description, specialty or technology",

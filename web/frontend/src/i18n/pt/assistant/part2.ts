@@ -39,6 +39,7 @@ const assistantPart2 = {
     "minimaxVoiceHint": "Voz do MiniMax a usar."
   },
   "agentMarket": {
+    "overrideHint": "Ao salvar, estas configurações substituem as herdadas neste projeto.",
     "title": "Market",
     "description": "Perfis reutilizáveis para os projetos deste servidor.",
     "search": "Buscar por nome, descrição, especialidade ou tecnologia",

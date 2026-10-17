@@ -94,6 +94,13 @@ it("does not open an agent if the server did not enable its provider", async () 
  expect(host.querySelector('[role="alert"]')?.textContent).toBeTruthy();
  expect(host.querySelector('[data-pane="claude"]')).toBeNull();
 });
+it("denies a revoked execution capability before enabling a provider", async () => {
+ m.listAgents.mockResolvedValueOnce([{...agent, capabilities:{canExecute:false},execution:{projectId:"child",error:{code:"ASSISTANT_PROJECT_FORBIDDEN",statusCode:403,message:"denied"}}}]);
+ await choose();
+ expect(m.setProvider).not.toHaveBeenCalled();
+ expect(host.querySelector('[role="alert"]')?.textContent).toContain("No tienes permiso");
+ expect(chatUiState.getPane("codex").activeId).toBe("original");
+});
 it("ignores an activation response after changing targets", async () => {
  let finish!:(value:AssistantConfigState)=>void;
  m.setProvider.mockReturnValueOnce(new Promise(resolve => {finish=resolve;}));

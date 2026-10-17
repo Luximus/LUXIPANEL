@@ -18,14 +18,24 @@ vi.mock("@/lib/use-module-gate", () => ({
 }));
 vi.mock("@/lib/panel-routes", () => ({ pathIsAssistantView: () => false }));
 vi.mock("./AssistantPanel", () => ({
-  default: ({ pendingRequest }: { pendingRequest?: { requestId: string; prompt: string; providerId: string | null; submit: string } }) =>
-    createElement("div", { "data-request": pendingRequest ? JSON.stringify(pendingRequest) : "" }),
+  default: ({ pendingRequest, requestedTab }: { requestedTab?: string; pendingRequest?: { requestId: string; prompt: string; providerId: string | null; submit: string } }) =>
+    createElement("div", { "data-tab": requestedTab, "data-request": pendingRequest ? JSON.stringify(pendingRequest) : "" }),
 }));
 
 afterEach(() => {
   resetAssistantRequestBus();
   delete window.__lxpAssistantAPI;
   document.body.replaceChildren();
+});
+
+it("opens Market through the shared navigation bus without creating a chat", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(FloatingAssistantDrawer, { locale: "es" })));
+    await act(async () => { requestAssistant({ kind: "navigate", tab: "market", origin: { module: "assistant", action: "market" } }); });
+    expect(host.querySelector('[data-tab="market"]')).not.toBeNull();
+    expect(host.querySelector('[data-request]')?.getAttribute("data-request")).toBe("");
+  } finally { await act(async () => root.unmount()); }
 });
 
 it("hands a provider choice to the drawer once with auto submit intact", async () => {

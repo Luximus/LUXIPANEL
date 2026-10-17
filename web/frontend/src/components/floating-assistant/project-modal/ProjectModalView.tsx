@@ -14,7 +14,6 @@
  * (nav + header stay put — no opaque full-card spinner).
  */
 import { lazy, Suspense, useState } from "react";
-import { projectAgentScope } from "./agent-scope";
 import { SettingsFooterContext, SettingsHeaderContext, type SettingsFooterAction, type SettingsHeaderOverride } from "../settings-footer";
 const AgentMarket = lazy(() => import("../AgentMarket").then((module) => ({ default: module.AgentMarket })));
 import { ModalShell } from "@/components/ui/ModalShell";
@@ -40,7 +39,6 @@ export function ProjectModalView(props: ProjectModalViewProps) {
   const tabDirection = useViewDirection(tab, PROJECT_TAB_ORDER);
   const [agentFooter, setAgentFooter] = useState<SettingsFooterAction | null>(null);
   const [agentHeader, setAgentHeader] = useState<SettingsHeaderOverride | null>(null);
-  const agentScope = project ? projectAgentScope(project, allProjects) : null;
   const activeAgentHeader = tab === "agents" ? agentHeader : null;
 
   // Section menu — same shape as the settings drawer (`AssistantSettingsModal`).
