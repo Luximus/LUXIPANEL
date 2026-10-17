@@ -22,7 +22,7 @@ export function installBrowserDiagnostics(): void {
     if (queue.length >= 100) { dropped++; return; }
     queue.push(normalize(event));
   };
-  if (!window.__lxpDiagnosticsEarly) window.addEventListener("error", (event) => {
+  if (!window.__lxpDiagnosticsEarly) window.addEventListener("error", (event: Event) => {
     if (event instanceof ErrorEvent) record({ severity: "error", source: "frontend", message: event.message || "Script error", stack: event.error?.stack, url: event.filename || location.pathname });
     else { const target = event.target as HTMLScriptElement | HTMLLinkElement; record({ severity: "error", source: "frontend-resource", message: `Resource failed: ${target?.tagName || "resource"}`, url: (target as HTMLScriptElement)?.src || (target as HTMLLinkElement)?.href }); }
   }, true);

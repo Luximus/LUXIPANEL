@@ -109,6 +109,12 @@ declare module "/scripts/extracted/lib/install-modal.js*" {
 declare module "/scripts/extracted/lib/module-deps.js*" {
   export * from "@/scripts/extracted/lib/module-deps";
 }
+declare module "/scripts/extracted/lib/permission-editor.js*" {
+  export * from "@/scripts/extracted/lib/permission-editor";
+}
+declare module "/scripts/extracted/lib/mail-server-settings.js*" {
+  export * from "@/scripts/extracted/lib/mail-server-settings";
+}
 declare module "/scripts/extracted/lib/native-bridge.js*" {
   export * from "@/scripts/extracted/lib/native-bridge";
 }
@@ -159,6 +165,7 @@ declare module "/scripts/extracted/lib/sudo.js*" {
     validateAndStore?: boolean;
     title?: string;
     message?: string;
+    previousError?: string;
   }): Promise<string | null>;
 
   /** Borra la contraseña cacheada en memoria para esta página. */

@@ -7,7 +7,7 @@ describe('Expo read recovery',()=>{
  beforeEach(()=>{document.body.innerHTML='<div id="expo-root"></div>';S.targetGeneration=0;scope.target='local';});
  const canceled={ok:false,code:'TARGET_SCOPE_CHANGED',status:409};
  it('recovers a canceled hydration read',async()=>{
-  const read=vi.fn().mockResolvedValueOnce(canceled).mockResolvedValue({ok:true,data:{tokenSet:true}});
+  const read=vi.fn().mockResolvedValueOnce(canceled).mockResolvedValue({ok:true,status:200,data:{tokenSet:true}});
   expect((await readExpoData(read)).data).toEqual({tokenSet:true});expect(read).toHaveBeenCalledTimes(2);
  });
  it('bounds retries and does not retry API errors',async()=>{
@@ -21,6 +21,6 @@ describe('Expo read recovery',()=>{
  });
  it('does not request a removed view',async()=>{document.body.innerHTML='';const read=vi.fn();await readExpoData(read);expect(read).not.toHaveBeenCalled();});
  it('discards a successful response from an old target',async()=>{
-  const read=vi.fn(async()=>{scope.target='remote';return {ok:true,data:'old-account'};});expect((await readExpoData(read)).data).toBeUndefined();
+  const read=vi.fn(async()=>{scope.target='remote';return {ok:true,status:200,data:'old-account'};});expect((await readExpoData(read)).data).toBeUndefined();
  });
 });
