@@ -10,6 +10,8 @@ import {
 } from "./team-templates.i18n";
 
 export type AssistantMessages = {
+  agentMarket: typeof esAssistant.agentMarket;
+  agentsTab: typeof esAssistant.agentsTab;
   welcomeTitle: string;
   drawer: {
     openAriaLabel: string;

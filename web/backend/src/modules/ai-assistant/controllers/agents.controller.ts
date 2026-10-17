@@ -222,7 +222,7 @@ async function assertTeamExists(teamId: string | null | undefined, locale: unkno
   if (!team) throw new ValidationError(apiModuleMessage(locale, "assistantTeamMissing"));
 }
 
-/** El agente es del usuario actual (o legacy sin dueño) → puede editar/borrar. */
+/** Propietario, o administrador de un perfil legado sin dueño. */
 function assertCanModify(ownerId: number | null | undefined, locale: unknown): void {
   if (!mayUseProject({ ownerId }, getContextUser())) {
     throw new AppError(apiModuleMessage(locale, "assistantOwnershipDenied"), 403, "ASSISTANT_PROJECT_FORBIDDEN");

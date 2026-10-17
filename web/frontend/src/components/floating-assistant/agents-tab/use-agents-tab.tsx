@@ -43,6 +43,8 @@ import { type DraftAgent, type DraftRole, emptyDraft, toDraft, toPayload, roleTo
 import type { ProjectAgentScope } from "../project-modal/agent-scope";
 
 export type AgentsTabProps = {
+  editorOnly?: boolean;
+  onEditorDone?: () => void;
   projectScope?: ProjectAgentScope;
   onLaunchAgent: (agent: AssistantAgent) => void;
   /** Active platform locale — forwarded to TeamTemplatesModal so template
@@ -53,7 +55,7 @@ export type AgentsTabProps = {
   initialEditAgentId?: string | null;
 };
 
-export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope }: AgentsTabProps) {
+export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone }: AgentsTabProps) {
   const _i18n = useAssistantI18n() as ReturnType<typeof useAssistantI18n> & { agentsTab?: Partial<AgentsTabMessages> };
   const _over = _i18n.agentsTab ?? {};
   const t: AgentsTabMessages = {
@@ -74,7 +76,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   const [agents, setAgents] = useState<AssistantAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<DraftAgent | null>(null);
+  const [draft, setDraft] = useState<DraftAgent | null>(editorOnly && !initialEditAgentId ? emptyDraft : null);
   // Active tab in the agent editor — the create/edit form is split into focused tabs.
   const [editorTab, setEditorTab] = useState<"general" | "model" | "hierarchy" | "tools" | "resources" | "access">("general");
   const [saving, setSaving] = useState(false);
@@ -147,11 +149,11 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     setLoading(true);
     try {
       const [ags, rls, tms] = await Promise.all([
-        assistantAgentsApi.list(),
+        assistantAgentsApi.list(projectScope ? { projectId: projectScope.project.id } : {}),
         assistantAgentRolesApi.list().catch(() => [] as AssistantAgentRole[]),
         assistantAgentTeamsApi.list().catch(() => [] as AgentTeam[]),
       ]);
-      setAgents(projectScope ? ags.filter((a) => a.teamId === projectScope.teamId) : ags);
+      setAgents(ags);
       setRoles(rls);
       setTeams(projectScope ? tms.filter((team) => team.id === projectScope.teamId) : tms);
       setError(null);
@@ -212,7 +214,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     if (!initialEditAgentId || initialEditConsumed.current || loading) return;
     initialEditConsumed.current = true;
     const target = agents.find((a) => a.id === initialEditAgentId);
-    if (target) {
+    if (target && target.capabilities?.canEditProfile === true) {
       setEditorTab("general");
       setDraft(toDraft(target));
     }
@@ -322,7 +324,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     // Group (team) is now mandatory: bounce to the Hierarchy tab if missing so
     // the required selector is in view. (UI-only guard — programmatic agent
     // creation paths still allow a null teamId; see the multi-agent/template flows.)
-    if (!draft.teamId || (projectScope && draft.teamId !== projectScope.teamId)) {
+    if (!editorOnly && (!draft.teamId || (projectScope && draft.teamId !== projectScope.teamId))) {
       setError(t.teams.groupRequired);
       setEditorTab("hierarchy");
       return;
@@ -330,6 +332,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     setSaving(true);
     try {
       const payload = toPayload(draft);
+      if (editorOnly) { delete payload.projectIds; delete payload.teamId; }
       if (projectScope && !draft.id) {
         payload.projectIds = [...new Set([projectScope.project.id, ...(payload.projectIds ?? [])])];
       }
@@ -338,6 +341,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       setDraft(null);
       await reload();
       window.dispatchEvent(new CustomEvent("lxp:assistant:agents-updated"));
+      onEditorDone?.();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -467,7 +471,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     }
     setFooterAction({
       label: saving ? t.saving : draft.id ? t.saveChanges : t.editor.createAgent,
-      disabled: saving || !draft.name.trim() || !draft.teamId,
+      disabled: saving || !draft.name.trim() || (!editorOnly && !draft.teamId),
       onClick: () => { void save(); },
     });
   }, [setFooterAction, draft, saving, t.saving, t.saveChanges, t.editor.createAgent]);
@@ -494,7 +498,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   useEffect(() => () => setHeaderOverride?.(null), [setHeaderOverride]);
 
   return {
-    onLaunchAgent, locale, initialEditAgentId, projectScope, newAgent, t, _i18n,
+    onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, newAgent, t, _i18n,
     agents, setAgents, loading, setLoading, error, setError, draft, setDraft,
     editorTab, setEditorTab, saving, setSaving, modules, setModules,
     suggesting, setSuggesting, suggestArchetype, setSuggestArchetype,

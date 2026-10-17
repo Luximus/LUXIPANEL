@@ -17,6 +17,8 @@ export interface DraftAgent {
   id?: string;
   name: string;
   description: string;
+  specialty: string;
+  technologies: string;
   systemPrompt: string;
   providerId: AssistantProviderId;
   model: string;
@@ -56,6 +58,8 @@ export function emptyDraft(): DraftAgent {
   return {
     name: "",
     description: "",
+    specialty: "",
+    technologies: "",
     systemPrompt: "",
     providerId: "claude",
     model: "",
@@ -92,6 +96,8 @@ export function toDraft(a: AssistantAgent): DraftAgent {
     id: a.id,
     name: a.name,
     description: a.description,
+    specialty: a.specialty ?? "",
+    technologies: (a.technologies ?? []).join(", "),
     systemPrompt: a.systemPrompt,
     providerId: a.providerId,
     model: a.model,
@@ -129,6 +135,8 @@ export function toPayload(d: DraftAgent): AgentPayload {
   return {
     name: d.name.trim(),
     description: d.description.trim(),
+    specialty: d.specialty.trim(),
+    technologies: [...new Set(d.technologies.split(",").map(tag => tag.trim()).filter(Boolean))],
     systemPrompt: d.systemPrompt,
     providerId: d.providerId,
     model: d.model.trim(),

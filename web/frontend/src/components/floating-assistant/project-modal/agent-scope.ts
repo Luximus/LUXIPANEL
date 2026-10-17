@@ -23,7 +23,6 @@ export function projectAgentScope(project: AssistantProject, projects: Assistant
     if (!parent) return null;
     root = parent;
   }
-  if (!root.teamId) return null;
   const ids = new Set([root.id]);
   let changed = true;
   while (changed) {
@@ -35,14 +34,13 @@ export function projectAgentScope(project: AssistantProject, projects: Assistant
       }
     }
   }
-  return { project, root, teamId: root.teamId, projects: [...byId.values()].filter((p) => ids.has(p.id)) };
+  return { project, root, teamId: root.teamId ?? "", projects: [...byId.values()].filter((p) => ids.has(p.id)) };
 }
 
-/** The team owns membership; resource attachments do not move an agent into
- * another project's group. Keep a selected child when opening its agent. */
+/** Only the selected, authorized project can be used to open a new chat.
+ * Team identity is retained solely for legacy history display. */
 export function projectForAgent(agent: AssistantAgent, projects: AssistantProject[], preferredId?: string): AssistantProject | null {
-  if (!agent.teamId) return null;
   const preferred = projects.find((p) => p.id === preferredId);
-  if (preferred && projectAgentScope(preferred, projects)?.teamId === agent.teamId) return preferred;
-  return projects.find((p) => !p.parentId && p.teamId === agent.teamId) ?? null;
+  if (!preferred || agent.context?.projectId !== preferred.id || !agent.capabilities?.canExecute) return null;
+  return agent.context.membership === "direct" || agent.context.membership === "inherited" ? preferred : null;
 }

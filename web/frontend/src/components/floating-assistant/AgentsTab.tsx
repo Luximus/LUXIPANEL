@@ -28,6 +28,10 @@ export type { TeamsMessages } from "./agents-tab/messages";
 export function AgentsTab(props: AgentsTabProps) {
   const vm = useAgentsTab(props);
   const { draft, roleDraft, showTemplates, showTree, showRoles, setShowTemplates, reload, locale } = vm;
+  if (props.editorOnly && !draft) return <div className="p-4 text-sm" role={vm.error ? "alert" : "status"}>
+    {vm.error || (vm.loading ? vm._i18n.agentMarket.loading : vm._i18n.agentMarket.forbidden)}
+    {vm.error && <button type="button" className="ms-2 min-h-11 rounded border border-border px-3 focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void reload()}>{vm._i18n.agentMarket.retry}</button>}
+  </div>;
 
   // ── Roles list view ───────────────────────────────────────────────────────
   if (showTemplates) {

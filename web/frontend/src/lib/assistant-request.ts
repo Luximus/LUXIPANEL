@@ -89,6 +89,7 @@ export const REQUEST_QUEUE_CAP = 20 as const;
 export type AssistantRequestTab =
   | "chat"
   | "agentes"
+  | "market"
   | "providers"
   | "modules"
   | "stats"

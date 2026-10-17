@@ -97,11 +97,12 @@ export const agentMarketService = {
     let execution: AgentMarketExecution = { projectId: projectId ?? null, error: null };
     let effectiveConfig: AgentMarketContext["effectiveConfig"] = null;
     try {
+      if (!agent.id) throw assignmentError("ASSISTANT_AGENT_NOT_FOUND", "Agente no encontrado.", 404);
       const resolved = await resolveAgentContext(executor, agent.id, projectId, user);
       const active = resolved.agent;
       execution.projectId = resolved.projectId;
       if (active && projectId) effectiveConfig = {
-        systemPrompt: [active.systemPrompt, resolved.role?.systemPrompt].filter(Boolean).join("\n\n"),
+        systemPrompt: [resolved.role?.systemPrompt, active.systemPrompt].filter(Boolean).join("\n\n"),
         roleId: active.roleId ?? null,
         allowedTools: intersectLists(active.allowedTools, resolved.role?.allowedTools),
         canSpawnChats: Boolean(active.canSpawnChats || resolved.role?.canSpawnChats),

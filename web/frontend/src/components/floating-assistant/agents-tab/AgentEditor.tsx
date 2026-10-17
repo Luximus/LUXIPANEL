@@ -265,6 +265,12 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
           />
         </label>
 
+        <label className="flex flex-col gap-1 text-sm">{vm._i18n.agentMarket.specialty}
+          <input className="min-h-11 rounded-md border border-input bg-background px-3 focus-visible:ring-2 focus-visible:ring-ring" maxLength={200} value={draft.specialty} onChange={event => setDraft({ ...draft, specialty: event.target.value })} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">{vm._i18n.agentMarket.technologies}
+          <input className="min-h-11 rounded-md border border-input bg-background px-3 focus-visible:ring-2 focus-visible:ring-ring" value={draft.technologies} onChange={event => setDraft({ ...draft, technologies: event.target.value })} />
+        </label>
         <label className="flex flex-col gap-1 text-xs">
           <span className="font-medium text-foreground">{t.editor.fieldSystemPrompt}</span>
           <textarea
@@ -388,7 +394,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
             </span>
           </label>
 
-          <div className="flex flex-col gap-1 text-xs">
+          {!vm.editorOnly && <div className="flex flex-col gap-1 text-xs">
             <span className="text-muted-foreground">
               {t.teams.teamSelectorLabel} <span className="text-red-500" aria-hidden>*</span>
             </span>
@@ -413,8 +419,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
                 <i className="ti ti-plus" aria-hidden></i> {t.teams.newTeamBtn}
               </button>}
             </div>
-          </div>
-
+          </div>}
           <label className="flex flex-col gap-1 text-xs">
             <span className="text-muted-foreground">{t.editor.parentAgent}</span>
             <select
@@ -556,7 +561,8 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
           <p className="text-[11px] text-muted-foreground">{t.editor.attachedProjectsDesc}</p>
           {projects.length === 0 && <p className="text-[11px] text-muted-foreground">{t.editor.noParentProjects}</p>}
           <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
-            {projects.filter((p) => !p.parentId).map((p) => renderProjectNode(p, 0))}
+            {!vm.editorOnly && projects.filter((p) => !p.parentId).map((p) => renderProjectNode(p, 0))}
+            {vm.editorOnly && <p className="text-sm text-muted-foreground">{vm._i18n.agentMarket.assignmentHint}</p>}
           </div>
           <label className="flex items-center gap-2 border-t border-border pt-2 text-[11px] font-medium text-foreground">
             <input type="checkbox" checked={draft.autoCapture} onChange={(e) => setDraft({ ...draft, autoCapture: e.target.checked })} />
@@ -688,7 +694,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
         {!setFooterAction && (
           <div className="flex items-center gap-2">
             <button
-              type="button" onClick={() => void save()} disabled={saving || !draft.name.trim() || !draft.teamId}
+              type="button" onClick={() => void save()} disabled={saving || !draft.name.trim() || (!vm.editorOnly && !draft.teamId)}
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             >
               {saving ? t.saving : draft.id ? t.saveChanges : t.editor.createAgent}

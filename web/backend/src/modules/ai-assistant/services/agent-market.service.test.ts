@@ -334,3 +334,105 @@ it("preserves actionable status and code in the shared HTTP envelope", async () 
     statusCode: 400, body: { ok: false, code: "ASSISTANT_PROJECT_REQUIRED", error: expect.any(String) },
   });
 });
+
+
+describe("Market capability parity and immutable conversation binding", () => {
+  it.each(["foreign", "missing", "cycle"])("hides assignments and graphs with %s ancestry", async kind => {
+    state.agents.set("a", profile({ projectIds: ["child"], graphProjectIds: ["child"] }));
+    if (kind === "foreign") state.projects.find(p => p.id === "X").ownerId = 99;
+    if (kind === "missing") state.projects.find(p => p.id === "child").parentId = "gone";
+    if (kind === "cycle") state.projects.find(p => p.id === "X").parentId = "child";
+    const shown = await agentMarketService.present(executor, state.agents.get("a"), user);
+    expect(shown.assignments).toEqual([]);
+    expect(shown.projectIds).toEqual([]);
+    expect(shown.graphProjectIds).toEqual([]);
+    expect(shown.capabilities.canExecute).toBe(false);
+    await expect(resolveAgentContext(executor, "a", "child", user)).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("preserves shared catalog visibility without granting execution or editing", async () => {
+    state.agents.get("a").ownerId = 99;
+    const shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "X" });
+    expect(shown.id).toBe("a");
+    expect(Object.values(shown.capabilities).every(v => v === false)).toBe(true);
+    expect(shown.context?.effectiveConfig).toBeNull();
+    expect(shown.execution.error).toMatchObject({ code: "ASSISTANT_PROJECT_FORBIDDEN", statusCode: 403 });
+    await expect(resolveAgentContext(executor, "a", "X", user)).rejects.toMatchObject(shown.execution.error!);
+    await expect(agentMarketService.remove(executor, "a", "X", user)).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("legacy shared profiles remain executable and editable by an admin only", async () => {
+    state.agents.set("a", profile({ ownerId: null, projectIds: [] }));
+    const admin = await agentMarketService.present(executor, state.agents.get("a"), user);
+    expect(admin.capabilities).toMatchObject({ canExecute: true, canEditProfile: true });
+    state.user = { userId: 8, role: "user" };
+    const viewer = await agentMarketService.present(executor, state.agents.get("a"), state.user);
+    expect(viewer.capabilities).toMatchObject({ canExecute: false, canEditProfile: false });
+    await expect(agentMarketService.put(executor, "a", "X", {}, state.user)).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("uses the supplied identity for profile mutations, not an unrelated ambient admin", async () => {
+    await expect(agentMarketService.updateProfile(executor, "a", { name: "Wrong user" }, { userId: 8, role: "user" } as SessionUser))
+      .rejects.toMatchObject({ statusCode: 403 });
+    expect(state.agents.get("a").name).toBe("Mateo");
+  });
+  it("reports inherited config and prevents removing a child override with an active parent", async () => {
+    await agentMarketService.put(executor, "a", "X", { jobTitle: "API", instructions: "LOCAL", connections: [], parentAgentId: null }, user);
+    let shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "child" });
+    expect(shown.context).toMatchObject({ membership: "inherited", directAssignment: null, effectiveAssignment: { inheritedFrom: "X" } });
+    expect(shown.capabilities).toMatchObject({ canAssign: true, canUpdateAssignment: false, canRemoveAssignment: false, canExecute: true });
+    expect(shown.context?.effectiveConfig).toMatchObject({ parentAgentId: null, connections: [], projectPaths: ["/X/child"] });
+    await agentMarketService.put(executor, "a", "child", { instructions: "CHILD" }, user);
+    shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "child" });
+    expect(shown.context?.membership).toBe("direct");
+    expect(shown.capabilities).toMatchObject({ canAssign: false, canUpdateAssignment: true, canRemoveAssignment: false });
+    await expect(agentMarketService.remove(executor, "a", "child", user)).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_INHERITED" });
+  });
+  it("reports the actual intersection of local and base roles and assignment limits", async () => {
+    state.agents.get("a").roleId = "base";
+    state.roles.set("base", { id: "base", allowedTools: ["files.read", "files.write"], canSpawnChats: true });
+    state.roles.set("local", { id: "local", ownerId: 7, allowedTools: ["files.read"], canSpawnChats: true });
+    await agentMarketService.put(executor, "a", "X", { roleId: "local", canSpawnChats: false }, user);
+    const shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "X" });
+    const run = await admitAgentWork(executor, "a", "X", user);
+    try {
+      expect(shown.context?.effectiveConfig).toMatchObject({ allowedTools: ["files.read"], canSpawnChats: false });
+      expect(shown.context?.effectiveConfig?.allowedTools).toEqual(run.agent?.allowedTools);
+      expect(shown.context?.effectiveConfig?.canSpawnChats).toBe(run.agent?.canSpawnChats);
+    } finally { run.release(); }
+  });
+  it("reports missing and removed links without hiding the profile", async () => {
+    state.agents.set("a", profile({ projectIds: ["X"] }));
+    let shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "Y" });
+    expect(shown.context?.membership).toBe("none");
+    expect(shown.capabilities).toMatchObject({ canAssign: true, canExecute: false });
+    await agentMarketService.remove(executor, "a", "X", user);
+    shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "X" });
+    expect(shown.context?.membership).toBe("removed");
+    expect(shown.execution.error?.code).toBe("ASSISTANT_ASSIGNMENT_REMOVED");
+    expect(shown.capabilities).toMatchObject({ canAssign: true, canExecute: false, canRemoveAssignment: false });
+  });
+  it.each([0, 2])("never infers a new project for a persisted loose chat with %s messages", async messageCount => {
+    state.agents.set("a", profile({ projectIds: [] }));
+    state.metas.push({ id: "loose", agentId: "a", projectId: null, messageCount });
+    expect((await resolveConversationBinding(executor, { conversationId: "loose" }, user)).projectId).toBeNull();
+    await agentMarketService.put(executor, "a", "X", {}, user);
+    for (const input of [{ conversationId: "loose" }, { conversationId: "loose", projectId: "X" }]) {
+      await expect(resolveConversationBinding(executor, input, user)).rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
+    }
+    await expect(enqueueAgentTurn(executor, { conversationId: "loose", userText: "go", withContext: true, user }))
+      .rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
+    expect(state.queue).toEqual([]);
+    expect(state.metas[0].projectId).toBeNull();
+    expect((await resolveConversationBinding(executor, { agentId: "a" }, user)).projectId).toBe("X");
+  });
+  it("does not bind an agent or project to an existing empty general chat", async () => {
+    state.metas.push({ id: "empty", agentId: null, projectId: null, messageCount: 0 });
+    for (const input of [{ agentId: "a" }, { projectId: "X" }]) {
+      await expect(resolveConversationBinding(executor, { conversationId: "empty", ...input }, user))
+        .rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
+    }
+    expect((await resolveConversationBinding(executor, { conversationId: "empty" }, user)).projectId).toBeNull();
+  });
+  it("rejects a different target before attempting to bind conversation history", async () => {
+    await expect(resolveConversationBinding({ target: { id: "target-Y" } } as Executor, { conversationId: "loose" }, user))
+      .rejects.toMatchObject({ code: "ASSISTANT_PROJECT_FORBIDDEN" });
+  });
+});

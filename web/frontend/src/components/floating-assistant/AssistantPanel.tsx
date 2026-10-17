@@ -5,6 +5,7 @@ import { getClientMessages } from "@/i18n/client";
 import { resolveTargetScope, scopeHeaders } from "@/lib/api-client";
 import {
   assistantApi,
+  assistantAgentsApi,
   PROVIDER_ORDER,
   type AssistantAgent,
   type AssistantConfigState,
@@ -21,6 +22,7 @@ import { ProviderIcon } from "./ProviderIcon";
 import { workspaceState } from "./workspace-state";
 import { chatUiState } from "./chat-ui-state";
 const ProjectAgentsDialog = lazy(() => import("./ProjectAgentsDialog").then((module) => ({ default: module.ProjectAgentsDialog })));
+const AgentMarket = lazy(() => import("./AgentMarket").then(module => ({ default: module.AgentMarket })));
 import type { AssistantSettingsSection } from "./AssistantSettingsModal";
 const AssistantSettingsModal = lazy(() => import("./AssistantSettingsModal").then(module => ({ default: module.AssistantSettingsModal })));
 import {
@@ -34,7 +36,7 @@ import { AssistantI18nProvider, assistantMessagesFallback, mergeAssistantMessage
 import type { DataTableI18n } from "@/components/ui/DataTable";
 import { AssistantErrorBoundary } from "./AssistantErrorBoundary";
 
-export type AssistantTab = "chat" | "agentes" | "providers" | "modules" | "stats" | "access";
+export type AssistantTab = "chat" | "agentes" | "market" | "providers" | "modules" | "stats" | "access";
 
 /**
  * Solicitud que el panel entrega al ChatTab / ChatPane. Es una unión
@@ -286,6 +288,13 @@ export default function AssistantPanel({
       && scope() === requestScope && sourceIdentity() === requestIdentity;
 
     try {
+      const selectedProjectId = projectId ?? workspaceState.getSnapshot().project?.id;
+      const available = (await assistantAgentsApi.list(selectedProjectId ? { contextProjectId: selectedProjectId } : {})).find(item => item.id === agent.id);
+      if (!isCurrent()) return;
+      if (!available?.capabilities?.canExecute || (!selectedProjectId && available.execution?.projectId)) {
+        setAgentLaunchError(messages.agentMarket.chooseProject);
+        return;
+      }
       // ChatTab only mounts active providers. Explicitly selecting an agent
       // enables its provider, just like the chat's provider picker does, but
       // must never change the provider/options of the existing conversation.
@@ -302,16 +311,17 @@ export default function AssistantPanel({
           draft = { text: source.draft, attachments: source.attachments };
         }
       }
-      setOpenReq({ kind: "agent", draft, provider: agent.providerId, agentId: agent.id, projectId: projectId ?? agent.projectIds?.[0] ?? null, nonce: Date.now() });
+      setOpenReq({ kind: "agent", draft, provider: agent.providerId, agentId: agent.id, projectId: selectedProjectId ?? null, nonce: Date.now() });
       setTab("chat");
     } catch (error) {
       if (isCurrent()) {
         setAgentLaunchError(error instanceof Error ? error.message : messages.assistantErrorBoundary.errorMessage);
       }
     }
-  }, [config, messages.assistantErrorBoundary.errorMessage]);
+  }, [config, messages.assistantErrorBoundary.errorMessage, messages.agentMarket.chooseProject]);
 
   const openSettings = useCallback((section?: AssistantSettingsSection | "agentes" | null, agentId?: string | null) => {
+    if (section === "agentes" && !agentId) { setTab("market"); return; }
     if (section === "agentes" || agentId) {
       setSettingsOpen(false);
       setProjectAgentsRequest({ projectId: workspaceState.getSnapshot().project?.id, agentId: agentId ?? undefined, nonce: Date.now() });
@@ -391,6 +401,7 @@ export default function AssistantPanel({
         openProviderCredentials();
         return;
       }
+      if (detail?.section === "market") { setTab("market"); return; }
       openSettings(
         detail?.section === "agentes" || isSettingsSection(detail?.section) ? detail.section : null,
         typeof detail?.agentId === "string" ? detail.agentId : null,
@@ -474,7 +485,14 @@ export default function AssistantPanel({
       const detail = (ev as CustomEvent<AssistantRequestBusEntry>).detail;
       if (!detail || detail.version !== 1) return;
       const req = detail.request;
-      if (req.kind !== "prompt") return; // "navigate" lo gestiona el drawer
+      if (req.kind === "navigate") {
+        if (config?.enabled !== true) return;
+        if (req.tab === "market" || req.tab === "agentes") setTab("market");
+        else if (req.tab === "chat") setTab("chat");
+        else if (req.tab === "providers") openProviderCredentials();
+        else openSettings(req.tab);
+        return;
+      }
       openAssistantRequest({
         requestId: detail.requestId,
         prompt: req.prompt,
@@ -485,7 +503,7 @@ export default function AssistantPanel({
     };
     window.addEventListener(ASSISTANT_REQUEST_EVENT, onRequest);
     return () => window.removeEventListener(ASSISTANT_REQUEST_EVENT, onRequest);
-  }, [openAssistantRequest, variant]);
+  }, [openAssistantRequest, variant, config?.enabled, openSettings, openProviderCredentials]);
 
   // Exponer API global para page scripts que hablan window en lugar de CustomEvent.
   // El shape es el de `LxpAssistantAPI` (lib/assistant-request.ts): los
@@ -497,7 +515,14 @@ export default function AssistantPanel({
     if (window.__lxpAssistantAPI) return;
     const api: LxpAssistantAPI = {
       request: (input) => {
-        if (input.kind !== "prompt") return ""; // "navigate" lo gestiona el drawer
+        if (input.kind === "navigate") {
+          if (config?.enabled !== true) return "";
+          if (input.tab === "market" || input.tab === "agentes") setTab("market");
+          else if (input.tab === "chat") setTab("chat");
+          else if (input.tab === "providers") openProviderCredentials();
+          else openSettings(input.tab);
+          return input.requestId ?? "";
+        }
         openAssistantRequest({
           prompt: input.prompt ?? "",
           submit: input.submit,
@@ -517,7 +542,7 @@ export default function AssistantPanel({
         delete window.__lxpAssistantAPI;
       }
     };
-  }, [openAssistantRequest]);
+  }, [openAssistantRequest, config?.enabled, openSettings, openProviderCredentials]);
 
   // Becoming visible loads config; usage bars load on their own mount. The drawer
   // unmounts this panel on close (vaul) and remounts on open, so mount is the
@@ -530,6 +555,8 @@ export default function AssistantPanel({
     const onTargetChanged = () => {
       ++agentLaunchSequence.current;
       setAgentLaunchError(null);
+      setProjectAgentsRequest(null);
+      setTab("chat");
       setConfig(null);
       void reload();
     };
@@ -577,6 +604,7 @@ export default function AssistantPanel({
 
               {/* Chat stays mounted across tab switches so in-flight streams and
                   the open conversation are never lost. */}
+              {tab === "market" && config?.enabled && <Suspense fallback={<p role="status" className="p-4">{messages.agentMarket.loading}</p>}><AgentMarket locale={locale} projectId={workspaceState.getSnapshot().project?.id} onBack={() => setTab("chat")} /></Suspense>}
               <div className="flex-1 min-h-0 flex flex-col" style={{ display: tab === "chat" ? "flex" : "none" }}>
                 <ChatTab
                   enabled={Boolean(config?.enabled)}

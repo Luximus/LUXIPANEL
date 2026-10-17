@@ -84,6 +84,9 @@ it("stores each transcription once and records provider usage once", async () =>
 });
 
 it("only queues an exact pending button choice once, preserving worker scope", async () => {
+  // A worker has its own persisted binding; it is not the leader's general chat.
+  m.meta.mockImplementation(async (_executor, conversationId) => conversationId === "worker1"
+    ? { agentId: "a1", projectId: "p1", messageCount: 2 } : { projectId: "p1" });
   id = (await realtimeService.start(executor, user, input)).id;
   m.list.mockResolvedValue([{id:"task1", status:"pending", pendingPermission:true, workerAgentId:"a1", workerConversationId:"worker1", projectId:"p1", isolation:{cwd:"/isolated",leasePath:"/resource"}}]);
   m.messages.mockResolvedValue({items:[{role:"assistant",ts:"ts1",askKind:"plan-approval",ask:[{id:"plan",type:"single",text:"¿Aprobar?",options:["Aprobar","Cambios"]}]}]});
@@ -204,10 +207,10 @@ it("emits a transcript only after history persistence so clients can refresh it 
  saved();await vi.waitFor(()=>expect(realtimeService.snapshot(id!,executor,user,0).events.filter(e=>e.type==="transcript")).toHaveLength(1));
 });
 
-it("requires a project for multiproject voice and rejects withdrawn assignments", async () => {
+it("refuses to recontextualize existing general voice and rejects withdrawn assignments", async () => {
   m.agents.mockResolvedValue([{ id: "a1", ownerId: 1, projectIds: ["p1", "other"] }]);
   m.meta.mockResolvedValue({ agentId: "a1", projectId: null });
-  await expect(realtimeService.start(executor, user, input)).rejects.toMatchObject({ code: "ASSISTANT_PROJECT_REQUIRED" });
+  await expect(realtimeService.start(executor, user, input)).rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
   m.meta.mockResolvedValue({ agentId: "a1", projectId: "p1" });
   m.agents.mockResolvedValue([{ id: "a1", ownerId: 1, projectIds: ["p1"], assignments: [{ projectId: "p1", status: "removed" }] }]);
   await expect(realtimeService.start(executor, user, input)).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_REMOVED" });
@@ -220,4 +223,22 @@ it("holds the bound assignment while voice is active and releases it on close", 
   expect(hasAssignmentAdmission(executor, "a1", new Set(["p1"]))).toBe(true);
   await realtimeService.stop(id, executor, user); id = undefined;
   expect(hasAssignmentAdmission(executor, "a1", new Set(["p1"]))).toBe(false);
+});
+
+it("rejects approval if the worker conversation no longer has its original binding", async () => {
+  id = (await realtimeService.start(executor, user, input)).id;
+  m.meta.mockImplementation(async (_executor, conversationId) => conversationId === "worker1"
+    ? { agentId: null, projectId: null, messageCount: 0 } : { projectId: "p1" });
+  m.list.mockResolvedValue([{ id: "task1", status: "pending", pendingPermission: true, workerAgentId: "a1", workerConversationId: "worker1", projectId: "p1" }]);
+  m.messages.mockResolvedValue({ items: [{ role: "assistant", ts: "ts1", askKind: "plan-approval", ask: [{ id: "plan", type: "single", text: "¿Aprobar?", options: ["Aprobar", "Cambios"] }] }] });
+  await expect(realtimeService.answer(id, executor, user, "task1", "ts1", 0)).rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
+  expect(m.enqueue).not.toHaveBeenCalled();
+  expect(m.update).not.toHaveBeenCalled();
+  expect(m.dispatch).not.toHaveBeenCalled();
+});
+
+it("does not infer a single new assignment for an existing general voice chat", async () => {
+  m.meta.mockResolvedValue({ agentId: "a1", projectId: null, messageCount: 2 });
+  await expect(realtimeService.start(executor, user, input)).rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
+  expect(fetch).not.toHaveBeenCalled();
 });

@@ -16,7 +16,7 @@
 import { lazy, Suspense, useState } from "react";
 import { projectAgentScope } from "./agent-scope";
 import { SettingsFooterContext, SettingsHeaderContext, type SettingsFooterAction, type SettingsHeaderOverride } from "../settings-footer";
-const AgentsTab = lazy(() => import("../AgentsTab").then((module) => ({ default: module.AgentsTab })));
+const AgentMarket = lazy(() => import("../AgentMarket").then((module) => ({ default: module.AgentMarket })));
 import { ModalShell } from "@/components/ui/ModalShell";
 import { DrawerSectionNav, type DrawerSectionItem } from "@/components/ui/DrawerSectionNav";
 import { cn } from "@/lib/utils";
@@ -572,21 +572,14 @@ export function ProjectModalView(props: ProjectModalViewProps) {
           )}
 
           {tab === "agents" && project && (
-            agentScope ? <>
-              {agentScope.root.id !== project.id && <p className="rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground">{formatAssistantMessage(t.agentsSharedTeam, { project: agentScope.root.title })}</p>}
               <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">{t.loadingProject}</p>}>
-                <AgentsTab
-                  key={`${project.id}:${agentScope.teamId}`}
-                  projectScope={agentScope}
+                <AgentMarket
+                  key={project.id}
+                  projectId={project.id}
                   locale={props.locale}
                   initialEditAgentId={props.initialEditAgentId}
-                  onLaunchAgent={(agent) => {
-                    props.onLaunchAgent?.(agent, project.id);
-                    onClose();
-                  }}
                 />
               </Suspense>
-            </> : <p role="status" className="rounded-lg border border-border p-4 text-sm text-muted-foreground">{t.agentsMissingTeam}</p>
           )}
 
           {tab === "structure" && project && (

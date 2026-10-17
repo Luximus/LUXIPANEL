@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ErrorCode } from "../../../shared/errors/index.js";
 import type { AssistantAgent, AssignmentView, EffectiveAssignment } from "./assistant-agent.types.js";
 
 /** Authorization at read time; busy work and live session/tool guards still apply. */
@@ -13,7 +12,7 @@ export interface AgentMarketCapabilities {
 }
 export interface AgentMarketExecution {
   projectId: string | null;
-  error: { code: ErrorCode; statusCode: number; message: string } | null;
+  error: { code: string; statusCode: number; message: string } | null;
 }
 export interface AgentMarketContext {
   projectId: string;

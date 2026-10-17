@@ -421,6 +421,9 @@ const TABS: SearchEntry[] = [
 
 /* ─────────────── Drawer de Configuración de Agentes IA (home `/`) ─────────────── */
 const ASSISTANT_SECTIONS: SearchEntry[] = [
+  { id: "assistant.market", kind: "subview", module: "assistant", permission: "*", parent: "view.assistant", label: T("Market", "Market"), icon: "ti-building-store",
+    keywords: ["market", "catalogo", "catalog", "agentes", "agents", "especialidad", "specialty", "tecnologias", "technologies"],
+    intents: ["view", "configure"], target: { href: "/panel", event: { name: "luxipanel:assistant-settings-open", detail: { section: "market" } } } },
   { id: "assistant.settings.general", kind: "drawer-section", module: "assistant", permission: "*", parent: "view.assistant", label: T("General", "General"), icon: "ti-settings",
     keywords: ["configuracion del asistente", "assistant settings", "ajustes ia", "ai settings", "general", "modelo", "model", "audio", "voz", "voice", "seleccion automatica", "terminal en vivo"],
     intents: ["configure"], target: { href: "/panel", event: { name: "luxipanel:assistant-settings-open", detail: { section: "general" } } } },

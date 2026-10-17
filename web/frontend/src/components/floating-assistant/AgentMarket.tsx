@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Search, Store, RefreshCw } from "lucide-react";
+import { ModalShell } from "@/components/ui/ModalShell";
+import { openConfirm } from "@/lib/confirm";
+import { resolveTargetScope, scopeHeaders } from "@/lib/api-client";
+import { assistantAgentsApi, assistantProjectsApi, assistantAgentRolesApi, PROVIDER_META,
+  type AssistantAgent, type AssistantProject, type AssistantAgentRole } from "./assistant-api";
+import { AgentRequestError } from "./assistant-api/agents";
+import { AgentAvatar } from "./AgentAvatar";
+import { formatAssistantMessage, useAssistantI18n } from "./i18n";
+import { assignedInProject, emptyMarketFilters, filterMarket } from "./agent-market-state";
+import { AgentAssignmentEditor } from "./AgentAssignmentEditor";
+const AgentsTab = lazy(() => import("./AgentsTab").then(module => ({ default: module.AgentsTab })));
+
+export const marketControl = "min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+const scopeKey = () => JSON.stringify([resolveTargetScope(), scopeHeaders(true)]);
+const resetEvents = ["luxipanel:target-changed", "luxipanel:logout", "luxipanel:session-ended", "luxipanel:session-started", "luxipanel:permissions-changed"];
+
+export function AgentMarket(props: { projectId?: string; initialEditAgentId?: string; locale?: string; onBack?: () => void }) {
+  const [epoch, setEpoch] = useState(0);
+  useEffect(() => {
+    const reset = () => setEpoch(n => n + 1);
+    resetEvents.forEach(event => window.addEventListener(event, reset));
+    return () => resetEvents.forEach(event => window.removeEventListener(event, reset));
+  }, []);
+  return <MarketContent key={`${scopeKey()}:${epoch}:${props.projectId ?? ""}`} {...props} />;
+}
+
+function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parameters<typeof AgentMarket>[0]) {
+  const i18n = useAssistantI18n(), t = i18n.agentMarket;
+  const [selected, setSelected] = useState(projectId ?? "");
+  const [filters, setFilters] = useState(emptyMarketFilters);
+  const [agents, setAgents] = useState<AssistantAgent[]>([]);
+  const [projects, setProjects] = useState<AssistantProject[]>([]);
+  const [roles, setRoles] = useState<AssistantAgentRole[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+  const [editor, setEditor] = useState<AssistantAgent | null>(null);
+  const [profile, setProfile] = useState<string | null>(initialEditAgentId ?? null);
+  const mounted = useRef(true), sequence = useRef(0), busy = useRef(false);
+  const scope = useRef(scopeKey());
+  const current = () => mounted.current && scope.current === scopeKey();
+  useEffect(() => () => { mounted.current = false; ++sequence.current; }, []);
+  const errorText = (err: unknown) => {
+    if (err instanceof AgentRequestError) {
+      if (!err.status) return t.uncertain;
+      if (err.code === "ASSISTANT_ASSIGNMENT_BUSY") return t.busy;
+      if (err.status === 403) return t.forbidden;
+      if (err.code === "TARGET_SCOPE_CHANGED") return t.contextChanged;
+      if (err.code === "ASSISTANT_ASSIGNMENT_INHERITED") return t.inheritedHint.replace("{project}", projects.find(p => p.id === editor?.context?.effectiveAssignment?.inheritedFrom)?.title ?? t.project);
+    }
+    return t.error;
+  };
+  const reload = useCallback(async () => {
+    const id = ++sequence.current;
+    setLoading(true); setError(null);
+    try {
+      const [items, projectList, roleList] = await Promise.all([
+        assistantAgentsApi.list(selected ? { contextProjectId: selected } : {}),
+        assistantProjectsApi.list(), assistantAgentRolesApi.list(),
+      ]);
+      if (!current() || id !== sequence.current) return;
+      setAgents(items); setProjects(projectList); setRoles(roleList);
+    } catch { if (current() && id === sequence.current) setError(t.error); }
+    finally { if (current() && id === sequence.current) setLoading(false); }
+  }, [selected, t.error]);
+  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    const refresh = () => { if (!busy.current) void reload(); };
+    window.addEventListener("lxp:assistant:agents-updated", refresh);
+    return () => window.removeEventListener("lxp:assistant:agents-updated", refresh);
+  }, [reload]);
+
+  async function mutate(agent: AssistantAgent, action: "add" | "remove" | "configure", data = {}) {
+    if (!current() || !selected || busy.current) return;
+    const requestProject = selected, requestSequence = sequence.current;
+    busy.current = true; setPending(agent.id); setError(null); setNotice("");
+    try {
+      if (action === "remove" && !await openConfirm(formatAssistantMessage(t.removeConfirm, { name: agent.name }), { variant: "danger" })) return;
+      if (!current() || sequence.current !== requestSequence) return;
+      // Revalidate the server's context and capabilities after any confirmation.
+      const fresh = (await assistantAgentsApi.list({ contextProjectId: requestProject })).find(a => a.id === agent.id);
+      if (!current() || sequence.current !== requestSequence) return;
+      const capability = action === "remove" ? "canRemoveAssignment" : action === "add" ? "canAssign" : "canUpdateAssignment";
+      if (fresh?.context?.projectId !== requestProject || !fresh.capabilities?.[capability]) throw new AgentRequestError(403, undefined, "");
+      if (action === "remove") await assistantAgentsApi.removeAssignment(agent.id, requestProject);
+      else await assistantAgentsApi.updateAssignment(agent.id, requestProject, data);
+      if (!current()) return;
+      setEditor(null); setNotice(t.saved);
+      window.dispatchEvent(new Event("lxp:assistant:agents-updated"));
+      await reload();
+    } catch (err) {
+      if (current()) { setError(errorText(err)); setNotice(""); }
+    } finally { busy.current = false; if (current()) setPending(null); }
+  }
+  const visible = filterMarket(agents, filters, selected);
+  const projectTitle = (id: string) => projects.find(project => project.id === id)?.title ?? t.project;
+  return <section aria-label={t.title} aria-busy={loading || !!pending} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 text-foreground sm:p-6">
+    <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div><h2 className="flex items-center gap-2 text-xl font-semibold"><Store size={22} aria-hidden />{t.title}</h2><p className="mt-1 text-sm text-muted-foreground">{t.description}</p></div>
+      <div className="flex flex-wrap gap-2">
+        {onBack && <button type="button" className={marketControl} onClick={onBack}><ArrowLeft className="me-2 inline" size={16} aria-hidden />{t.back}</button>}
+        <button type="button" className={marketControl} disabled={!!pending || loading} onClick={() => setProfile("new")}>{t.newProfile}</button>
+      </div>
+    </header>
+    <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <label className="grid gap-1 text-sm"><span>{t.project}</span><select className={marketControl} value={selected} disabled={!!projectId || !!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
+        <option value="">{t.chooseProject}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.parentId ? `${projectTitle(project.parentId)} / ` : ""}{project.title}</option>)}
+      </select></label>
+      <label className="grid gap-1 text-sm sm:col-span-2"><span>{t.search}</span><div className="relative"><Search className="pointer-events-none absolute start-3 top-3 text-muted-foreground" size={18} aria-hidden /><input type="search" value={filters.query} onChange={event => setFilters({ ...filters, query: event.target.value })} className={`${marketControl} w-full ps-10`} /></div></label>
+      <select aria-label={i18n.agentInfo.providerLabel} className={marketControl} value={filters.provider} onChange={event => setFilters({ ...filters, provider: event.target.value })}>
+        <option value="">{t.allProviders}</option>{[...new Set(agents.map(a => a.providerId))].sort().map(id => <option key={id} value={id}>{PROVIDER_META[id]?.label ?? id}</option>)}
+      </select>
+      <select aria-label={i18n.agentInfo.roleLabel} className={marketControl} value={filters.role} onChange={event => setFilters({ ...filters, role: event.target.value })}>
+        <option value="">{t.allRoles}</option>{roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
+      </select>
+      <select aria-label={t.allAssignments} className={marketControl} disabled={!selected} value={filters.assignment} onChange={event => setFilters({ ...filters, assignment: event.target.value })}>
+        <option value="">{t.allAssignments}</option><option value="assigned">{t.assigned}</option><option value="unassigned">{t.unassigned}</option>
+      </select>
+    </div>
+    {!selected && <p className="mb-4 text-sm text-muted-foreground">{t.chooseProject}</p>}
+    {error && <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-destructive p-3 text-sm"><p>{error}</p><button className={marketControl} disabled={!!pending} onClick={() => void reload()}><RefreshCw size={16} className="me-2 inline" aria-hidden />{t.retry}</button></div>}
+    {(notice || pending) && <p role="status" className="mb-3 text-sm">{pending ? t.pending : notice}</p>}
+    {loading ? <p role="status" className="py-8 text-sm text-muted-foreground">{t.loading}</p> : !error && !visible.length ? <p className="py-8 text-sm text-muted-foreground">{agents.length ? t.noMatches : t.empty}</p> : !loading && <div className="grid gap-3 xl:grid-cols-2">
+      {visible.map(agent => {
+        const assigned = assignedInProject(agent, selected), context = agent.context?.projectId === selected ? agent.context : null;
+        const inheritedFrom = context?.effectiveAssignment?.inheritedFrom;
+        return <article key={agent.id} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-start gap-3"><AgentAvatar agent={agent} size={44} /><div className="min-w-0 flex-1"><h3 className="break-words font-semibold">{agent.name}</h3><p className="text-sm text-muted-foreground">{agent.specialty || roles.find(role => role.id === agent.roleId)?.name || PROVIDER_META[agent.providerId]?.label}</p></div><span className="rounded-md bg-muted px-2 py-1 text-xs">{context?.membership === "inherited" ? t.inherited : assigned ? t.assigned : context?.membership === "removed" ? t.removed : t.unassigned}</span></div>
+          {agent.description && <p className="whitespace-pre-wrap break-words text-sm">{agent.description}</p>}
+          {!!agent.technologies?.length && <ul className="flex flex-wrap gap-1" aria-label={t.technologies}>{agent.technologies.map((tag, index) => <li key={`${tag}:${index}`} className="rounded bg-muted px-2 py-1 text-xs">{tag}</li>)}</ul>}
+          {inheritedFrom && <p className="text-sm text-muted-foreground">{formatAssistantMessage(t.inheritedHint, { project: projectTitle(inheritedFrom) })}</p>}
+          <div className="mt-auto flex flex-wrap gap-2">
+            {selected && agent.capabilities?.canAssign && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "add")}>{t.add}</button>}
+            {selected && agent.capabilities?.canUpdateAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => setEditor(agent)}>{t.configure}</button>}
+            {selected && agent.capabilities?.canRemoveAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "remove")}>{t.remove}</button>}
+            {agent.capabilities?.canEditProfile ? <button className={marketControl} disabled={!!pending || !!error} onClick={() => setProfile(agent.id)}>{t.editProfile}</button> : <span className="self-center text-sm text-muted-foreground">{t.readOnly}</span>}
+          </div>
+        </article>;
+      })}
+    </div>}
+    {editor && <ModalShell onClose={() => { if (!pending) setEditor(null); }} title={`${t.configure} · ${editor.name}`} description={t.assignmentHint} closeLabel={i18n.drawer.close}>
+      {error && <p role="alert" className="px-4 pt-4 text-sm text-destructive">{error}</p>}
+      <AgentAssignmentEditor agent={editor} agents={agents} projects={projects} roles={roles} pending={!!pending} onSave={data => void mutate(editor, "configure", data)} />
+    </ModalShell>}
+    {profile && <ModalShell title={profile === "new" ? t.newProfile : t.editProfile} description={t.profileHint} closeLabel={i18n.drawer.close} onClose={() => setProfile(null)}>
+      <p className="px-4 pt-4 text-sm text-muted-foreground">{t.profileHint}</p>
+      <Suspense fallback={<p role="status" className="p-4">{t.loading}</p>}><AgentsTab editorOnly initialEditAgentId={profile === "new" ? undefined : profile} locale={locale} onEditorDone={() => { setProfile(null); void reload(); }} onLaunchAgent={() => undefined} /></Suspense>
+    </ModalShell>}
+  </section>;
+}

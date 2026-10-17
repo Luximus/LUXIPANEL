@@ -18,11 +18,14 @@ import { ViewTransition } from "@/components/ui/ViewTransition";
 import { createPortal } from "react-dom";
 import { useEffect, useRef } from "react";
 import { useIsMobile } from "./use-is-mobile";
+import { requestAssistant } from "@/lib/assistant-request";
+import { Store } from "lucide-react";
 
 export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
   const mobileNavigation = useIsMobile(1024);
   const historyLabel = useAssistantI18n().statsTab.history;
   const historyMessages = useAssistantI18n().assistantErrorBoundary;
+  const marketMessages = useAssistantI18n().agentMarket;
   const scrollOffsets = useRef(new WeakMap<Element, number>());
   const {
     active,
@@ -542,6 +545,9 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
           {searchingHistory ? (ct.loadingMore ?? "Cargando…") : (ct.pagerNext ?? "Página siguiente")}
         </button>}
         <div className="lxp-history-create-actions" data-history-create-actions>
+          <button type="button" data-search-target="agent-market" onClick={() => requestAssistant({ kind: "navigate", tab: "market", origin: { module: "assistant", action: "market" } })}>
+            <Store size={18} aria-hidden="true" /><span>{marketMessages.title}</span>
+          </button>
           {mobileNavigation ? <>{newProjectButton}{newChatButton}{newRootChatButton}</> : <>{newChatButton}{newRootChatButton}{newProjectButton}</>}
         </div>
       </aside>;
