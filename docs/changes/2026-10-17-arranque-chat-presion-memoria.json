@@ -1,0 +1,7 @@
+{
+  "title": "Arranque del chat con control de carga y progreso visible",
+  "changes": [
+    "El asistente espera recursos antes de iniciar nuevas tareas cuando su grupo de procesos alcanza el umbral que provoca ralentizaciones por memoria.",
+    "La consola distingue la preparación del motor, la recuperación del historial y el inicio del turno, mostrando el tiempo transcurrido durante el arranque."
+  ]
+}

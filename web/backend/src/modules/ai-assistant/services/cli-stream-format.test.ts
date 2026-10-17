@@ -24,6 +24,19 @@ const CODEX_LOG = [
 ].join("\n") + "\n";
 
 describe("codex stream format", () => {
+  it("shows startup phases without treating them as model output or a final answer", () => {
+    const log = [
+      { type: "lxp.startup", stage: "initializing", elapsedMs: 0 },
+      { type: "lxp.startup", stage: "resuming", elapsedMs: 255_000 },
+      { type: "lxp.startup", stage: "ready", elapsedMs: 255_500 },
+    ].map(event => JSON.stringify(event) + "\n").join("");
+    const output = createCodexStreamTransformer()(log);
+    expect(output).toContain("Preparando motor IA");
+    expect(output).toContain("Recuperando historial de la conversación · 255.0 s");
+    expect(output).toContain("Turno iniciado; esperando la respuesta de la IA");
+    expect(parseCodexFinalAnswer(log)).toBe("");
+    expect(createCodexStreamTransformer()(JSON.stringify({ type: "lxp.startup", stage: "unknown", message: "private" }) + "\n")).toBe("");
+  });
   it("transforms the JSON stream into readable terminal lines (chunk-agnostic)", () => {
     // Feed in awkward 13-char chunks to prove the line buffering is robust.
     const tf = createCodexStreamTransformer();

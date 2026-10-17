@@ -68,7 +68,9 @@ def lock_file(directory, name):
 
 
 def admitted(mem, policy, used):
-    return mem["MemAvailable"] >= policy["reserve"] and used + 256 * MIB <= policy["groupMax"]
+    # memory.high already throttles/reclaims every task in the shared slice.
+    # Waiting until memory.max admits new chats into an already stalled group.
+    return mem["MemAvailable"] >= policy["reserve"] and used + 256 * MIB <= min(policy["groupHigh"], policy["groupMax"])
 
 
 # Executed INSIDE the scope before the command. Verify kernel enforcement, not

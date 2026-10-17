@@ -6,7 +6,7 @@ import { runInNewContext } from "node:vm";
 // Execute the actual standalone target adapter with a simulated app-server and
 // clock. No credentials, provider calls, processes or hour-long waits.
 const source = readFileSync(new URL("./codex-app-server-adapter.mjs", import.meta.url), "utf8").replace(/^import .*;\n/gm, "");
-async function adapter(mode = "auto") {
+async function adapter(mode = "auto", initializeDelay = 0) {
   vi.useFakeTimers();
   const events: any[] = [];
   let receive = (_line: string) => {};
@@ -18,22 +18,35 @@ async function adapter(mode = "auto") {
       if (!req.id) return;
       const result = req.method === "thread/start" ? { thread: { id: "thread" } }
         : req.method === "thread/items/list" ? { data: [] } : {};
-      queueMicrotask(() => receive(JSON.stringify({ id: req.id, result })));
+      const reply = () => receive(JSON.stringify({ id: req.id, result }));
+      if (req.method === "initialize" && initializeDelay) setTimeout(reply, initializeDelay);
+      else queueMicrotask(reply);
     } },
   });
   const proc = { argv: ["node", "adapter", "config"], exitCode: 0, stdout: { write: (s: string) => events.push(JSON.parse(s)) } };
-  await runInNewContext(`(async () => {${source}\n})()`, {
+  const completion = runInNewContext(`(async () => {${source}\n})()`, {
     process: proc, spawn: () => child,
     createInterface: () => ({ on(_name: string, cb: typeof receive) { receive = cb; } }),
     readFile: async (file: string) => file === "config" ? JSON.stringify({ promptFile: "prompt", approvalMode: mode }) : "task",
     unlink: async () => {}, setTimeout, clearTimeout, Date,
   });
+  if (initializeDelay) await vi.advanceTimersByTimeAsync(initializeDelay);
+  await completion;
   const notify = (method: string, params = {}) => receive(JSON.stringify({ method, params }));
   return { child, proc, events, notify };
 }
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Codex activity deadline", () => {
+  it("reports a slow initialization before starting the model turn", async () => {
+    const a = await adapter("auto", 255_000);
+    const phases = a.events.filter(e => e.type === "lxp.startup");
+    expect(phases.map(e => e.stage)).toEqual(["initializing", "creating", "submitting", "ready"]);
+    expect(phases[0].elapsedMs).toBe(0);
+    expect(phases.at(-1).elapsedMs).toBe(255_000);
+    expect(a.events.some(e => e.type === "turn.completed")).toBe(false);
+    expect(a.child.kill).not.toHaveBeenCalled();
+  });
   it.each(["item/started", "item/commandExecution/outputDelta", "item/reasoning/textDelta", "thread/compacted"])("continues beyond one hour with %s", async (method) => {
     const a = await adapter();
     for (let i = 0; i < 4; i++) { await vi.advanceTimersByTimeAsync(40 * 60_000); a.notify(method, { item: { id: String(i), type: "commandExecution" }, delta: "progress" }); }

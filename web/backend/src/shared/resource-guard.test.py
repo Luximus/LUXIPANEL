@@ -39,6 +39,13 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(guard.admitted({"MemAvailable": 8192 * guard.MIB}, p, p["groupMax"]))
         self.assertTrue(guard.admitted({"MemAvailable": 4096 * guard.MIB}, p, 0))
 
+    def test_does_not_launch_into_shared_memory_throttling_with_host_ram_free(self):
+        p = guard.limits(8192 * guard.MIB, 4, "cli")
+        free_host = {"MemAvailable": 4096 * guard.MIB}
+        self.assertFalse(guard.admitted(free_host, p, p["groupHigh"] + guard.MIB))
+        self.assertFalse(guard.admitted(free_host, p, p["groupHigh"] - 128 * guard.MIB))
+        self.assertTrue(guard.admitted(free_host, p, p["groupHigh"] - 512 * guard.MIB))
+
     def test_unavailable_manager_never_launches_the_requested_command(self):
         output = io.StringIO()
         with patch.object(guard.Path, "exists", return_value=False), patch.object(guard.subprocess, "Popen") as launch, contextlib.redirect_stdout(output):

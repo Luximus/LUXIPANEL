@@ -50,6 +50,10 @@ function failTurn(message, code = 'CLI_FAILED') {
 }
 
 const emit = (event) => process.stdout.write(JSON.stringify(event) + '\n');
+const startupAt = Date.now();
+const startup = (stage) => {
+  if (!completed && !finishing) emit({ type: 'lxp.startup', stage, timestamp: new Date().toISOString(), elapsedMs: Date.now() - startupAt });
+};
 const send = (event) => codex.stdin.write(JSON.stringify(event) + '\n');
 const rpc = (method, params) => new Promise((resolve, reject) => {
   const id = nextId++;
@@ -328,11 +332,13 @@ codex.on('exit', (code) => {
 });
 
 try {
+  startup('initializing');
   await rpc('initialize', { clientInfo: { name: 'luxipanel', title: 'LUXIPANEL', version: '1.0.0' }, capabilities: { experimentalApi: true } });
   send({ method: 'initialized', params: {} });
   const mode = config.approvalMode;
   const policy = mode === 'manual' ? 'on-request' : 'never';
   const sandbox = mode === 'auto' ? 'danger-full-access' : 'read-only';
+  startup(config.resume ? 'resuming' : 'creating');
   const session = config.resume
     ? await rpc('thread/resume', { threadId: config.sessionId, cwd: config.cwd, approvalPolicy: policy, sandbox })
     : await rpc('thread/start', { cwd: config.cwd, approvalPolicy: policy, sandbox, ...(config.model ? { model: config.model } : {}) });
@@ -346,10 +352,12 @@ try {
   const sandboxPolicy = mode === 'auto'
     ? { type: 'dangerFullAccess' }
     : { type: 'readOnly', networkAccess: false };
+  startup('submitting');
   await rpc('turn/start', {
     threadId, input: [{ type: 'text', text: prompt }], collaborationMode,
     approvalPolicy: policy, sandboxPolicy,
   });
+  startup('ready');
   touchActivity();
 } catch (error) {
   failTurn(String(error));

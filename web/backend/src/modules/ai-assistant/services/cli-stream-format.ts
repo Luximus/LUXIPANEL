@@ -360,6 +360,19 @@ function codexItemLabel(item: Record<string, unknown>): string {
 /** Display text for ONE codex event (may be empty). */
 function classifyCodexEvent(ev: Record<string, unknown>): string {
   const type = ev.type;
+  if (type === "lxp.startup") {
+    const labels: Record<string, string> = {
+      initializing: "Preparando motor IA",
+      resuming: "Recuperando historial de la conversación",
+      creating: "Preparando conversación",
+      submitting: "Enviando solicitud a la IA",
+      ready: "Turno iniciado; esperando la respuesta de la IA",
+    };
+    const label = typeof ev.stage === "string" ? labels[ev.stage] : undefined;
+    if (!label) return "";
+    const seconds = typeof ev.elapsedMs === "number" && Number.isFinite(ev.elapsedMs) && ev.elapsedMs >= 0 ? ` · ${(ev.elapsedMs / 1000).toFixed(1)} s` : "";
+    return `${DIM}[LUXIPANEL] ${label}${seconds}${RESET}\r\n`;
+  }
   if (type === "thread.started") return `${DIM}● Codex${RESET}\r\n`;
   if (type === "error") {
     const msg = typeof ev.message === "string" ? ev.message : oneLine(ev, 160);
