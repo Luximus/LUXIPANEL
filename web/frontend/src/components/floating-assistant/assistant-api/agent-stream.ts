@@ -20,7 +20,24 @@ export interface AskQuestion {
 // backend/src/modules/ai-assistant/services/providers/provider.types.ts — the
 // SSE `event:` payloads are decoded here by `type`, so a divergence silently
 // drops or mis-handles a frame.
-export type AgentEvent =
+export interface AgentStreamState {
+  type: "stream_state";
+  runId: string;
+  nextSeq: number;
+  replayFromSeq: number;
+  done: boolean;
+}
+
+export interface AgentStreamRecovery {
+  reason: "run_changed" | "cursor_out_of_range" | "run_id_required";
+  runId: string;
+  requestedRunId?: string;
+  nextSeq: number;
+  done: boolean;
+}
+
+export type AgentEvent = (
+  | AgentStreamState
   | { type: "text"; delta: string; phase?: "commentary" | "final_answer" }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; id: string; success: boolean; output: string }
@@ -48,7 +65,8 @@ export type AgentEvent =
   // `teamApi.listTasks` after a reload.
   | { type: "team_task_update"; task: TeamTaskView }
   | { type: "done"; pending?: true }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: "AGENT_STREAM_RECONCILE_REQUIRED"; recovery?: AgentStreamRecovery }
+) & { runId?: string };
 
 export interface AgentMessage {
   role: "user" | "assistant";
@@ -121,31 +139,37 @@ async function* parseAgentSse(res: Response): AsyncGenerator<AgentEventFrame> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buf = "";
-  let seq = -1;
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    // SSE frames are separated by blank lines.
-    let idx = buf.indexOf("\n\n");
-    while (idx >= 0) {
-      const frame = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      idx = buf.indexOf("\n\n");
-      const lines = frame.split("\n");
-      const idLine = lines.find((l) => l.startsWith("id: "));
-      if (idLine) {
-        const n = Number(idLine.slice(4).trim());
-        if (Number.isFinite(n)) seq = n;
-      }
-      const dataLine = lines.find((l) => l.startsWith("data: "));
-      if (!dataLine) continue; // comment/heartbeat frame
-      try {
-        yield { event: JSON.parse(dataLine.slice(6)) as AgentEvent, seq };
-      } catch {
-        /* ignore non-JSON frame */
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // SSE frames are separated by blank lines.
+      let idx = buf.indexOf("\n\n");
+      while (idx >= 0) {
+        const frame = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        idx = buf.indexOf("\n\n");
+        const lines = frame.split("\n");
+        let seq = -1; // Transport metadata has no id; never inherit the previous frame cursor.
+        const idLine = lines.find((l) => l.startsWith("id: "));
+        if (idLine) {
+          const n = Number(idLine.slice(4).trim());
+          if (Number.isSafeInteger(n) && n >= -1) seq = n;
+        }
+        const dataLine = lines.find((l) => l.startsWith("data: "));
+        if (!dataLine) continue; // comment/heartbeat frame
+        try {
+          yield { event: JSON.parse(dataLine.slice(6)) as AgentEvent, seq };
+        } catch {
+          /* ignore non-JSON frame */
+        }
       }
     }
+  } finally {
+    // Reconciliation can stop replay early and open another run explicitly.
+    try { await reader.cancel(); } catch { /* The transport may already be closed. */ }
+    reader.releaseLock();
   }
 }
 
@@ -233,7 +257,7 @@ export async function* streamAgent(
  * Resume an in-flight (or just-finished) run via GET /api/ai/agent/stream,
  * WITHOUT starting a new one. Returns `null` when the backend has no buffered
  * run for the conversation (HTTP 204) — the caller should then reload the
- * conversation history instead (the answer already finished + persisted).
+ * conversation history instead. Absence alone proves no admission or completion.
  *
  * `lastSeenSeq` is the highest `seq` already applied locally; the backend
  * replays only events after it.
@@ -242,8 +266,10 @@ export async function streamAgentResume(
   conversationId: string,
   lastSeenSeq: number,
   signal: AbortSignal,
+  runId?: string,
 ): Promise<AsyncGenerator<AgentEventFrame> | null> {
-  const qs = `conversationId=${encodeURIComponent(conversationId)}&fromSeq=${lastSeenSeq}`;
+  const qs = `conversationId=${encodeURIComponent(conversationId)}&fromSeq=${lastSeenSeq}`
+    + (runId ? `&runId=${encodeURIComponent(runId)}` : "");
   const res = await fetch(`/api/ai/agent/stream?${qs}`, {
     method: "GET",
     credentials: "include",
@@ -251,7 +277,13 @@ export async function streamAgentResume(
     signal,
   });
   if (res.status === 204) return null; // nothing to resume → reload history
-  if (!res.ok || !res.body) return null;
+  if (!res.ok) {
+    const detail = await readErrorDetail(res);
+    throw new Error(detail || `HTTP ${res.status} ${res.statusText}`);
+  }
+  // Only 204 means the registry has no run. A broken response must stay
+  // recoverable instead of being mistaken for a completed, persisted turn.
+  if (!res.body) throw new TypeError("Agent stream response has no body");
   return parseAgentSse(res);
 }
 

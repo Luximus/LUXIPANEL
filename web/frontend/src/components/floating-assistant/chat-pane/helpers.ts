@@ -180,7 +180,7 @@ export function extractModifiedFiles(turn: ChatTurn, projectPath?: string): Modi
     if (tr.terminal) sources.push(tr.terminal);
     if (tr.lanes) for (const lane of Object.values(tr.lanes)) if (lane?.output) sources.push(lane.output);
   }
-  if (turn.raw) sources.push(turn.raw);
+  if (turn.raw && (turn.cli || turn.cliHistoryLog || turn.tools.some(tool => tool.name.endsWith(".cli")))) sources.push(turn.raw);
   const text = sources.join("\n").replace(ANSI_RE, "");
   const base = (projectPath ?? "").replace(/\/+$/, "");
   // (use of base is guarded below; projectPath is the only entry point that
@@ -192,6 +192,21 @@ export function extractModifiedFiles(turn: ChatTurn, projectPath?: string): Modi
     if (!kindByPath.has(abs)) order.push(abs);
     kindByPath.set(abs, kind); // last operation seen wins
   };
+
+  // API history retains structured calls and results. Only a confirmed files
+  // write proves a modification; never infer it from commentary or output text.
+  for (const tool of turn.tools) {
+    if (tool.result?.success !== true) continue;
+    const input = tool.name === "files.write" ? tool.input
+      : tool.name === "modules.execute" && tool.input.tool === "files.write"
+        && tool.input.input && typeof tool.input.input === "object" && !Array.isArray(tool.input.input)
+        ? tool.input.input as Record<string, unknown> : undefined;
+    const path = input?.path;
+    if (typeof path !== "string" || !path.trim() || path.length > 400 || /[\u0000\r\n]/.test(path)) continue;
+    // Structured paths are exact: spaces/parentheses are part of the filename.
+    const absolute = path.startsWith("/") ? path : base ? `${base}/${path.replace(/^\.\//, "")}` : null;
+    if (absolute) note(absolute, "modified");
+  }
 
   for (const rawLine of text.split(/\r?\n/)) {
     // 1) Write/edit tools → modified. The summary may be `path`, `"path"`,

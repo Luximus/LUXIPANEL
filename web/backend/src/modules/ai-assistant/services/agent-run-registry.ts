@@ -25,6 +25,7 @@
  * on each server; reconnecting joins the existing run on that server.
  */
 
+import { randomUUID } from "node:crypto";
 import type { Executor } from "../../../shared/executor/index.js";
 import { runWithExecutor } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
@@ -47,10 +48,34 @@ const log = createModuleLogger("ai-agent-registry");
  *  the final events (incl. the terminal `done`/`error`) before it GCs. */
 const RETENTION_MS = 2 * 60_000;
 
-type Subscriber = (event: AgentEvent, seq: number) => void;
+/** Transport metadata, separate from provider events and persisted messages. */
+export interface AgentStreamState {
+  type: "stream_state";
+  runId: string;
+  nextSeq: number;
+  replayFromSeq: number;
+  done: boolean;
+}
+
+export interface AgentStreamRecoveryError {
+  type: "error";
+  code: "AGENT_STREAM_RECONCILE_REQUIRED";
+  message: string;
+  recovery: {
+    reason: "run_changed" | "run_id_required" | "cursor_out_of_range";
+    runId: string;
+    requestedRunId?: string;
+    nextSeq: number;
+    done: boolean;
+  };
+}
+
+type Subscriber = (event: AgentEvent | AgentStreamRecoveryError, seq: number, runId: string) => void;
 
 interface AgentRun {
   key: string;
+  /** Identity of this in-memory replay buffer, never reused by a successor. */
+  runId: string;
   /** Provider that owns this run (claude/codex/…), for the active-runs feed. */
   provider?: string;
   /** Project the conversation belongs to, carried for the active-runs feed. */
@@ -201,7 +226,7 @@ function push(run: AgentRun, event: AgentEvent): void {
   run.events.push(event);
   for (const sub of run.subscribers) {
     try {
-      sub(event, seq);
+      sub(event, seq, run.runId);
     } catch {
       /* a slow/broken subscriber must never break the run */
     }
@@ -339,6 +364,7 @@ export const agentRunRegistry = {
 
     const run: AgentRun = {
       key: params.key,
+      runId: randomUUID(),
       provider: params.provider,
       projectId: params.projectId ?? null,
       userId: params.user?.userId,
@@ -614,22 +640,50 @@ export const agentRunRegistry = {
   },
 
   /**
-   * Attach to a run: synchronously replay buffered events from `fromSeq`,
-   * then subscribe to live ones. Returns an unsubscribe fn, or `null` if no
-   * run exists for the key. No `await` between reading the buffer and
-   * subscribing, so (single-threaded) no event can be missed or duplicated.
+   * Replay only a cursor bound to this run. An unscoped nonzero cursor cannot
+   * identify a buffer after a successor, GC or restart: require reconciliation
+   * instead of treating another run's terminal as the requested turn's result.
+   * Zero is an explicit full replay/adoption. No await between state, replay and
+   * subscription; a finished, already-consumed buffer is reported via onState.
    */
-  attach(key: string, fromSeq: number, onEvent: Subscriber, targetId?: string): (() => void) | null {
+  attach(
+    key: string,
+    fromSeq: number,
+    onEvent: Subscriber,
+    targetId?: string,
+    options: { runId?: string; onState?: (state: AgentStreamState) => void } = {},
+  ): (() => void) | null {
     const run = runs.get(executionKey(key, targetId));
     if (!run) return null;
     const len = run.events.length;
-    for (let i = Math.max(0, fromSeq); i < len; i++) {
+    const reason = options.runId !== undefined && options.runId !== run.runId
+      ? "run_changed"
+      : !Number.isSafeInteger(fromSeq) || fromSeq < 0 || fromSeq > len
+        ? "cursor_out_of_range"
+        : fromSeq > 0 && !options.runId ? "run_id_required" : undefined;
+    if (reason) {
+      onEvent({
+        type: "error",
+        code: "AGENT_STREAM_RECONCILE_REQUIRED",
+        message: "La conexión ya no identifica con certeza esta ejecución. Recupera el historial y comprueba el turno pendiente antes de continuar.",
+        recovery: {
+          reason,
+          runId: run.runId,
+          ...(options.runId !== undefined ? { requestedRunId: options.runId } : {}),
+          nextSeq: len,
+          done: run.done,
+        },
+      }, -1, run.runId);
+      return () => undefined;
+    }
+    options.onState?.({ type: "stream_state", runId: run.runId, nextSeq: len, replayFromSeq: fromSeq, done: run.done });
+    for (let i = fromSeq; i < len; i++) {
       const ev = run.events[i];
-      if (ev) onEvent(ev, i);
+      if (ev) onEvent(ev, i, run.runId);
     }
     if (run.done) return () => undefined;
     run.subscribers.add(onEvent);
-    return () => run.subscribers.delete(onEvent);
+    return () => { run.subscribers.delete(onEvent); };
   },
 
   /**

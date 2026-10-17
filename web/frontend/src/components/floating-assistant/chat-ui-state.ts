@@ -170,7 +170,7 @@ export const chatUiState = {
   patchConversationChoice(provider: string, id: string | null, patch: Partial<ConversationChoice>): void {
     const choices = conversationChoices[provider] ?? (conversationChoices[provider] = {});
     const key = id ?? "__new__";
-    choices[key] = { model: "", effort: "Auto", ...choices[key], ...patch };
+    choices[key] = { ...(choices[key] ?? { model: "", effort: "Auto" }), ...patch };
     persist();
   },
   moveNewConversationChoice(provider: string, id: string): void {

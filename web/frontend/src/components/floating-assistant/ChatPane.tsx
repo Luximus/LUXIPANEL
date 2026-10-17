@@ -20,7 +20,7 @@ import { ChatSidebar } from "./chat-pane/ChatSidebar";
 import { ChatMain } from "./chat-pane/ChatMain";
 import { useAttachmentImages } from "./chat-pane/use-attachment-images";
 import { resolvePanelApiPath, scopeHeaders } from "@/lib/api-client";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { workspaceState } from "./workspace-state";
 
 export type { ChatPaneProps };
@@ -28,7 +28,6 @@ export type { ChatPaneProps };
 /** One provider's chat surface: projects + conversation list + chat + input. */
 export function ChatPane(props: ChatPaneProps) {
   const vm = useChatPane(props);
-  const previewSurface = useSyncExternalStore(workspaceState.subscribe, workspaceState.getSnapshot).surface;
   useEffect(() => {
     if (props.active) workspaceState.setContext(props.provider, props.mode, vm.activeChatProject ?? vm.currentProject);
   }, [props.active, props.provider, props.mode, vm.activeChatProject, vm.currentProject]);
@@ -38,12 +37,6 @@ export function ChatPane(props: ChatPaneProps) {
     window.addEventListener("lxp:assistant:projects-updated", refresh);
     return () => window.removeEventListener("lxp:assistant:projects-updated", refresh);
   }, [props.active, vm.reloadProjects]);
-  useEffect(() => {
-    if (props.active && previewSurface) {
-      vm.setListOpen(false);
-      vm.setMobileListOpen(false);
-    }
-  }, [props.active, previewSurface]);
   useEffect(() => {
     if (!props.active || !vm.projects.length) return;
     const url = new URL(window.location.href);

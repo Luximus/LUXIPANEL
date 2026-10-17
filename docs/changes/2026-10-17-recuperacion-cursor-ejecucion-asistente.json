@@ -1,0 +1,7 @@
+{
+  "title": "Recuperación segura de respuestas del asistente",
+  "changes": [
+    "La recuperación del chat distingue cada ejecución para evitar aplicar el cierre de una respuesta a otra.",
+    "Si el cursor ya no identifica la ejecución disponible, se solicita reconciliar el historial sin volver a ejecutar acciones."
+  ]
+}

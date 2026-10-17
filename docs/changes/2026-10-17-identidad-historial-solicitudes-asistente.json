@@ -1,0 +1,8 @@
+{
+  "title": "Recuperación segura de solicitudes del asistente",
+  "changes": [
+    "Al recuperar el historial, repetir una solicitud ya no permite sustituirla por una respuesta de un turno anterior.",
+    "Si el historial no identifica la nueva solicitud, el chat conserva el turno, sus adjuntos y su estado sin confirmar.",
+    "En ese caso, las continuaciones locales permanecen pendientes y la solicitud original no se vuelve a enviar automáticamente."
+  ]
+}

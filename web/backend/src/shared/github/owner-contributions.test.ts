@@ -156,7 +156,7 @@ describe("durable CLI contribution recovery",()=>{
   expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
  });
  it("queues overlapping successful turns together, including a third joining later",async()=>{
-  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery,undefined,{publishCompletedTurns:false});
   const first=await api.beginOwnerContribution(user,"first",root,"local",true);
   const second=await api.beginOwnerContribution(user,"second",root,"local",true);
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");
@@ -178,7 +178,7 @@ describe("durable CLI contribution recovery",()=>{
   expect(await api.finishOwnerContribution(third,true)).toBeNull();
  });
  it("waits for the worker's verified outcome after its leader and provider finish",async()=>{
-  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery,undefined,{publishCompletedTurns:false});
   const leader=await api.beginOwnerContribution(user,"leader",root,"local",true);
   const worker=await api.beginOwnerContribution(user,"worker",path.join(root,"web"),"local",true);
   worker!.job.teamTaskId="worker-task";await api.saveContribution(worker!.job);
@@ -292,7 +292,7 @@ describe("durable CLI contribution recovery",()=>{
   expect(old!.job.status).toBe("interrupted");expect(old!.job.succeeded).toBe(false);
  });
  it.each(["failed","foreign"])("does not publish a shared group with a %s participant",async reason=>{
-  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery,undefined,{publishCompletedTurns:false});
   const a=await api.beginOwnerContribution(user,"a",root,"local",true);
   const b=await api.beginOwnerContribution(reason==="foreign"?{...user,userId:2}:user,"b",root,"local",true);
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=3;\n");
@@ -302,7 +302,7 @@ describe("durable CLI contribution recovery",()=>{
   expect(JSON.parse(await fs.readFile(path.join(dir,"job.json"),"utf8")).status).toBe("blocked");
  });
  it.each([false,true])("recovers overlapping signed CLI tasks (legacy=%s) and seals only after the last success",async legacy=>{
-  let api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  let api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery,undefined,{publishCompletedTurns:false});
   const tickets=await Promise.all(["one","two"].map(id=>api.beginOwnerContribution(user,id,root,"local",true)));
   const descriptors=tickets.map(t=>({conversationId:t!.job.conversationId,jobId:"cli-"+t!.job.id,startedAt:Date.now(),moduleRecovery:"signed-scope"}));
   for(const desc of descriptors)await api.bindOwnerContributionCli(user,desc,"local");
@@ -312,7 +312,7 @@ describe("durable CLI contribution recovery",()=>{
    const row=JSON.parse(await fs.readFile(file,"utf8"));delete row.batchId;await fs.writeFile(file,JSON.stringify(row));
   }
   vi.resetModules();api=await import("./owner-contributions.js");
-  const recovered=await api.initializeOwnerContributions(noDelivery,async j=>descriptors.some(d=>j.cliBinding===api.contributionCliBinding(d)));
+  const recovered=await api.initializeOwnerContributions(noDelivery,async j=>descriptors.some(d=>j.cliBinding===api.contributionCliBinding(d)),{publishCompletedTurns:false});
   expect(recovered.map(j=>j.id).sort()).toEqual(tickets.map(t=>t!.job.id).sort());
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=3;\n");
   for(const [i,desc] of descriptors.entries()){

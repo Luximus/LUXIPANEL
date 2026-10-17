@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { chatEngine } from "../chat-engine";
+import { resolveTargetScope } from "@/lib/api-client";
 import type { AgentMessage, ChatAttachment } from "../assistant-api";
 import {
   streamAgent, steerAgent, enqueueAgentTurn, listAgentQueue, cancelAgentQueue,
@@ -11,7 +12,7 @@ import {
   isActivelyViewing, syncReviewedIfViewing,
 } from "./state";
 import {
-  applyEvent, handleStreamThrow, lastTurnInterrupted, lastTurnStopped, reloadHistory,
+  applyEvent, handleStreamThrow, lastTurnInterrupted, lastTurnStopped, reloadHistory, settleStreamEnd,
 } from "./stream-apply";
 
 // ── Addenda (steering / continuation) ───────────────────────────────────────
@@ -299,7 +300,9 @@ export async function enqueueServerTurn(
 
 /** Refresh the local mirror of the server queue. Returns the pending count. */
 export async function refreshServerQueue(key: string, conversationId: string): Promise<number> {
+  const scope = resolveTargetScope();
   const pending = await listAgentQueue(conversationId);
+  if (scope !== resolveTargetScope() || (chats.has(key) && chats.get(key)?.conversationId !== conversationId)) return 0;
   if (pending.length) serverQueued.set(key, pending);
   else serverQueued.delete(key);
   emit();
@@ -315,6 +318,10 @@ const FOLLOW_BACKOFF_MS = [300, 700, 1500, 3000, 6000];
  * tab mirrors the background progress. No-op when there's nothing pending.
  */
 export function onCleanSettle(key: string, conversationId: string | null, provider: string, isCli: boolean): void {
+  const chat = chats.get(key), turn = chat?.turns.at(-1);
+  if (!chat || chat.streaming || turn?.role !== "assistant" || turn.pending || turn.completionPending
+    || turn.interrupted || turn.stopped || turn.error || turn.ask?.length || turn.permission) return;
+  const scope = resolveTargetScope();
   // Addenda the user appended mid-run (default send, no live steering) drain
   // FIRST as a single continuation of the same bubble. Its own settle re-enters
   // here to then drain the separate "Encolar" queue.
@@ -326,7 +333,8 @@ export function onCleanSettle(key: string, conversationId: string | null, provid
   // an empty pending list can mean the next turn has already started.
   const hadQueuedTurns = (serverQueued.get(key)?.length ?? 0) > 0;
   void refreshServerQueue(key, conversationId).then((n) => {
-    if (hadQueuedTurns || n > 0) void followServerChain(key, conversationId, provider, isCli);
+    if (scope === resolveTargetScope() && chats.get(key)?.conversationId === conversationId
+      && (hadQueuedTurns || n > 0)) void followServerChain(key, conversationId, provider, isCli);
   });
 }
 
@@ -338,12 +346,16 @@ export function onCleanSettle(key: string, conversationId: string | null, provid
  * mirrors it live.
  */
 export async function followServerChain(key: string, conversationId: string, provider: string, isCli: boolean): Promise<void> {
+  const scope = resolveTargetScope();
+  const canFollow = () => scope === resolveTargetScope() && chats.get(key)?.conversationId === conversationId
+    && !chats.get(key)?.streaming && !lastTurnStopped(key);
   for (const delay of FOLLOW_BACKOFF_MS) {
-    if (chats.get(key)?.streaming) return; // something already took over
+    if (!canFollow()) return;
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
     await sleep(delay);
-    if (chats.get(key)?.streaming) return;
-    await reloadHistory(key, conversationId);
+    if (!canFollow()) return;
+    if (!await reloadHistory(key, conversationId)) continue;
+    if (!canFollow()) return;
     const adopted = await chatEngine.adopt(key, provider, conversationId, isCli);
     if (adopted) return; // adopt's settle path continues the chain
   }
@@ -381,8 +393,10 @@ export async function dispatchSend(
 ): Promise<void> {
   const { provider, isCli, conversationId, projectId, agentId, messages, userText, attachments, model, effort, continueActiveBubble } = p;
   const baseTurns = chats.get(key)?.turns ?? [];
+  const scope = resolveTargetScope();
 
   const ac = new AbortController();
+  const ownsStream = () => scope === resolveTargetScope() && chats.get(key)?.abort === ac;
   const startedAt = Date.now();
   const userAttachments: TurnAttachment[] | undefined = attachments?.length
     ? attachments.map((a) => ({
@@ -403,36 +417,42 @@ export async function dispatchSend(
         { role: "user", text: userText, tools: [], createdAt: startedAt, ...(userAttachments ? { attachments: userAttachments } : {}) },
         { role: "assistant", provider, text: "", tools: [], pending: true },
       ];
-  chats.set(key, { provider, conversationId, turns, streaming: true, abort: ac, isCli });
+  chats.set(key, { provider, conversationId, turns, streaming: true, abort: ac, isCli,
+    ...(chats.get(key)?.teamTasks ? { teamTasks: chats.get(key)!.teamTasks } : {}),
+  });
   emit();
 
   const isClear = userText.trim().startsWith("/clear");
 
   try {
     for await (const frame of streamAgent(messages, ac.signal, conversationId ?? undefined, provider, projectId ?? null, attachments, model, agentId ?? null, p.planDecision, effort)) {
+      if (!ownsStream()) { ac.abort(); break; }
       applyEvent(key, frame.event, { isCli, startedAt, seq: frame.seq });
     }
   } catch (err) {
-    handleStreamThrow(key, err, startedAt, isCli);
+    if (ownsStream()) handleStreamThrow(key, err, startedAt, isCli);
   } finally {
-    const chat = chats.get(key);
-    // Mark the finished run as "sin revisar" so the Dashboard surfaces it as
-    // a pending result (cleared when the user opens the conversation). Skip the
-    // flag when the user is already looking at this chat — they saw the result.
-    if (chat) chats.set(key, { ...chat, streaming: false, abort: undefined, unreviewed: !isClear && !isActivelyViewing(key) });
-    // Watching this chat as it finished? The backend marked it unreviewed anyway;
-    // clear that persisted flag so no red dot shows for the open conversation.
-    if (!isClear) syncReviewedIfViewing(key, conversationId);
-    if (isClear) {
-      chats.set(key, { provider, conversationId, turns: [], streaming: false });
-      p.onClear?.(key);
+    if (ownsStream()) {
+      settleStreamEnd(key, startedAt);
+      const chat = chats.get(key);
+      // Mark the finished run as "sin revisar" so the Dashboard surfaces it as
+      // a pending result (cleared when the user opens the conversation). Skip the
+      // flag when the user is already looking at this chat — they saw the result.
+      if (chat) chats.set(key, { ...chat, streaming: false, abort: undefined, unreviewed: !isClear && !isActivelyViewing(key) });
+      // Watching this chat as it finished? The backend marked it unreviewed anyway;
+      // clear that persisted flag so no red dot shows for the open conversation.
+      if (!isClear) syncReviewedIfViewing(key, conversationId);
+      if (isClear) {
+        chats.set(key, { provider, conversationId, turns: [], streaming: false });
+        p.onClear?.(key);
+      }
+      emit();
+      p.onSettled?.(key);
+      // The connection dropped (e.g. mobile WebView frozen on app-switch). The
+      // run keeps going on the backend; resume/reload as soon as we're visible.
+      if (lastTurnInterrupted(key)) scheduleResume(key);
+      else if (!lastTurnStopped(key)) onCleanSettle(key, conversationId, provider, isCli);
     }
-    emit();
-    p.onSettled?.(key);
-    // The connection dropped (e.g. mobile WebView frozen on app-switch). The
-    // run keeps going on the backend; resume/reload as soon as we're visible.
-    if (lastTurnInterrupted(key)) scheduleResume(key);
-    else if (!lastTurnStopped(key)) onCleanSettle(key, conversationId, provider, isCli);
   }
 }
 

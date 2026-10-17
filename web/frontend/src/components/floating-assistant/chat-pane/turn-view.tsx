@@ -40,7 +40,8 @@ import StatusMark, { type StatusMarkStatus } from "./reactbits/StatusMark";
  *  the Monaco editor modal; DELETED files are shown (struck through, trash icon)
  *  but are NOT clickable — the file no longer exists to display. */
 export function ModifiedFilesView({ files, onOpen, embedded = false }: { files: ModifiedFileEntry[]; onOpen: (path: string) => void; embedded?: boolean }) {
-  const ct = useAssistantI18n().chatTab as Record<string, any>;
+  const messages = useAssistantI18n();
+  const ct = messages.chatTab as Record<string, any>;
   const [open, setOpen] = useState(false);
   const deletedCount = files.reduce((n, f) => (f.kind === "deleted" ? n + 1 : n), 0);
   return (
@@ -49,14 +50,14 @@ export function ModifiedFilesView({ files, onOpen, embedded = false }: { files: 
       onToggle={(e) => setOpen(e.currentTarget.open)}
       className={cn("group text-xs", embedded ? "bg-background/20" : "mt-2 rounded-md border border-border/60 bg-background/50")}
     >
-      <summary className={cn("flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden", embedded ? "px-3 py-2" : "px-2 py-1")}>
+      <summary className={cn("flex min-h-11 cursor-pointer list-none items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden", embedded ? "px-3 py-2" : "px-2 py-1")}>
         <i className="ti ti-files text-muted-foreground" aria-hidden></i>
-        <span>{ct.showModifiedFiles ?? "Modified files"}</span>
+        <span>{messages.providersTab.showModifiedFiles}</span>
         <span className="rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground">{files.length}</span>
         {deletedCount > 0 && (
           <span
             className="inline-flex items-center gap-0.5 rounded-full bg-red-500/10 px-1.5 text-[10px] text-red-500"
-            title={formatAssistantMessage(ct.deletedFilesBadge ?? "{n} eliminado(s)", { n: deletedCount })}
+            title={formatAssistantMessage(ct.deletedFilesBadge, { n: deletedCount })}
           >
             <i className="ti ti-trash text-[10px]" aria-hidden></i>
             {deletedCount}
@@ -73,7 +74,7 @@ export function ModifiedFilesView({ files, onOpen, embedded = false }: { files: 
             return (
               <div
                 key={f.path}
-                title={`${f.path} · eliminado (no se puede abrir)`}
+                title={`${f.path} · ${ct.deletedFileBadge}`}
                 className="flex w-full min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-left"
               >
                 <i className="ti ti-trash shrink-0 text-red-500/80" aria-hidden></i>
@@ -81,7 +82,7 @@ export function ModifiedFilesView({ files, onOpen, embedded = false }: { files: 
                   <span className="font-medium text-muted-foreground line-through">{name}</span>
                   {dir && <span className="ml-1 font-mono text-[10px] text-muted-foreground">{dir}</span>}
                 </span>
-                <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-red-500">{ct.deletedFileBadge ?? "eliminado"}</span>
+                <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-red-500">{ct.deletedFileBadge}</span>
               </div>
             );
           }
@@ -90,13 +91,13 @@ export function ModifiedFilesView({ files, onOpen, embedded = false }: { files: 
               key={f.path}
               type="button"
               onClick={() => onOpen(f.path)}
-              title={formatAssistantMessage(ct.openInEditorTitle ?? "Abrir {path} en el editor", { path: f.path })}
-              className="flex w-full min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-accent"
+              title={formatAssistantMessage(ct.openInEditorTitle, { path: f.path })}
+              className="flex min-h-11 w-full min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <i className="ti ti-file-pencil shrink-0 text-primary/80" aria-hidden></i>
               <span className="min-w-0 truncate">
                 <span className="font-medium">{name}</span>
-                {dir && <span className="ml-1 font-mono text-[10px] text-muted-foreground">{dir}</span>}
+                {dir && <span className="ml-1 font-mono text-[10px] text-foreground">{dir}</span>}
               </span>
               <i className="ti ti-external-link ml-auto shrink-0 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-60" aria-hidden></i>
             </button>

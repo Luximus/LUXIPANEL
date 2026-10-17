@@ -1,0 +1,9 @@
+{
+  "title": "Historial y reconexión del asistente más fiables",
+  "changes": [
+    "El asistente conserva la actividad compacta y los detalles de las escrituras confirmadas al volver a abrir una conversación.",
+    "Los archivos guardados desde las herramientas API aparecen en la lista de cambios y pueden abrirse en el editor.",
+    "Al reconectarse, el navegador consulta la ejecución existente sin reenviar la solicitud original ni mezclar respuestas de un turno sustituido.",
+    "Los errores, preguntas, permisos y resultados pendientes impiden que el navegador envíe automáticamente las continuaciones locales."
+  ]
+}

@@ -72,7 +72,8 @@ const entry = [
   "if(state===\"history\") {const response=await assistantConversationsApi.messages(\"qa-history\",30,0);turn=historyTurn(response.items[0]);}",
   "if(state===\"truncated\") turn=historyTurn({...message,apiActivity:{...message.apiActivity,truncated:true}});",
   "if(state===\"cli-waiting\") turn=historyTurn({role:\"assistant\",content:\"\",ts:\"\",cli:true,cliLog:\"$ codex\\nTrabajo en curso.\",pending:true});",
-  "root.render(createElement(TurnView,{turn,provider:\"codex\"}));",
+  "if(state===\"files-history\") turn=historyTurn({...message,apiActivity:{events:[{type:\"tool_use\",id:\"write\",name:\"modules.execute\",input:{tool:\"files.write\",input:{path:\"/fixture/src/Changed.ts\"}}},{type:\"tool_result\",id:\"write\",success:true,output:\"Archivo guardado\"}]}});",
+  "root.render(createElement(TurnView,{turn,provider:\"codex\",projectPath:\"/fixture\",onOpenFile:path=>{window.qaOpenedFile=path;}}));",
   "}; await window.qaRender(); window.qaReady = true;"
 ].join("\n");
 let server, browser;
@@ -165,6 +166,30 @@ try {
     await expect(page.locator("[data-api-truncated]")).toContainText("Parte del detalle no se conservó");
     await summary.focus();
     await page.keyboard.press("Space");
+    await page.evaluate(() => window.qaRender("files-history"));
+    const files = page.locator('[data-message-section="files"]');
+    const filesSummary = files.locator("summary");
+    await expect(filesSummary).toContainText("Archivos modificados");
+    await filesSummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(files.locator("details")).toHaveAttribute("open");
+    const fileButton = files.getByRole("button");
+    await expect(fileButton).toContainText("Changed.ts");
+    await fileButton.focus();
+    await page.keyboard.press("Enter");
+    expect(await page.evaluate(() => window.qaOpenedFile)).toBe("/fixture/src/Changed.ts");
+    const fileMetrics = await files.locator("summary,button").evaluateAll(elements => elements.map(el => ({
+      height: el.getBoundingClientRect().height, width: el.getBoundingClientRect().width,
+    })));
+    expect(fileMetrics.every(metric => metric.height >= 44 && metric.width >= 44)).toBe(true);
+    expect(await fileButton.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe("none");
+    const filesAudit = await new AxeBuilder({page}).include('[data-message-section="files"]')
+      .withRules(["color-contrast", "button-name", "aria-valid-attr-value"]).analyze();
+    expect(filesAudit.violations).toEqual([]);
+    await page.screenshot({ path: base + "/files-" + theme + "-" + width + ".png" });
+    await filesSummary.focus();
+    await page.keyboard.press("Space");
+    await expect(files.locator("details")).not.toHaveAttribute("open");
     await page.evaluate(() => window.qaRender("cli-waiting"));
     const cliHistory = page.locator('[data-message-section="console"] > details');
     const cliSummary = cliHistory.locator(":scope > summary");
@@ -179,7 +204,8 @@ try {
     await page.keyboard.press("Space");
     await expect(cliSummary).toHaveAttribute("aria-expanded", "false");
     await expect(page.locator('[data-message-section="answer"]')).toHaveCount(0);
-    report.cases.push({width,theme,keyboard:true,metrics,states,cliPending:true,truncated:true});
+    report.cases.push({width,theme,keyboard:true,metrics,states,cliPending:true,truncated:true,
+      files:{keyboard:true,translated:true,editorPath:"/fixture/src/Changed.ts",metrics:fileMetrics,violations:filesAudit.violations}});
   }
   expect(report.pageErrors).toEqual([]);
   report.success = true;

@@ -24,7 +24,7 @@ import {
 } from "./chat-engine/state";
 import {
   finalizeTurn, applyEvent, handleStreamThrow, lastTurnInterrupted, lastTurnStopped,
-  clearInterruptedFlag, reloadHistory,
+  clearInterruptedFlag, reloadHistory, reconcileRunHistory, settleStreamEnd,
 } from "./chat-engine/stream-apply";
 import {
   dispatchSend, sendAddendum, enqueueSend, enqueueServerTurn, refreshServerQueue,
@@ -36,6 +36,51 @@ export type { CliLane, ToolTrace, TurnAttachment, ChatTurn, LiveChat } from "./c
 export { historyTurn, historyTurns } from "./chat-engine/history";
 let backgroundRefreshTask: Promise<void> | null = null;
 const pendingOutcomeReads = new Set<string>();
+
+/** Read-only recovery shared by resume and adoption. Each attach names its buffer. */
+async function consumeResumeStream(
+  key: string, conversationId: string, gen: Awaited<ReturnType<typeof streamAgentResume>>,
+  ac: AbortController, scope: string, isCli: boolean, startedAt: number,
+): Promise<boolean> {
+  const owns = () => scope === resolveTargetScope() && chats.get(key)?.conversationId === conversationId
+    && chats.get(key)?.abort === ac;
+  let reconciled = false;
+  // A busy conversation can change runs during the REST read. Bound each
+  // attempt; the existing read-only backoff handles further races.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!owns()) { ac.abort(); return reconciled; }
+    if (!gen) {
+      await reloadHistory(key, conversationId); // 204 proves only buffer absence.
+      return true;
+    }
+    let replay = false;
+    for await (const frame of gen) {
+      if (!owns()) { ac.abort(); return reconciled; }
+      const ev = frame.event;
+      applyEvent(key, ev, { isCli, startedAt, seq: frame.seq, replay: true });
+      const recovery = chats.get(key)?.reconcileRun;
+      if (recovery) {
+        reconciled = true;
+        const result = await reconcileRunHistory(key, conversationId, recovery);
+        if (!owns()) { ac.abort(); return reconciled; }
+        if (result !== "replay") return reconciled;
+        replay = true;
+        break; // Close the old reader before selecting the reconciled buffer.
+      }
+      if (ev.type === "stream_state" && ev.done && ev.replayFromSeq === ev.nextSeq) {
+        // Even an exhausted SAME buffer supplies no new terminal evidence.
+        await reloadHistory(key, conversationId);
+        return true;
+      }
+    }
+    if (!replay) return reconciled;
+    if (attempt < 2) {
+      const current = chats.get(key)!;
+      gen = await streamAgentResume(conversationId, current.lastSeq ?? -1, ac.signal, current.runId);
+    }
+  }
+  return reconciled;
+}
 
 export const chatEngine = {
   subscribe(fn: Listener): () => void {
@@ -196,10 +241,12 @@ export const chatEngine = {
   async refreshBackgroundRuns(): Promise<void> {
     if (backgroundRefreshTask) return backgroundRefreshTask;
     const task = (async () => {
+    const scope = resolveTargetScope();
     const localAtStart = new Map(chats);
     // Fetch the active-runs feed and the global delegated-task feed CONCURRENTLY;
     // either can fail transiently without dropping the other's last-known state.
     const [runsRes, tasksRes] = await Promise.allSettled([listActiveRuns(), teamApi.listActive()]);
+    if (scope !== resolveTargetScope()) return;
     let changed = false;
 
     if (runsRes.status === "fulfilled") {
@@ -747,20 +794,19 @@ export const chatEngine = {
     adopting.delete(key); // `streaming` now guards re-entry
     emit();
 
+    let reconciled = false;
     try {
-      for await (const frame of gen) {
-        if (scope !== resolveTargetScope() || chats.get(key)?.abort !== ac) { ac.abort(); break; }
-        applyEvent(key, frame.event, { isCli, startedAt, seq: frame.seq });
-      }
+      reconciled = await consumeResumeStream(key, conversationId, gen, ac, scope, isCli, startedAt);
     } catch (err) {
       if (scope === resolveTargetScope() && chats.get(key)?.abort === ac) handleStreamThrow(key, err, startedAt, isCli);
     } finally {
-      const c = chats.get(key);
-      if (scope === resolveTargetScope() && c?.abort === ac) {
+      if (scope === resolveTargetScope() && chats.get(key)?.abort === ac) {
+        settleStreamEnd(key, startedAt);
+        const c = chats.get(key)!;
         chats.set(key, { ...c, streaming: false, abort: undefined });
         emit();
         if (lastTurnInterrupted(key)) scheduleResume(key);
-        else if (!lastTurnStopped(key)) onCleanSettle(key, conversationId, provider, isCli);
+        else if (!reconciled && !lastTurnStopped(key)) onCleanSettle(key, conversationId, provider, isCli);
       }
     }
     return true;
@@ -780,35 +826,37 @@ export const chatEngine = {
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
 
     const conversationId = chat.conversationId;
+    const scope = resolveTargetScope();
     const isCli = chat.isCli ?? false;
     const startedAt = Date.now();
     const ac = new AbortController();
+    const ownsStream = () => scope === resolveTargetScope()
+      && chats.get(key)?.conversationId === conversationId && chats.get(key)?.abort === ac;
     // Clear the interrupted flag + reinstate the pending state while we catch up.
     const cleared = clearInterruptedFlag(chat);
     chats.set(key, { ...cleared, streaming: true, abort: ac });
     emit();
 
     try {
-      const gen = await streamAgentResume(conversationId, chat.lastSeq ?? -1, ac.signal);
-      if (gen) {
-        for await (const frame of gen) {
-          applyEvent(key, frame.event, { isCli, startedAt, seq: frame.seq });
-        }
-      } else {
-        // 204 → the run finished + persisted while we were away. Reload it.
-        await reloadHistory(key, conversationId);
-      }
+      const gen = await streamAgentResume(conversationId, chat.lastSeq ?? -1, ac.signal, chat.runId);
+      if (!ownsStream()) { ac.abort(); return; }
+      await consumeResumeStream(key, conversationId, gen, ac, scope, isCli, startedAt);
     } catch (err) {
-      handleStreamThrow(key, err, startedAt, isCli);
+      // GET failures describe the transport/authorization, never the provider outcome.
+      if (ownsStream()) settleStreamEnd(key, startedAt);
     } finally {
-      const c = chats.get(key);
-      if (c) chats.set(key, { ...c, streaming: false, abort: undefined });
-      emit();
-      if (lastTurnInterrupted(key)) {
-        scheduleResume(key); // still cut → try again later (with backoff)
-      } else {
-        resetResumeAttempts(key); // recovered
-        if (!lastTurnStopped(key)) onCleanSettle(key, conversationId, chat.provider, isCli);
+      if (ownsStream()) {
+        settleStreamEnd(key, startedAt);
+        const c = chats.get(key)!;
+        chats.set(key, { ...c, streaming: false, abort: undefined });
+        emit();
+        if (lastTurnInterrupted(key)) {
+          scheduleResume(key); // still cut → retry reads, never the original action
+        } else {
+          resetResumeAttempts(key);
+          // Recovery observes existing work only. A restored/foreign terminal
+          // never authorizes resending prompts or draining local follow-ups.
+        }
       }
     }
   },

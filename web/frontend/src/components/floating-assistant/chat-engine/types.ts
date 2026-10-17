@@ -184,7 +184,11 @@ export interface LiveChat {
    */
   unreviewed?: boolean;
   abort?: AbortController;
-  /** Highest SSE `seq` applied locally — used to resume without replaying. */
+  /** Opaque registry buffer identity; never a persisted message/request id. */
+  runId?: string;
+  /** Transport recovery blocks provider events until history is reconciled. */
+  reconcileRun?: { runId: string; done: boolean };
+  /** Highest SSE `seq` applied within runId, scoped by this chat and target. */
   lastSeq?: number;
   /** CLI mode routes streamed text into the tool's mini-terminal; remembered
    *  so a resume after a disconnect re-applies events the same way. */

@@ -1,5 +1,6 @@
 import { admitAgentWork, resolveAgentContext, resolveConversationBinding } from "./agent-context.service.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
+import { isTerminalTaskStatus } from "../models/team-task.types.js";
 import { guardTurnFinalization, hasUncollectedTeamTasks } from "./turn-finalization.js";
 import { assertCoreDeveloper, beginOwnerContribution, finishOwnerContribution, saveContribution } from "../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -153,7 +154,9 @@ export const agentService = {
         ticket=cwd&&executor&&options.conversationId?await beginOwnerContribution(options.user,options.conversationId,cwd,executor.target.id,mode!=="plan"):null;
         if(ticket&&options.conversationId){
           const worker=await teamTasksRepository.findByWorkerConversation(executor,options.conversationId);
-          if(worker?.id){ticket.job.teamTaskId=worker.id;await saveContribution(ticket.job);}
+          // A follow-up in a finished worker chat is a new turn. Attaching its
+          // old terminal task would wait forever for a verification already done.
+          if(worker?.id&&!isTerminalTaskStatus(worker.status)){ticket.job.teamTaskId=worker.id;await saveContribution(ticket.job);}
         }
         return ticket?.job.isolated?undefined:ticket?.job.root;
       }), () => hasUncollectedTeamTasks(executor, options.conversationId))){

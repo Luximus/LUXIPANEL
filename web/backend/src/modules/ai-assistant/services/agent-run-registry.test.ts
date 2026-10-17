@@ -93,7 +93,7 @@ describe("agentRunRegistry", () => {
 
   it("only replays events after fromSeq on resume", async () => {
     const key = `conv-resume-${Math.random()}`;
-    agentRunRegistry.start({
+    const run = agentRunRegistry.start({
       key,
       executor,
       makeGen: () => gen([{ type: "text", delta: "x" }, { type: "text", delta: "y" }, { type: "done" }]),
@@ -102,7 +102,7 @@ describe("agentRunRegistry", () => {
     await waitFor(() => !agentRunRegistry.isActive(key));
 
     const seen: AgentEvent[] = [];
-    agentRunRegistry.attach(key, 1, (ev) => seen.push(ev)); // skip seq 0 ("x")
+    agentRunRegistry.attach(key, 1, (ev) => seen.push(ev), executor.target.id, { runId: run.runId }); // skip seq 0 ("x")
     expect(seen.some((e) => e.type === "text" && (e as { delta: string }).delta === "x")).toBe(false);
     expect(seen.some((e) => e.type === "text" && (e as { delta: string }).delta === "y")).toBe(true);
   });

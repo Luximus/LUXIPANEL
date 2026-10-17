@@ -25,7 +25,7 @@ afterEach(() => { chats.clear(); vi.clearAllMocks(); });
 function apply(event: AgentEvent, seq?: number, isCli = false) {
   applyEvent(key, event, { isCli, seq, startedAt: 0 });
 }
-const turn = () => chats.get(key)!.turns[0]!;
+const turn = () => chats.get(key)!.turns.at(-1)!;
 
 describe("API process contract", () => {
   it("retains commentary after the last call, distinct call ids and the final answer on reload", () => {
@@ -144,10 +144,15 @@ describe("API process contract", () => {
 });
 
 describe("history recovery isolation", () => {
+  const request: ConversationMessage = { role: "user", content: "Revisa el estado", ts: "2026-10-17T10:00:00Z" };
+  beforeEach(() => {
+    const chat = chats.get(key)!;
+    chats.set(key, { ...chat, turns: [historyTurn(request), ...chat.turns] });
+  });
   it("allows the current resume probe to load persisted history after its stream buffer expired", async () => {
     chats.set(key, { ...chats.get(key)!, streaming: true, abort: new AbortController() });
     vi.mocked(assistantConversationsApi.messages).mockResolvedValue({
-      items: [{ role: "assistant", content: "Resultado recuperado", ts: "" }], total: 1, hasMore: false,
+      items: [request, { role: "assistant", content: "Resultado recuperado", ts: "" }], total: 2, hasMore: false,
     });
     await reloadHistory(key, key);
     expect(turn().text).toBe("Resultado recuperado");
@@ -158,11 +163,11 @@ describe("history recovery isolation", () => {
     const teamTasks = { task: { id: "task", title: "Tarea", status: "running" as const,
       workerAgentId: "worker", workerAgentName: "Agente", workerConversationId: "worker-chat", createdAt: "" } };
     chats.set(key, { ...chats.get(key)!, teamTasks });
-    vi.mocked(assistantConversationsApi.messages).mockResolvedValue({ items: [{
+    vi.mocked(assistantConversationsApi.messages).mockResolvedValue({ items: [request, {
       role: "assistant", content: "", ts: "", pending: true, apiActivity: { events: [
         { type: "text", phase: "commentary", delta: "Avance guardado" },
       ] },
-    }], total: 1, hasMore: false });
+    }], total: 2, hasMore: false });
     await reloadHistory(key, key);
     expect(chats.get(key)?.teamTasks).toEqual(teamTasks);
     expect(chats.get(key)?.streaming).toBe(false);

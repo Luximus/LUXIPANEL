@@ -25,7 +25,7 @@ import { z } from "zod";
 import { chatAttachmentSchema } from "../models/chat-attachment.js";
 import type { Request, Response } from "express";
 import { agentService } from "../services/agent.service.js";
-import { agentRunRegistry } from "../services/agent-run-registry.js";
+import { agentRunRegistry, type AgentStreamState, type AgentStreamRecoveryError } from "../services/agent-run-registry.js";
 import { permissionBroker } from "../services/permission-broker.js";
 import { cliJobTracker } from "../services/cli-job-tracker.service.js";
 import { cliJobsRepository } from "../repositories/cli-jobs.repository.js";
@@ -286,7 +286,7 @@ export async function recoverServerRuns(
  * reconnecting client resume via `Last-Event-ID`.
  */
 function setupSse(res: Response): {
-  send: (event: AgentEvent, seq?: number) => void;
+  send: (event: AgentEvent | AgentStreamState | AgentStreamRecoveryError, seq?: number, runId?: string) => void;
   stopHeartbeat: () => void;
 } {
   // CLI-mode runs a single blocking exec that emits nothing for the whole call,
@@ -294,8 +294,8 @@ function setupSse(res: Response): {
   // stops Cloudflare's HTTP/3 layer from killing it (ERR_QUIC_PROTOCOL_ERROR).
   const sse = openSse(res);
   return {
-    send: (event: AgentEvent, seq?: number) =>
-      sse.send(event, seq !== undefined ? { id: seq } : {}),
+    send: (event: AgentEvent | AgentStreamState | AgentStreamRecoveryError, seq?: number, runId?: string) =>
+      sse.send(runId ? { ...event, runId } : event, seq !== undefined ? { id: seq } : {}),
     stopHeartbeat: () => sse.close(),
   };
 }
@@ -310,43 +310,66 @@ async function streamRunToClient(
   req: Request,
   res: Response,
   conversationId: string,
-  fromSeq: number,
+  cursor: { fromSeq: number; runId?: string },
 ): Promise<void> {
-  const { send, stopHeartbeat } = setupSse(res);
-
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    let unsubscribe: (() => void) | null = null;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      unsubscribe?.();
-      resolve();
-    };
-
-    const onEvent = (event: AgentEvent, seq: number) => {
-      send(event, seq);
-      if (event.type === "done" || event.type === "error") finish();
-    };
-
-    unsubscribe = agentRunRegistry.attach(conversationId, fromSeq, onEvent);
-    if (!unsubscribe) {
-      // Run already GC'd / never existed — nothing to stream.
-      send({ type: "done" });
-      finish();
-      return;
-    }
-    req.on("close", finish);
-  });
-
-  stopHeartbeat();
-  if (!res.writableEnded) res.end();
+  // Open headers only once attach confirms a buffer. A GC race must remain
+  // 204 (no buffer), never a synthetic successful terminal.
+  let sse: ReturnType<typeof setupSse> | undefined;
+  const send: ReturnType<typeof setupSse>["send"] = (...args) => {
+    sse ??= setupSse(res);
+    sse.send(...args);
+  };
+  try {
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      let unsubscribe: (() => void) | null = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        req.removeListener("close", finish);
+        unsubscribe?.();
+        resolve();
+      };
+      req.once("close", finish);
+      const onEvent = (event: AgentEvent | AgentStreamRecoveryError, seq: number, runId: string) => {
+        if (settled) return;
+        send(event, seq, runId);
+        if (event.type === "done" || event.type === "error") finish();
+      };
+      unsubscribe = agentRunRegistry.attach(conversationId, cursor.fromSeq, onEvent, getExecutor(req).target.id, {
+        ...(cursor.runId !== undefined ? { runId: cursor.runId } : {}),
+        onState: state => {
+          if (settled) return;
+          send(state);
+          // No replayable events remain. Close transport without duplicating
+          // the terminal or declaring a pending/errored run successful.
+          if (state.done && state.replayFromSeq === state.nextSeq) finish();
+        },
+      });
+      if (!unsubscribe) {
+        res.status(204);
+        finish();
+      }
+      // A synchronous replay may settle before attach returns its disposer.
+      if (settled) unsubscribe?.();
+    });
+  } finally {
+    sse?.stopHeartbeat();
+    if (!res.writableEnded) res.end();
+  }
 }
 
-/** Parse `Last-Event-ID` (or `?fromSeq=`) → the next seq to replay from. */
-function resumeFromSeq(req: Request): number {
-  const raw = Number(req.header("Last-Event-ID") ?? req.query["fromSeq"] ?? -1);
-  return Number.isFinite(raw) ? raw + 1 : 0;
+/** Wire cursor is the last applied event; registry cursor is the next event.
+ * Numeric IDs stay compatible; identity travels separately in query/payload.
+ * Invalid values reach the registry's explicit reconciliation path. */
+function resumeFromSeq(req: Request): { fromSeq: number; runId?: string } {
+  const raw = req.header("Last-Event-ID") ?? req.query["fromSeq"];
+  const lastSeq = raw === undefined ? -1 : typeof raw === "string" && /^-?\d+$/.test(raw) ? Number(raw) : NaN;
+  const runId = req.query["runId"];
+  return {
+    fromSeq: Number.isSafeInteger(lastSeq) && lastSeq >= -1 && lastSeq < Number.MAX_SAFE_INTEGER ? lastSeq + 1 : NaN,
+    ...(runId !== undefined ? { runId: typeof runId === "string" ? runId : "" } : {}),
+  };
 }
 
 // Acuñación de tokens MCP por-run: extraída a `services/mcp-run-tokens.ts`
@@ -590,8 +613,8 @@ export const agentController = {
    * GET /api/ai/agent/stream?conversationId=&fromSeq= — attach to an EXISTING
    * run without starting one. Used by the client to resume streaming after a
    * transient disconnect (e.g. mobile app-switch). Responds 204 when no run is
-   * buffered for the conversation, signalling the client to reload history
-   * instead (the answer already finished + persisted).
+   * buffered for the conversation. This is NOT proof of admission or completion:
+   * the client must reconcile history while preserving unresolved requests.
    */
   async attach(req: Request, res: Response): Promise<void> {
     const conversationId = String(req.query["conversationId"] ?? "");

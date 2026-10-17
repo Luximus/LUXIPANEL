@@ -17,6 +17,7 @@ import { githubStatus, githubToken } from "./user-connection.js";
 import { assertPublishableSource } from "../diagnostics/publication-check.js";
 import { collectChangeNotes, contributionMessage, type PublicChangeNote } from "./change-notes.js";
 import { applyContributionContinuation, type ContributionContinuationReview } from "./contribution-continuation.js";
+import { checkpointCompletedContribution, checkpointDependencyReady, type ContributionCheckpoint } from "./contribution-checkpoints.js";
 import { ForbiddenError } from "../errors/index.js";
 import type { SessionUser } from "../types/index.js";
 import { createModuleLogger } from "../logger/index.js";
@@ -50,6 +51,8 @@ export interface ContributionJob {
  /** A separate, explicitly reviewed delivery never changes the failed task's outcome. */
  recoveryOf?:string; recoveredBy?:string; reviewedAt?:string;
  continuationReview?:ContributionContinuationReview;
+ checkpoint?:ContributionCheckpoint;
+ publishCompletedTurns?:boolean;
  legacyRecovery?:{members:string[];after:string};
  overlapped?:boolean;
 }
@@ -122,13 +125,15 @@ let authorize:((user:SessionUser)=>Promise<SessionUser>)|undefined;
 // Serialize only bookkeeping/snapshots, never the lifetime of an assistant turn.
 // The backend owns one registry; durable job records restore signed CLI runs.
 const activeContributions=new Map<string,ContributionJob>();
+let publishCompletedTurns=true;
 let stateUpdate:Promise<void>=Promise.resolve();
 function withContributionState<T>(update:()=>Promise<T>):Promise<T>{
  const result=stateUpdate.then(update);
  stateUpdate=result.then(()=>undefined,()=>undefined);
  return result;
 }
-export function initializeOwnerContributions(check:(user:SessionUser)=>Promise<SessionUser>,canRecover?:(job:ContributionJob)=>Promise<boolean>) {
+export function initializeOwnerContributions(check:(user:SessionUser)=>Promise<SessionUser>,canRecover?:(job:ContributionJob)=>Promise<boolean>,options:{publishCompletedTurns?:boolean}={}) {
+ publishCompletedTurns=options.publishCompletedTurns??true;
  authorize=check;
  if(!initialized)initialized=(async()=>{
   await fs.mkdir(outbox(),{recursive:true,mode:0o700});
@@ -262,6 +267,11 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
    await contributionGit(job.root,["update-ref",`refs/luxipanel/snapshots/${job.id}-after`,anchor]);
    await applyContributionContinuation(job,after);
    job.status="pending";await saveContribution(job);
+   if(publishCompletedTurns&&job.batchId&&job.overlapped&&!job.continuationReview){
+    const leader=activeContributions.get(job.batchId)??(await readContributionJobs()).find(row=>row.id===job.batchId);
+    if(leader){leader.publishCompletedTurns=true;await saveContribution(leader);}
+    return job.id;
+   }
    if(job.batchId)return await sealBatch(job.batchId);
    return await prepareContribution(job,after)?job.id:null;
   }catch(e){job.status="blocked";job.succeeded=false;job.error=e instanceof Error?e.message:"No se pudo preparar el aporte.";await saveContribution(job);return job.id;}
@@ -331,7 +341,7 @@ export async function contributionUpdateBlocker(root:string,changedFiles:string[
   return pending?"publication-pending":synchronizing?"checkout-sync":undefined;
  });
 }
-async function prepareContribution(job:ContributionJob,after:string):Promise<boolean>{
+export async function prepareContribution(job:ContributionJob,after:string):Promise<boolean>{
    const before=job.continuationReview?.before??job.before;
    const files=(await contributionGit(job.root,["diff","--name-only","-z",before,after])).split("\0").filter(Boolean);
    if(!files.length){job.status="empty";await saveContribution(job);return false;}
@@ -356,7 +366,7 @@ async function prepareContribution(job:ContributionJob,after:string):Promise<boo
    job.status="pending";job.error=undefined;await saveContribution(job);return true;
 }
 async function syncBatchMembers(leader:ContributionJob,jobs:ContributionJob[]):Promise<void>{
- for(const member of jobs.filter(j=>j.batchId===leader.id&&j.id!==leader.id)){
+ for(const member of jobs.filter(j=>leader.checkpoint?leader.checkpoint.members.includes(j.id):j.batchId===leader.id&&j.id!==leader.id)){
   member.includedIn=leader.id;member.status=leader.status;member.error=leader.error;
   member.commit=leader.commit;member.ci=leader.ci;member.checksUrl=leader.checksUrl;member.integratedBy=leader.commit;
   await saveContribution(member);
@@ -365,6 +375,9 @@ async function syncBatchMembers(leader:ContributionJob,jobs:ContributionJob[]):P
 async function sealBatch(id:string|undefined):Promise<string|null>{
  if(!id)return null;
  const jobs=await readContributionJobs(),members=jobs.filter(j=>j.batchId===id),leader=activeContributions.get(id)??members.find(j=>j.id===id);
+ // A published development checkpoint does not close the group or turn its
+ // interrupted members into successes. Later completed turns publish forward.
+ if(leader?.publishCompletedTurns||jobs.some(job=>job.checkpoint?.batchId===id))return null;
  if(!leader || members.some(j=>j.status==="capturing"))return null;
  if(leader.legacyRecovery?.members.some(id=>!members.some(j=>j.id===id)))return null;
  if(leader.patchHash || leader.status==="empty"){await syncBatchMembers(leader,jobs);return leader.status==="empty"?null:id;}
@@ -385,6 +398,13 @@ async function sealBatch(id:string|undefined):Promise<string|null>{
 /** Only closed, successful legacy groups bounded by a later immutable snapshot. */
 export async function recoverClosedContributionBatches():Promise<void>{
  const jobs=await readContributionJobs();
+ for(const leader of jobs.filter(job=>job.publishCompletedTurns&&job.batchId===job.id)){
+  const source=jobs.filter(job=>job.batchId===leader.id&&job.succeeded===true&&job.completedAt&&job.after&&job.status!=="capturing")
+   .sort((a,b)=>a.completedAt!.localeCompare(b.completedAt!)).at(-1);
+  if(!source)continue;
+  try{await checkpointCompletedContribution(source);}
+  catch(error){source.error=contributionFailure(error).message;source.status="blocked";await saveContribution(source);}
+ }
  for(const {members,boundary} of legacyRecoveryBatches(jobs)){
   const leader=members[0];if(!leader)continue;
   leader.completedAt??=leader.updatedAt;
@@ -555,6 +575,9 @@ async function drain():Promise<void>{
   ordered.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   for(const job of ordered){
    if((job.nextAttempt||0)>Date.now())continue;
+   if(job.checkpoint?.parentId){
+    if(!checkpointDependencyReady(job,await readContributionJobs()))continue;
+   }
    try{await deliverContribution(job);}catch(e){
     // Git errors can contain headers: never persist/log raw process errors.
     const {transient,message}=contributionFailure(e);

@@ -7,6 +7,12 @@ export default defineConfig({
     pool: "threads",
     globals: true,
     environment: "node",
+    // Unit tests also import the validated application config. Use an explicit
+    // test identity so clean CI does not depend on a private deployment .env.
+    env: {
+      NODE_ENV: "test",
+      JWT_SECRET: "unit-test-".repeat(4),
+    },
     include: ["src/**/*.test.ts", "src/**/*.spec.ts"],
     exclude: ["node_modules", "dist"],
     coverage: {

@@ -1,0 +1,8 @@
+{
+  "title": "Reconexión del asistente entre ejecuciones",
+  "changes": [
+    "El asistente distingue cada ejecución al recuperar una conversación para evitar que el cursor de una respuesta descarte los mensajes de la siguiente.",
+    "La recuperación conserva las respuestas y los archivos de los turnos sucesivos cuando el historial permite identificarlos.",
+    "Las solicitudes sin resultado confirmado permanecen pendientes y la reconexión no vuelve a enviarlas ni envía continuaciones locales automáticamente."
+  ]
+}

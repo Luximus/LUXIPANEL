@@ -1,0 +1,9 @@
+{
+  "title": "Publicación de cambios sin esperar a todos los chats",
+  "changes": [
+    "Los turnos terminados pueden guardar sus cambios en developer aunque otras tareas del mismo usuario sigan trabajando en el proyecto.",
+    "Los envíos conservan su orden y sus dependencias sin marcar como terminadas las tareas que siguen activas o se interrumpieron.",
+    "Continuar un chat de un trabajador cuya tarea ya terminó no deja el aporte esperando una verificación antigua.",
+    "Las pruebas automáticas utilizan una configuración de pruebas explícita y no dependen de la configuración privada del servidor."
+  ]
+}

@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent, AgentMessage } from "./providers/provider.types.js";
 import type { Executor } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
+import type { TeamTaskStatus } from "../models/team-task.types.js";
 
 const state = vi.hoisted(() => ({
   cwd: "/core/web/backend" as string | undefined,
   mode: "auto" as "auto" | "manual" | "plan",
   enabled: true,
-  worker: null as { id: string } | null,
+  worker: null as { id: string; status: TeamTaskStatus } | null,
   events: [{ type: "done" }] as AgentEvent[],
   order: [] as string[],
   release: vi.fn(),
@@ -67,7 +68,7 @@ beforeEach(() => {
 
 describe("contribution tracking uses the provider's resolved workspace", () => {
   it("tracks an agent-only worker before it runs, even without projectId or cwd", async () => {
-    state.worker = { id: "team-task" };
+    state.worker = { id: "team-task", status: "running" };
     await run({ agentId: "worker" });
     expect(beginOwnerContribution).toHaveBeenCalledWith(user, "worker-chat", state.cwd, "local", true);
     expect(state.order).toEqual(["tracking", "provider"]);
@@ -75,6 +76,13 @@ describe("contribution tracking uses the provider's resolved workspace", () => {
     expect(state.run.mock.calls[0]?.[1]).toMatchObject({ cwd: state.cwd, systemPrompt: expect.stringContaining("no hagas commit ni push") });
     expect(finishOwnerContribution).toHaveBeenCalledWith(state.ticket, true);
     expect(state.release).toHaveBeenCalledOnce();
+  });
+  it.each(["done", "failed", "canceled"] as const)("does not strand a follow-up behind its old %s team task", async status => {
+    state.worker = { id: "old-task", status };
+    await run({ agentId: "worker" });
+    expect(state.ticket.job.teamTaskId).toBeUndefined();
+    expect(saveContribution).not.toHaveBeenCalled();
+    expect(finishOwnerContribution).toHaveBeenCalledWith(state.ticket, true);
   });
   it("uses the final workspace rather than a stale project or cwd hint", async () => {
     state.cwd = "/core/web/frontend";

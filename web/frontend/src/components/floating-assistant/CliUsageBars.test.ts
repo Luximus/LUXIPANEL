@@ -1,9 +1,15 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { assistantStatsApi } from "./assistant-api";
 import { CliUsageBars } from "./CliUsageBars";
+
+// Quota assertions start after the independent primary-workspace startup gate.
+vi.mock("@/lib/startup-state", () => ({
+  afterPrimaryReady: (run: () => void) => { run(); return () => {}; },
+}));
+beforeEach(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
 
 vi.mock("./assistant-api", () => ({
   assistantStatsApi: {
@@ -31,7 +37,7 @@ vi.mock("./i18n", () => ({
   } }),
 }));
 
-afterEach(() => document.body.replaceChildren());
+afterEach(() => { document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
 it("shows remaining Codex weekly quota first and marks an unreported session as unavailable", async () => {
   const host = document.createElement("div");

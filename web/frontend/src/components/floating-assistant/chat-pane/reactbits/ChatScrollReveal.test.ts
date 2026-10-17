@@ -25,7 +25,9 @@ it("reveals against the conversation viewport and cleans up without layout reads
   const block = host.querySelector("p")!;
   expect(block.textContent).toContain("Readable");
   expect(observe).toHaveBeenCalledWith(block);
-  act(() => callback!([{ target: block, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+  const rect = new DOMRectReadOnly(0, 0, 100, 20);
+  act(() => callback!([{ target: block, isIntersecting: true, intersectionRatio: 1,
+    boundingClientRect: rect, intersectionRect: rect, rootBounds: rect, time: 0 }], {} as IntersectionObserver));
   expect(block.classList.contains("lxp-reveal-entered")).toBe(true);
   expect(unobserve).toHaveBeenCalledWith(block);
   expect(geometry).not.toHaveBeenCalled();

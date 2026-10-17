@@ -6,7 +6,8 @@ import type { ChatTurn, LiveChat } from "./types";
 import { chats, emit, isActivelyViewing, syncReviewedIfViewing, backgroundActive, backgroundPending } from "./state";
 import { applyCliDelta, settleLanes, freshMainLane, stripLaneTokens } from "./cli-lanes";
 import { markAssistantTeamTaskSeen } from "@/lib/assistant-ws";
-import { historyTurn } from "./history";
+import { historyTurns } from "./history";
+import { findSavedRequestIndex, hasSavedRequestOutcome } from "./history-identity";
 import { appendApiActivity } from "./api-activity";
 import { resolveTargetScope } from "@/lib/api-client";
 
@@ -16,11 +17,33 @@ import { resolveTargetScope } from "@/lib/api-client";
 export function applyEvent(
   key: string,
   ev: AgentEvent,
-  ctx: { isCli: boolean; startedAt: number; seq?: number },
+  ctx: { isCli: boolean; startedAt: number; seq?: number; replay?: boolean },
 ): void {
   const { isCli, startedAt, seq } = ctx;
   const chat = chats.get(key);
   if (!chat) return;
+  // Recovery is transport metadata, including id:-1. Handle it before sequence
+  // dedup, terminal handling, background cleanup, or any turn mutation.
+  if (ev.type === "error" && ev.code === "AGENT_STREAM_RECONCILE_REQUIRED") {
+    if (ev.recovery) chats.set(key, { ...chat, reconcileRun: {
+      runId: ev.recovery.runId, done: ev.recovery.done,
+    } });
+    markInterrupted(key, startedAt);
+    return;
+  }
+  if (ev.type === "stream_state") {
+    if (chat.runId !== ev.runId && (chat.runId || ctx.replay)) {
+      chats.set(key, { ...chat, reconcileRun: { runId: ev.runId, done: ev.done } });
+      markInterrupted(key, startedAt);
+    } else if (!chat.runId) {
+      // Only the original POST can bind a new buffer without a REST read.
+      chats.set(key, { ...chat, runId: ev.runId, lastSeq: -1 });
+    }
+    return;
+  }
+  if (chat.reconcileRun) return;
+  // A terminal from a foreign buffer must not close or clear this chat.
+  if (ev.runId && ev.runId !== chat.runId) return;
   if (seq !== undefined && seq >= 0 && chat.lastSeq !== undefined && seq <= chat.lastSeq) return;
   // A local terminal event is newer than the last background poll.
   if (ev.type === "done" || ev.type === "error") {
@@ -232,6 +255,8 @@ function isTransportError(err: unknown): boolean {
 
 /** Route a stream throw to the right terminal state on the live turn. */
 export function handleStreamThrow(key: string, err: unknown, startedAt: number, isCli: boolean): void {
+  // A connection closing after done/error cannot revoke the confirmed outcome.
+  if (lastAssistantTurn(key)?.pending === false) return;
   if (isAbortError(err)) {
     finalizeTurn(key); // user stop → just settle, no error banner
   } else if (isTransportError(err)) {
@@ -283,6 +308,11 @@ function markInterrupted(key: string, startedAt: number): void {
   }));
 }
 
+/** EOF is only a transport boundary; a terminal event or saved answer must settle the turn. */
+export function settleStreamEnd(key: string, startedAt: number): void {
+  if (lastAssistantTurn(key)?.pending) markInterrupted(key, startedAt);
+}
+
 /** True when the last turn of `key` is an interrupted (resumable) assistant turn. */
 export function lastTurnInterrupted(key: string): boolean {
   return Boolean(lastAssistantTurn(key)?.interrupted);
@@ -300,25 +330,28 @@ export function clearInterruptedFlag(chat: LiveChat): LiveChat {
 }
 
 /** Reload a conversation's persisted messages and reseed the chat turns. */
-export async function reloadHistory(key: string, conversationId: string): Promise<void> {
+export async function reloadHistory(key: string, conversationId: string): Promise<boolean> {
   const scope = resolveTargetScope();
   const initial = chats.get(key);
-  if (!initial || initial.conversationId !== conversationId) return;
+  if (!initial || initial.conversationId !== conversationId) return false;
   try {
-    const { items } = await assistantConversationsApi.messages(conversationId, 30, 0);
+    const { items } = await assistantConversationsApi.messages(conversationId, Math.max(30, initial.turns.length + 10), 0);
     const chat = chats.get(key);
-    if (resolveTargetScope() !== scope || !chat || chat.conversationId !== conversationId) return;
-    if (chat.streaming && (!initial.streaming || chat.abort !== initial.abort || chat.turns !== initial.turns)) return;
+    if (resolveTargetScope() !== scope || !chat || chat.conversationId !== conversationId) return false;
+    if (chat.streaming !== initial.streaming || chat.abort !== initial.abort || chat.turns !== initial.turns) return false;
     const provider = chat.provider;
+    const turns = historyTurns(items, provider);
+    const last = initial.turns.at(-1);
+    if (last?.role === "assistant" && (last.pending || last.interrupted || last.completionPending)) {
+      // Neither 204 nor matching prompt text proves this request was admitted.
+      // Keep its trace and follow-ups blocked until its saved position is known.
+      if (!hasSavedRequestOutcome(initial.turns, turns)) return false;
+    }
     chats.set(key, {
       ...chat,
       provider,
       conversationId,
-      // `map(historyTurn)` NO: `Array.map` invoca `fn(valor, índice, array)`, así
-      // que el segundo parámetro de `historyTurn` (`fallbackProvider`) recibía el
-      // ÍNDICE. Los mensajes del historial sin `provider` propio acababan con
-      // `provider: 1`, `provider: 2`… un número en vez de un proveedor.
-      turns: items.map((m) => historyTurn(m, provider)),
+      turns,
       streaming: false,
       // A background run that finished off-screen is "sin revisar"; but if the
       // user is currently on this chat, don't flag it — they're seeing it.
@@ -328,7 +361,70 @@ export async function reloadHistory(key: string, conversationId: string): Promis
     // Viewing it as it reloaded? Clear the backend's stale unreviewed flag too.
     syncReviewedIfViewing(key, conversationId);
     emit();
+    return true;
   } catch {
-    /* keep the interrupted turn so the user can retry manually */
+    return false; // Keep the local trace; the resume owner remains recoverable.
+  }
+}
+
+/**
+ * Reconcile an explicitly selected buffer using the unique saved request
+ * position. Retain the previous outcome and files before replaying a successor.
+ * No POST, continuation drain, or inference of success from done/204/EOF.
+ */
+export async function reconcileRunHistory(
+  key: string, conversationId: string, run: { runId: string; done: boolean },
+): Promise<"replay" | "saved" | false> {
+  const initial = chats.get(key), scope = resolveTargetScope();
+  if (!initial || initial.conversationId !== conversationId) return false;
+  try {
+    const { items } = await assistantConversationsApi.messages(conversationId, Math.max(30, initial.turns.length + 10), 0);
+    const chat = chats.get(key);
+    if (scope !== resolveTargetScope() || !chat || chat.conversationId !== conversationId
+      || chat.abort !== initial.abort || chat.streaming !== initial.streaming || chat.turns !== initial.turns) return false;
+    const turns = historyTurns(items, chat.provider);
+    const requestIndex = findSavedRequestIndex(initial.turns, turns);
+    if (requestIndex === null) return false;
+    const outcomeIndex = requestIndex + 1;
+    const outcome = turns[outcomeIndex];
+    const changedRun = !!initial.runId && initial.runId !== run.runId;
+    // A successor requires A's own persisted outcome; a later user's answer is
+    // never evidence for A. A recreated buffer without that evidence stays local.
+    if (changedRun && (outcome?.role !== "assistant" || turns.length <= outcomeIndex + 1)) return false;
+    if (outcome && outcome.role !== "assistant") return false;
+    const tail = turns.at(-1);
+    if (!tail || (tail.role === "assistant" && turns.at(-2)?.role !== "user")) return false;
+    // A stream still bound to A cannot be replayed into a later user B.
+    if (tail.role === "user" && requestIndex < turns.length - 1 && initial.runId === run.runId) return false;
+    const localRequest = initial.turns.at(-2)!;
+    if (localRequest.addenda) turns[requestIndex] = { ...turns[requestIndex]!, addenda: localRequest.addenda };
+    const localOutcome = initial.turns.at(-1);
+    if (outcome && localOutcome?.role === "assistant") {
+      // Persisted content/outcome is authoritative; retain known tool evidence
+      // absent from REST so file disclosures survive partial history payloads.
+      turns[outcomeIndex] = { ...outcome,
+        // A saved CLI transcript supplies the single complete console; keeping
+        // its old live tool would hide that transcript behind a partial console.
+        tools: outcome.cliHistoryLog ? outcome.tools : [
+          ...outcome.tools.map(saved => ({ ...saved,
+            result: saved.result ?? localOutcome.tools.find(tool => tool.id === saved.id)?.result })),
+          ...localOutcome.tools.filter(tool => !outcome.tools.some(saved => saved.id === tool.id)),
+        ],
+        apiActivity: outcome.apiActivity ?? localOutcome.apiActivity,
+      };
+    }
+    if (tail.role === "user") turns.push({ role: "assistant", provider: chat.provider, text: "", tools: [], pending: true });
+    chats.set(key, { ...chat, turns, runId: run.runId, lastSeq: -1, reconcileRun: undefined,
+      unreviewed: !isActivelyViewing(key) });
+    if (tail.role === "assistant" && run.done) {
+      // Only the correlated persisted outcome plus a terminated selected buffer
+      // can clear its stale active/permission mirrors.
+      backgroundActive.delete(conversationId);
+      backgroundPending.delete(conversationId);
+    }
+    emit();
+    return tail.role === "user" ? "replay" : "saved";
+  } catch {
+    return false;
   }
 }
