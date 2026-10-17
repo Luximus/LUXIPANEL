@@ -161,7 +161,8 @@ describe.each([false, true])("normal/agent chat: agent=%s", withAgent => {
     expect(visibleText(host)).not.toContain(task().title);
     expect(visibleText(host)).not.toContain(notice.text);
     if (history) expect(visibleText(host)).toContain(response.text);
-    expect(details.querySelector("summary")!.textContent).toContain(cli ? "Consola del servidor" : "team.assign");
+    expect(details.querySelector("summary")!.textContent).toContain("Consola del servidor");
+    if (!cli) expect(visibleText(host)).not.toContain("team.assign");
     if (cli) expect(host.textContent).not.toContain("Salida anidada no duplicada");
     await toggle(details);
     expect(details.open).toBe(true);
@@ -188,6 +189,65 @@ describe.each([false, true])("normal/agent chat: agent=%s", withAgent => {
     expect(visibleText(host)).toContain("Respuesta final conservada");
     expect([...host.querySelectorAll("details")].every(details => !details.open)).toBe(true);
   });
+});
+
+it.each([null, agent])("groups API narration and tools into one compact execution surface: %j", async currentAgent => {
+  const response = { ...reply(false, false), text: "Reviso el estado del proyecto.\n\nAhora compruebo los cambios." };
+  const saved = JSON.stringify(response);
+  await renderThread({ mode: "api", turns: [user, response], agent: currentAgent });
+  const consoleSection = host.querySelector('[data-message-section="console"]')!;
+  const group = consoleSection.querySelector<HTMLDetailsElement>(':scope > details')!;
+  expect(group.dataset.executionSource).toBe("API");
+  expect(consoleSection.querySelectorAll(':scope > details')).toHaveLength(1);
+  expect(group.open).toBe(false);
+  expect(host.querySelector('[data-message-section="reasoning"] .thought-line__step-text')?.textContent).toBe("Reviso el estado del proyecto.");
+  expect(host.querySelector('[data-message-section="reasoning"] .thought-line__text[data-active]')?.textContent).toBe("Ahora compruebo los cambios.");
+  expect(host.querySelector('[data-message-section="answer"]')).toBeNull();
+  expect(visibleText(host)).not.toContain("files.read");
+  expect(visibleText(host)).not.toContain("team.assign");
+  expect(visibleText(host)).not.toContain("Lectura conservada");
+  await toggle(group);
+  expect(visibleText(host)).toContain("files.read");
+  const tool = [...group.querySelectorAll('details')].find(el => el.querySelector('summary')?.textContent?.includes("files.read"))!;
+  await toggle(tool);
+  expect(visibleText(host)).toContain("Lectura conservada");
+  await renderThread({ mode: "api", turns: [user, { ...response, text: response.text + "\n\nValidación en curso." }], agent: currentAgent });
+  expect(group.open).toBe(true);
+  expect(tool.open).toBe(true);
+  await toggle(group);
+  await renderThread({ mode: "api", turns: [user, { ...response, pending: false, text: "Comprobación terminada con resultado conservado." }], agent: currentAgent });
+  expect(group.open).toBe(false);
+  expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain("Comprobación terminada con resultado conservado.");
+  expect(visibleText(host)).not.toContain("files.read");
+  expect(JSON.stringify(response)).toBe(saved);
+});
+
+it.each([{ stopped: true }, { error: "Fallo que requiere atención" }, { interrupted: true }])("keeps partial API text readable outside the closed console after an interrupted run: %j", async state => {
+  const response = { ...reply(false, false), text: "Resultado parcial conservado.", ...state };
+  await renderThread({ mode: "api", turns: [user, response], agent });
+  expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain(response.text);
+  expect(host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')?.open).toBe(false);
+});
+
+it("signals an API tool failure in the closed console and preserves its details", async () => {
+  const response = { ...reply(false, true), tools: [{ id: "failed-tool", name: "files.read", input: {}, result: { success: false, output: "El archivo solicitado no existe" } }] };
+  await renderThread({ mode: "api", turns: [user, response], agent });
+  const group = host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')!;
+  expect(group.open).toBe(false);
+  expect(group.querySelector('summary')?.textContent).toContain("Error");
+  await toggle(group);
+  await toggle(group.querySelector('details')!);
+  expect(visibleText(host)).toContain("El archivo solicitado no existe");
+});
+
+it("keeps ordinary API text and the no-live-console preference readable", async () => {
+  const text = "Respuesta de texto conservada.";
+  await renderThread({ mode: "api", turns: [user, { role: "assistant", text, tools: [], pending: true }], agent });
+  expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain(text);
+  bubblePrefs.set("codex", { terminalLive: false });
+  await renderThread({ mode: "api", turns: [user, { ...reply(false, false), text }], agent });
+  expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain(text);
+  expect(host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')?.open).toBe(false);
 });
 
 it("merges anchored and live tasks into one board without duplicating either task", async () => {

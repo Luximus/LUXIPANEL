@@ -70,9 +70,8 @@ export async function buildSystemPrompt(
     userId,
     config,
     provider,
-    agent,
-    role,
-    projectId,
+    agent: inputAgent,
+    projectId: requestedProjectId,
     cwdOverride,
     forcedCwd,
     conversationId,
@@ -86,7 +85,9 @@ export async function buildSystemPrompt(
   } = input;
   // Run-scoped tools are appended to a COPY of the caller's set (returned in
   // the result) so the input array is never mutated.
-  const context = input.context ?? await resolveAgentContext(executor, input.agent?.id, projectId, user);
+  const context = input.context ?? await resolveAgentContext(executor, inputAgent?.id, requestedProjectId, user);
+  const { agent, role } = context;
+  const projectId = context.projectId ?? undefined;
   const tools = [...input.tools];
 
   // Skills/métodos activables por target (ponytail, ask-protocol, contexto de

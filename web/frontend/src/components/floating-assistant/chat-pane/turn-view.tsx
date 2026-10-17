@@ -158,6 +158,13 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // `done`; history: derived from the persisted log in `historyTurn`). The raw
   // log lives in the collapsed console above, so just show the summary here.
   const summaryText = turn.text || cliFallbackAnswer;
+  const groupApiTools = !isUser && !hasCliConsole && visibleTools.length > 0;
+  // Public updates from an API run belong in the same compact progress view
+  // as CLI narration. Keep the original answer intact for completion/reload,
+  // and never move a question, permission, interrupted result or error away.
+  const showApiProgress = groupApiTools && showTerminal && turn.pending && !turn.stopped && !turn.error
+    && !turn.interrupted && !turn.permission && !turn.ask?.length;
+  const answerText = showApiProgress ? "" : summaryText;
   // A plan approval keeps the complete plan in the saved message. When the
   // agent supplies the requested summary + details format, show a short
   // preview and let the reader expand the exact text being approved.
@@ -197,7 +204,9 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
       ? tool.laneOrder.map(id => tool.lanes?.[id]?.output ?? "").join("\n")
       : tool.terminal ?? ""))
     .join("\n") || historyLog;
-  const progressMessages = showTerminal ? extractCliProgress(cliTranscript, turn.pending ? "" : summaryText) : [];
+  const progressMessages = showApiProgress
+    ? summaryText.split(/\n\s*\n/).map(text => text.trim()).filter(Boolean)
+    : showTerminal ? extractCliProgress(cliTranscript, turn.pending ? "" : summaryText) : [];
   const thoughtSteps = turn.pending ? progressMessages.slice(0, -1) : progressMessages;
   const currentThought = turn.pending && progressMessages.length
     ? progressMessages[progressMessages.length - 1]
@@ -215,7 +224,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // run (console populated, answer not yet produced) would leave an empty box.
   const hasBubbleContent =
     isUser ||
-    !!summaryText ||
+    !!answerText ||
     !!turn.status ||
     !!(turn.ask && turn.ask.length) ||
     !!turn.permission ||
@@ -295,15 +304,22 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
         <div data-message-section="console" className={cn("w-full min-w-0 divide-y divide-border/60", (hasModifiedFiles || hasBubbleContent) && "border-b border-border/60")}>
           {(() => {
             const hasHistoryConsole = showTerminal && isHistoryCli && !!historyLog;
-            // Reuse exactly one existing disclosure; CLI already owns nested
-            // tools. Prefer the delegation tool in API turns.
-            const teamToolIndex = visibleTools.findIndex(tool => tool.name.startsWith("team."));
-            const detailsIndex = teamToolIndex < 0 ? 0 : teamToolIndex;
+            // API tools share one collapsed console, like a CLI execution.
+            // Keep the team board and attention controls on that outer group.
             return (
               <>
-                {visibleTools.map((t, index) => (
-                  <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded attention={index === detailsIndex ? executionAttention : undefined}>
-                    {index === detailsIndex ? executionDetails : undefined}
+                {groupApiTools ? (
+                  <ExecutionDisclosure source="API" running={!!turn.pending}
+                    failed={!!turn.error || (!turn.pending && visibleTools.some(tool => tool.result?.success === false))}
+                    stopped={!!turn.stopped} attention={executionAttention}>
+                    <div className="divide-y divide-border/60 border-t border-border/60">
+                      {visibleTools.map(t => <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded />)}
+                    </div>
+                    {executionDetails}
+                  </ExecutionDisclosure>
+                ) : visibleTools.map((t, index) => (
+                  <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded attention={index === 0 ? executionAttention : undefined}>
+                    {index === 0 ? executionDetails : undefined}
                   </ToolDisclosure>
                 ))}
                 {/* Reloaded CLI turn: collapsed "Consola del servidor" from the log. */}
@@ -382,7 +398,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
             tucked away in the collapsed container above. */}
         {recordings.length > 0
           ? <VoiceMessage recordings={recordings} forwardedText={turn.raw ?? turn.text} />
-          : summaryText
+          : answerText
           ? planPreview
             ? <>
                 <MessageContent text={planPreview[1]!} scrollContainerRef={scrollContainerRef} />
@@ -397,7 +413,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
                   </div>
                 </details>
               </>
-            : <MessageContent text={summaryText} scrollContainerRef={scrollContainerRef} streaming={turn.pending} />
+            : <MessageContent text={answerText} scrollContainerRef={scrollContainerRef} streaming={turn.pending} />
           : turn.status
             ? <TranslatingShimmer state={turn.status} />
             : turn.pending && !visibleTools.length && !cliRunningHidden

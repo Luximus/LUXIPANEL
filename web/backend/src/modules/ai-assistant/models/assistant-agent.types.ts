@@ -342,6 +342,8 @@ export interface AgentProjectAssignment {
   projectId: string;
   status: "active" | "removed";
   jobTitle?: string;
+  parentAgentId?: string | null;
+  connections?: string[] | null;
   instructions?: string;
   roleId?: string | null;
   allowedTools?: string[] | null;

@@ -57,7 +57,9 @@ function rows(agent: AssistantAgent): AgentProjectAssignment[] {
   return agentAssignments(agent).map(({ source: _source, ...a }) => a);
 }
 async function persist(id: string, assignments: AgentProjectAssignment[]) {
-  const saved = await agentsRepository.setAssignments(id, assignments, assignments.filter(a => a.status === "active").map(a => a.projectId));
+  const prior = await agentsRepository.get(id);
+  const explicit = assignments.filter(a => a.updatedAt || a.createdAt || a.status === "removed" || prior?.assignments?.some(p => p.projectId === a.projectId));
+  const saved = await agentsRepository.setAssignments(id, explicit, assignments.filter(a => a.status === "active").map(a => a.projectId));
   if (!saved) throw assignmentError("ASSISTANT_AGENT_NOT_FOUND", "Agente no encontrado.", 404);
   return saved;
 }
@@ -133,7 +135,7 @@ export const agentMarketService = {
       const next = { ...agent, assignments, projectIds: wanted };
       for (const pid of removed) if (effectiveAssignment(next, all, pid)) throw assignmentError("ASSISTANT_ASSIGNMENT_INHERITED", "El proyecto conserva una asignación heredada.");
       // Store fields and links together so a failed profile write cannot partially withdraw.
-      return agentsRepository.updateWithAssignments(id, patch, assignments, wanted);
+      return agentsRepository.updateWithAssignments(id, patch, assignments.filter(a => a.updatedAt || a.createdAt || a.status === "removed" || agent.assignments?.some(p => p.projectId === a.projectId)), wanted);
     });
   },
 };

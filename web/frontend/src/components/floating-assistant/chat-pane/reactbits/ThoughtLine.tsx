@@ -184,10 +184,11 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
   }, [isWorking, label, doneText, fontSize, showTimer]);
 
   useEffect(() => {
-    if (isWorking) {
-      setAnnounce(label);
-      return;
-    }
+    if (isWorking) setAnnounce(label);
+  }, [isWorking, label]);
+
+  useEffect(() => {
+    if (isWorking) return;
     setAnnounce(showTimer ? `${doneText} ${spoken(dsRef.current)}` : doneText);
     latest.current.onSettle?.(dsRef.current / 10);
     // eslint-disable-next-line react-hooks/exhaustive-deps

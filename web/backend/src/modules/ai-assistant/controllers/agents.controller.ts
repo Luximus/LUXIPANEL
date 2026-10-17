@@ -128,6 +128,8 @@ const updateSchema = z.object({
 
 const assignmentSchema = z.object({
   jobTitle: z.string().trim().max(200).optional(),
+  parentAgentId: z.string().max(64).nullable().optional(),
+  connections: z.array(z.string().max(64)).max(20).nullable().optional(),
   instructions: z.string().max(20000).optional(),
   roleId: z.string().max(64).nullable().optional(),
   allowedTools: z.array(z.string().max(120)).max(500).nullable().optional(),

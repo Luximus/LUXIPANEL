@@ -1,0 +1,9 @@
+{
+  "title": "Progreso compacto en los chats de agentes",
+  "changes": [
+    "Los mensajes de avance de los agentes se agrupan en un bloque compacto durante la ejecución, con una consola desplegable para consultar las herramientas utilizadas.",
+    "Las llamadas de coordinación dejan de ocupar una fila independiente en la vista principal del chat.",
+    "La respuesta final, los permisos y los avisos de error permanecen accesibles.",
+    "Los lectores de pantalla reciben las actualizaciones del mensaje de progreso."
+  ]
+}

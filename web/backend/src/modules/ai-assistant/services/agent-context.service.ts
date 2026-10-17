@@ -125,6 +125,11 @@ export async function resolveAgentContext(executor: Executor | null | undefined,
         (assignment.serverIds == null || assignment.serverIds.includes(server.id)) &&
         (!original!.servers?.length || original!.servers.some(s => s.id === server.id))),
       teamId: ancestors[0]?.teamId ?? agent.teamId,
+      parentAgentId: assignment.parentAgentId !== undefined ? assignment.parentAgentId :
+        assignment.source === "legacy" ? agent.parentAgentId :
+        ancestors[0]?.leaderAgentId === agent.id ? null : ancestors[0]?.leaderAgentId ?? null,
+      connections: assignment.connections ?? agent.connections,
+
     };
   }
   return { agent, role, projectId, assignment, projects, ancestors, contextProjects };

@@ -147,13 +147,15 @@ export function CliHistoryView({ text, embedded = false, children, attention }: 
 }
 
 /** Standard execution disclosure when a task/notice precedes its tool trace. */
-export function ExecutionDisclosure({ children, attention, running = false, failed = false, stopped = false }: ExecutionContentProps & { running?: boolean; failed?: boolean; stopped?: boolean }) {
+export function ExecutionDisclosure({ children, attention, running = false, failed = false, stopped = false, source }: ExecutionContentProps & { running?: boolean; failed?: boolean; stopped?: boolean; source?: "API" }) {
   const tt = useAssistantI18n().chatTab.toolTrace;
+  const statusLabel = failed ? tt.error : stopped ? tt.stopped : running ? tt.running : tt.done;
   return (
-    <details className="group bg-background/20 text-xs">
+    <details data-execution-source={source} className="group bg-background/20 text-xs">
       <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-1.5 px-3 py-2 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <CallChip icon="terminal" name={tt.viewHistory} argument={failed ? tt.error : stopped ? tt.stopped : running ? tt.running : tt.done} status={failed ? "error" : stopped ? "idle" : running ? "running" : "done"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
-        <ChevronRight className="ml-auto size-3 transition-transform group-open:rotate-90" aria-hidden />
+        <CallChip icon="terminal" name={source ?? tt.viewHistory} argument={source ? tt.serverConsole : statusLabel} status={failed ? "error" : stopped ? "idle" : running ? "running" : "done"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
+        {source && <span className="ml-auto text-[10px] opacity-80">{statusLabel}</span>}
+        <ChevronRight className={`${source ? "" : "ml-auto "}size-3 transition-transform group-open:rotate-90`} aria-hidden />
         {attention}
       </summary>
       {children}

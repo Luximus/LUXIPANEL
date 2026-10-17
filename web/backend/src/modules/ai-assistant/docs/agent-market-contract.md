@@ -7,7 +7,7 @@ El catálogo sigue siendo /api/ai/agents. Al perfil actual (name, avatarConfig, 
 
 ## Asignación
 En el mismo agente: assignments:AgentProjectAssignment[], cada elemento:
-{projectId,status:"active"|"removed",jobTitle?,instructions?,roleId?,allowedTools?,canSpawnChats?,projectPaths?,serverIds?,graphProjectIds?,createdAt?,updatedAt?,removedAt?}.
+{projectId,status:"active"|"removed",jobTitle?,instructions?,parentAgentId?,connections?,roleId?,allowedTools?,canSpawnChats?,projectPaths?,serverIds?,graphProjectIds?,createdAt?,updatedAt?,removedAt?}.
 jobTitle/instructions vacíos por defecto; roleId:null hereda el perfil. allowedTools/projectPaths/serverIds/graphProjectIds:null heredan; [] permite ninguno. canSpawnChats:null hereda; true nunca concede supervisión si el perfil/rol base no la concede. El equipo efectivo pertenece al proyecto raíz; solo relaciona agentes habilitados en el mismo ámbito.
 projectIds sigue conteniendo vínculos directos activos. Legado se adapta en lectura a asignaciones virtuales source:"legacy", sin reescribir sidecars. Nuevas/actualizadas: source:"explicit". La marca removed impide que un agente retirado se vuelva un agente originalmente libre.
 
@@ -40,3 +40,5 @@ Historial se conserva consultable; no autoriza nuevos runs después de retirada.
 ## Límites
 Controles del panel (despacho, contexto, canales protegidos), NO sandbox del sistema operativo de los CLI. Se conservan proveedores y acceso Linux existente. Compatibilidad tecnológica informativa/manual; sin incorporación automática.
 UI debe elegir proyecto explícitamente, conservar status/code y mostrar herencia/retirada. Build/restart/QA desplegado quedan para el responsable de despliegue.
+
+Jerarquía local: parentAgentId y connections son opcionales por asignación. La asignación explícita hereda el líder raíz si no fija superior; el legado conserva su jerarquía visible. Las conexiones solo se habilitan entre miembros autorizados del proyecto activo. Rutas y grafos se toman del proyecto activo y descendientes; los ancestros aportan instrucciones/skills/servidores, sin añadir sus rutas amplias.
