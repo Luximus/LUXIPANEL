@@ -16,7 +16,7 @@ export function filterMarket(agents: AssistantAgent[], filters: MarketFilters, p
   return agents.filter(agent => {
     const text = fold([agent.name, agent.description, agent.specialty, ...(agent.technologies ?? [])].join(" "));
     return words.every(word => text.includes(word)) && (!filters.provider || agent.providerId === filters.provider) &&
-      (!filters.role || agent.roleId === filters.role) &&
+      (!filters.role || (agent.context?.effectiveConfig?.roleId ?? agent.roleId) === filters.role) &&
       (!filters.technology || (agent.technologies ?? []).some(tag => fold(tag) === fold(filters.technology))) &&
       (!filters.assignment || !projectId || assignedInProject(agent, projectId) === (filters.assignment === "assigned"));
   });

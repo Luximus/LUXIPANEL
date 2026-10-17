@@ -7,12 +7,13 @@ import { chatUiState } from "./chat-ui-state";
 import type { AssistantAgent, AssistantConfigState } from "./assistant-api";
 import type { ChatPaneProps } from "./chat-pane/vm-types";
 
-const m = vi.hoisted(() => ({ setProvider: vi.fn(), scope: "server-a", session: "session-a", setOptions: vi.fn() }));
+const m = vi.hoisted(() => ({ setProvider: vi.fn(), listAgents: vi.fn(), scope: "server-a", session: "session-a", setOptions: vi.fn() }));
 vi.mock("@/i18n/client", () => ({ getClientMessages: async () => ({ assistant: {}, components: {} }) }));
 vi.mock("@/lib/api-client", async original => ({...await original<Record<string, unknown>>(), resolveTargetScope: () => m.scope, scopeHeaders: () => ({"X-CSRF-Token":m.session})}));
 vi.mock("./assistant-api", async original => ({
  ...await original<Record<string, unknown>>(),
  assistantApi: {getConfig: async () => config, setProvider: m.setProvider},
+ assistantAgentsApi: {list: m.listAgents},
 }));
 vi.mock("./assistant-api/conversations", () => ({assistantConversationsApi:{setOptions:m.setOptions}}));
 vi.mock("./CliUsageBars", () => ({CliUsageBars: () => null}));
@@ -40,6 +41,7 @@ beforeEach(async () => {
  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ok:true,items:[],tasks:[],runs:[]}), {headers:{"Content-Type":"application/json"}})));
  vi.clearAllMocks();m.scope="server-a";m.session="session-a";
  m.setProvider.mockImplementation(async (id:string) => activated(id));
+ m.listAgents.mockResolvedValue([agent,other].map(item => ({...item,capabilities:{canExecute:true},execution:{projectId:"child",error:null}})));
  chatUiState.setActiveProvider("codex");
  chatUiState.patchPane("codex", {activeId:"original",currentProjectId:"child",currentAgentId:null,draft:draft.text,attachments:draft.attachments});
  host=document.createElement("div");document.body.append(host);root=createRoot(host);

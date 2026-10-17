@@ -30,7 +30,7 @@ async function select(value: string) {
   });
 }
 it("places reasoning after the model and persists both a level and Auto", async () => {
-  const save = vi.spyOn(assistantApi, "patchConfig").mockImplementation(async patch => ({ ...config, ...patch }));
+  const save = vi.spyOn(assistantApi, "patchConfig").mockImplementation(async patch => ({ ...config, defaultChatEffort: patch.defaultChatEffort }));
   await act(async () => root.render(createElement(View)));
   const model = document.querySelector("#lxp-assistant-default-chat-model")!;
   const effort = document.querySelector<HTMLSelectElement>("#lxp-assistant-default-chat-effort")!;

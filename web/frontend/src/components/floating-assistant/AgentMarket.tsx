@@ -134,7 +134,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
           {!!agent.technologies?.length && <ul className="flex flex-wrap gap-1" aria-label={t.technologies}>{agent.technologies.map((tag, index) => <li key={`${tag}:${index}`} className="rounded bg-muted px-2 py-1 text-xs">{tag}</li>)}</ul>}
           {inheritedFrom && <p className="text-sm text-muted-foreground">{formatAssistantMessage(t.inheritedHint, { project: projectTitle(inheritedFrom) })}</p>}
           <div className="mt-auto flex flex-wrap gap-2">
-            {selected && agent.capabilities?.canAssign && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "add")}>{t.add}</button>}
+            {context && agent.capabilities?.canAssign && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "add")}>{t.add}</button>}
             {selected && agent.capabilities?.canUpdateAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => setEditor(agent)}>{t.configure}</button>}
             {selected && agent.capabilities?.canRemoveAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "remove")}>{t.remove}</button>}
             {agent.capabilities?.canEditProfile ? <button className={marketControl} disabled={!!pending || !!error} onClick={() => setProfile(agent.id)}>{t.editProfile}</button> : <span className="self-center text-sm text-muted-foreground">{t.readOnly}</span>}
