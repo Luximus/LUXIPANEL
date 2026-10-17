@@ -14,7 +14,7 @@ const conversationApi = vi.hoisted(() => ({
   activity: vi.fn(async () => [{ id: "worker-chat", agentId: "worker", unreviewed: true, unreadCount: 3, running: true }]),
   list: vi.fn(async (...args: Parameters<typeof import("../assistant-api/conversations").assistantConversationsApi.list>) => ({ items: args[6]?.agentId ? [legacy] : [], total: 1, summary: { agents: { agent: 1 }, projects: {} } })),
   get: vi.fn(async () => legacy),
-  messages: vi.fn(async () => ({ items: [], total: 0, hasMore: false })),
+  messages: vi.fn(async (): Promise<{ items: import("../assistant-api/conversations").ConversationMessage[]; total: number; hasMore: boolean }> => ({ items: [], total: 0, hasMore: false })),
   session: vi.fn(async () => ({ sessionId: null })),
   context: vi.fn(async () => ({ enabled: false })),
   markReviewed: vi.fn(async () => {}),
@@ -63,7 +63,7 @@ it("keeps an incoming agent and child on initial mount and provider activation",
   } finally { await act(async () => root.unmount()); }
 });
 
-it("does not lose the team sidebar when late metadata opens a loaded legacy mailbox", async () => {
+it("opens an existing chat from the sidebar and keeps its messages and team visible", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
   const host = document.createElement("div");
@@ -71,13 +71,26 @@ it("does not lose the team sidebar when late metadata opens a loaded legacy mail
   let vm!: ChatPaneVM;
   function Probe() {
     vm = useChatPane({ provider: "claude", mode: "api", active: true });
-    return createElement(ChatSidebar, { vm });
+    return createElement("div", null, createElement(ChatSidebar, { vm }), createElement(ChatMain, { vm, attachmentImages: new Map() }));
   }
   try {
     await act(async () => root.render(createElement(Probe)));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     expect(vm.convos.some(c => c.id === legacy.id)).toBe(true);
-    await act(async () => { await vm.openConversation(legacy.id); });
+    conversationApi.messages.mockResolvedValueOnce({ items: [
+      { role: "user", content: "Consulta anterior del proyecto", ts: "2026-10-17T12:00:00Z" },
+      { role: "assistant", content: "Respuesta guardada del agente", ts: "2026-10-17T12:01:00Z" },
+    ], total: 2, hasMore: false });
+    const row = [...host.querySelectorAll<HTMLElement>('[data-selected-project-convos] p')]
+      .find(element => element.textContent?.includes(legacy.title));
+    expect(row).toBeTruthy();
+    await act(async () => row!.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    expect(vm.activeId).toBe(legacy.id);
+    expect(vm.chatLoading).toBe(false);
+    expect(vm.turns.map(turn => turn.text)).toEqual(["Consulta anterior del proyecto", "Respuesta guardada del agente"]);
+    expect(host.querySelector('[data-agent-shortcut]')).toBeNull();
+    expect(host.textContent).toContain("Respuesta guardada del agente");
     expect(vm.currentProjectId).toBe("child");
     expect(vm.activeMeta?.projectId).toBeNull();
     expect(vm.currentAgentId).toBe("agent");
@@ -192,6 +205,8 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     expect(host.querySelector('[data-picker="agent"]')?.textContent).toContain("Todos los agentes");
     expect(host.querySelector('.lxp-chat-start .lxp-chat-greeting-logo img')?.getAttribute("data-lxp-logo-role")).toBe("sidebar");
     await choose("[Líder] Oscar");
+    expect(host.querySelector('[data-agent-shortcut]')).toBeNull();
+    expect(host.querySelector('.lxp-chat-start-actions')).not.toBeNull();
     expect(host.querySelector('.lxp-chat-start .lxp-chat-greeting-logo img')?.getAttribute("alt")).toBe("Oscar");
     expect(host.querySelector('.lxp-chat-start .lxp-chat-greeting-logo img')?.getAttribute("data-lxp-logo-role")).toBeNull();
     expect(host.querySelector('[title="Salir del agente"]')).toBeNull();
@@ -245,8 +260,11 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     expect(vm.draft).toBe("Mensaje para otro proveedor");
     expect(vm.attachments).toEqual([staged]);
     expect(host.querySelector('[data-picker="agent"]')?.textContent).toContain("Sofía");
-    expect(host.querySelector('[data-agent-shortcut="worker"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(host.querySelector('[data-agent-shortcut]')).toBeNull();
+    expect(host.querySelector('.lxp-chat-start-actions')).not.toBeNull();
     expect(conversationApi.markReviewed.mock.calls.length).toBe(reviewCalls);
+    await choose("Todos los agentes");
+    expect(host.querySelectorAll('[data-agent-shortcut]')).toHaveLength(3);
     onLaunchAgent.mockClear();
     await act(async () => host.querySelector<HTMLButtonElement>('[data-agent-shortcut="other-provider"]')!.click());
     expect(onLaunchAgent).toHaveBeenCalledWith(expect.objectContaining({ id: "other-provider" }), "root", { text: "Mensaje para otro proveedor", attachments: [staged] });

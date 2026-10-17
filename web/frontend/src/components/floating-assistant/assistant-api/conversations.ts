@@ -303,7 +303,9 @@ export const assistantConversationsApi = {
   /** Clear the server-side "ended but unreviewed" flag (fire-and-forget on open). */
   async markReviewed(id: string): Promise<void> {
     const res = await api.post(`/api/ai/conversations/${id}/reviewed`, {});
-    if (res.ok && typeof window !== "undefined") window.dispatchEvent(new Event("lxp:assistant:conversations-updated"));
+    // Reading changes notification counts, not history. The general update
+    // event invalidates in-flight history reads, including the chat just opened.
+    if (res.ok && typeof window !== "undefined") window.dispatchEvent(new Event("lxp:assistant:conversation-reviewed"));
   },
 };
 

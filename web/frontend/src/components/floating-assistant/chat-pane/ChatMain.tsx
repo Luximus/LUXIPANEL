@@ -205,8 +205,11 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     if (projects.filter(project => !project.parentId && project.teamId === projectTeam.teamId).length === 1) ids.push("none");
     return ids;
   }, [selectedRootProject, projectTeam, projects]);
+  // The project landing offers agents; a selected agent or an opened chat
+  // uses the regular conversation view, including when its history is empty.
+  const showAgentShortcuts = !!currentProject && !currentAgentId && !activeId && !chatLoading && turns.length === 0;
   const shortcutActivity = useAgentShortcutActivity(shortcutProjectIds, projectTeamAgents.map(agent => agent.id!),
-    active !== false && !chatLoading && turns.length === 0 && agentCatalogReady && !!projectTeam);
+    active !== false && showAgentShortcuts && agentCatalogReady && !!projectTeam);
   const agentRoleLabel = (agent: AssistantAgent) => (agent.roleId && rolesById.get(agent.roleId)?.name)
     || (agent.id === projectTeam?.root.leaderAgentId ? (ct.agentRoleLeader ?? "Líder") : (ct.agentBadgeModel ?? "Agente"));
   const selectProjectAgent = (key: string) => {
@@ -326,9 +329,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                           ? formatAssistantMessage(ct.newProjectChatAria ?? "Nueva conversación en {project}", { project: currentProject.title })
                           : welcomeTitle} highlightedName={currentAgent?.name ?? currentProject?.title} />
                       </h2>
-                      <p className="mt-2 text-sm text-muted-foreground">{currentProject ? ct.agentShortcuts.description : (ct.startPointsDescription ?? "Elige un punto de partida o escribe tu propia pregunta abajo.")}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{showAgentShortcuts ? ct.agentShortcuts.description : (ct.startPointsDescription ?? "Elige un punto de partida o escribe tu propia pregunta abajo.")}</p>
                     </div>
-                    {currentProject ? <ProjectAgentShortcuts agents={projectTeam ? projectTeamAgents : []} selectedId={currentAgentId ?? null}
+                    {showAgentShortcuts ? <ProjectAgentShortcuts agents={projectTeam ? projectTeamAgents : []} selectedId={currentAgentId ?? null}
                       roleLabel={agentRoleLabel} onSelect={selectProjectAgent} labels={ct.agentShortcuts}
                       {...shortcutActivity} loading={!agentCatalogReady || (!!projectTeam && shortcutActivity.loading)} /> : quickStartSuggestions.length > 0 && (
                       <div className="lxp-chat-start-actions mt-4 flex flex-wrap items-center justify-center gap-2">

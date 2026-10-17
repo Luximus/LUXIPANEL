@@ -1,0 +1,8 @@
+{
+  "title": "Apertura de chats y selección de agentes corregidas",
+  "changes": [
+    "Al elegir un agente desde una tarjeta o el selector, se ocultan los accesos y aparece la vista habitual del chat, conservando el borrador y los adjuntos.",
+    "Abrir una conversación carga sus mensajes sin que el aviso de lectura interrumpa el historial.",
+    "Al volver a Todos los agentes, se muestran nuevamente las tarjetas con sus estados y mensajes sin leer."
+  ]
+}

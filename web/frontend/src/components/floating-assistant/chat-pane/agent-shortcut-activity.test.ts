@@ -11,6 +11,28 @@ vi.mock("../chat-engine", () => ({ chatEngine: { subscribe: () => () => {}, getV
   get: () => undefined, isBackgroundRunning: () => false, isWorkerTaskRunning: () => false, hasPendingPermission: () => false } }));
 afterEach(() => { vi.restoreAllMocks(); target.id = "first"; });
 
+it("refreshes unread counts after review only while the shortcuts are visible", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const api = vi.spyOn(assistantConversationsApi, "activity")
+    .mockResolvedValueOnce([{ id: "chat", agentId: "a", unreadCount: 3, unreviewed: true }])
+    .mockResolvedValue([{ id: "chat", agentId: "a", unreadCount: 0, unreviewed: false }]);
+  let state!: ReturnType<typeof useAgentShortcutActivity>;
+  function Probe({ visible }: { visible: boolean }) { state = useAgentShortcutActivity(["project"], ["a"], visible); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe, { visible: true })));
+    expect(state.activity.get("a")?.unreadCount).toBe(3);
+    await act(async () => window.dispatchEvent(new Event("lxp:assistant:conversation-reviewed")));
+    expect(state.activity.get("a")?.unreadCount).toBe(0);
+    expect(api).toHaveBeenCalledTimes(2);
+    await act(async () => root.render(createElement(Probe, { visible: false })));
+    await act(async () => window.dispatchEvent(new Event("lxp:assistant:conversation-reviewed")));
+    expect(api).toHaveBeenCalledTimes(2);
+    await act(async () => root.render(createElement(Probe, { visible: true })));
+    expect(api).toHaveBeenCalledTimes(3);
+  } finally { await act(async () => root.unmount()); }
+});
+
 it("counts messages across chats and prioritizes attention and running over finished results", () => {
   const result = summarizeAgentActivity([
     { id: "1", agentId: "a", unreviewed: true, unreadCount: 4, lastReplyState: "done" },

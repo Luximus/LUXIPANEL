@@ -62,12 +62,14 @@ export function useAgentShortcutActivity(projectIds: string[], agentIds: string[
     void refresh();
     const timer = window.setInterval(() => void refresh(), 10_000);
     window.addEventListener("lxp:assistant:conversations-updated", refresh);
+    window.addEventListener("lxp:assistant:conversation-reviewed", refresh);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       disposed = true;
       window.clearInterval(timer);
       window.removeEventListener("lxp:assistant:conversations-updated", refresh);
+      window.removeEventListener("lxp:assistant:conversation-reviewed", refresh);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
