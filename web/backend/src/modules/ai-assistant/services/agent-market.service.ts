@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { agentMessagesRepository } from "../repositories/agent-messages.repository.js";
 import type { Executor } from "../../../shared/executor/index.js";
+import { AppError } from "../../../shared/errors/index.js";
+import type { AgentMarketProfile, AgentMarketContext, AgentMarketExecution } from "../models/agent-market.types.js";
 import { getContextUser } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
-import { projectsRepository } from "../repositories/projects.repository.js";
+import { projectsRepository, type AssistantProject } from "../repositories/projects.repository.js";
 import { agentActivityRepository } from "../repositories/agent-activity.repository.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
@@ -12,15 +14,15 @@ import { agentRolesRepository } from "../repositories/agent-roles.repository.js"
 import { agentAssignments, type AssistantAgent, type AssignmentPatch, type AgentProjectAssignment } from "../models/assistant-agent.types.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { permissionBroker } from "./permission-broker.js";
-import { assignmentError, assertProjectScope, effectiveAssignment, mayUseProject, resolveAgentContext } from "./agent-context.service.js";
+import { assignmentError, assertProjectScope, effectiveAssignment, mayUseProject, resolveAgentContext, visibleProjects, intersectLists } from "./agent-context.service.js";
 import { assertAssignmentTarget, withAssignmentLock, hasAssignmentAdmission } from "./agent-assignment-lock.js";
 import { projectClosure } from "./project-closure.js";
 import { normalizeAllowedTools } from "./tool-allowlist.js";
 
-async function ownedAgent(id: string) {
+async function ownedAgent(id: string, user?: SessionUser) {
   const agent = await agentsRepository.get(id);
   if (!agent) throw assignmentError("ASSISTANT_AGENT_NOT_FOUND", "Agente no encontrado.", 404);
-  if (!mayUseProject(agent)) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "No puedes modificar este perfil.", 403);
+  if (!mayUseProject(agent, user ?? getContextUser())) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "No puedes modificar este perfil.", 403);
   return agent;
 }
 export async function assertAssignmentIdle(executor: Executor, agent: AssistantAgent, projectIds: string[]): Promise<void> {
@@ -81,14 +83,54 @@ async function persist(id: string, assignments: AgentProjectAssignment[]) {
   return saved;
 }
 export const agentMarketService = {
-  async present(executor: Executor, agent: AssistantAgent, user?: SessionUser) {
+  async present(executor: Executor, agent: AssistantAgent, user?: SessionUser,
+    options: { contextProjectId?: string; projects?: AssistantProject[] } = {}): Promise<AgentMarketProfile> {
     assertAssignmentTarget(executor);
-    const all = await projectsRepository.list(executor);
-    const visible = new Set(all.filter(p => mayUseProject(p, user ?? getContextUser())).map(p => p.id));
+    const all = options.projects ?? await projectsRepository.list(executor);
+    const visible = new Set(visibleProjects(all, user).map(p => p.id));
     const assignments = agentAssignments(agent).filter(a => visible.has(a.projectId));
+    const projectId = options.contextProjectId;
+    const ancestors = projectId ? assertProjectScope(all, projectId, user) : [];
+    const direct = assignments.find(a => a.projectId === projectId) ?? null;
+    const effective = projectId ? effectiveAssignment(agent, all, projectId) : null;
+    const canModify = mayUseProject(agent, user ?? getContextUser());
+    let execution: AgentMarketExecution = { projectId: projectId ?? null, error: null };
+    let effectiveConfig: AgentMarketContext["effectiveConfig"] = null;
+    try {
+      const resolved = await resolveAgentContext(executor, agent.id, projectId, user);
+      const active = resolved.agent;
+      execution.projectId = resolved.projectId;
+      if (active && projectId) effectiveConfig = {
+        systemPrompt: [active.systemPrompt, resolved.role?.systemPrompt].filter(Boolean).join("\n\n"),
+        roleId: active.roleId ?? null,
+        allowedTools: intersectLists(active.allowedTools, resolved.role?.allowedTools),
+        canSpawnChats: Boolean(active.canSpawnChats || resolved.role?.canSpawnChats),
+        projectPaths: active.projectPaths ?? [], serverIds: (active.servers ?? []).map(s => s.id),
+        graphProjectIds: active.graphProjectIds ?? [], teamId: active.teamId ?? null,
+        parentAgentId: active.parentAgentId ?? null, connections: active.connections ?? [],
+      };
+    } catch (error) {
+      if (!(error instanceof AppError) || ![400, 403, 404, 409].includes(error.statusCode)) throw error;
+      execution = { projectId: projectId ?? null, error: { code: error.code, statusCode: error.statusCode, message: error.message } };
+    }
+    const inheritedFallback = projectId && direct?.status === "active" && ancestors.slice(0, -1)
+      .some(p => assignments.some(a => a.projectId === p.id && a.status === "active"));
     return { ...agent, specialty: agent.specialty ?? "", technologies: agent.technologies ?? [],
       assignments, graphProjectIds: (agent.graphProjectIds ?? []).filter(id => visible.has(id)),
-      projectIds: assignments.filter(a => a.status === "active").map(a => a.projectId) };
+      projectIds: assignments.filter(a => a.status === "active").map(a => a.projectId),
+      capabilities: {
+        canEditProfile: canModify, canDeleteProfile: canModify,
+        canAssign: canModify && !!projectId && direct?.status !== "active",
+        canUpdateAssignment: canModify && direct?.status === "active",
+        canRemoveAssignment: canModify && direct?.status === "active" && !inheritedFallback,
+        canExecute: execution.error === null,
+      },
+      execution,
+      context: projectId ? { projectId, directAssignment: direct, effectiveAssignment: effective, effectiveConfig,
+        membership: effective ? effective.inheritedFrom ? "inherited" : "direct" :
+          assignments.some(a => a.status === "removed" && ancestors.some(p => p.id === a.projectId)) ? "removed" : "none",
+      } : null,
+    };
   },
   async assignments(executor: Executor, id: string, projectId?: string, user?: SessionUser) {
     assertAssignmentTarget(executor);
@@ -101,7 +143,7 @@ export const agentMarketService = {
   },
   async put(executor: Executor, id: string, projectId: string, patch: AssignmentPatch, user?: SessionUser) {
     return withAssignmentLock(executor, id, async () => {
-      const agent = await ownedAgent(id);
+      const agent = await ownedAgent(id, user);
       const clean = await validatePatch(executor, id, projectId, patch, user);
       const assignments = rows(agent);
       const index = assignments.findIndex(a => a.projectId === projectId);
@@ -121,7 +163,7 @@ export const agentMarketService = {
   },
   async remove(executor: Executor, id: string, projectId: string, user?: SessionUser) {
     return withAssignmentLock(executor, id, async () => {
-      const agent = await ownedAgent(id), all = await projectsRepository.list(executor);
+      const agent = await ownedAgent(id, user), all = await projectsRepository.list(executor);
       assertProjectScope(all, projectId, user);
       const assignments = rows(agent);
       const current = assignments.find(a => a.projectId === projectId);
@@ -137,7 +179,7 @@ export const agentMarketService = {
   /** Compatibility write is atomic: authorize every addition/removal before persisting any. */
   async updateProfile(executor: Executor, id: string, patch: Parameters<typeof agentsRepository.update>[1], user?: SessionUser) {
     return withAssignmentLock(executor, id, async () => {
-      const agent = await ownedAgent(id);
+      const agent = await ownedAgent(id, user);
       if (patch.projectIds === undefined) return agentsRepository.update(id, patch);
       const wanted = [...new Set(patch.projectIds)];
       const all = await projectsRepository.list(executor);

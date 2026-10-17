@@ -43,6 +43,18 @@ export function assertProjectScope(all: AssistantProject[], projectId: string, u
   return ancestors;
 }
 
+/** A visible leaf must also have a complete, authorized ancestry. */
+export function visibleProjects(all: AssistantProject[], user?: SessionUser): AssistantProject[] {
+  return all.filter(project => {
+    if (!project.id) return false;
+    try { assertProjectScope(all, project.id, user); return true; }
+    catch (error) {
+      if (!(error instanceof AppError) || ![403, 404].includes(error.statusCode)) throw error;
+      return false;
+    }
+  });
+}
+
 export function effectiveAssignment(agent: AssistantAgent, all: AssistantProject[], projectId: string): EffectiveAssignment | null {
   const assignments = agentAssignments(agent);
   for (const project of projectAncestors(all, projectId).reverse()) {
@@ -76,7 +88,7 @@ export interface AgentContext {
   contextProjects: AssistantProject[];
 }
 /** Fail closed. Fresh on every admission and protected tool dispatch. */
-export async function resolveAgentContext(executor: Executor | null | undefined, agentId?: string | null, requestedProjectId?: string | null, user?: SessionUser): Promise<AgentContext> {
+export async function resolveAgentContext(executor: Executor | null | undefined, agentId?: string | null, requestedProjectId?: string | null, user?: SessionUser, inferProject = true): Promise<AgentContext> {
   if (!executor) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "Se requiere el servidor conectado.", 403);
   assertAssignmentTarget(executor);
   const original = agentId ? await agentsRepository.get(agentId) : null;
@@ -85,13 +97,14 @@ export async function resolveAgentContext(executor: Executor | null | undefined,
   const assignments = original ? agentAssignments(original) : [];
   let projectId = requestedProjectId || null;
   if (!projectId && assignments.length) {
+    if (!inferProject) throw assignmentError("ASSISTANT_CONTEXT_MISMATCH", "Abre una conversación nueva para usar la asignación del agente.");
     const active = assignments.filter(a => a.status === "active");
     if (active.length > 1) throw assignmentError("ASSISTANT_PROJECT_REQUIRED", "Selecciona un proyecto para ejecutar este agente.", 400);
     if (!active.length) throw assignmentError("ASSISTANT_ASSIGNMENT_REMOVED", "Reincorpora el agente a un proyecto antes de ejecutarlo.");
     projectId = active[0]!.projectId; // cardinality proven; never first of multiple
   }
   const all = projectId ? await projectsRepository.list(executor) : [];
-  const projects = all.filter(p => mayUseProject(p, user ?? getContextUser()));
+  const projects = visibleProjects(all, user);
   let ancestors: AssistantProject[] = [], contextProjects: AssistantProject[] = [];
   let assignment: EffectiveAssignment | null = null;
   if (projectId) {
@@ -123,7 +136,7 @@ export async function resolveAgentContext(executor: Executor | null | undefined,
     const supervisor = Boolean(agent.canSpawnChats || baseRole?.canSpawnChats) && assignment.canSpawnChats !== false;
     if (role) role = { ...role, canSpawnChats: supervisor };
     agent = { ...agent, canSpawnChats: supervisor, roleId: assignment.roleId ?? agent.roleId,
-      allowedTools: intersectToolLimits(agent.allowedTools, baseRole?.allowedTools, assignment.allowedTools),
+      allowedTools: intersectToolLimits(agent.allowedTools, baseRole?.allowedTools, localRole?.allowedTools, assignment.allowedTools),
       systemPrompt: [agent.systemPrompt, assignment.jobTitle ? "Cargo en este proyecto: " + assignment.jobTitle : "", assignment.instructions].filter(Boolean).join("\n\n"),
       projectIds: [projectId!],
       projectPaths: intersectPaths(intersectPaths(contextProjects.map(p => p.path).filter(Boolean), agent.projectPaths?.length ? agent.projectPaths : null), assignment.projectPaths),
@@ -168,13 +181,17 @@ export async function scopedAgents(executor: Executor, agents: AssistantAgent[],
 
 /** A conversation cannot carry another project's transcript into a new run. */
 export async function resolveConversationBinding(executor: Executor | null | undefined, input: { conversationId?: string; agentId?: string | null; projectId?: string | null }, user?: SessionUser) {
-  const meta = input.conversationId ? await conversationsRepository.getMeta(executor, input.conversationId) : null;
-  if (meta && ((input.agentId && meta.agentId && input.agentId !== meta.agentId) ||
-      (input.projectId && meta.projectId && input.projectId !== meta.projectId) ||
-      (meta.messageCount > 0 && ((!meta.agentId && input.agentId) || (!meta.projectId && input.projectId))))) {
+  const target = executor ?? getContextExecutor();
+  if (!target) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "Se requiere el servidor conectado.", 403);
+  assertAssignmentTarget(target);
+  const meta = input.conversationId ? await conversationsRepository.getMeta(target, input.conversationId) : null;
+  // null/omitted input means resume. Even an empty persisted chat keeps its identity.
+  if (meta && ((input.agentId && input.agentId !== meta.agentId) ||
+      (input.projectId && input.projectId !== meta.projectId))) {
     throw assignmentError("ASSISTANT_CONTEXT_MISMATCH", "Abre una conversación nueva para cambiar de agente o proyecto.");
   }
-  const agentId = input.agentId || meta?.agentId || null;
-  const context = await resolveAgentContext(executor ?? getContextExecutor(), agentId, input.projectId || meta?.projectId, user);
+  const agentId = meta ? meta.agentId ?? null : input.agentId || null;
+  const projectId = meta ? meta.projectId ?? null : input.projectId;
+  const context = await resolveAgentContext(target, agentId, projectId, user, !meta);
   return { ...context, agentId };
 }

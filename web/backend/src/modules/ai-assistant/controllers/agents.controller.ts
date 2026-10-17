@@ -19,14 +19,13 @@ import type { SessionUser } from "../../../shared/types/index.js";
 import { asyncHandler } from "../../../shared/types/index.js";
 import { zodIssues } from "../../../shared/validators/index.js";
 import { avatarConfigSchema, serverSchema, skillsSchema } from "./shared-schemas.js";
-import { assertOwner } from "./ownership.js";
-import { getExecutor, getContextUserId } from "../../../shared/executor/index.js";
+import { getExecutor, getContextUser } from "../../../shared/executor/index.js";
 import { ValidationError, AppError } from "../../../shared/errors/index.js";
 import { assistantNotFound } from "./not-found-i18n.js";
 import { apiModuleMessage } from "../../../shared/i18n/module-messages.js";
 import { aiOutputLanguage } from "../../../shared/i18n/ai-output-language.js";
 import { agentMarketService, assertAssignmentIdle } from "../services/agent-market.service.js";
-import { assertProjectAccess, assertProjectScope, effectiveAssignment } from "../services/agent-context.service.js";
+import { assertProjectScope, mayUseProject } from "../services/agent-context.service.js";
 import { withAssignmentLock } from "../services/agent-assignment-lock.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentTeamsRepository } from "../repositories/agent-teams.repository.js";
@@ -225,7 +224,9 @@ async function assertTeamExists(teamId: string | null | undefined, locale: unkno
 
 /** El agente es del usuario actual (o legacy sin dueño) → puede editar/borrar. */
 function assertCanModify(ownerId: number | null | undefined, locale: unknown): void {
-  assertOwner(ownerId, locale);
+  if (!mayUseProject({ ownerId }, getContextUser())) {
+    throw new AppError(apiModuleMessage(locale, "assistantOwnershipDenied"), 403, "ASSISTANT_PROJECT_FORBIDDEN");
+  }
 }
 
 /**
@@ -246,32 +247,46 @@ async function assertNoSubordinationCycle(agentId: string, parentAgentId: string
   }
 }
 
+const catalogQuerySchema = z.object({
+  q: z.string().trim().max(500).optional(),
+  technology: z.string().trim().max(60).optional(),
+  projectId: z.string().trim().min(1).max(64).optional(),
+  contextProjectId: z.string().trim().min(1).max(64).optional(),
+}).refine(q => !q.projectId || !q.contextProjectId || q.projectId === q.contextProjectId,
+  "projectId y contextProjectId deben identificar el mismo proyecto.");
+
 export async function loadAssistantAgents(req: Request, res: Response) {
   const executor = getExecutor(req), user = res.locals["user"] as SessionUser | undefined;
-  const uid = getContextUserId(), all = await projectsRepository.list(executor);
-  const projectId = typeof req.query["projectId"] === "string" ? req.query["projectId"] : undefined;
-  if (projectId) assertProjectScope(all, projectId, user);
-  const q = String(req.query["q"] ?? "").trim().toLocaleLowerCase();
-  const technology = String(req.query["technology"] ?? "").trim().toLocaleLowerCase();
-  const agents = (await agentsRepository.list()).filter(a =>
-    (!projectId || !!effectiveAssignment(a, all, projectId)) &&
-    (!q || [a.name, a.description, a.specialty, ...(a.technologies ?? [])].join(" ").toLocaleLowerCase().includes(q)) &&
-    (!technology || (a.technologies ?? []).some(t => t.toLocaleLowerCase() === technology)));
+  const parsed = catalogQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw new ValidationError("Consulta de agentes inválida", zodIssues(parsed.error.issues, res.locals.locale));
+  const { projectId, contextProjectId } = parsed.data;
+  const contextId = contextProjectId ?? projectId;
+  const all = await projectsRepository.list(executor);
+  if (contextId) assertProjectScope(all, contextId, user);
+  // Resolve the roster before search so a name/technology filter cannot change hierarchy.
+  const presented = await Promise.all((await agentsRepository.list()).map(a =>
+    agentMarketService.present(executor, a, user, { contextProjectId: contextId, projects: all })));
+  const roster = contextId ? presented.filter(a => a.context?.effectiveConfig) : presented;
+  const q = (parsed.data.q ?? "").toLocaleLowerCase();
+  const technology = (parsed.data.technology ?? "").toLocaleLowerCase();
+  const agents = presented.filter(a =>
+    (!projectId || !!a.context?.effectiveAssignment) &&
+    (!q || [a.name, a.description, a.specialty, ...a.technologies].join(" ").toLocaleLowerCase().includes(q)) &&
+    (!technology || a.technologies.some(t => t.toLocaleLowerCase() === technology)));
   const users = await panelUserRepository.findAll(executor).catch(() => []);
   const nameById = new Map(users.map(u => [u.id, u.displayName || u.username]));
-  return Promise.all(agents.map(async a => {
-    const presented = await agentMarketService.present(executor, a, user);
-    const subordinateIds = agents.filter(b => b.parentAgentId === a.id && b.id).map(b => b.id!);
-    const uniqueId = presented.projectIds.length === 1 ? presented.projectIds[0] : undefined;
+  return agents.map(a => {
+    const subordinateIds = roster.filter(b => (contextId ? b.context?.effectiveConfig?.parentAgentId : b.parentAgentId) === a.id && b.id).map(b => b.id!);
+    const uniqueId = a.projectIds.length === 1 ? a.projectIds[0] : undefined;
     const project = uniqueId ? all.find(p => p.id === uniqueId) : undefined;
     return {
-      ...redactAgent(presented), ownerId: a.ownerId ?? null,
-      relation: a.ownerId == null || a.ownerId === uid ? "owner" : "shared",
+      ...redactAgent(a), ownerId: a.ownerId ?? null,
+      relation: a.capabilities.canEditProfile ? "owner" : "shared",
       ownerName: a.ownerId != null ? nameById.get(a.ownerId) ?? null : null,
       isTeamLeader: subordinateIds.length > 0, subordinateIds,
       project: project ? { id: project.id!, name: project.title } : null,
     };
-  }));
+  });
 }
 
 export const agentsController = {
@@ -310,8 +325,9 @@ export const agentsController = {
       })!.valid;
     }
     await assertTeamExists(parsed.data.teamId, res.locals.locale);
+    const projects = await projectsRepository.list(getExecutor(req));
     for (const projectId of new Set([...(parsed.data.projectIds ?? []), ...(parsed.data.graphProjectIds ?? [])])) {
-      assertProjectAccess(await projectsRepository.get(getExecutor(req), projectId), res.locals["user"]);
+      assertProjectScope(projects, projectId, res.locals["user"]);
     }
     if (req.body?.assignments !== undefined) throw new ValidationError("Usa los endpoints de asignaciones.");
     const agent = await agentsRepository.create(parsed.data);
@@ -340,7 +356,10 @@ export const agentsController = {
     const effProvider = parsed.data.providerId ?? cur.providerId;
     if (!providerSupportsRealtime(effProvider)) parsed.data.realtime = false;
     if (req.body?.assignments !== undefined) throw new ValidationError("Usa los endpoints de asignaciones.");
-    for (const projectId of parsed.data.graphProjectIds ?? []) assertProjectAccess(await projectsRepository.get(getExecutor(req), projectId), res.locals["user"]);
+    if (parsed.data.graphProjectIds?.length) {
+      const projects = await projectsRepository.list(getExecutor(req));
+      for (const projectId of parsed.data.graphProjectIds) assertProjectScope(projects, projectId, res.locals["user"]);
+    }
     const agent = await agentMarketService.updateProfile(getExecutor(req), id, parsed.data, res.locals["user"]);
     res.json({ ok: true, agent: agent ? redactAgent(await agentMarketService.present(getExecutor(req), agent, res.locals["user"])) : agent });
   }),

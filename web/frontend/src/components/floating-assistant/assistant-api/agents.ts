@@ -31,6 +31,25 @@ export interface AssistantAgent {
   id: string;
   name: string;
   description: string;
+  specialty?: string;
+  technologies?: string[];
+  assignments?: AgentProjectAssignment[];
+  capabilities?: {
+    canEditProfile: boolean; canDeleteProfile: boolean; canAssign: boolean;
+    canUpdateAssignment: boolean; canRemoveAssignment: boolean; canExecute: boolean;
+  };
+  execution?: { projectId: string | null; error: { code: string; statusCode: number; message: string } | null };
+  context?: {
+    projectId: string;
+    membership: "none" | "direct" | "inherited" | "removed";
+    directAssignment: AgentProjectAssignment | null;
+    effectiveAssignment: AgentProjectAssignment | null;
+    effectiveConfig: {
+      systemPrompt: string; roleId: string | null; allowedTools: string[] | null;
+      canSpawnChats: boolean; projectPaths: string[]; serverIds: string[];
+      graphProjectIds: string[]; teamId: string | null; parentAgentId: string | null; connections: string[];
+    } | null;
+  } | null;
   systemPrompt: string;
   providerId: AssistantProviderId;
   /** Extra providers for multi-agent fan-out (work with several at once). */
@@ -235,6 +254,8 @@ export function leaderAgentsOf(agents: AssistantAgent[]): AssistantAgent[] {
 export type AgentPayload = {
   name: string;
   description: string;
+  specialty?: string;
+  technologies?: string[];
   systemPrompt: string;
   providerId: AssistantProviderId;
   providerIds?: AssistantProviderId[];
@@ -281,10 +302,53 @@ function agentApiError(res: { error?: string; data?: unknown }, fallback: string
   return fields ? `${base} — ${fields}` : base;
 }
 
+export type AgentAssignmentPayload = {
+  jobTitle?: string;
+  instructions?: string;
+  parentAgentId?: string | null;
+  connections?: string[] | null;
+  roleId?: string | null;
+  allowedTools?: string[] | null;
+  canSpawnChats?: boolean | null;
+  projectPaths?: string[] | null;
+  serverIds?: string[] | null;
+  graphProjectIds?: string[] | null;
+};
+export type AgentProjectAssignment = AgentAssignmentPayload & {
+  projectId: string;
+  status: "active" | "removed";
+  source?: "legacy" | "explicit";
+  inheritedFrom?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  removedAt?: string;
+};
+export type AgentListQuery = { projectId?: string; contextProjectId?: string; q?: string; technology?: string };
+
+/** Preserve structured authorization/conflict errors for contextual actions. */
+export class AgentRequestError extends Error {
+  constructor(public status: number, public code: string | undefined, message: string) { super(message); }
+}
+function assignmentResult<T>(res: import("@/lib/api-client").ApiResponse<T>): T {
+  if (!res.ok || !res.data) throw new AgentRequestError(res.status, res.code, res.error ?? "");
+  return res.data;
+}
+
 export const assistantAgentsApi = {
-  async list(): Promise<AssistantAgent[]> {
-    const res = await api.catalog<{ ok: boolean; agents: AssistantAgent[] }>("/api/ai/agents");
+  async list(query: AgentListQuery = {}): Promise<AssistantAgent[]> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value?.trim()) params.set(key, value.trim());
+    const res = await api.get<{ ok: boolean; agents: AssistantAgent[] }>(`/api/ai/agents${params.size ? `?${params}` : ""}`);
     return unwrap(res, "Failed to load agents").agents;
+  },
+  async assignments(id: string, projectId: string): Promise<{ assignments: AgentProjectAssignment[]; effective: AgentProjectAssignment | null }> {
+    return assignmentResult(await api.get<{ ok: boolean; assignments: AgentProjectAssignment[]; effective: AgentProjectAssignment | null }>(`/api/ai/agents/${encodeURIComponent(id)}/assignments?${new URLSearchParams({ projectId })}`));
+  },
+  async updateAssignment(id: string, projectId: string, data: AgentAssignmentPayload = {}): Promise<AgentProjectAssignment> {
+    return assignmentResult(await api.put<{ ok: boolean; assignment: AgentProjectAssignment }>(`/api/ai/agents/${encodeURIComponent(id)}/assignments/${encodeURIComponent(projectId)}`, data)).assignment;
+  },
+  async removeAssignment(id: string, projectId: string): Promise<void> {
+    assignmentResult(await api.delete<{ ok: boolean }>(`/api/ai/agents/${encodeURIComponent(id)}/assignments/${encodeURIComponent(projectId)}`));
   },
   async create(data: AgentPayload): Promise<AssistantAgent> {
     const res = await api.post<{ ok: boolean; agent: AssistantAgent }>("/api/ai/agents", data);
