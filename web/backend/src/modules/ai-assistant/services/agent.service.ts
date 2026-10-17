@@ -27,7 +27,6 @@ import { assistantConfigRepository } from "../repositories/assistant-config.repo
 import { resolveAgentRunModel, resolveAgentRunProvider, type AssistantProviderId } from "../models/assistant-config.types.js";
 import { assistantAuditRepository } from "../repositories/assistant-audit.repository.js";
 import { assistantModulesService } from "./assistant-modules.service.js";
-import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { buildProvider, ProviderUnavailableError } from "./providers/provider-factory.js";
 import { modelSupportsVision, modelSupportsPdf } from "./providers/vision.js";
@@ -37,6 +36,7 @@ import { slashCommandsService } from "./slash-commands.service.js";
 import { normalizeAllowedTools } from "./tool-allowlist.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { resolveCrossChannelOrigin } from "./cross-channel-origin.js";
+import { supportsCliCrossChannel } from "./providers/cli/cross-channel.js";
 import type {
   AgentEvent,
   AgentMessage,
@@ -269,44 +269,9 @@ export const agentService = {
     const effModel = resolveAgentRunModel(modelOverride, agent?.model, effProviderId, agent?.providerId);
     const effId = effProviderId ?? config.activeProvider;
 
-    // LEADER runs need the panel's API tool loop (team.plan/assign/collect —
-    // the whole coordinate-and-delegate flow). When the agent is a leader
-    // (direct subordinates + supervisor permission) but its provider slot is
-    // configured in CLI mode, coordination silently degrades: only the claude
-    // CLI has the cross-MCP team channel — codex/minimax CLIs have no panel
-    // tool loop at all (first real-world test: a codex-CLI leader answered a
-    // team-sized task entirely by itself). If the slot has an API key, force
-    // THIS run to API mode (in-memory patch only, same pattern as the model
-    // overrides below): the leader coordinates via API; its WORKERS keep
-    // whatever mode their own providers are configured with. Without an API
-    // key we keep CLI and log why the team tools are absent.
-    let forcedApiForLeader = false;
-    if (agent && (agent.canSpawnChats || role?.canSpawnChats) && delegationDepth === 0) {
-      const slot = config.providers[effId];
-      if (slot?.mode === "cli" && effId !== "claude") {
-        try {
-          const allForLeaderCheck = await agentsRepository.list();
-          const hasSubordinates = allForLeaderCheck.some((a) => a.id && a.parentAgentId === agent.id);
-          if (hasSubordinates) {
-            if (slot.api?.apiKey) {
-              config.providers[effId] = { ...slot, mode: "api" };
-              forcedApiForLeader = true;
-              log.info(
-                { agentId: agent.id, provider: effId },
-                "leader run: CLI slot forced to API mode (team tools require the panel tool loop)",
-              );
-            } else {
-              log.warn(
-                { agentId: agent.id, provider: effId },
-                "leader agent on a CLI-mode provider without API key — team tools unavailable this run",
-              );
-            }
-          }
-        } catch (err) {
-          log.warn({ err }, "leader API-mode check failed — keeping configured mode");
-        }
-      }
-    }
+    // The configured transport is also the user's billing choice. A leader
+    // uses its CLI's scoped MCP team channel; a saved API key never authorizes
+    // switching this run to API mode, including retries and automatic nudges.
 
     // Model / effort / multi-agent selection.
     //  - An explicit per-run `model` (scheduled AI-agent jobs) always wins.
@@ -467,7 +432,7 @@ export const agentService = {
     // entry per invocation with the elapsed wall-time.
     const pending = new Map<string, { tool: string; startedAt: number }>();
 
-    // Auto-wire the per-run cross-server MCP channel for the Claude CLI. It hosts
+    // Auto-wire the per-run cross-server MCP channel for supported CLIs. It hosts
     // two things: the `servers.*` tools (used when the project has associated
     // servers) AND the `permissions.approve` tool that backs
     // `--permission-prompt-tool` — the interactive approval gate that replaced
@@ -475,7 +440,8 @@ export const agentService = {
     // (not just ones with associated servers); without it the CLI has no channel
     // to ask the user before a mutating action and would fail safe to deny.
     // Needs the panel origin + a cross-scoped token (both minted in the
-    // controller). Other providers use API-mode tools / manual MCP.
+    // controller). Codex uses its isolated conversation config; Claude/Minimax
+    // use a per-run MCP file. All share the conversation-scoped team tools.
     //
     // OJO con la URL: el CLI corre EN EL TARGET, así que el origen tiene que ser
     // alcanzable desde allí. `panelOrigin` es el del navegador (dominio público)
@@ -491,7 +457,7 @@ export const agentService = {
         ? await resolveCrossChannelOrigin(runExecutor, panelOrigin)
         : panelOrigin;
     const crossServerMcp =
-      (provider.id === "claude" || provider.id === "minimax") && provider.mode === "cli" && crossChannelOrigin && crossMcpToken
+      supportsCliCrossChannel(provider) && crossChannelOrigin && crossMcpToken
         ? { url: `${crossChannelOrigin}/api/ai/mcp/cross`, token: crossMcpToken }
         : undefined;
 
@@ -592,22 +558,6 @@ export const agentService = {
           })
         : provider.run(effectiveMessages, { ...baseRunOpts, effort: runEffort });
     for await (const ev of eventStream) {
-      // A leader run forced from CLI to API can hit a dead/quota-less key the
-      // CLI never uses (it runs on the subscription). Make the failure
-      // actionable instead of a bare 4xx: the user must either fund the key or
-      // move the leader to a provider whose team flow works.
-      if (forcedApiForLeader && ev.type === "error" && /\b(401|402|429)\b|quota|api key/i.test(ev.message)) {
-        yield {
-          type: "error",
-          message:
-            ev.message +
-            "\n\nEste agente es LÍDER de equipo: la coordinación (team.plan/assign/collect) requiere el modo API, " +
-            `así que este turno se ejecutó por API aunque "${effId}" está configurado en CLI — y la API key falló. ` +
-            "Opciones: añade saldo/credenciales API válidas para ese proveedor, o cambia el proveedor del líder a " +
-            "claude (su CLI sí soporta el modo equipo vía MCP) o a un proveedor API con saldo (p. ej. gemini/deepseek).",
-        };
-        return;
-      }
       if (ev.type === "tool_use") {
         pending.set(ev.id, { tool: ev.name, startedAt: Date.now() });
       } else if (ev.type === "tool_result") {

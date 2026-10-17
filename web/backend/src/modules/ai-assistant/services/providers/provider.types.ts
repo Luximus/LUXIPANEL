@@ -109,11 +109,10 @@ export interface ProviderRunOptions {
    */
   conversationId?: string;
   /**
-   * Per-run cross-server MCP channel. Set when the project has associated
-   * servers (CLI/claude only): the CLI bridge writes a temp MCP config on the
-   * target pointing the Claude CLI at `url` with `Bearer token`, so the agent
-   * gets the `servers.*` tools to act on the associated servers. Short-lived
-   * token; config file is 0600 and removed after the run.
+   * Per-run MCP channel for Claude, Minimax and Codex. Team coordination and
+   * agent messaging are scoped to the signed conversation and current user.
+   * The bridge writes a private config on the target (per-run for Claude /
+   * Minimax, refreshed per conversation for Codex) with a short-lived token.
    */
   crossServerMcp?: { url: string; token: string };
   /**

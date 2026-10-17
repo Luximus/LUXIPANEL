@@ -57,7 +57,8 @@ describe("ensureCodexConversationHome", () => {
     } as unknown as Executor;
     await expect(ensureCodexConversationHome(executor, "test-conversation", {
       url: "https://panel.test/graph", token: "graph-fixture",
-    }, { url: "https://panel.test/modules", token: "modules-fixture" }))
+    }, { url: "https://panel.test/modules", token: "modules-fixture" },
+    { url: "https://panel.test/cross", token: "cross-fixture" }))
       .resolves.toBe("/tmp/test-codex-conversation");
   });
   it("creates the isolated config and removes inherited unscoped graph access", async () => {
@@ -65,7 +66,8 @@ describe("ensureCodexConversationHome", () => {
     const shared = path.join(directory, "codex");
     mkdirSync(shared);
     const original = 'model = "fixture"\n[mcp_servers.codebase-memory]\ncommand = "unscoped-fixture"\n[mcp_servers.luxipanel]\ntransport = "http"\nheaders = { Authorization = "Bearer stale-fixture" }\n[mcp_servers.luxipanel.env]\nOLD = "stale"\n[mcp_servers.luxipanel-modules]\nurl = "https://old.test"\n[mcp_servers.other]\nurl = "https://other.test"\n';
-    writeFileSync(path.join(shared, "config.toml"), original);
+    const inherited = original + '[mcp_servers.luxipanel-servers]\nurl = "https://stale.test"\n[mcp_servers.luxipanel-servers.http_headers]\nAuthorization = "Bearer old-cross"\n';
+    writeFileSync(path.join(shared, "config.toml"), inherited);
     writeFileSync(path.join(shared, "auth.json"), '{"fixture":true}');
     const executor = {
       async exec(command: string) {
@@ -78,7 +80,8 @@ describe("ensureCodexConversationHome", () => {
     } as unknown as Executor;
     try {
       const home = await ensureCodexConversationHome(executor, "fixture", undefined,
-        { url: "https://panel.test/modules", token: "modules-fixture" });
+        { url: "https://panel.test/modules", token: "modules-fixture" },
+        { url: "https://panel.test/cross", token: "cross-fixture" });
       const config = readFileSync(path.join(home, "config.toml"), "utf8");
       expect(config).toContain('[mcp_servers.luxipanel-modules]');
       expect(config).toContain('Bearer modules-fixture');
@@ -87,11 +90,32 @@ describe("ensureCodexConversationHome", () => {
       expect(config).not.toContain('stale-fixture');
       expect(config).not.toContain('[mcp_servers.luxipanel]');
       expect(config).toContain('https://other.test');
-      expect(readFileSync(path.join(shared, "config.toml"), "utf8")).toBe(original);
+      expect(config).toContain('[mcp_servers.luxipanel-servers]');
+      expect(config).toContain('Bearer cross-fixture');
+      expect(config).not.toContain('old-cross');
+      expect(config).not.toContain('stale.test');
+      expect(config).toContain('tool_timeout_sec = 300');
+      const parsed = JSON.parse(execFileSync("python3", ["-c", "import json,sys,tomllib; print(json.dumps(tomllib.load(open(sys.argv[1], 'rb'))))", path.join(home, "config.toml")], { encoding: "utf8" }));
+      expect(parsed.mcp_servers["luxipanel-servers"]).toMatchObject({
+        url: "https://panel.test/cross", http_headers: { Authorization: "Bearer cross-fixture" }, tool_timeout_sec: 300, required: true,
+      });
+      await ensureCodexConversationHome(executor, "fixture", undefined, undefined,
+        { url: "https://panel.test/cross", token: "renewed-cross" });
+      const refreshed = readFileSync(path.join(home, "config.toml"), "utf8");
+      expect(refreshed).toContain('Bearer renewed-cross');
+      expect(refreshed).not.toContain('cross-fixture');
+      expect(refreshed).not.toContain('[mcp_servers.luxipanel-modules]');
+      await ensureCodexConversationHome(executor, "fixture");
+      expect(readFileSync(path.join(home, "config.toml"), "utf8")).not.toContain('luxipanel-servers');
+      expect(readFileSync(path.join(shared, "config.toml"), "utf8")).toBe(inherited);
       expect(statSync(path.join(home, "config.toml")).mode & 0o777).toBe(0o600);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+  it("rejects a failed setup even if it printed a home marker", async () => {
+    const executor = { exec: async () => ({ stdout: "__LXP_CODEX_HOME__/tmp/failed-home\n", exitCode: 1 }) } as unknown as Executor;
+    await expect(ensureCodexConversationHome(executor, "failed")).rejects.toThrow("No se pudo preparar");
   });
 });
 

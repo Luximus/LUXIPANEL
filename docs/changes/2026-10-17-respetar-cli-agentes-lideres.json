@@ -1,0 +1,8 @@
+{
+  "title": "Los agentes líderes respetan el modo CLI",
+  "changes": [
+    "Los agentes líderes conservan el modo CLI seleccionado aunque exista una clave API guardada, evitando el cambio automático que podía generar consumo API inesperado.",
+    "Los líderes de Codex CLI pueden coordinar su equipo mediante el canal protegido del panel.",
+    "Codex CLI utiliza su propia sesión de acceso y deja de recibir automáticamente la clave API guardada en el panel."
+  ]
+}

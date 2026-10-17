@@ -72,10 +72,11 @@ export function buildProvider(
         (slot.cli as { model?: string } | undefined)?.model === "MiniMax-M3[1m]"
           ? "MiniMax-M3"
           : (slot.cli as { model?: string } | undefined)?.model,
-      // MiniMax CLI auth = persisted `mmx auth login`; Codex accepts the OpenAI
-      // key as an env fallback; Grok reads GROK_API_KEY (injected from config).
+      // Codex CLI uses its own login. Never inject the panel's metered API key
+      // as an implicit fallback when the user selected CLI mode.
+      // MiniMax/Grok retain their provider-specific key authentication.
       apiKey:
-        id === "minimax" || id === "codex" || id === "grok"
+        id === "minimax" || id === "grok"
           ? slot.api?.apiKey
           : undefined,
     });

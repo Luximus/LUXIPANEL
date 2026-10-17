@@ -234,8 +234,8 @@ cancel).
 
 ### CLI leaders (team tools over the per-run cross MCP channel)
 
-A **managed** CLI run (claude CLI + `panelOrigin` + `crossMcpToken`, i.e. a
-bridged session) always attaches the per-run cross MCP channel
+A CLI run using Claude, Minimax or Codex with `panelOrigin` and a signed
+`crossMcpToken` attaches the per-run cross MCP channel
 (`/api/ai/mcp/cross`, registered as `luxipanel-servers`). When that channel's
 conversation is bound to a LEADER agent, `mcp-server.service` resolves the
 `team.*` toolkit per call via `buildTeamToolsForConversation` (team-tools.ts)
@@ -249,11 +249,21 @@ with those names into the CLI leader's prompt (`cliPrompt: true` variant, no
 `team.collect` is capped at **240 s** on this channel (a tools/call blocks one
 HTTP request end-to-end; proxies cut long-idle requests) — longer work is
 delivered by the nudge, which is mode-agnostic (the drained auto turn goes
-back through the CLI bridge with session resume). Direct-SSH/standalone
-sessions (no `bridgeSessionId` → no cross token) don't get CLI team tools.
+back through the CLI bridge with session resume). Local sessions can mint the
+token without a bridge; remote targets still require their valid session.
+Without the channel, the prompt reports unavailable coordination and keeps
+the configured mode instead of switching to API.
 Live `team_task_update` events can't reach a CLI leader (its loop is the
 upstream CLI's), so in-chat progress comes from the board REST rehydration;
 the model polls with `team.status`.
+
+The leader always respects the provider's configured CLI/API mode, including
+follow-up turns. A saved API key does not authorize an automatic API fallback.
+Codex receives the team channel in its private conversation `config.toml`,
+with fresh credentials and a 300-second tool timeout. Inherited team entries
+are stripped before attaching the current channel, alongside the existing
+graph and module channels. Failed setup prevents launch. Codex CLI uses its
+own login; the panel no longer injects its saved OpenAI API key into CLI runs.
 
 ## Mensajes agente↔agente (`agents.send_message`) — destino de entrega (2026-08-25)
 

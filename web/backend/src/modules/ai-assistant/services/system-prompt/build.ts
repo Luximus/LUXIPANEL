@@ -37,6 +37,7 @@ import {
 import { graphIndexService } from "../graph-index.service.js";
 import { env } from "../../../../config/env.js";
 import { hasSudoCredential } from "../providers/cli/cli-sudo-askpass.js";
+import { supportsCliCrossChannel } from "../providers/cli/cross-channel.js";
 import { createModuleLogger } from "../../../../shared/logger/index.js";
 import { MAX_DELEGATION_DEPTH } from "../agent-targets.js";
 import type { SystemPromptBuildInput, SystemPromptBuildResult } from "./types.js";
@@ -87,6 +88,8 @@ export async function buildSystemPrompt(
   const { agent, role } = context;
   const projectId = context.projectId ?? undefined;
   const tools = [...input.tools];
+  const cliCrossChannel = supportsCliCrossChannel(provider) && Boolean(panelOrigin)
+    && Boolean(crossMcpToken) && Boolean(conversationId);
 
   // Skills/métodos activables por target (ponytail, ask-protocol, contexto de
   // proyecto…). Resuelto una vez: gatea comportamientos existentes por su
@@ -236,7 +239,7 @@ export async function buildSystemPrompt(
     graphProjects = collectGraphProjects(context.contextProjects.filter(p => !agent || agent.graphProjectIds?.includes(p.id!)));
     const associatedServers = agent ? agent.servers ?? [] : context.ancestors.flatMap(p => p.servers ?? []);
     if (associatedServers.length) systemPrompt += buildAssociatedServersBlock(associatedServers, provider.mode === "cli",
-      provider.id === "claude" && provider.mode === "cli" && Boolean(panelOrigin) && Boolean(crossMcpToken));
+      cliCrossChannel);
 
     // Proyecto vinculado a un módulo del marketplace → bloque marketplace
     // (reglas del manifest/SDK + guion de asks + tools module-dev.*).
@@ -436,10 +439,7 @@ export async function buildSystemPrompt(
     }
   } else if (
     agent &&
-    provider.mode === "cli" &&
-    provider.id === "claude" &&
-    Boolean(panelOrigin) &&
-    Boolean(crossMcpToken) &&
+    cliCrossChannel &&
     delegationDepth < MAX_DELEGATION_DEPTH &&
     conversationId &&
     executor &&
@@ -489,7 +489,7 @@ export async function buildSystemPrompt(
   } else if (agent && provider.mode === "cli" && (agent.canSpawnChats || role?.canSpawnChats)) {
     // Diagnostic: a CLI supervisor run that did NOT qualify for the team
     // block — log which sub-gate failed so a silent misconfiguration (missing
-    // cross token, ephemeral chat, non-claude CLI…) is visible in pm2 logs.
+    // cross token, ephemeral chat, unsupported CLI…) is visible in pm2 logs.
     log.warn(
       {
         agentId: agent.id,
@@ -502,6 +502,9 @@ export async function buildSystemPrompt(
       },
       "CLI supervisor run WITHOUT team block — gate failed",
     );
+    systemPrompt += "\n\nLa coordinación de equipo no está disponible en este turno CLI. " +
+      "No afirmes que has delegado ni cambies a API para resolverlo. Si la tarea necesita " +
+      "al equipo, informa de esta limitación y conserva el modo CLI seleccionado.";
   }
 
   // Canal de mensajería asíncrona (`agents.send_message`): handoff PERSISTENTE a
@@ -511,16 +514,10 @@ export async function buildSystemPrompt(
   // agente relacionado puede hacer un handoff. Va después del bloque de
   // delegación y antes del LANGUAGE OVERRIDE, dentro del prompt estable.
   //   • API → tool en el tool_use loop + bloque de prompt (nombre plano).
-  //   • CLI claude con canal cross → la tool la sirve mcp-server.service por el
+  //   • CLI compatible con canal cross → la tool la sirve mcp-server.service por el
   //     canal per-run (tools/list la descubre); aquí solo el bloque, con el wire
   //     name que el CLI debe invocar.
   if (agent && executor && delegationDepth < MAX_DELEGATION_DEPTH) {
-    const cliCrossChannel =
-      provider.mode === "cli" &&
-      provider.id === "claude" &&
-      Boolean(panelOrigin) &&
-      Boolean(crossMcpToken) &&
-      Boolean(conversationId);
     if (provider.mode === "api" || cliCrossChannel) {
       try {
         const allAgents = executor ? await scopedAgents(executor, await agentsRepository.list(), context.projectId, user) : [];

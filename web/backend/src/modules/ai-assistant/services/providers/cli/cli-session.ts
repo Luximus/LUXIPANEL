@@ -39,6 +39,7 @@ export async function ensureCodexConversationHome(
   conversationId: string,
   graphMcp?: { url: string; token: string },
   modulesMcp?: { url: string; token: string },
+  crossServerMcp?: { url: string; token: string },
 ): Promise<string> {
   const fragment = safePathFragment(conversationId);
   // Graph MCP wiring on the PER-CONVERSATION config copy (never the shared one):
@@ -63,7 +64,11 @@ export async function ensureCodexConversationHome(
   const moduleAppend = modulesMcp
     ? `printf '\\n[mcp_servers.luxipanel-modules]\\nurl = %s\\nhttp_headers = { Authorization = %s }\\ntool_timeout_sec = 300\\n' ${quoteArg(JSON.stringify(modulesMcp.url))} ${quoteArg(JSON.stringify(`Bearer ${modulesMcp.token}`))} >> "$conv/config.toml"`
     : ": no-module-channel";
+  const crossAppend = crossServerMcp
+    ? `printf '\\n[mcp_servers.luxipanel-servers]\\nurl = %s\\nhttp_headers = { Authorization = %s }\\ntool_timeout_sec = 300\\nrequired = true\\n' ${quoteArg(JSON.stringify(crossServerMcp.url))} ${quoteArg(JSON.stringify(`Bearer ${crossServerMcp.token}`))} >> "$conv/config.toml"`
+    : ": no-team-channel";
   const script = [
+    "set -e",
     'shared="$HOME/.codex"',
     `conv="$shared/luxipanel/homes/${fragment}"`,
     'mkdir -p "$conv" "$conv/sessions" "$conv/log" "$conv/shell_snapshots" "$conv/memories" "$conv/tmp" "$conv/.tmp"',
@@ -77,9 +82,10 @@ export async function ensureCodexConversationHome(
     // Materialize a symlinked config copy before mutating it (mutating through
     // the link would edit the SHARED config).
     'if [ -L "$conv/config.toml" ]; then cp -L "$conv/config.toml" "$conv/config.toml.real" 2>/dev/null && mv "$conv/config.toml.real" "$conv/config.toml"; fi',
-    'if [ -f "$conv/config.toml" ]; then awk \'BEGIN{skip=0} /^\\[/{skip=($0 ~ /^\\[mcp_servers\\.(codebase[-_]?(memory|graph)|luxipanel(-modules)?)(\\]|\\.)/)} !skip{print}\' "$conv/config.toml" > "$conv/config.toml.tmp" 2>/dev/null && mv "$conv/config.toml.tmp" "$conv/config.toml"; fi',
+    'if [ -f "$conv/config.toml" ]; then awk \'BEGIN{skip=0} /^\\[/{skip=($0 ~ /^\\[mcp_servers\\.(codebase[-_]?(memory|graph)|luxipanel(-(modules|servers))?)(\\]|\\.)/)} !skip{print}\' "$conv/config.toml" > "$conv/config.toml.tmp" 2>/dev/null; mv "$conv/config.toml.tmp" "$conv/config.toml"; fi',
     graphAppend,
     moduleAppend,
+    crossAppend,
     'chmod 600 "$conv/auth.json" "$conv/config.toml" 2>/dev/null || true',
     'printf "__LXP_CODEX_HOME__%s\\n" "$conv"',
   ].join("\n");
@@ -89,7 +95,7 @@ export async function ensureCodexConversationHome(
     .find((line) => line.startsWith("__LXP_CODEX_HOME__"))
     ?.slice("__LXP_CODEX_HOME__".length)
     .trim();
-  if (!marker || !marker.startsWith("/")) {
+  if (r.exitCode !== 0 || !marker || !marker.startsWith("/")) {
     throw new Error("No se pudo preparar un CODEX_HOME absoluto para la conversación.");
   }
   return marker;

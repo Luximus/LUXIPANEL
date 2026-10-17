@@ -178,11 +178,14 @@ export function makeCliBridgeProvider(args: {
         // codebase-graph MCP depending on whether THIS run has an indexed
         // project (also strips the inherited entry so codex can't auto-index
         // the ephemeral /tmp cwds into the graph).
-        codexHome = await ensureCodexConversationHome(executor, conversationId, opts.graphMcp, opts.modulesMcp).catch((err) => {
+        codexHome = await ensureCodexConversationHome(executor, conversationId, opts.graphMcp, opts.modulesMcp, opts.crossServerMcp).catch((err) => {
           log.warn({ conversationId, err: (err as Error).message }, "codex conversation home setup failed");
           return undefined;
         });
-        if (opts.modulesMcp && !codexHome) { yield { type: "error", message: "No se pudo preparar el canal protegido de módulos" }; return; }
+        if ((opts.modulesMcp || opts.crossServerMcp) && !codexHome) {
+          yield { type: "error", message: "No se pudo preparar el canal protegido de la sesión CLI. La ejecución no llegó a iniciarse; no se cambió a API." };
+          return;
+        }
       }
 
       // ── Upstream-session overflow guard (claude resume) ────────────────────
@@ -409,19 +412,6 @@ export function makeCliBridgeProvider(args: {
 
         // Non-interactive sudo (askpass) so the CLI can run privileged steps.
         const sudo = await setupSudoAskpass(executor, jobId);
-        let codexApiKeyEnv = "";
-        let codexApiKeyCleanup = "";
-        if (args.id === "codex" && args.apiKey) {
-          const keyFile = `/tmp/${jobId}-openai-key`;
-          try {
-            await executor.writeFile(keyFile, Buffer.from(args.apiKey, "utf8"));
-            await executor.exec(`chmod 600 ${quoteArg(keyFile)}`, { timeoutMs: 5_000 }).catch(() => undefined);
-            codexApiKeyEnv = `export OPENAI_API_KEY="$(cat ${quoteArg(keyFile)})";`;
-            codexApiKeyCleanup = `rm -f ${quoteArg(keyFile)}`;
-          } catch (err) {
-            log.warn({ jobId, err: (err as Error).message }, "codex API key fallback setup failed");
-          }
-        }
         const codexEnv = args.id === "codex" && codexHome
           ? `export CODEX_HOME=${quoteArg(codexHome)};`
           : "";
@@ -577,8 +567,8 @@ export function makeCliBridgeProvider(args: {
           // transport error mid-decision instead of coming back allowed/denied.
           // `export …;` — un prefijo `VAR=x` solo aplica al comando que le sigue
           // (aquí, el `export PATH` del askpass), así que NO llegaba al CLI.
-          envPrefix: [adapter.env, graphMcpAttached ? "export MCP_TOOL_TIMEOUT=180000;" : "", opts.modulesMcp ? "export MCP_TOOL_TIMEOUT=300000;" : "", codexEnv, codexApiKeyEnv, grokEnv, minimaxEnv, sudo?.envPrefix ?? ""].filter(Boolean).join(" "),
-          cleanup: [adapter.cleanup, sudo?.cleanup, codexApiKeyCleanup, codexAdapterCleanup, grokApiKeyCleanup, mcpCleanup, systemFileCleanup, steerCleanup].filter(Boolean).join("; "),
+          envPrefix: [adapter.env, graphMcpAttached ? "export MCP_TOOL_TIMEOUT=180000;" : "", opts.modulesMcp ? "export MCP_TOOL_TIMEOUT=300000;" : "", codexEnv, grokEnv, minimaxEnv, sudo?.envPrefix ?? ""].filter(Boolean).join(" "),
+          cleanup: [adapter.cleanup, sudo?.cleanup, codexAdapterCleanup, grokApiKeyCleanup, mcpCleanup, systemFileCleanup, steerCleanup].filter(Boolean).join("; "),
         });
         log.info({ provider: args.id, jobId, cwd: cwd ?? null, resume: attemptResume, sudo: Boolean(sudo) }, "CLI background job launching");
 
