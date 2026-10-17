@@ -162,7 +162,7 @@ describe.each([false, true])("normal/agent chat: agent=%s", withAgent => {
     expect(visibleText(host)).not.toContain(notice.text);
     if (history) expect(visibleText(host)).toContain(response.text);
     expect(details.querySelector("summary")!.textContent).toContain("Consola del servidor");
-    if (!cli) expect(visibleText(host)).not.toContain("team.assign");
+    if (!cli) expect(visibleText(host)).toContain("team.assign");
     if (cli) expect(host.textContent).not.toContain("Salida anidada no duplicada");
     await toggle(details);
     expect(details.open).toBe(true);
@@ -191,7 +191,7 @@ describe.each([false, true])("normal/agent chat: agent=%s", withAgent => {
   });
 });
 
-it.each([null, agent])("groups API narration and tools into one compact execution surface: %j", async currentAgent => {
+it.each([null, agent])("shows real API activity above one console and keeps streamed text intact: %j", async currentAgent => {
   const response = { ...reply(false, false), text: "Reviso el estado del proyecto.\n\nAhora compruebo los cambios." };
   const saved = JSON.stringify(response);
   await renderThread({ mode: "api", turns: [user, response], agent: currentAgent });
@@ -200,11 +200,14 @@ it.each([null, agent])("groups API narration and tools into one compact executio
   expect(group.dataset.executionSource).toBe("API");
   expect(consoleSection.querySelectorAll(':scope > details')).toHaveLength(1);
   expect(group.open).toBe(false);
-  expect(host.querySelector('[data-message-section="reasoning"] .thought-line__step-text')?.textContent).toBe("Reviso el estado del proyecto.");
-  expect(host.querySelector('[data-message-section="reasoning"] .thought-line__text[data-active]')?.textContent).toBe("Ahora compruebo los cambios.");
-  expect(host.querySelector('[data-message-section="answer"]')).toBeNull();
-  expect(visibleText(host)).not.toContain("files.read");
-  expect(visibleText(host)).not.toContain("team.assign");
+  const activity = host.querySelector('[data-message-section="reasoning"]')!;
+  expect([...activity.querySelectorAll(".thought-line__step-text")].map(el => el.textContent)).toEqual(["files.read", "team.assign"]);
+  expect(activity.querySelector('[data-entry-id="read"]')?.getAttribute("data-status")).toBe("done");
+  expect(activity.querySelector('[data-entry-id="assign"]')?.getAttribute("data-status")).toBe("running");
+  expect(activity.textContent).not.toContain("Reviso el estado");
+  expect([...host.querySelectorAll('[data-message-section="answer"] p')].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+  expect(visibleText(host)).toContain("files.read");
+  expect(visibleText(host)).toContain("team.assign");
   expect(visibleText(host)).not.toContain("Lectura conservada");
   await toggle(group);
   expect(visibleText(host)).toContain("files.read");
@@ -218,7 +221,9 @@ it.each([null, agent])("groups API narration and tools into one compact executio
   await renderThread({ mode: "api", turns: [user, { ...response, pending: false, text: "Comprobación terminada con resultado conservado." }], agent: currentAgent });
   expect(group.open).toBe(false);
   expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain("Comprobación terminada con resultado conservado.");
-  expect(visibleText(host)).not.toContain("files.read");
+  expect(visibleText(host)).toContain("files.read");
+  expect(activity.querySelector('[data-entry-id="assign"]')?.getAttribute("data-status")).toBe("unconfirmed");
+  expect(group.querySelector("summary")?.textContent).toContain("Resultado no confirmado");
   expect(JSON.stringify(response)).toBe(saved);
 });
 
@@ -244,7 +249,7 @@ it("keeps ordinary API text and the no-live-console preference readable", async 
   const text = "Respuesta de texto conservada.";
   await renderThread({ mode: "api", turns: [user, { role: "assistant", text, tools: [], pending: true }], agent });
   expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain(text);
-  bubblePrefs.set("codex", { terminalLive: false });
+  await act(async () => bubblePrefs.set("codex", { terminalLive: false }));
   await renderThread({ mode: "api", turns: [user, { ...reply(false, false), text }], agent });
   expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain(text);
   expect(host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')?.open).toBe(false);
@@ -416,4 +421,122 @@ it("retains a lone generated notice until any reply or task exists", async () =>
   await renderThread({ mode: "api", turns: [notice, reply(false, true)] });
   expect(host.querySelectorAll("[data-team-notice]")).toHaveLength(1);
   expect(host.querySelectorAll('[data-message-section="console"]')).toHaveLength(1);
+});
+
+it("keeps confirmed API calls expanded under Listo and the full trace behind one history control", async () => {
+  const response: ChatTurn = {
+    role: "assistant", text: "Respuesta final intacta.\n\nSegundo párrafo conservado.", tools: [
+      { id: "plan", name: "team.plan", input: { title: "Dato original del plan" }, result: { success: true, output: "Plan original completo" } },
+      { id: "assign-one", name: "team.assign", input: { agentId: "worker-one" }, result: { success: true, output: "Asignación uno confirmada" } },
+      { id: "assign-two", name: "team.assign", input: { agentId: "worker-two" }, result: { success: true, output: "Asignación dos confirmada" } },
+      { id: "collect", name: "team.collect", input: {}, result: { success: true, output: "Resultado completo recogido" } },
+    ],
+  };
+  await renderThread({ mode: "api", turns: [user, response] });
+  const activity = host.querySelector('[data-message-section="reasoning"]')!;
+  const header = activity.querySelector<HTMLButtonElement>("button")!;
+  const entries = [...activity.querySelectorAll<HTMLElement>("[data-entry-id]")];
+  expect(entries.map(entry => [entry.dataset.entryId, entry.querySelector(".thought-line__step-text")?.textContent, entry.dataset.status]))
+    .toEqual([["plan", "team.plan", "done"], ["assign-one", "team.assign", "done"], ["assign-two", "team.assign", "done"], ["collect", "team.collect", "done"]]);
+  expect(activity.querySelector(".thought-line__text[data-active]")?.textContent).toBe("Listo");
+  expect(header.getAttribute("aria-expanded")).toBe("true");
+  header.focus();
+  expect(document.activeElement).toBe(header);
+  expect(document.getElementById(header.getAttribute("aria-controls")!)).toBe(activity.querySelector(".thought-line__trace"));
+  expect(visibleText(activity)).not.toContain("Dato original del plan");
+  expect(visibleText(activity)).not.toContain("Respuesta final");
+  const consoleSection = host.querySelector('[data-message-section="console"]')!;
+  const history = consoleSection.querySelector<HTMLDetailsElement>(":scope > details")!;
+  expect(consoleSection.querySelectorAll(":scope > details")).toHaveLength(1);
+  expect(history.open).toBe(false);
+  const summary = history.querySelector<HTMLElement>("summary")!;
+  expect(summary.textContent).toContain("API");
+  expect(summary.textContent).toContain("Consola del servidor");
+  expect(summary.textContent).toContain("Ver historial");
+  expect(summary.textContent).not.toContain("CLI");
+  expect(summary.getAttribute("aria-expanded")).toBe("false");
+  expect(visibleText(host)).not.toContain("Plan original completo");
+  await toggle(history);
+  expect(summary.getAttribute("aria-expanded")).toBe("true");
+  await toggle(history.querySelector("details")!);
+  expect(visibleText(host)).toContain("Dato original del plan");
+  expect(visibleText(host)).toContain("Plan original completo");
+  await toggle(history);
+  expect(summary.getAttribute("aria-expanded")).toBe("false");
+  expect(visibleText(host)).not.toContain("Plan original completo");
+  await act(async () => header.click());
+  expect(header.getAttribute("aria-expanded")).toBe("false");
+  await act(async () => header.click());
+  expect(header.getAttribute("aria-expanded")).toBe("true");
+  expect([...host.querySelectorAll('[data-message-section="answer"] p')].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+});
+
+it.each([
+  { name: "confirmed", pending: false, result: { success: true, output: "Salida completa" }, expected: "done", label: "Ver historial" },
+  { name: "failure while streaming", pending: true, result: { success: false, output: "Fallo de la llamada" }, expected: "failed", label: "Error" },
+  { name: "failure at rest", pending: false, result: { success: false, output: "Fallo de la llamada" }, expected: "failed", label: "Error" },
+  { name: "running", pending: true, expected: "running", label: "ejecutando" },
+  { name: "no result at rest", pending: false, expected: "unconfirmed", label: "Resultado no confirmado" },
+  { name: "interrupted", pending: true, interrupted: true, expected: "unconfirmed", label: "Resultado no confirmado" },
+  { name: "stopped without result", pending: false, stopped: true, expected: "unconfirmed", label: "detenido" },
+  { name: "turn error without result", pending: false, error: "Fallo del turno", expected: "unconfirmed", label: "Error" },
+  { name: "permission", pending: true, permission: { id: "permission", tool: "files.write", title: "Permiso conservado" }, expected: "waiting", label: "En espera" },
+  { name: "question", pending: true, ask: [{ id: "question", type: "text" as const, text: "Pregunta conservada" }], expected: "waiting", label: "En espera" },
+])("shows the actual API state with history closed: $name", async scenario => {
+  const response: ChatTurn = {
+    role: "assistant", text: "Texto conservado", pending: scenario.pending,
+    interrupted: scenario.interrupted, stopped: scenario.stopped, error: scenario.error,
+    permission: scenario.permission, ask: scenario.ask,
+    tools: [{ id: "actual-call", name: "files.write", input: { path: "example.txt" }, result: scenario.result }],
+  };
+  await renderThread({ mode: "api", turns: [user, response] });
+  const activity = host.querySelector('[data-message-section="reasoning"]')!;
+  const entry = activity.querySelector('[data-entry-id="actual-call"]')!;
+  expect(entry.getAttribute("data-status")).toBe(scenario.expected);
+  expect(entry.querySelector("svg")).not.toBeNull();
+  expect(visibleText(activity)).toContain("files.write");
+  const history = host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')!;
+  expect(history.open).toBe(false);
+  expect(history.querySelector("summary")?.textContent).toContain(scenario.label);
+  // Collapsing the compact list must still leave warnings in the console bar.
+  await act(async () => activity.querySelector<HTMLButtonElement>("button")!.click());
+  expect(visibleText(host)).toContain(scenario.label);
+  if (scenario.permission) expect(visibleText(host)).toContain(scenario.permission.title);
+  if (scenario.ask) expect(visibleText(host)).toContain(scenario.ask[0]!.text);
+  await toggle(history);
+  const tool = history.querySelector<HTMLDetailsElement>("details")!;
+  expect(tool.querySelector("summary")?.textContent).toContain(
+    scenario.expected === "unconfirmed" ? "Resultado no confirmado"
+      : scenario.expected === "waiting" ? "En espera" : "files.write",
+  );
+  await toggle(tool);
+  expect(visibleText(host)).toContain("example.txt");
+  if (scenario.result) expect(visibleText(host)).toContain(scenario.result.output);
+});
+
+it("does not treat a successful assignment as completion of the worker", async () => {
+  const response: ChatTurn = { role: "assistant", text: "Asignación enviada", tools: [
+    { id: "assign", name: "team.assign", input: {}, result: { success: true, output: "Asignación confirmada" } },
+  ] };
+  await renderThread({ mode: "api", turns: [user, notice, response], tasks: [task()] });
+  const activity = host.querySelector('[data-message-section="reasoning"]')!;
+  expect(activity.querySelector('[data-entry-id="assign"]')?.getAttribute("data-status")).toBe("done");
+  expect(activity.querySelector(".thought-line__text[data-active]")?.textContent).toContain("ejecutando");
+  const history = boardDisclosure();
+  expect(history.querySelector("summary")?.textContent).toContain("ejecutando");
+  await toggle(history);
+  expect(visibleText(host)).toContain(task().title);
+  expect(host.querySelectorAll("[data-team-notice]")).toHaveLength(1);
+  await renderThread({ mode: "api", turns: [user, notice, response], tasks: [task({ status: "done" })] });
+  expect(boardDisclosure()).toBe(history);
+  expect(history.open).toBe(true);
+  expect(activity.querySelector(".thought-line__text[data-active]")?.textContent).toBe("Listo");
+});
+
+it("does not reconstruct API calls from historical answer paragraphs", async () => {
+  const response: ChatTurn = { role: "assistant", text: "team.plan\n\nteam.assign\n\nRespuesta guardada", tools: [] };
+  await renderThread({ mode: "api", turns: [user, response] });
+  expect(host.querySelector("[data-entry-id]")).toBeNull();
+  expect(host.querySelector('[data-execution-source="API"]')).toBeNull();
+  expect([...host.querySelectorAll('[data-message-section="answer"] p')].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
 });

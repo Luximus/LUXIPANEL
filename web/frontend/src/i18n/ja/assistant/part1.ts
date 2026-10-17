@@ -251,6 +251,8 @@ const assistantPart1 = {
     "processTitle": "プロセス",
     "noFinalAnswer": "エージェントは最終回答なしで終了しました。プロセスブロックを確認してください。",
     "toolTrace": {
+      "waiting": "待機中",
+      "unconfirmed": "結果未確認",
       "running": "実行中…",
       "stopped": "停止",
       "viewHistory": "履歴を表示",

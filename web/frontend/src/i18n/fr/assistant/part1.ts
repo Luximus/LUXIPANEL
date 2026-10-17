@@ -251,6 +251,8 @@ const assistantPart1 = {
     "processTitle": "Processus",
     "noFinalAnswer": "L'agent a terminé sans réponse finale ; consultez le bloc de processus.",
     "toolTrace": {
+      "waiting": "En attente",
+      "unconfirmed": "Résultat non confirmé",
       "running": "en cours…",
       "stopped": "arrêté",
       "viewHistory": "Voir l'historique",

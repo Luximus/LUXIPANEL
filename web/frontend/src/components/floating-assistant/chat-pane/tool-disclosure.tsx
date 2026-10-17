@@ -4,7 +4,7 @@
  * Tool-trace disclosures + reloaded CLI history console + CLI job timer.
  * Extracted verbatim from the original `ChatPane.tsx`.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { useAssistantI18n } from "../i18n";
 import { humanizeToolName } from "../assistant-api";
@@ -13,6 +13,8 @@ import { type ChatTurn } from "../chat-engine";
 import { type ToolTraceLite } from "./types";
 import CallChip, { type CallChipIcon } from "./reactbits/CallChip";
 import { ChevronRight } from "lucide-react";
+import { apiToolStatus } from "./api-activity";
+import type { ThoughtLineEntryStatus } from "./reactbits/ThoughtLine";
 
 type ExecutionContentProps = { children?: ReactNode; attention?: ReactNode };
 
@@ -30,12 +32,17 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
     : null;
   const human = uiMode === "simple" ? humanizeToolName(t.name) : null;
   const running = !t.result && !turn.stopped;
-  const status = !t.result ? (turn.stopped ? "idle" : "running") : t.result.success ? "done" : "error";
-  const statusLabel = !t.result ? (turn.stopped ? tt.stopped : tt.running) : t.result.success ? tt.done : tt.withWarnings;
+  const apiStatus = isCliTool ? undefined : apiToolStatus(t, turn);
+  const status = apiStatus
+    ? apiStatus === "failed" ? "error" : apiStatus === "unconfirmed" || apiStatus === "waiting" || apiStatus === "stopped" ? "idle" : apiStatus
+    : !t.result ? (turn.stopped ? "idle" : "running") : t.result.success ? "done" : "error";
+  const statusLabel = apiStatus === "failed" ? tt.error : apiStatus === "unconfirmed" ? tt.unconfirmed : apiStatus === "waiting" ? tt.waiting
+    : !t.result ? (turn.stopped ? tt.stopped : tt.running) : t.result.success ? tt.done : tt.withWarnings;
   const icon: CallChipIcon = /search|find|query/i.test(t.name) ? "search" : /edit|write|patch/i.test(t.name) ? "edit" : /file|read/i.test(t.name) ? "file" : "terminal";
 
   // Keep manual toggles intact as the run changes state.
   const [consoleOpen, setConsoleOpen] = useState(false);
+  const toolContentId = useId();
 
   // CLI console: ONE box only — the console container itself is the
   // collapsible (the <details> carries the terminal chrome, mirroring
@@ -73,18 +80,18 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
   }
 
   return (
-    <details className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md bg-background/50 border border-border/60"}`}>
-      <summary className={`cursor-pointer list-none [&::-webkit-details-marker]:hidden py-2 flex flex-wrap items-center gap-1.5 ${embedded ? "px-3" : "px-2"}`}>
+    <details open={consoleOpen} onToggle={e => setConsoleOpen(e.currentTarget.open)} className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md bg-background/50 border border-border/60"}`}>
+      <summary aria-expanded={consoleOpen} aria-controls={toolContentId} className={`min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden py-2 flex flex-wrap items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${embedded ? "px-3" : "px-2"}`}>
         {/* Estado del bloque: EN EJECUCIÓN → spinner (mismo `ti-loader-2 animate-spin`
             que el modo avanzado, también en modo simple para que el comando/tool en
             curso siempre indique que está corriendo); detenido → stop; done → check;
             error → x. La etiqueta humanizada se conserva aparte (ver abajo). */}
         <CallChip icon={icon} name={human ? human.label : t.name} argument={statusLabel} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
         {/* Disclosure arrow pinned to the right corner; rotates when expanded. */}
-        <i className="ti ti-chevron-right ml-auto text-muted-foreground transition-transform group-open:rotate-90" aria-hidden></i>
+        <ChevronRight className={`ml-auto size-3 text-muted-foreground transition-transform duration-200 ${consoleOpen ? "rotate-90" : ""}`} aria-hidden />
         {attention}
       </summary>
-      <div className="border-t border-border/60 px-2 py-1 space-y-1">
+      <div id={toolContentId} className="border-t border-border/60 px-2 py-1 space-y-1">
         <pre className="bg-card/60 rounded p-1.5 text-[11px] overflow-x-auto">{JSON.stringify(t.input, null, 2)}</pre>
         {t.result && <pre className="bg-card/60 rounded p-1.5 text-[11px] overflow-x-auto max-h-60">{t.result.output}</pre>}
       </div>
@@ -147,18 +154,26 @@ export function CliHistoryView({ text, embedded = false, children, attention }: 
 }
 
 /** Standard execution disclosure when a task/notice precedes its tool trace. */
-export function ExecutionDisclosure({ children, attention, running = false, failed = false, stopped = false, source }: ExecutionContentProps & { running?: boolean; failed?: boolean; stopped?: boolean; source?: "API" }) {
+export function ExecutionDisclosure({ children, attention, running = false, failed = false, stopped = false, source, activityStatus }: ExecutionContentProps & { running?: boolean; failed?: boolean; stopped?: boolean; source?: "API"; activityStatus?: ThoughtLineEntryStatus }) {
   const tt = useAssistantI18n().chatTab.toolTrace;
-  const statusLabel = failed ? tt.error : stopped ? tt.stopped : running ? tt.running : tt.done;
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  const state = activityStatus ?? (failed ? "failed" : stopped ? "stopped" : running ? "running" : "done");
+  const statusLabel = state === "failed" ? tt.error : state === "stopped" ? tt.stopped
+    : state === "unconfirmed" ? tt.unconfirmed : state === "waiting" ? tt.waiting
+      : state === "running" ? tt.running : tt.done;
   return (
-    <details data-execution-source={source} className="group bg-background/20 text-xs">
-      <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-1.5 px-3 py-2 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <CallChip icon="terminal" name={source ?? tt.viewHistory} argument={source ? tt.serverConsole : statusLabel} status={failed ? "error" : stopped ? "idle" : running ? "running" : "done"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
-        {source && <span className="ml-auto text-[10px] opacity-80">{statusLabel}</span>}
-        <ChevronRight className={`${source ? "" : "ml-auto "}size-3 transition-transform group-open:rotate-90`} aria-hidden />
+    <details data-execution-source={source} open={open} onToggle={event => setOpen(event.currentTarget.open)} className="group bg-background/20 text-xs">
+      <summary aria-expanded={open} aria-controls={contentId} className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-1.5 px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <CallChip icon="terminal" name={source ?? tt.viewHistory} argument={source ? tt.serverConsole : statusLabel} status={state === "failed" ? "error" : state === "running" ? "running" : state === "done" ? "done" : "idle"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
+        {source && <span className="ml-auto flex flex-wrap items-center gap-1.5 text-[10px]">
+          {state !== "done" && <span role="status">{statusLabel}</span>}
+          <span>{tt.viewHistory}</span>
+        </span>}
+        <ChevronRight className={`${source ? "" : "ml-auto "}size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`} aria-hidden />
         {attention}
       </summary>
-      {children}
+      <div id={contentId}>{children}</div>
     </details>
   );
 }

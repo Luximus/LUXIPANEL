@@ -136,3 +136,15 @@ it("keeps a standalone generated notice readable inside standard execution detai
   expect(html).not.toContain("<details open");
   expect(html).not.toContain("data-assistant-message");
 });
+
+it("retains the completed CLI output as a fallback answer without API activity", () => {
+  const turn: ChatTurn = { role: "assistant", text: "", tools: [
+    { id: "cli", name: "codex.cli", input: {}, terminal: "Registro conservado", result: { success: true, output: "Respuesta final de respaldo" } },
+  ] };
+  const html = renderToStaticMarkup(createElement(TurnView, { turn, provider: "codex" }));
+  expect(html).toContain("Respuesta final de respaldo");
+  expect(html).toContain('data-message-section="answer"');
+  expect(html).toContain("Consola del servidor");
+  expect(html).not.toContain("data-entry-id");
+  expect(html).not.toContain('data-execution-source="API"');
+});

@@ -249,6 +249,8 @@ const assistantPart1 = {
     "processTitle": "प्रक्रिया",
     "noFinalAnswer": "एजेंट ने अंतिम उत्तर के बिना समाप्त किया; प्रक्रिया ब्लॉक देखें।",
     "toolTrace": {
+      "waiting": "प्रतीक्षा में",
+      "unconfirmed": "परिणाम की पुष्टि नहीं हुई",
       "running": "चल रहा है…",
       "stopped": "रुका हुआ",
       "viewHistory": "इतिहास देखें",

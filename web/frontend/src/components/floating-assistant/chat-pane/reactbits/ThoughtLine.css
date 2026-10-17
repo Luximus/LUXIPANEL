@@ -308,3 +308,40 @@
     animation-duration: 2.4s;
   }
 }
+
+/* Chat disclosure targets stay usable by keyboard and touch. */
+.lxp-agent-progress .thought-line__head[data-toggle] {
+  min-height: 44px;
+  min-width: 44px;
+  align-items: center;
+}
+
+.lxp-agent-progress .thought-line__head:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* Explicit API entries keep readable labels and actual states at rest. */
+.lxp-agent-progress[data-entries] {
+  --tl-done: 1;
+  color: var(--foreground);
+}
+
+.lxp-agent-progress[data-entries] .thought-line__mark {
+  opacity: 1;
+  margin-top: 0.1em;
+}
+
+.lxp-agent-progress[data-entries] .thought-line__step-text {
+  flex: 1;
+}
+
+.lxp-agent-progress .thought-line__step-status {
+  max-width: 50%;
+  overflow-wrap: anywhere;
+}
+
+.lxp-agent-progress .thought-line__step[data-status="failed"] .thought-line__mark {
+  color: var(--destructive);
+}

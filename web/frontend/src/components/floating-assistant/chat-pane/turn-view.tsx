@@ -32,7 +32,8 @@ import { AskView, PermissionView } from "./ask-permission";
 import { TranslatingShimmer, PendingDot, CopyButton } from "./message-bits";
 import { SpeakButton } from "./voice-controls";
 import { VoiceMessage } from "./voice-message";
-import ThoughtLine from "./reactbits/ThoughtLine";
+import ThoughtLine, { type ThoughtLineEntryStatus } from "./reactbits/ThoughtLine";
+import { apiExecutionStatus, apiToolStatus } from "./api-activity";
 import StatusMark, { type StatusMarkStatus } from "./reactbits/StatusMark";
 
 /** Collapsible list of files the agent touched. Modified/created files open in
@@ -159,12 +160,17 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // log lives in the collapsed console above, so just show the summary here.
   const summaryText = turn.text || cliFallbackAnswer;
   const groupApiTools = !isUser && !hasCliConsole && visibleTools.length > 0;
-  // Public updates from an API run belong in the same compact progress view
-  // as CLI narration. Keep the original answer intact for completion/reload,
-  // and never move a question, permission, interrupted result or error away.
-  const showApiProgress = groupApiTools && showTerminal && turn.pending && !turn.stopped && !turn.error
-    && !turn.interrupted && !turn.permission && !turn.ask?.length;
-  const answerText = showApiProgress ? "" : summaryText;
+  // API text events do not distinguish commentary from the final answer.
+  // Keep that text intact; activity comes only from actual tool traces.
+  const answerText = summaryText;
+  const apiEntries = groupApiTools
+    ? visibleTools.map(tool => ({ id: tool.id, label: tool.name, status: apiToolStatus(tool, turn) }))
+    : undefined;
+  const apiStatus = groupApiTools ? apiExecutionStatus(turn, teamTasks) : undefined;
+  const activityLabels: Record<ThoughtLineEntryStatus, string> = {
+    done: ct.toolTrace.done, failed: ct.toolTrace.error, running: ct.toolTrace.running,
+    waiting: ct.toolTrace.waiting, unconfirmed: ct.toolTrace.unconfirmed, stopped: ct.toolTrace.stopped,
+  };
   // A plan approval keeps the complete plan in the saved message. When the
   // agent supplies the requested summary + details format, show a short
   // preview and let the reader expand the exact text being approved.
@@ -198,15 +204,19 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // Console, modified files and answer share one assistant message surface.
   // Their disclosure controls and content remain separate sections inside it.
   const showWorkingIndicator = cliRunningHidden && !summaryText;
-  const turnStatus: StatusMarkStatus = turn.error ? "failed" : turn.stopped ? "cancelled" : turn.pending || turn.interrupted || turn.status ? "running" : "done";
+  const turnStatus: StatusMarkStatus = apiStatus
+    ? apiStatus === "failed" ? "failed" : apiStatus === "stopped" ? "cancelled"
+      : apiStatus === "waiting" || apiStatus === "unconfirmed" ? "pending" : apiStatus
+    : turn.error ? "failed" : turn.stopped ? "cancelled" : turn.pending || turn.interrupted || turn.status ? "running" : "done";
+  const turnStatusLabel = apiStatus ? activityLabels[apiStatus]
+    : turnStatus === "done" ? ct.toolTrace.done : turnStatus === "failed" ? ct.toolTrace.error
+      : turnStatus === "cancelled" ? ct.toolTrace.stopped : ct.toolTrace.running;
   const cliTranscript = turn.tools.filter(tool => tool.name.endsWith(".cli"))
     .map(tool => (tool.laneOrder?.length
       ? tool.laneOrder.map(id => tool.lanes?.[id]?.output ?? "").join("\n")
       : tool.terminal ?? ""))
     .join("\n") || historyLog;
-  const progressMessages = showApiProgress
-    ? summaryText.split(/\n\s*\n/).map(text => text.trim()).filter(Boolean)
-    : showTerminal ? extractCliProgress(cliTranscript, turn.pending ? "" : summaryText) : [];
+  const progressMessages = showTerminal ? extractCliProgress(cliTranscript, turn.pending ? "" : summaryText) : [];
   const thoughtSteps = turn.pending ? progressMessages.slice(0, -1) : progressMessages;
   const currentThought = turn.pending && progressMessages.length
     ? progressMessages[progressMessages.length - 1]
@@ -219,7 +229,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
     (visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog) || hasExecutionDetails);
   const hasModifiedFiles = !isUser && !!onOpenFile && showModifiedFiles && modifiedFiles.length > 0;
   const hasCliTool = turn.tools.some(tool => tool.name.endsWith(".cli"));
-  const hasThought = !isUser && (turn.pending || thoughtSteps.length > 0 || (showTerminal && (isHistoryCli || hasCliTool)));
+  const hasThought = !isUser && (turn.pending || thoughtSteps.length > 0 || (showTerminal && (groupApiTools || isHistoryCli || hasCliTool)));
   // Only render the answer bubble when it actually has content. Otherwise a live
   // run (console populated, answer not yet produced) would leave an empty box.
   const hasBubbleContent =
@@ -276,7 +286,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
               {meta.label}
             </span>
           )}
-          <span role="img" aria-label={turnStatus === "done" ? (ct.toolTrace?.done ?? "Listo") : turnStatus === "failed" ? (ct.toolTrace?.error ?? "Error") : turnStatus === "cancelled" ? (ct.toolTrace?.stopped ?? "Detenido") : (ct.toolTrace?.running ?? "Ejecutando")} className="inline-flex shrink-0" title={turnStatus === "done" ? (ct.toolTrace?.done ?? "Listo") : undefined}>
+          <span role="img" aria-label={turnStatusLabel} className="inline-flex shrink-0" title={turnStatusLabel}>
             <span aria-hidden="true"><StatusMark status={turnStatus} size={16} strokeWidth={2} strike={false} /></span>
           </span>
           <TurnMeta turn={turn} isUser={false} header />
@@ -287,14 +297,18 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
       {hasThought && (
         <div data-message-section="reasoning" className="border-b border-border/60 px-3 py-2 text-muted-foreground">
           <ThoughtLine
-            working={!!turn.pending && !turn.stopped && !turn.error}
-            label={currentThought}
-            doneLabel={turn.error ? (ct.toolTrace?.error ?? "Error") : turn.stopped ? (ct.toolTrace?.stopped ?? "Detenido") : (ct.toolTrace?.done ?? "Listo")}
+            working={apiStatus ? apiStatus === "running" : !!turn.pending && !turn.stopped && !turn.error}
+            label={apiStatus ? activityLabels[apiStatus] : currentThought}
+            doneLabel={apiStatus ? activityLabels[apiStatus] : turn.error ? ct.toolTrace.error : turn.stopped ? ct.toolTrace.stopped : ct.toolTrace.done}
             steps={thoughtSteps}
+            entries={showTerminal ? apiEntries : undefined}
+            entryStatusLabels={activityLabels}
+            collapseOnSettle={!groupApiTools}
+            settleDuration={200}
             showTimer={false}
             shimmer={false}
             fontSize={12}
-            collapsible={thoughtSteps.length > 0}
+            collapsible={(showTerminal && !!apiEntries?.length) || thoughtSteps.length > 0}
             className="lxp-agent-progress"
           />
         </div>
@@ -309,9 +323,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
             return (
               <>
                 {groupApiTools ? (
-                  <ExecutionDisclosure source="API" running={!!turn.pending}
-                    failed={!!turn.error || (!turn.pending && visibleTools.some(tool => tool.result?.success === false))}
-                    stopped={!!turn.stopped} attention={executionAttention}>
+                  <ExecutionDisclosure source="API" activityStatus={apiStatus} attention={executionAttention}>
                     <div className="divide-y divide-border/60 border-t border-border/60">
                       {visibleTools.map(t => <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded />)}
                     </div>

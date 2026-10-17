@@ -1,0 +1,9 @@
+{
+  "title": "Actividad del asistente más clara y compacta",
+  "changes": [
+    "Las herramientas API se muestran como una lista compacta de actividad, con el historial completo dentro de una única consola.",
+    "Los errores, las esperas y los resultados no confirmados se distinguen sin abrir el historial.",
+    "Las asignaciones de tareas conservan el estado del equipo y no se presentan como trabajos terminados.",
+    "Se conservan las preguntas, los permisos y la respuesta del chat, con textos de estado en los doce idiomas."
+  ]
+}

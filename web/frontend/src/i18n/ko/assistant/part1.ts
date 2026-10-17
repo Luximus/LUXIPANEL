@@ -249,6 +249,8 @@ const assistantPart1 = {
     "processTitle": "프로세스",
     "noFinalAnswer": "에이전트가 최종 답변 없이 종료되었습니다. 프로세스 블록을 확인하세요.",
     "toolTrace": {
+      "waiting": "대기 중",
+      "unconfirmed": "결과 미확인",
       "running": "실행 중…",
       "stopped": "중지됨",
       "viewHistory": "기록 보기",

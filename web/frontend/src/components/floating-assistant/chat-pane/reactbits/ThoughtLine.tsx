@@ -1,12 +1,20 @@
 'use client';
 
-import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { animate, useReducedMotion, type AnimationPlaybackControls } from 'motion/react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ArrowDown01Icon, SparklesIcon, Tick02Icon } from '@hugeicons/core-free-icons';
+import { CircleHelp, CircleX, Clock3, LoaderCircle, Square } from 'lucide-react';
 import './ThoughtLine.css';
 
 export type ThoughtLineGlyph = 'sparkle' | 'dot' | 'none' | ReactNode;
+
+export type ThoughtLineEntryStatus = 'done' | 'failed' | 'running' | 'waiting' | 'unconfirmed' | 'stopped';
+export interface ThoughtLineEntry {
+  id: string;
+  label: string;
+  status: ThoughtLineEntryStatus;
+}
 
 export interface ThoughtLineProps {
   label?: string;
@@ -14,6 +22,9 @@ export interface ThoughtLineProps {
   renderLabel?: (text: string, working: boolean) => ReactNode;
   glyph?: ThoughtLineGlyph;
   steps?: string[];
+  /** Explicit activity states; legacy CLI narration continues to use steps. */
+  entries?: ThoughtLineEntry[];
+  entryStatusLabels?: Record<ThoughtLineEntryStatus, string>;
   collapsible?: boolean;
   collapseOnSettle?: boolean;
   color?: string;
@@ -52,6 +63,8 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
   renderLabel,
   glyph = 'sparkle',
   steps = EMPTY_STEPS,
+  entries,
+  entryStatusLabels,
   collapsible = true,
   collapseOnSettle = true,
   color = 'currentColor',
@@ -76,7 +89,8 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
   const [open, setOpen] = useState(true);
   const isWorking = working && !autoSettled;
   const doneText = doneLabel || (showTimer ? 'Thought for' : 'Done thinking');
-  const hasTrace = steps.length > 0;
+  const hasTrace = (entries ?? steps).length > 0;
+  const traceId = useId();
   const depth = reduce ? Math.min(breathDepth, 0.2) : breathDepth;
   const period = reduce ? breathPeriod * 1.5 : breathPeriod;
   const trough = 1 - depth;
@@ -192,7 +206,7 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
     setAnnounce(showTimer ? `${doneText} ${spoken(dsRef.current)}` : doneText);
     latest.current.onSettle?.(dsRef.current / 10);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isWorking]);
+  }, [isWorking, doneText, showTimer]);
 
   const toggle = hasTrace && collapsible;
   const head = (
@@ -242,6 +256,7 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
     <div
       className={`thought-line${className ? ` ${className}` : ''}`}
       data-working={isWorking ? '' : undefined}
+      data-entries={entries ? '' : undefined}
       data-open={open && hasTrace ? '' : undefined}
       style={
         {
@@ -261,6 +276,7 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
           className="thought-line__head"
           data-toggle={toggle ? '' : undefined}
           aria-expanded={toggle ? open : undefined}
+          aria-controls={toggle ? traceId : undefined}
           tabIndex={toggle ? 0 : -1}
           onClick={() => {
             if (toggle) setOpen(v => !v);
@@ -272,10 +288,28 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
         <div className="thought-line__head">{head}</div>
       )}
       {hasTrace ? (
-        <div className="thought-line__trace" data-open={open ? '' : undefined} aria-hidden={!open}>
+        <div id={traceId} className="thought-line__trace" data-open={open ? '' : undefined} aria-hidden={!open}>
           <div className="thought-line__fold">
             <div className="thought-line__steps">
-              {steps.map((text, i) => {
+              {entries ? entries.map(entry => {
+                const Icon = entry.status === 'failed' ? CircleX
+                  : entry.status === 'waiting' ? Clock3
+                  : entry.status === 'unconfirmed' ? CircleHelp
+                  : entry.status === 'stopped' ? Square : LoaderCircle;
+                return (
+                  <div key={entry.id} className="thought-line__step" data-entry-id={entry.id} data-status={entry.status}>
+                    <span className="thought-line__mark" aria-hidden="true">
+                      {entry.status === 'done'
+                        ? <HugeiconsIcon icon={Tick02Icon} size="1em" strokeWidth={2.5} />
+                        : <Icon size="1em" className={entry.status === 'running' ? 'animate-spin motion-reduce:animate-none' : undefined} />}
+                    </span>
+                    <span className="thought-line__step-text">{entry.label}</span>
+                    <span className={entry.status === 'done' ? 'thought-line__sr' : 'thought-line__step-status'}>
+                      {entryStatusLabels?.[entry.status]}
+                    </span>
+                  </div>
+                );
+              }) : steps.map((text, i) => {
                 const done = !isWorking || i < steps.length - 1;
                 return (
                   <div key={`${i}-${text}`} className="thought-line__step" data-done={done ? '' : undefined}>
