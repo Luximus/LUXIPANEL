@@ -75,6 +75,7 @@ import { agentMarketService } from "./agent-market.service.js";
 import * as agentContext from "./agent-context.service.js";
 import { resolveAgentContext, admitAgentWork, effectiveAssignment, resolveConversationBinding, scopedAgents } from "./agent-context.service.js";
 import { agentAssignments } from "../models/assistant-agent.types.js";
+import { agentRolesRepository } from "../repositories/agent-roles.repository.js";
 import { hasAssignmentAdmission } from "./agent-assignment-lock.js";
 import { enqueueAgentTurn } from "./queued-turn-admission.js";
 import { graphScopeService } from "./graph-scope.service.js";
@@ -563,5 +564,117 @@ describe("post-review admission and contextual parity regressions", () => {
     state.agents.set("loose", profile({ id: "loose", projectIds: [] }));
     expect((await resolveAgentContext(executor, "a", null, user)).agent)
       .toMatchObject({ parentAgentId: null, connections: ["loose"] });
+  });
+});
+
+describe("role-read concurrency and real allowlist regressions", () => {
+  function gate() {
+    let resume!: () => void, entered!: () => void;
+    const waiting = new Promise<void>(resolve => { resume = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    return { resume, started, pause: async () => { entered(); await waiting; } };
+  }
+
+  it.each(["incorporation", "withdrawal"] as const)(
+    "rejects enqueue when %s commits while the real binding waits for its role",
+    async change => {
+      const projectId = change === "incorporation" ? null : "X";
+      state.agents.set("a", profile({ projectIds: projectId ? [projectId] : [], roleId: "base" }));
+      state.roles.set("base", { id: "base", allowedTools: ["files.list"] });
+      state.metas.push({ id: "loose", agentId: "a", projectId, messageCount: 2 });
+      state.messages.set("loose", [{ role: "user", content: "Earlier history" }, { role: "assistant", content: "Earlier reply" }]);
+      const saved = JSON.stringify({ metas: state.metas, messages: [...state.messages] });
+      const barrier = gate();
+      const readRole = agentRolesRepository.get;
+      const roleSpy = vi.spyOn(agentRolesRepository, "get").mockImplementationOnce(async roleId => {
+        await barrier.pause();
+        return readRole(roleId);
+      });
+      const queued = enqueueAgentTurn(executor, { conversationId: "loose", userText: "go", withContext: true, user });
+      const rejected = expect(queued).rejects.toMatchObject({
+        code: change === "incorporation" ? "ASSISTANT_CONTEXT_MISMATCH" : "ASSISTANT_ASSIGNMENT_REMOVED",
+        statusCode: 409,
+      });
+      try {
+        await barrier.started;
+        if (change === "incorporation") await agentMarketService.put(executor, "a", "X", {}, user);
+        else await agentMarketService.remove(executor, "a", "X", user);
+        barrier.resume();
+        await rejected;
+        expect(state.queue).toEqual([]);
+        expect(JSON.stringify({ metas: state.metas, messages: [...state.messages] })).toBe(saved);
+        expect(hasAssignmentAdmission(executor, "a", new Set(["X"]))).toBe(false);
+      } finally { barrier.resume(); await queued.catch(() => undefined); roleSpy.mockRestore(); }
+    },
+  );
+
+  it.each(["incorporation", "withdrawal"] as const)(
+    "blocks concurrent %s if admission acquires the lock before its role read",
+    async change => {
+      const projectId = change === "incorporation" ? null : "X";
+      state.agents.set("a", profile({ projectIds: projectId ? [projectId] : [], roleId: "base" }));
+      state.roles.set("base", { id: "base", allowedTools: ["files.list"] });
+      state.metas.push({ id: "loose", agentId: "a", projectId, messageCount: 2 });
+      const barrier = gate();
+      const readRole = agentRolesRepository.get;
+      const roleSpy = vi.spyOn(agentRolesRepository, "get")
+        .mockImplementationOnce(readRole) // binding completes; admission then owns the lock
+        .mockImplementationOnce(async roleId => { await barrier.pause(); return readRole(roleId); });
+      const queued = enqueueAgentTurn(executor, { conversationId: "loose", userText: "go", withContext: true, user });
+      try {
+        await barrier.started;
+        const mutation = change === "incorporation"
+          ? agentMarketService.put(executor, "a", "X", {}, user)
+          : agentMarketService.remove(executor, "a", "X", user);
+        const rejected = expect(mutation).rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_BUSY" });
+        barrier.resume();
+        await queued;
+        await rejected;
+        expect(state.queue).toHaveLength(1);
+        expect(state.queue[0]).toMatchObject({ agentId: "a", projectId });
+        expect(state.metas[0]).toMatchObject({ agentId: "a", projectId, messageCount: 2 });
+        expect(state.agents.get("a").projectIds).toEqual(projectId ? [projectId] : []);
+        expect(hasAssignmentAdmission(executor, "a", new Set(["X"]))).toBe(false);
+      } finally { barrier.resume(); await queued.catch(() => undefined); roleSpy.mockRestore(); }
+    },
+  );
+
+  it.each([
+    { local: ["files.list", "files.write", "missing.tool"], limit: ["files.list_dir", "files.write"], expected: ["files.list_dir"] },
+    { local: ["missing.tool"], limit: null, expected: [] },
+    { local: ["files.list"], limit: ["missing.tool"], expected: [] },
+    { local: null, limit: ["files.list", "missing.tool"], expected: ["files.list_dir"] },
+  ])("normalizes local roles and drops unknown tools without widening $expected", async ({ local, limit, expected }) => {
+    state.agents.set("a", profile({ roleId: "base", allowedTools: null,
+      assignments: [{ projectId: "X", status: "active", roleId: "local", allowedTools: limit }],
+    }));
+    state.roles.set("base", { id: "base", allowedTools: ["files.list", "files.read", "missing.tool"] });
+    state.roles.set("local", { id: "local", ownerId: 7, allowedTools: local });
+    const saved = JSON.stringify({ agents: [...state.agents], roles: [...state.roles] });
+    const shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "X" });
+    const admission = await admitAgentWork(executor, "a", "X", user);
+    try {
+      expect(shown.context?.effectiveConfig?.allowedTools).toEqual(expected);
+      expect(admission.agent?.allowedTools).toEqual(expected);
+      expect(JSON.stringify({ agents: [...state.agents], roles: [...state.roles] })).toBe(saved);
+    } finally { admission.release(); }
+  });
+
+  it("preserves global legacy references and exposes B only in its authorized Y roster", async () => {
+    const original = profile({ parentAgentId: "b", connections: ["b"] });
+    state.agents.set("a", original);
+    state.agents.set("b", profile({ id: "b", projectIds: ["Y"] }));
+    const saved = JSON.stringify([...state.agents]);
+    for (const projectId of ["X", "Y"]) {
+      const shown = await agentMarketService.present(executor, original, user, { contextProjectId: projectId });
+      const runtime = await resolveAgentContext(executor, "a", projectId, user);
+      const roster = await scopedAgents(executor, [...state.agents.values()], projectId, user);
+      const hierarchy = projectId === "X" ? { parentAgentId: null, connections: [] } : { parentAgentId: "b", connections: ["b"] };
+      expect(shown).toMatchObject({ parentAgentId: "b", connections: ["b"] });
+      expect(shown.context?.effectiveConfig).toMatchObject(hierarchy);
+      expect(runtime.agent).toMatchObject(hierarchy);
+      expect(roster.map(agent => agent.id).sort()).toEqual(projectId === "X" ? ["a"] : ["a", "b"]);
+    }
+    expect(JSON.stringify([...state.agents])).toBe(saved);
   });
 });
