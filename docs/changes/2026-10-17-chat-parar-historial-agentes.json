@@ -1,0 +1,9 @@
+{
+  "title": "Control de parada e historial separado por agente",
+  "changes": [
+    "El botón para parar permanece disponible durante una respuesta aunque la voz esté habilitada y el campo de mensaje esté vacío.",
+    "Los chats que continúan ejecutándose en segundo plano también muestran el control para detenerlos.",
+    "Sin un agente seleccionado se muestran únicamente los chats sin agente asignado, manteniendo la etiqueta Todos los agentes.",
+    "Cada agente conserva su propio historial, con sus búsquedas, contadores y carga de más conversaciones."
+  ]
+}

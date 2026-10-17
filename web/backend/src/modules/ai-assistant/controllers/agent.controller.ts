@@ -1,3 +1,4 @@
+import { resolveConversationBinding } from "../services/agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -188,19 +189,9 @@ async function resolveRunTarget(
     if (input.model === undefined && (!input.provider || input.provider === meta?.provider)) model = meta?.model || undefined;
   }
 
-  if (agentId) {
-    try {
-      const agent = await agentsRepository.get(agentId);
-      if (agent) {
-        // The composer sends an explicit provider for each turn. It wins even
-        // with an automatic model; absent a provider, use the agent's slot.
-        provider = resolveAgentRunProvider(input.provider, model, agent.providerId);
-      }
-    } catch (err) {
-      log.warn({ err: (err as Error).message, agentId }, "agent: failed to resolve bound agent target");
-    }
-  }
-
+  const binding = await resolveConversationBinding(executor, input);
+  projectId = binding.projectId; agentId = binding.agentId;
+  if (binding.agent) provider = resolveAgentRunProvider(input.provider, model, binding.agent.providerId);
   return { provider, model, projectId, agentId };
 }
 

@@ -27,6 +27,8 @@ import {
   sanitizePaths,
   sanitizeProjectIds,
   sanitizeProviderIds,
+  sanitizeTechnologies,
+  type AgentProjectAssignment,
 } from "../models/assistant-agent.types.js";
 import { sanitizeServers, sanitizeSnippetCategory, sanitizeSnippetTags } from "./projects.repository.js";
 import { DEFAULT_PROVIDER_ID } from "../models/assistant-config.types.js";
@@ -41,7 +43,7 @@ function store() {
   return dataStore<AssistantAgent>(undefined, MODULE, COLLECTION, { idStrategy: "uuid" });
 }
 
-type CtxFields = "projectPaths" | "servers" | "projectIds" | "graphProjectIds" | "autoCapture" | "providerIds" | "agentMode" | "skills" | "roleId" | "teamId" | "parentAgentId" | "connections" | "canSpawnChats" | "multiAgentCount" | "realtime" | "templateId" | "templateNodeKey" | "credential" | "snippetCategory" | "snippetTags";
+type CtxFields = "specialty" | "technologies" | "projectPaths" | "servers" | "projectIds" | "graphProjectIds" | "autoCapture" | "providerIds" | "agentMode" | "skills" | "roleId" | "teamId" | "parentAgentId" | "connections" | "canSpawnChats" | "multiAgentCount" | "realtime" | "templateId" | "templateNodeKey" | "credential" | "snippetCategory" | "snippetTags";
 
 /** Clamp the multi-agent copy count to a sane range (2–8); default 3. */
 function sanitizeMultiCount(v: unknown): number {
@@ -104,6 +106,8 @@ export const agentsRepository = {
 
   async create(data: CreateInput): Promise<AssistantAgent> {
     return store().create({
+        specialty: (data.specialty ?? "").trim().slice(0, 200),
+        technologies: sanitizeTechnologies(data.technologies),
         name: (data.name || "").slice(0, 120) || "Agente",
         description: (data.description || "").slice(0, 500),
         systemPrompt: (data.systemPrompt || "").slice(0, 20000),
@@ -142,8 +146,10 @@ export const agentsRepository = {
       });
   },
 
-  async update(id: string, patch: UpdateInput): Promise<AssistantAgent | null> {
+  async update(id: string, patch: UpdateInput, links?: { assignments: AgentProjectAssignment[]; projectIds: string[] }): Promise<AssistantAgent | null> {
     const clean: Partial<AssistantAgent> = {};
+    if (patch.specialty !== undefined) clean.specialty = patch.specialty.trim().slice(0, 200);
+    if (patch.technologies !== undefined) clean.technologies = sanitizeTechnologies(patch.technologies);
     if (patch.name !== undefined) clean.name = patch.name.slice(0, 120);
     if (patch.description !== undefined) clean.description = patch.description.slice(0, 500);
     if (patch.systemPrompt !== undefined) clean.systemPrompt = patch.systemPrompt.slice(0, 20000);
@@ -184,7 +190,17 @@ export const agentsRepository = {
     }
     if (patch.templateId !== undefined) clean.templateId = sanitizeAgentRef(patch.templateId) ?? "";
     if (patch.templateNodeKey !== undefined) clean.templateNodeKey = sanitizeAgentRef(patch.templateNodeKey) ?? "";
+    if (links) Object.assign(clean, links);
     return store().update(id, clean) as Promise<AssistantAgent | null>;
+  },
+
+  async updateWithAssignments(id: string, patch: UpdateInput, assignments: AgentProjectAssignment[], projectIds: string[]) {
+    return this.update(id, patch, { assignments, projectIds });
+  },
+
+  /** Internal only: service authorizes and serializes before this atomic profile update. */
+  async setAssignments(id: string, assignments: AgentProjectAssignment[], projectIds: string[]): Promise<AssistantAgent | null> {
+    return store().update(id, { assignments, projectIds });
   },
 
   async delete(id: string): Promise<boolean> {

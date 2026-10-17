@@ -5,9 +5,8 @@
  * system prompt, an allowed-tool subset, and a provider/model. Reused by the
  * chat runtime (`/api/ai/agent`) and by scheduled cron AI-jobs.
  *
- * Storage note (see agents.repository.ts): agents are PANEL-HOST instance state
- * (global across servers), not per-server — an agent is configuration (prompt +
- * tool allowlist by name + provider/model), and cron runs on the panel host.
+ * Profiles and assignments stay in the connected target's contextual sidecar.
+ * See docs/agent-market-contract.md; no implicit panel-host fallback.
  */
 
 import { PROVIDER_IDS, type AssistantProviderId } from "./assistant-config.types.js";
@@ -96,6 +95,10 @@ export interface AssistantAgentProjectRef {
 }
 
 export interface AssistantAgent {
+  specialty?: string;
+  technologies?: string[];
+  /** Explicit project links, including withdrawal markers. Legacy projectIds remain readable. */
+  assignments?: AgentProjectAssignment[];
   id?: string;
   /** Display name. */
   name: string;
@@ -332,4 +335,43 @@ export function sanitizeProjectIds(input: unknown): string[] {
     if (out.length >= 100) break;
   }
   return out;
+}
+
+/** Local context and restrictions; never another copy of the persona. */
+export interface AgentProjectAssignment {
+  projectId: string;
+  status: "active" | "removed";
+  jobTitle?: string;
+  instructions?: string;
+  roleId?: string | null;
+  allowedTools?: string[] | null;
+  canSpawnChats?: boolean | null;
+  projectPaths?: string[] | null;
+  serverIds?: string[] | null;
+  graphProjectIds?: string[] | null;
+  createdAt?: string;
+  updatedAt?: string;
+  removedAt?: string;
+}
+export type AssignmentView = AgentProjectAssignment & { source: "legacy" | "explicit" };
+export type EffectiveAssignment = AssignmentView & { inheritedFrom: string | null };
+export type AssignmentPatch = Partial<Omit<AgentProjectAssignment, "projectId" | "status" | "createdAt" | "updatedAt" | "removedAt">>;
+
+export function sanitizeTechnologies(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  return input.filter((v): v is string => typeof v === "string")
+    .map(v => v.trim().slice(0, 60)).filter(v => {
+      const key = v.toLowerCase();
+      if (!v || seen.has(key)) return false;
+      seen.add(key); return true;
+    }).slice(0, 40);
+}
+
+/** Virtual legacy adapter: reading never migrates or rewrites the store. */
+export function agentAssignments(agent: AssistantAgent): AssignmentView[] {
+  const explicit = new Map((agent.assignments ?? []).map(a => [a.projectId, a]));
+  const legacy = sanitizeProjectIds(agent.projectIds).filter(id => !explicit.has(id))
+    .map(projectId => ({ projectId, status: "active" as const, source: "legacy" as const }));
+  return [...legacy, ...[...explicit.values()].map(a => ({ ...a, source: "explicit" as const }))];
 }

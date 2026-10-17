@@ -6,6 +6,7 @@ import { useChatPane, type ChatPaneProps, type ChatPaneVM } from "./use-chat-pan
 import { chatUiState } from "../chat-ui-state";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatMain } from "./ChatMain";
+import { chatEngine } from "../chat-engine";
 
 const staged = { name: "contexto.txt", mimeType: "text/plain", dataBase64: "UVQ=" };
 const legacy = vi.hoisted(() => ({ id: "legacy", title: "Buzón antiguo", provider: "claude", projectId: null, agentId: "agent", preview: "", messageCount: 0 }));
@@ -119,6 +120,52 @@ it("does not insert an open agent mailbox or stale project rows into loose chats
 });
 
 
+it("excludes other agents and open agent metadata when viewing unassigned project history", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  let vm!: ChatPaneVM;
+  function Probe() { vm = useChatPane({ provider: "claude", mode: "api", active: true }); return createElement(ChatSidebar, { vm }); }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => { await vm.openConversation(legacy.id); });
+    await act(async () => vm.setCurrentAgentId(null));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    expect(vm.activeMeta?.id).toBe(legacy.id);
+    expect(vm.sidebarConvos).toEqual([]);
+    expect(conversationApi.list).toHaveBeenLastCalledWith("", 15, 0, undefined, undefined, false,
+      expect.objectContaining({ projectIds: ["child", "root"], summaryScope: "filtered" }));
+    const general = { ...legacy, id: "normal", title: "Consulta general", agentId: null, projectId: "child" };
+    await act(async () => vm.setConvos([legacy, general, { ...general, id: "foreign-agent", agentId: "worker" }, { ...general, id: "foreign-project", projectId: "other" }]));
+    expect(vm.sidebarConvos.map(c => c.id)).toEqual(["normal"]);
+    expect(host.querySelector('[data-selected-project-convos]')?.textContent).not.toContain(legacy.title);
+  } finally { await act(async () => root.unmount()); }
+});
+
+it("offers Stop when the open chat is still running on the server without a local stream", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const stop = vi.spyOn(chatEngine, "stop").mockImplementation(() => {});
+  let vm!: ChatPaneVM;
+  function Probe() {
+    vm = useChatPane({ provider: "claude", mode: "api", active: true });
+    return createElement(ChatMain, { vm: { ...vm, streaming: false, backgroundRunning: true }, attachmentImages: new Map() });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => { await vm.openConversation(legacy.id); });
+    const button = host.querySelector<HTMLButtonElement>('[aria-label="Stop"]');
+    expect(button).not.toBeNull();
+    expect(button!.disabled).toBe(false);
+    await act(async () => button!.click());
+    expect(stop).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledWith(vm.chatKey);
+  } finally { stop.mockRestore(); await act(async () => root.unmount()); host.remove(); }
+});
+
 it("selects a member in PromptBar, filters nested history and preserves that member for a new project chat", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: null });
@@ -180,6 +227,10 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     expect(vm.draft).toBe("Mensaje para otro proveedor");
     expect(vm.attachments).toEqual([staged]);
     expect(vm.historyAgentId).toBeUndefined();
+    expect(host.querySelector('[data-picker="agent"]')?.textContent).toContain("Todos los agentes");
+    expect(vm.sidebarConvos.every(c => !c.agentId)).toBe(true);
+    expect(conversationApi.list).toHaveBeenLastCalledWith("", 15, 0, undefined, undefined, false,
+      expect.objectContaining({ projectIds: ["child", "root"], summaryScope: "filtered" }));
     expect(host.querySelector('[data-agent-group]')).toBeNull();
     expect(host.querySelector('[data-selected-project-convos]')).not.toBeNull();
   } finally { await act(async () => root.unmount()); host.remove(); }

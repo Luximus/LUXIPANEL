@@ -1,3 +1,4 @@
+import { resolveAgentContext, scopedAgents } from "./agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -48,6 +49,7 @@ const COLLECT_MAX_WAIT_S = 1800;
 const COLLECT_TOTAL_BUDGET = 16_000;
 
 export interface TeamToolsCtx {
+  projectId?: string | null;
   agent: AssistantAgent;
   allAgents: AssistantAgent[];
   roles: AssistantRole[];
@@ -121,7 +123,9 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
     integrate: "team.integrate",
     note: "team.note",
   };
-  const subordinates = allAgents.filter((a) => a.id && a.parentAgentId === agent.id);
+  const scopeProjectId = ctx.projectId ?? (await conversationsRepository.getMeta(executor, conversationId))?.projectId ?? null;
+  const members = await scopedAgents(executor, allAgents, scopeProjectId, user);
+  const subordinates = members.filter((a) => a.id && a.parentAgentId === agent.id);
   if (subordinates.length === 0) return null;
   const byId = new Map(subordinates.map((a) => [a.id ?? "", a] as const));
   const roleById = new Map(roles.map((r) => [r.id ?? "", r] as const));
@@ -172,6 +176,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
       const targetId = typeof obj.agentId === "string" ? obj.agentId.trim() : "";
       const task = typeof obj.task === "string" ? obj.task.trim() : "";
       const wantProject = typeof obj.projectId === "string" ? obj.projectId.trim() : "";
+      if (scopeProjectId && wantProject && wantProject !== scopeProjectId) return { ok: false, output: "La tarea debe conservar el proyecto activo." };
       const planId = typeof obj.planId === "string" && obj.planId.trim() ? obj.planId.trim() : null;
       const stepIndex =
         typeof obj.stepIndex === "number" && Number.isInteger(obj.stepIndex) && obj.stepIndex >= 0
@@ -184,7 +189,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
       if (assigned >= MAX_ASSIGN_PER_RUN) return { ok: false, output: `Límite de ${MAX_ASSIGN_PER_RUN} tareas por ejecución alcanzado.` };
       let projectId: string | null = null;
       try {
-        projectId = await validateWorkerProject(executor, worker, wantProject);
+        projectId = await validateWorkerProject(executor, worker, wantProject || scopeProjectId || "", user);
       } catch (err) {
         return { ok: false, output: (err as Error).message };
       }

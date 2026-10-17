@@ -7,6 +7,7 @@ const chat = (id: string, projectId: string | null, agentId: string | null, prov
 });
 const rows = [
   ...Array.from({ length: 32 }, (_, i) => chat(`worker-${i}`, i < 16 ? "root" : "nested", "worker", i % 2 ? "codex" : "claude")),
+  ...Array.from({ length: 32 }, (_, i) => chat(`general-${i}`, i < 16 ? "root" : "nested", null, i % 2 ? "codex" : "claude")),
   chat("leader-root", "root", "leader"), chat("general", "child", null), chat("retired", "child", "retired"),
   chat("legacy", null, "worker"), chat("legacy-leader", null, "leader"), chat("loose", null, null),
   chat("unrelated", "other", "worker"), chat("other-team-mailbox", null, "other-member"),
@@ -74,14 +75,23 @@ describe("project history filtered by member", () => {
     expect(f.list.mock.calls.some(args => args[6]?.cursor === "15" && args[6]?.projectIds?.includes("nested"))).toBe(true);
   });
 
-  it("keeps general, retired and all current members when the member filter is cleared", async () => {
-    const f = fixture(), history = f.create({ agentId: undefined, legacyAgentIds: ["worker", "leader"] });
+  it.each(["", "general-", "retired"])("keeps only unassigned project chats, counts and pages when no member is selected for search %j", async query => {
+    const f = fixture(), history = f.create({ agentId: undefined, legacyAgentIds: ["worker", "leader"], query });
     await history.first();
+    await history.group("child");
     while (f.state().hasMore) await history.next();
-    const ids = f.state().items.map(row => row.id);
-    expect(ids).toEqual(expect.arrayContaining(["leader-root", "general", "retired", "legacy", "legacy-leader"]));
-    expect(ids).not.toEqual(expect.arrayContaining(["other-team-mailbox"]));
-    expect(ids).not.toContain("loose");
+    const expected = rows.filter(row => !!row.projectId && ["root", "child", "nested"].includes(row.projectId) && !row.agentId && row.title.includes(query));
+    expect(f.state().items.map(row => row.id).sort()).toEqual(expected.map(row => row.id).sort());
+    expect(f.state().summary?.agents).toEqual(expected.length ? { none: expected.length } : {});
+    for (const args of f.list.mock.calls) {
+      expect(args[5]).toBe(false);
+      expect(args[6]?.projectIds).not.toContain("none");
+      expect(args[6]).toMatchObject({ summaryScope: "filtered" });
+      expect(args[6]?.agentId).toBeUndefined();
+      expect(args[6]?.agentIds).toBeUndefined();
+    }
+    if (expected.length > 15) expect(f.list.mock.calls.some(args => args[6]?.cursor)).toBe(true);
+    history.cancel();
   });
 
   it("applies search to root, nested and legacy pages and excludes legacy when ownership is ambiguous", async () => {

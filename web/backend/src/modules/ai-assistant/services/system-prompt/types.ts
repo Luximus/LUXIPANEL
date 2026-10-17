@@ -30,6 +30,7 @@ export type RunAgent = (
 /** Everything the prompt assembly consumes — resolved by `agentService.run`
  *  BEFORE the prompt is built (config, provider, agent/role, tool set…). */
 export interface SystemPromptBuildInput {
+  context?: import("../agent-context.service.js").AgentContext;
   /** Per-request executor scope (may be null/absent on ephemeral runs). */
   executor: Executor | null | undefined;
   /** Logged-in user — forwarded to the delegation/team tool handlers. */

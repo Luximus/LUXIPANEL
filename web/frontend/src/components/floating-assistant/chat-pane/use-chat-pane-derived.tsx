@@ -357,17 +357,19 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   const selectedRoot = rootProjectId(currentProjectId, projectById);
   const historyProjectIds = selectedRoot ? [...projectScopeIds(selectedRoot, projects)].sort().join(",") : "none";
   const historyAgentId = projectTeam ? currentAgentId ?? undefined : undefined;
-  const includeLegacy = !!projectTeam && projects.filter(p => !p.parentId && p.teamId === projectTeam.teamId).length === 1;
-  const legacyAgentIds = includeLegacy ? projectTeamAgents.filter(a => !historyAgentId || a.id === historyAgentId).map(a => a.id!).sort().join(",") : "";
+  const includeLegacy = !!historyAgentId && !!projectTeam && projects.filter(p => !p.parentId && p.teamId === projectTeam.teamId).length === 1;
+  const legacyAgentIds = includeLegacy ? projectTeamAgents.filter(a => a.id === historyAgentId).map(a => a.id!).join(",") : "";
   const historyKey = JSON.stringify([catalogScope, search.trim(), historyProjectIds, historyAgentId, legacyAgentIds, agentsLoaded]);
   const [historyState, setHistoryState] = useState({ key: "", data: emptyProjectHistory() });
   const historyData = historyState.key === historyKey ? historyState.data : emptyProjectHistory();
   // Hide previous-scope rows immediately, even before the next request starts.
   const sidebarConvos = useMemo(() => {
-    const rows = historyState.key === historyKey ? (selectedRoot ? convos : convos.filter(isLooseConversation)) : [];
-    const activeInScope = activeMeta && (activeMeta.projectId ? historyProjectIds.split(",").includes(activeMeta.projectId)
-      : selectedRoot ? includeLegacy && legacyAgentIds.split(",").includes(activeMeta.agentId ?? "") : isLooseConversation(activeMeta));
-    return historyState.key === historyKey && historyState.data.initialized && !search.trim() && activeInScope && (!historyAgentId || activeMeta.agentId === historyAgentId) && !rows.some(c => c.id === activeMeta.id)
+    const inScope = (chat: ConversationMeta) => (chat.agentId ?? null) === (historyAgentId ?? null)
+      && (chat.projectId ? historyProjectIds.split(",").includes(chat.projectId)
+        : selectedRoot ? includeLegacy && legacyAgentIds.split(",").includes(chat.agentId ?? "") : isLooseConversation(chat));
+    const rows = historyState.key === historyKey ? convos.filter(inScope) : [];
+    const activeInScope = activeMeta && inScope(activeMeta);
+    return historyState.key === historyKey && historyState.data.initialized && !search.trim() && activeInScope && !rows.some(c => c.id === activeMeta.id)
       ? [activeMeta, ...rows] : rows;
   }, [historyState, historyKey, convos, activeMeta, historyProjectIds, selectedRoot, includeLegacy, legacyAgentIds, search, historyAgentId]);
   const historySummary = historyData.summary;

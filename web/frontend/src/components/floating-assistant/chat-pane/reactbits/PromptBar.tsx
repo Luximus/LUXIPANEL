@@ -837,7 +837,8 @@ const PromptBar: React.FC<PromptBarProps> = ({
   ) : null;
 
   const showDictateInSend = !!onDictate && (listening || transcribing || (!busy && !canSend));
-  const sendButton = realtime && (realtime.active || !canSend) ? (
+  // An idle voice feature must not hide Stop during a text/API/CLI run.
+  const sendButton = realtime && (realtime.active || (!busy && !canSend)) ? (
     <button type="button" className="prompt-bar__send" data-armed=""
       aria-label={realtime.active ? "Terminar voz en tiempo real" : "Iniciar voz en tiempo real"}
       aria-pressed={realtime.active} aria-busy={realtime.phase === "connecting" || realtime.phase === "closing"}

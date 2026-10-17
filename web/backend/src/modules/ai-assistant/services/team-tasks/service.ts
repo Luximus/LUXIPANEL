@@ -1,3 +1,4 @@
+import { admitAgentWork } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -167,6 +168,11 @@ export const teamTasksService = {
 
   /** Spawn a worker chat AND anchor a TeamTask on the board. */
   async assignTask(input: AssignTaskInput): Promise<TeamTask> {
+    const admission = await admitAgentWork(input.executor, input.worker.id, input.projectId, input.user);
+    try { return await this.assignAdmittedTask({ ...input, projectId: admission.projectId }); }
+    finally { admission.release(); }
+  },
+  async assignAdmittedTask(input: AssignTaskInput): Promise<TeamTask> {
     const { executor, user, userId, leaderConversationId, leaderAgentId, worker, title, task, projectId, planId, stepIndex, depth, runAgent, verifyCommands, budgetTokens } = input;
     // Origen del panel para el canal MCP del worker: el explícito del caller o,
     // en su defecto, el meta del LÍDER (cada run vivo lo persiste ahí). Sin

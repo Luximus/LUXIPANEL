@@ -4,6 +4,29 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import PromptBar from "./PromptBar";
 
+it.each([
+  { value: "", mobileLayout: false }, { value: "borrador pendiente", mobileLayout: false },
+  { value: "", mobileLayout: true }, { value: "borrador pendiente", mobileLayout: true },
+])("keeps Stop available during a run with idle realtime voice ($mobileLayout, $value)", async ({ value, mobileLayout }) => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const onStop = vi.fn(), toggle = vi.fn();
+  const props = { value, mobileLayout, onStop, realtime: { active: false, toggle }, models: [], efforts: [] };
+  try {
+    await act(async () => root.render(createElement(PromptBar, { ...props, busy: true })));
+    const stop = host.querySelector<HTMLButtonElement>('[aria-label="Stop"]');
+    expect(stop).not.toBeNull();
+    expect(stop!.disabled).toBe(false);
+    expect(host.querySelector('[aria-label="Iniciar voz en tiempo real"]')).toBeNull();
+    await act(async () => stop!.click());
+    expect(onStop).toHaveBeenCalledOnce();
+    expect(toggle).not.toHaveBeenCalled();
+    await act(async () => root.render(createElement(PromptBar, { ...props, value: "", busy: false })));
+    expect(host.querySelector('[aria-label="Stop"]')).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Iniciar voz en tiempo real"]')!.click());
+    expect(toggle).toHaveBeenCalledOnce();
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
 it("keeps the live microphone in the same slot and rejects Enter and queue with a draft", async () => {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const onSend = vi.fn(), onQueue = vi.fn(), toggle = vi.fn();

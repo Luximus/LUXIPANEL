@@ -38,6 +38,7 @@ const DELEGATE_OUTPUT_MAX_CHARS = 12_000;
  */
 export function buildDelegateTool(ctx: {
   agent: AssistantAgent;
+  projectId?: string | null;
   allAgents: AssistantAgent[];
   executor: Executor | null | undefined;
   user: SessionUser | undefined;
@@ -105,6 +106,7 @@ export function buildDelegateTool(ctx: {
           user,
           ...(userId ? { userId } : {}),
           agentId: targetId,
+          projectId: ctx.projectId ?? undefined,
           withContext: false,
           delegationDepth: depth + 1,
           ...(config.defaultChatEffort ? { effort: config.defaultChatEffort } : {}),
@@ -135,6 +137,7 @@ export function buildDelegateTool(ctx: {
  */
 export function buildSpawnChatsTool(ctx: {
   agent: AssistantAgent;
+  projectId?: string | null;
   allAgents: AssistantAgent[];
   executor: Executor | null | undefined;
   user: SessionUser | undefined;
@@ -177,6 +180,7 @@ export function buildSpawnChatsTool(ctx: {
       const targetId = typeof obj.agentId === "string" ? obj.agentId.trim() : "";
       const task = typeof obj.task === "string" ? obj.task.trim() : "";
       const wantProject = typeof obj.projectId === "string" ? obj.projectId.trim() : "";
+      if (ctx.projectId && wantProject && wantProject !== ctx.projectId) return { ok: false, output: "La delegación debe conservar el proyecto activo." };
       if (!targetId || !allowed.has(targetId)) return { ok: false, output: `Agente "${targetId}" no es un subordinado de este agente.` };
       if (!task) return { ok: false, output: "Falta la tarea (campo 'task')." };
       if (depth >= MAX_DELEGATION_DEPTH) return { ok: false, output: "Límite de profundidad alcanzado; no se pueden crear más chats en esta cadena." };
@@ -186,7 +190,7 @@ export function buildSpawnChatsTool(ctx: {
       // (attached parents + all descendants). No project / no match → loose.
       let projectId: string | null = null;
       try {
-        projectId = await validateWorkerProject(executor, worker, wantProject);
+        projectId = await validateWorkerProject(executor, worker, wantProject || ctx.projectId || "", user);
       } catch (err) {
         return { ok: false, output: (err as Error).message };
       }

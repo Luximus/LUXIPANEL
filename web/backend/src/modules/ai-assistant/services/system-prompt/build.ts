@@ -1,3 +1,4 @@
+import { resolveAgentContext, scopedAgents, intersectPaths, assignmentError } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -85,6 +86,7 @@ export async function buildSystemPrompt(
   } = input;
   // Run-scoped tools are appended to a COPY of the caller's set (returned in
   // the result) so the input array is never mutated.
+  const context = input.context ?? await resolveAgentContext(executor, input.agent?.id, projectId, user);
   const tools = [...input.tools];
 
   // Skills/métodos activables por target (ponytail, ask-protocol, contexto de
@@ -202,7 +204,7 @@ export async function buildSystemPrompt(
   // tree, agent). Doubles as the FILE-ACCESS JAIL allowlist for the run when
   // non-empty: the file tools may only touch paths under these.
   const jailPaths: string[] = [];
-  if (cwdOverride) {
+  if (cwdOverride && !context.projectId) {
     cwd = cwdOverride;
     jailPaths.push(cwdOverride);
     systemPrompt += `\n\n## Proyecto\nDirectorio de trabajo: ${cwdOverride}\nTrabaja sobre el proyecto ubicado en esa ruta.`;
@@ -212,103 +214,30 @@ export async function buildSystemPrompt(
   let graphProjects: { name: string; path: string }[] = [];
   let graphMcp: { command: string; projects: string[] } | undefined;
   if (projectId) {
-    try {
-      const project = await projectsRepository.get(executor, projectId);
-      if (project) {
-        if (project.path) { cwd = project.path; jailPaths.push(project.path); }
-        // Load all projects once so we can resolve the FULL ancestor chain AND
-        // the direct children without N SSH round-trips. Best-effort: on failure
-        // the leaf project's own context (already loaded above) still applies.
-        let allProjects: AssistantProject[] = [];
-        try {
-          allProjects = await projectsRepository.list(executor);
-        } catch (err) {
-          log.warn({ err, projectId }, "Failed to list projects for hierarchy");
-        }
-        const byId = new Map<string, AssistantProject>();
-        for (const p of allProjects) if (p.id) byId.set(p.id, p);
-        // Full ancestor chain (root → immediate parent), mirroring the frontend
-        // breadcrumb. A nested project inherits EVERY ancestor's context, not
-        // only its direct parent: e.g. LUXIPANEL → PLATAFORMA → "Módulo X" all
-        // apply, each refined by the next, with the leaf winning on conflicts.
-        const ancestors: AssistantProject[] = [];
-        {
-          const seenIds = new Set<string>(project.id ? [project.id] : []);
-          let pid = project.parentId ?? null;
-          while (pid && !seenIds.has(pid)) {
-            seenIds.add(pid);
-            const anc = byId.get(pid);
-            if (!anc) break;
-            ancestors.unshift(anc); // root ends up first
-            pid = anc.parentId ?? null;
-          }
-        }
-        // Inherit instructions (root → parent) + file-jail paths from the chain.
-        // Each ancestor block is capped: a deep tree with long instructions
-        // otherwise multiplies the stable prompt (and re-bills the cache prefix
-        // whenever ANY ancestor is edited).
-        for (const anc of ancestors) {
-          if (anc.instructions.trim()) {
-            systemPrompt += `\n\n## Contexto del proyecto padre "${anc.title}"\n${capText(anc.instructions, PROJECT_ANCESTOR_INSTRUCTIONS_MAX)}`;
-          }
-          if (anc.path) jailPaths.push(anc.path);
-        }
-        // Inherit per-project skills from the whole chain (root first → leaf last,
-        // so the nearest project wins on conflicts).
-        const mergedSkills: AssistantSkillsMap = {};
-        for (const anc of ancestors) Object.assign(mergedSkills, anc.skills ?? {});
-        if (project.skills) Object.assign(mergedSkills, project.skills);
-        if (Object.keys(mergedSkills).length) projectSkillsOverride = mergedSkills;
-        if (project.instructions.trim()) {
-          systemPrompt =
-            `${systemPrompt}\n\n## Contexto del proyecto "${project.title}"\n${capText(project.instructions, PROJECT_LEAF_INSTRUCTIONS_MAX)}` +
-            (project.path ? `\n\nDirectorio de trabajo: ${project.path}` : "");
-        }
-        // Child projects of THIS project: list them by title+path (so the chat
-        // knows they exist and can reach their files via the jail), WITHOUT
-        // inlining their full instructions — that made the prompt grow linearly
-        // with the subtree. The agent can read a subproject's vault/notes on
-        // demand when a task actually lands there.
-        const children = allProjects.filter((p) => p.parentId === project.id);
-        if (children.length) {
-          const lines = children.map((c) => `- ${c.title}${c.path ? ` · ${c.path}` : ""}`);
-          systemPrompt +=
-            `\n\n## Subproyectos de "${project.title}"\n` +
-            lines.join("\n") +
-            "\nSi una tarea cae en un subproyecto, consulta su detalle bajo demanda (vault/notas/archivos) en vez de asumirlo.";
-        }
-        for (const child of children) {
-          if (child.path) jailPaths.push(child.path);
-        }
-        // Grafo de código: todo proyecto del árbol (hoja + ancestros + hijos)
-        // con `graphIndex` listo se anuncia al agente (bloque + MCP más abajo).
-        graphProjects = collectGraphProjects([project, ...ancestors, ...children]);
-        // Associated server connections (merge the whole ancestor chain + leaf,
-        // dedup by id; nearer projects win): tell every chat in this project
-        // which OTHER servers it may act on, and how (the servers.* tools). The
-        // agent runs its shell on the connected server; these tools reach the
-        // associated ones via direct SSH from the single vault (ownership
-        // re-checked per call). See servers-agent-capability.ts.
-        let associatedServers: AssistantProjectServer[] = project.servers ?? [];
-        for (const anc of [...ancestors].reverse()) {
-          associatedServers = mergeProjectServers(associatedServers, anc.servers);
-        }
-        if (associatedServers.length > 0) {
-          // The cross-server MCP channel is attached only for the Claude CLI on
-          // a managed session (panelOrigin + token present). Tell the agent the
-          // truth about whether servers.* will be loaded.
-          const channelAttached =
-            provider.id === "claude" && provider.mode === "cli" && Boolean(panelOrigin) && Boolean(crossMcpToken);
-          systemPrompt += buildAssociatedServersBlock(
-            associatedServers,
-            provider.mode === "cli",
-            channelAttached,
-          );
-        }
-      }
-    } catch (err) {
-      log.warn({ err, projectId }, "Failed to load project context");
+    const project = context.ancestors.at(-1)!;
+    const ancestors = context.ancestors.slice(0, -1);
+    const scopedPaths = agent ? agent.projectPaths ?? [] : context.contextProjects.map(p => p.path).filter(Boolean);
+    jailPaths.push(...scopedPaths);
+    cwd = project.path && intersectPaths([project.path], scopedPaths).includes(project.path) ? project.path : scopedPaths[0];
+    if (cwdOverride && !intersectPaths([cwdOverride], scopedPaths).includes(cwdOverride)) {
+      throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "El directorio solicitado está fuera del proyecto activo.", 403);
     }
+    const mergedSkills: AssistantSkillsMap = {};
+    for (const anc of ancestors) {
+      if (anc.instructions.trim()) systemPrompt += `\n\n## Contexto del proyecto padre "${anc.title}"\n${capText(anc.instructions, PROJECT_ANCESTOR_INSTRUCTIONS_MAX)}`;
+      Object.assign(mergedSkills, anc.skills ?? {});
+    }
+    Object.assign(mergedSkills, project.skills ?? {});
+    projectSkillsOverride = mergedSkills;
+    systemPrompt += `\n\n## Contexto del proyecto "${project.title}"\n${capText(project.instructions, PROJECT_LEAF_INSTRUCTIONS_MAX)}`;
+    if (project.profile) systemPrompt += "\nPerfil del proyecto: " + project.profile;
+    if (project.technologies?.length) systemPrompt += "\nTecnologías declaradas: " + project.technologies.join(", ");
+    const children = context.contextProjects.filter(p => p.id !== projectId);
+    if (children.length) systemPrompt += "\n\n## Subproyectos autorizados\n" + children.map(c => `- ${c.title}${c.path ? " · " + c.path : ""}`).join("\n");
+    graphProjects = collectGraphProjects(context.contextProjects.filter(p => !agent || agent.graphProjectIds?.includes(p.id!)));
+    const associatedServers = agent ? agent.servers ?? [] : context.ancestors.flatMap(p => p.servers ?? []);
+    if (associatedServers.length) systemPrompt += buildAssociatedServersBlock(associatedServers, provider.mode === "cli",
+      provider.id === "claude" && provider.mode === "cli" && Boolean(panelOrigin) && Boolean(crossMcpToken));
 
     // Proyecto vinculado a un módulo del marketplace → bloque marketplace
     // (reglas del manifest/SDK + guion de asks + tools module-dev.*).
@@ -376,88 +305,19 @@ export async function buildSystemPrompt(
       "El panel guarda y publica los cambios de LUXIPANEL automáticamente al terminar correctamente. No publiques ni despliegues desde esta copia; las compilaciones se serializan por servidor.";
   }
 
-  // Custom-agent context: attached PARENT projects + ALL their child/related
-  // projects (instructions/path/servers), extra working directories, and
-  // associated servers — merged into the prompt. The agent sees the full
-  // project tree under each attached parent, not just the parent itself.
-  if (agent) {
-    let agentServers: AssistantProjectServer[] = agent.servers ?? [];
-    const agentPaths = [...(agent.projectPaths ?? [])];
-    const agentGraphIds = [...new Set(agent.graphProjectIds ?? [])];
-    if ((agent.projectIds ?? []).length > 0 || agentGraphIds.length > 0) {
-      // Load the whole project set once so we can walk each attached parent's
-      // descendants (children, grandchildren) via a parentId index.
-      const allProjects = await projectsRepository.list(executor).catch(() => []);
-      const byId = new Map(allProjects.map((p) => [p.id, p] as const));
-      const childrenOf = new Map<string, typeof allProjects>();
-      for (const p of allProjects) {
-        if (!p.parentId) continue;
-        const arr = childrenOf.get(p.parentId) ?? [];
-        arr.push(p);
-        childrenOf.set(p.parentId, arr);
-      }
-      // Candidatos a grafo del agente: proyectos visitados del árbol adjunto +
-      // los proyectos de sus índices seleccionados (graphProjectIds).
-      const graphCandidates: AssistantProject[] = [];
-      // BFS from each attached parent over its descendants, deduped. Only the
-      // DIRECTLY attached projects get their instructions inlined (capped);
-      // descendants are listed by title+path — inlining a whole subtree made
-      // the stable prompt grow linearly with the tree.
-      const seen = new Set<string>();
-      const queue = [...new Set(agent.projectIds ?? [])];
-      const descendantLines: string[] = [];
-      while (queue.length > 0) {
-        const pid = queue.shift()!;
-        if (!pid || seen.has(pid)) continue;
-        seen.add(pid);
-        const proj = pid === undefined ? undefined : byId.get(pid) ?? (await projectsRepository.get(executor, pid).catch(() => null));
-        if (!proj) continue;
-        graphCandidates.push(proj);
-        const isAttached = (agent.projectIds ?? []).includes(pid);
-        if (isAttached && proj.instructions?.trim()) {
-          systemPrompt += `\n\n## Contexto del proyecto adjunto "${proj.title}"\n${capText(proj.instructions, PROJECT_ANCESTOR_INSTRUCTIONS_MAX)}`;
-        } else if (!isAttached) {
-          descendantLines.push(`- ${proj.title}${proj.path ? ` · ${proj.path}` : ""}`);
-        }
-        if (proj.path && !agentPaths.includes(proj.path)) agentPaths.push(proj.path);
-        if (proj.servers?.length) agentServers = mergeProjectServers(agentServers, proj.servers);
-        // Enqueue this project's children so the whole subtree is included.
-        for (const child of (proj.id ? childrenOf.get(proj.id) : undefined) ?? []) if (child.id && !seen.has(child.id)) queue.push(child.id);
-      }
-      if (descendantLines.length) {
-        systemPrompt +=
-          "\n\n## Subproyectos relacionados\n" +
-          descendantLines.join("\n") +
-          "\nSi una tarea cae en uno de ellos, consulta su detalle bajo demanda (vault/notas/archivos).";
-      }
-      // Índices de grafo seleccionados explícitamente en el editor del agente
-      // (pueden apuntar a proyectos FUERA del árbol adjunto).
-      for (const gid of agentGraphIds) {
-        if (seen.has(gid)) continue;
-        const proj = byId.get(gid) ?? (await projectsRepository.get(executor, gid).catch(() => null));
-        if (proj) graphCandidates.push(proj);
-      }
-      // Unión con los grafos del proyecto del chat, dedupe por nombre de grafo.
-      for (const g of collectGraphProjects(graphCandidates)) {
-        if (!graphProjects.some((x) => x.name === g.name)) graphProjects.push(g);
-      }
-    }
-    if (agentPaths.length > 0) {
-      if (!cwd) cwd = agentPaths[0];
-      jailPaths.push(...agentPaths);
-      systemPrompt +=
-        "\n\n## Directorios de trabajo del agente\n" +
-        agentPaths.map((p) => `- ${p}`).join("\n") +
-        `\nTrabaja sobre estos directorios; el directorio activo inicial es ${cwd}.\n` +
-        "IMPORTANTE: solo puedes consultar y modificar archivos DENTRO de estas rutas (y sus subcarpetas).";
-    }
-    if (agentServers.length > 0) {
-      const channelAttached =
-        provider.id === "claude" && provider.mode === "cli" && Boolean(panelOrigin) && Boolean(crossMcpToken);
-      systemPrompt += buildAssociatedServersBlock(agentServers, provider.mode === "cli", channelAttached);
-    }
+  // Unassigned profiles retain their explicit standalone paths/servers.
+  // Project runs already resolved a single assignment; never union projectIds.
+  if (agent && !context.projectId) {
+    const paths = agent.projectPaths ?? [];
+    jailPaths.push(...paths);
+    cwd ??= paths[0];
+    if (agent.servers?.length) systemPrompt += buildAssociatedServersBlock(agent.servers, provider.mode === "cli", Boolean(crossMcpToken));
   }
-
+  if (jailPaths.length) {
+    systemPrompt += "\n\n## Directorios de trabajo del agente\n" +
+      [...new Set(jailPaths)].map(p => "- " + p).join("\n") +
+      "\nRespeta estas rutas. Los controles del panel no constituyen aislamiento del sistema operativo del CLI.";
+  }
   // Grafo de código — bloque en el prompt ESTABLE (determinista por proyecto/
   // agente + target: el probe está cacheado, así que el prefijo cacheable no
   // varía entre turnos) y resolución del MCP para el bridge. Opera sobre la
@@ -514,9 +374,9 @@ export async function buildSystemPrompt(
   // exchange information at run time. CLI mode is excluded (no MCP tool loop).
   if (agent && provider.mode === "api" && delegationDepth < MAX_DELEGATION_DEPTH) {
     try {
-      const allAgents = await agentsRepository.list();
+      const allAgents = executor ? await scopedAgents(executor, await agentsRepository.list(), context.projectId, user) : [];
       const built = buildDelegateTool({
-        agent, allAgents, executor, user, userId, depth: delegationDepth, signal, runAgent,
+        agent, allAgents, executor, user, userId, depth: delegationDepth, signal, runAgent, projectId: context.projectId,
         ...(forcedCwd ? { forcedCwd } : {}),
         approvalModeOverride: approvalMode,
       });
@@ -539,7 +399,7 @@ export async function buildSystemPrompt(
       // se anuncia en el prompt — `team.assign` la reemplaza con tablero,
       // recolección y aislamiento. No añadir bloques de prompt nuevos para ella.
       if (agent.canSpawnChats || role?.canSpawnChats) {
-        const spawn = buildSpawnChatsTool({ agent, allAgents, executor, user, userId, depth: delegationDepth, runAgent, ...(panelOrigin ? { panelOrigin } : {}) });
+        const spawn = buildSpawnChatsTool({ agent, allAgents, executor, user, userId, depth: delegationDepth, runAgent, projectId: context.projectId, ...(panelOrigin ? { panelOrigin } : {}) });
         if (spawn) {
           tools.push(spawn.tool);
         }
@@ -561,6 +421,7 @@ export async function buildSystemPrompt(
             depth: delegationDepth,
             maxDepth: MAX_DELEGATION_DEPTH,
             conversationId,
+            projectId: context.projectId,
             ...(panelOrigin ? { panelOrigin } : {}),
             signal,
             runAgent,
@@ -591,7 +452,7 @@ export async function buildSystemPrompt(
     // only inject the roster + coordination protocol, with the MCP WIRE
     // names the CLI must call. Tools built here are discarded.
     try {
-      const allAgents = await agentsRepository.list();
+      const allAgents = executor ? await scopedAgents(executor, await agentsRepository.list(), context.projectId, user) : [];
       const roles = await agentRolesRepository.list().catch(() => [] as AssistantRole[]);
       const team = await buildTeamTools({
         agent,
@@ -603,6 +464,7 @@ export async function buildSystemPrompt(
         depth: delegationDepth,
         maxDepth: MAX_DELEGATION_DEPTH,
         conversationId,
+        projectId: context.projectId,
         ...(panelOrigin ? { panelOrigin } : {}),
         signal,
         runAgent,
@@ -662,7 +524,7 @@ export async function buildSystemPrompt(
       Boolean(conversationId);
     if (provider.mode === "api" || cliCrossChannel) {
       try {
-        const allAgents = await agentsRepository.list();
+        const allAgents = executor ? await scopedAgents(executor, await agentsRepository.list(), context.projectId, user) : [];
         const built = buildSendMessageTool({
           agent,
           allAgents,

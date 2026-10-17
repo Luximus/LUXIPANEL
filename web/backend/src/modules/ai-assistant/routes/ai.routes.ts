@@ -188,6 +188,9 @@ protectedRouter.delete("/projects/:id/graph-index", graphIndexController.disable
 protectedRouter.get("/agents", agentsController.list);
 protectedRouter.post("/agents/suggest", agentsController.suggest);
 protectedRouter.post("/agents/propose-from-folder", agentsController.proposeFromFolder);
+protectedRouter.get("/agents/:id/assignments", agentsController.assignments);
+protectedRouter.put("/agents/:id/assignments/:projectId", agentsController.putAssignment);
+protectedRouter.delete("/agents/:id/assignments/:projectId", agentsController.removeAssignment);
 protectedRouter.get("/agents/:id", agentsController.get);
 protectedRouter.post("/agents", agentsController.create);
 protectedRouter.put("/agents/:id", agentsController.update);

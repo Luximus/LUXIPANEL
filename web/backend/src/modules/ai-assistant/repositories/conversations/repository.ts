@@ -45,6 +45,11 @@ import { pageConversations } from "./list-pages.js";
 const log = createModuleLogger("assistant-conversations");
 
 export const conversationsRepository = {
+  /** Complete metadata for admission/withdrawal checks; no pagination or repair side effects. */
+  async listActivity(executor: Executor | null | undefined) {
+    return listMetaDocs(executor);
+  },
+
   /**
    * Every conversation id this (server, user) owns — no paging, no self-heal.
    *

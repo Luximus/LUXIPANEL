@@ -18,7 +18,6 @@ import { z } from "zod";
 import type { Request, Response } from "express";
 import type { SessionUser } from "../../../shared/types/index.js";
 import { asyncHandler } from "../../../shared/types/index.js";
-import { errMessage } from "../../../shared/utils/err-message.js";
 import { zodIssues } from "../../../shared/validators/index.js";
 import { avatarConfigSchema, serverSchema, skillsSchema } from "./shared-schemas.js";
 import { assertOwner } from "./ownership.js";
@@ -27,10 +26,13 @@ import { ValidationError, AppError } from "../../../shared/errors/index.js";
 import { assistantNotFound } from "./not-found-i18n.js";
 import { apiModuleMessage } from "../../../shared/i18n/module-messages.js";
 import { aiOutputLanguage } from "../../../shared/i18n/ai-output-language.js";
+import { agentMarketService, assertAssignmentIdle } from "../services/agent-market.service.js";
+import { assertProjectAccess, effectiveAssignment } from "../services/agent-context.service.js";
+import { withAssignmentLock } from "../services/agent-assignment-lock.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentTeamsRepository } from "../repositories/agent-teams.repository.js";
 import { PROVIDER_IDS } from "../models/assistant-config.types.js";
-import { sanitizeAllowedTools, isAssistantProviderId, providerSupportsRealtime, type AssistantAgent, type AssistantAgentProjectRef } from "../models/assistant-agent.types.js";
+import { sanitizeAllowedTools, isAssistantProviderId, providerSupportsRealtime, type AssistantAgent } from "../models/assistant-agent.types.js";
 import { projectsRepository } from "../repositories/projects.repository.js";
 import { normalizeAllowedTools } from "../services/tool-allowlist.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
@@ -45,6 +47,8 @@ import { panelUserRepository } from "../../auth/repositories/panel-user.reposito
 const providerSchema = z.enum(PROVIDER_IDS);
 
 const createSchema = z.object({
+  specialty: z.string().trim().max(200).optional(),
+  technologies: z.array(z.string().trim().min(1).max(60)).max(40).optional(),
   name: z.string().min(1).max(120),
   description: z.string().max(500).default(""),
   systemPrompt: z.string().max(20000).default(""),
@@ -84,6 +88,8 @@ const createSchema = z.object({
 });
 
 const updateSchema = z.object({
+  specialty: z.string().trim().max(200).optional(),
+  technologies: z.array(z.string().trim().min(1).max(60)).max(40).optional(),
   name: z.string().min(1).max(120).optional(),
   description: z.string().max(500).optional(),
   systemPrompt: z.string().max(20000).optional(),
@@ -119,6 +125,17 @@ const updateSchema = z.object({
     .nullable()
     .optional(),
 });
+
+const assignmentSchema = z.object({
+  jobTitle: z.string().trim().max(200).optional(),
+  instructions: z.string().max(20000).optional(),
+  roleId: z.string().max(64).nullable().optional(),
+  allowedTools: z.array(z.string().max(120)).max(500).nullable().optional(),
+  canSpawnChats: z.boolean().nullable().optional(),
+  projectPaths: z.array(z.string().startsWith("/").max(500)).max(20).nullable().optional(),
+  serverIds: z.array(z.string().min(1).max(128)).max(50).nullable().optional(),
+  graphProjectIds: z.array(z.string().min(1).max(64)).max(100).nullable().optional(),
+}).strict();
 
 /** AI-assisted draft: the user picks a quick archetype (or types a brief) and an
  *  LLM fills the whole agent professionally. */
@@ -228,101 +245,49 @@ async function assertNoSubordinationCycle(agentId: string, parentAgentId: string
   }
 }
 
-export async function loadAssistantAgents(req: Request, _res: Response) {
-    const uid = getContextUserId();
-    const agents = await agentsRepository.list();
-    const executor = getExecutor(req);
-    const users = await panelUserRepository.findAll(executor).catch(() => []);
-    const nameById = new Map(users.map((u) => [u.id, u.displayName || u.username]));
-    // Team hierarchy (for the "Agentes IA" view: leaders at the top level, each
-    // team's chats nested under it). A subordinate points to its superior via the
-    // raw `parentAgentId` (a SINGLE value → an agent belongs to at most ONE
-    // leader). Precompute each agent's DIRECT subordinate ids so the frontend
-    // renders the tree without re-deriving it client-side. Computed over the FULL
-    // list (owner + shared) for a consistent tree regardless of ownership.
-    const subordinatesByParent = new Map<string, string[]>();
-    for (const a of agents) {
-      const parent = a.parentAgentId ?? null;
-      if (!parent || !a.id) continue;
-      const ids = subordinatesByParent.get(parent) ?? [];
-      ids.push(a.id);
-      subordinatesByParent.set(parent, ids);
-    }
-    // Project name lookup (display-only, additive). Projects are per-server;
-    // agents/teams are panel-host/global. Resolve the connected server's
-    // projects so a TEAM LEADER can be annotated with the project it manages
-    // (`project` field below). Fail-open, but LOUD: a swallowed read here would
-    // make EVERY leader silently lose its project chip, so surface it — this is
-    // the diagnostic that was missing when leaders showed no project.
-    let projects: Awaited<ReturnType<typeof projectsRepository.list>> = [];
-    try {
-      projects = await projectsRepository.list(executor);
-    } catch (err) {
-      log.warn(
-        { err: errMessage(err) },
-        "agents.list: could not read assistant projects; team leaders will carry project:null",
-      );
-    }
-    const projectNameById = new Map(projects.map((p) => [p.id ?? "", p.title]));
-    // Inverse fallback source: a leader whose `projectIds` is empty or only
-    // points at deleted projects can still be annotated via its TEAM. Teams
-    // carry no `projectId`, but they mirror a project by NAME (the historical
-    // "LUXIPANEL · Rol" grouping), so match team name → project title
-    // (case-insensitive, trimmed). Cheap: one panel-host read, a handful of teams.
-    const projectByTitleLower = new Map(
-      projects.map((p) => [(p.title ?? "").trim().toLowerCase(), { id: p.id ?? "", name: p.title }] as const),
-    );
-    const teams = await agentTeamsRepository.list().catch((err) => {
-      log.warn(
-        { err: errMessage(err) },
-        "agents.list: could not read agent teams for the project fallback",
-      );
-      return [] as Awaited<ReturnType<typeof agentTeamsRepository.list>>;
-    });
-    const teamNameById = new Map(teams.map((t) => [t.id ?? "", t.name ?? ""]));
-    const annotated = agents.map((a) => {
-      const ownerId = a.ownerId ?? null;
-      const relation: "owner" | "shared" = ownerId == null || ownerId === uid ? "owner" : "shared";
-      const subordinateIds = (a.id ? subordinatesByParent.get(a.id) : undefined) ?? [];
-      const isTeamLeader = subordinateIds.length > 0;
-      // `project` is populated ONLY for a team leader, from its first associated
-      // project that still resolves to an existing one (its "principal" project).
-      let project: AssistantAgentProjectRef | null = null;
-      if (isTeamLeader) {
-        for (const pid of a.projectIds ?? []) {
-          const name = projectNameById.get(pid);
-          if (name) {
-            project = { id: pid, name };
-            break;
-          }
-        }
-        // Fallback: no direct project link resolved (empty/deleted projectIds) →
-        // resolve by the leader's team name matching a project title.
-        if (!project && a.teamId) {
-          const teamName = teamNameById.get(a.teamId);
-          const match = teamName ? projectByTitleLower.get(teamName.trim().toLowerCase()) : undefined;
-          if (match && match.id) project = { id: match.id, name: match.name };
-        }
-      }
-      return {
-        ...redactAgent(a),
-        ownerId,
-        relation,
-        ownerName: ownerId != null ? (nameById.get(ownerId) ?? null) : null,
-        // Derived hierarchy hints (additive). `parentAgentId` stays the raw
-        // leader id of THIS agent; `subordinateIds` are its direct reports;
-        // `isTeamLeader` is true when it leads a team (has ≥1 subordinate).
-        isTeamLeader,
-        subordinateIds,
-        // Team leader's principal project (display-only), else null. See
-        // AssistantAgentProjectRef.
-        project,
-      };
-    });
-    return annotated;
+export async function loadAssistantAgents(req: Request, res: Response) {
+  const executor = getExecutor(req), user = res.locals["user"] as SessionUser | undefined;
+  const uid = getContextUserId(), all = await projectsRepository.list(executor);
+  const projectId = typeof req.query["projectId"] === "string" ? req.query["projectId"] : undefined;
+  if (projectId) assertProjectAccess(all.find(p => p.id === projectId), user);
+  const q = String(req.query["q"] ?? "").trim().toLocaleLowerCase();
+  const technology = String(req.query["technology"] ?? "").trim().toLocaleLowerCase();
+  const agents = (await agentsRepository.list()).filter(a =>
+    (!projectId || !!effectiveAssignment(a, all, projectId)) &&
+    (!q || [a.name, a.description, a.specialty, ...(a.technologies ?? [])].join(" ").toLocaleLowerCase().includes(q)) &&
+    (!technology || (a.technologies ?? []).some(t => t.toLocaleLowerCase() === technology)));
+  const users = await panelUserRepository.findAll(executor).catch(() => []);
+  const nameById = new Map(users.map(u => [u.id, u.displayName || u.username]));
+  return Promise.all(agents.map(async a => {
+    const presented = await agentMarketService.present(executor, a, user);
+    const subordinateIds = agents.filter(b => b.parentAgentId === a.id && b.id).map(b => b.id!);
+    const uniqueId = presented.projectIds.length === 1 ? presented.projectIds[0] : undefined;
+    const project = uniqueId ? all.find(p => p.id === uniqueId) : undefined;
+    return {
+      ...redactAgent(presented), ownerId: a.ownerId ?? null,
+      relation: a.ownerId == null || a.ownerId === uid ? "owner" : "shared",
+      ownerName: a.ownerId != null ? nameById.get(a.ownerId) ?? null : null,
+      isTeamLeader: subordinateIds.length > 0, subordinateIds,
+      project: project ? { id: project.id!, name: project.title } : null,
+    };
+  }));
 }
 
 export const agentsController = {
+  assignments: asyncHandler(async (req: Request, res: Response) => {
+    const result = await agentMarketService.assignments(getExecutor(req), String(req.params["id"]), typeof req.query["projectId"] === "string" ? req.query["projectId"] : undefined, res.locals["user"]);
+    res.json({ ok: true, ...result });
+  }),
+  putAssignment: asyncHandler(async (req: Request, res: Response) => {
+    const parsed = assignmentSchema.safeParse(req.body);
+    if (!parsed.success) throw new ValidationError("Invalid body", zodIssues(parsed.error.issues, res.locals.locale));
+    const assignment = await agentMarketService.put(getExecutor(req), String(req.params["id"]), String(req.params["projectId"]), parsed.data, res.locals["user"]);
+    res.json({ ok: true, assignment });
+  }),
+  removeAssignment: asyncHandler(async (req: Request, res: Response) => {
+    await agentMarketService.remove(getExecutor(req), String(req.params["id"]), String(req.params["projectId"]), res.locals["user"]);
+    res.json({ ok: true });
+  }),
   list: asyncHandler(async (req: Request, res: Response) => {
     res.json({ ok: true, agents: await loadAssistantAgents(req, res) });
   }),
@@ -330,7 +295,7 @@ export const agentsController = {
   get: asyncHandler(async (req: Request, res: Response) => {
     const agent = await agentsRepository.get(String(req.params["id"] ?? ""));
     if (!agent) throw assistantNotFound(res.locals.locale, "agent");
-    res.json({ ok: true, agent: redactAgent(agent) });
+    res.json({ ok: true, agent: redactAgent(await agentMarketService.present(getExecutor(req), agent, res.locals["user"])) });
   }),
 
   create: asyncHandler(async (req: Request, res: Response) => {
@@ -344,6 +309,10 @@ export const agentsController = {
       })!.valid;
     }
     await assertTeamExists(parsed.data.teamId, res.locals.locale);
+    for (const projectId of new Set([...(parsed.data.projectIds ?? []), ...(parsed.data.graphProjectIds ?? [])])) {
+      assertProjectAccess(await projectsRepository.get(getExecutor(req), projectId), res.locals["user"]);
+    }
+    if (req.body?.assignments !== undefined) throw new ValidationError("Usa los endpoints de asignaciones.");
     const agent = await agentsRepository.create(parsed.data);
     res.json({ ok: true, agent: redactAgent(agent) });
   }),
@@ -369,7 +338,9 @@ export const agentsController = {
     // effective provider can't do realtime, so switching providers turns it off.
     const effProvider = parsed.data.providerId ?? cur.providerId;
     if (!providerSupportsRealtime(effProvider)) parsed.data.realtime = false;
-    const agent = await agentsRepository.update(id, parsed.data);
+    if (req.body?.assignments !== undefined) throw new ValidationError("Usa los endpoints de asignaciones.");
+    for (const projectId of parsed.data.graphProjectIds ?? []) assertProjectAccess(await projectsRepository.get(getExecutor(req), projectId), res.locals["user"]);
+    const agent = await agentMarketService.updateProfile(getExecutor(req), id, parsed.data, res.locals["user"]);
     res.json({ ok: true, agent: agent ? redactAgent(agent) : agent });
   }),
 
@@ -378,7 +349,11 @@ export const agentsController = {
     const cur = await agentsRepository.get(id);
     if (!cur) throw assistantNotFound(res.locals.locale, "agent");
     assertCanModify(cur.ownerId, res.locals.locale);
-    const ok = await agentsRepository.delete(id);
+    const executor = getExecutor(req);
+    const ok = await withAssignmentLock(executor, id, async () => {
+      await assertAssignmentIdle(executor, cur, cur.projectIds ?? []);
+      return agentsRepository.delete(id);
+    });
     res.json({ ok });
   }),
 

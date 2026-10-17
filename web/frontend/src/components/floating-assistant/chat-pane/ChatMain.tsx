@@ -649,7 +649,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             onStop={() => chatEngine.stop(chatKey)}
             onQueue={() => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" | "max" })}
             queueLabel={ct.queueMessage ?? "Encolar mensaje"}
-            busy={streaming}
+            busy={streaming || backgroundRunning}
             width={780}
           />
           </div>

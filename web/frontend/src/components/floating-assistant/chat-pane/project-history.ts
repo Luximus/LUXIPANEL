@@ -23,9 +23,9 @@ export function createProjectHistory(
   publish: (state: ProjectHistoryState) => void,
   list = assistantConversationsApi.list,
 ) {
-  // Old agent mailboxes can lack projectId; they are still agent history.
-  // Apply the loose filter at the API so counts and every cursor agree.
-  const loose = scope.projectIds.length === 1 && scope.projectIds[0] === "none";
+  // No selected member means unassigned chats, including inside projects.
+  // Apply the filter at the API so search, counts and every cursor agree.
+  const withAgent = scope.agentId ? undefined : false;
   const managers = new Map<string, ReturnType<typeof createPagedList<ConversationMeta>>>();
   const summaries = new Map<string, Summary>();
   let generation = 0;
@@ -49,7 +49,7 @@ export function createProjectHistory(
     if (manager) return manager;
     const epoch = generation;
     manager = createPagedList<ConversationMeta>(async ({ limit, offset, cursor }) => {
-      const page = await list(scope.query, limit, offset, undefined, undefined, loose ? false : undefined, {
+      const page = await list(scope.query, limit, offset, undefined, undefined, withAgent, {
         cursor, fresh,
         projectIds: id === "legacy" ? ["none"] : id === "root" ? scope.projectIds : scope.projectIdsFor(id),
         ...(id === "legacy" ? { agentIds: scope.legacyAgentIds } : scope.agentId ? { agentId: scope.agentId } : {}),
@@ -71,7 +71,7 @@ export function createProjectHistory(
       emit();
       await get("root").first();
       if (epoch !== generation) return;
-      if (scope.legacyAgentIds.length) await get("legacy").first();
+      if (scope.agentId && scope.legacyAgentIds.length) await get("legacy").first();
       if (epoch !== generation) return;
       initialized = true;
       emit();

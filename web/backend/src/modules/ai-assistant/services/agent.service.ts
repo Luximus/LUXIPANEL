@@ -1,3 +1,4 @@
+import { admitAgentWork, resolveAgentContext, resolveConversationBinding } from "./agent-context.service.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { assertCoreDeveloper, beginOwnerContribution, finishOwnerContribution, saveContribution } from "../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -141,6 +142,10 @@ export interface AgentRunOptions {
 export const agentService = {
   async *run(messages:AgentMessage[],options:AgentRunOptions={}):AsyncGenerator<AgentEvent>{
     const executor=options.executor??getContextExecutor();
+    const binding = await resolveConversationBinding(executor, options, options.user);
+    options = { ...options, agentId: binding.agentId ?? undefined, projectId: binding.projectId ?? undefined, executor };
+    const admission = await admitAgentWork(executor, options.agentId, options.projectId, options.user);
+    try {
     const project=options.projectId?await projectsRepository.get(executor,options.projectId):null;
     const config=await assistantConfigRepository.load(executor);
     const conversation=options.conversationId?await conversationsRepository.getMeta(executor,options.conversationId):null;
@@ -161,6 +166,7 @@ export const agentService = {
     }finally{
       await finishOwnerContribution(ticket,completed&&!failed&&!options.signal?.aborted);
     }
+    } finally { admission.release(); }
   },
   async *runUntracked(
     messages: AgentMessage[],
@@ -205,29 +211,9 @@ export const agentService = {
       });
     }
 
-    // Custom agent driving this run (chat bound to an agent, or a cron job that
-    // selected one). PANEL-HOST/global store. Fail-open: an unknown/deleted id
-    // is ignored so the run never breaks. Provider/model precedence applied
-    // below; allowedTools narrows the set; the system prompt is injected later.
-    let agent: AssistantAgent | null = null;
-    if (agentId) {
-      try {
-        agent = await agentsRepository.get(agentId);
-      } catch (err) {
-        log.warn({ err, agentId }, "Failed to load custom agent — running without it");
-      }
-    }
-    // Assigned role (reusable profile): layered UNDER the agent — its system
-    // prompt is injected first and its allowedTools narrow the set too. Fail-open:
-    // an unknown/deleted roleId is ignored.
-    let role: AssistantRole | null = null;
-    if (agent?.roleId) {
-      try {
-        role = await agentRolesRepository.get(agent.roleId);
-      } catch (err) {
-        log.warn({ err, roleId: agent.roleId }, "Failed to load agent role — running without it");
-      }
-    }
+    const context = await resolveAgentContext(runExecutor, agentId, projectId, user);
+    const agent = context.agent;
+    const role = context.role;
 
     // Slash command del turno actual (/help, /mod, /provider…). Único
     // call-site del servicio: handled → respuesta directa sin tocar el
@@ -402,6 +388,7 @@ export const agentService = {
     // stable/volatile split are prompt-cache invariants (see
     // system-prompt-builder.ts).
     const built = await buildSystemPrompt({
+      context,
       executor: runExecutor,
       user,
       userId,
@@ -425,7 +412,7 @@ export const agentService = {
     });
     tools = built.tools;
     if (options.toolAllowlist) tools = tools.filter((tool) => options.toolAllowlist!.includes(tool.name));
-    const moduleScope = { executor: runExecutor, user, conversationId, agentId, signal, allowlists: moduleAllowlists };
+    const moduleScope = { executor: runExecutor, user, conversationId, agentId, projectId, signal, allowlists: moduleAllowlists };
     tools = [...tools.filter(tool => !agentCapabilityRegistry.findTool(tool.name)), ...moduleDiscoveryTools(moduleScope)];
     const { systemContext, cwd, jailPaths, cliTeamLeader } = built;
     if (cwd && runExecutor) await assertCoreDeveloper(user, cwd, runExecutor.target.id);

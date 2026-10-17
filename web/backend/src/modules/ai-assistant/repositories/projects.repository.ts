@@ -1,3 +1,4 @@
+import { sanitizeTechnologies } from "../models/assistant-agent.types.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -134,6 +135,8 @@ export function sanitizeGraphIndex(input: unknown): AssistantProjectGraphIndex |
 }
 
 export interface AssistantProject {
+  profile?: string;
+  technologies?: string[];
   id?: string;
   title: string;
   icon: string;
@@ -283,10 +286,12 @@ export const projectsRepository = {
   async create(
     executor: Executor | null | undefined,
     data: Pick<AssistantProject, "title" | "icon" | "path" | "instructions"> &
-      Partial<Pick<AssistantProject, "provider" | "parentId" | "teamId" | "leaderAgentId" | "creationKey" | "servers" | "skills" | "verify" | "snippetCategory" | "snippetTags" | "webPreviewUrl" | "appPreviewUrl" | "fileProjectRef">>,
+      Partial<Pick<AssistantProject, "provider" | "parentId" | "teamId" | "leaderAgentId" | "creationKey" | "servers" | "skills" | "verify" | "snippetCategory" | "snippetTags" | "webPreviewUrl" | "appPreviewUrl" | "fileProjectRef" | "profile" | "technologies">>,
   ): Promise<AssistantProject> {
     const verify = sanitizeVerify(data.verify);
     return store(executor).create({
+      profile: (data.profile ?? "").trim().slice(0, 2000),
+      technologies: sanitizeTechnologies(data.technologies),
       title: data.title.slice(0, 120) || "Proyecto",
       icon: data.icon || "folder",
       path: data.path || "",
@@ -312,9 +317,11 @@ export const projectsRepository = {
   async update(
     executor: Executor | null | undefined,
     id: string,
-    patch: Partial<Pick<AssistantProject, "title" | "icon" | "path" | "instructions" | "provider" | "parentId" | "teamId" | "leaderAgentId" | "autoCapture" | "servers" | "skills" | "verify" | "snippetCategory" | "snippetTags" | "webPreviewUrl" | "appPreviewUrl" | "fileProjectRef">>,
+    patch: Partial<Pick<AssistantProject, "title" | "icon" | "path" | "instructions" | "provider" | "parentId" | "teamId" | "leaderAgentId" | "autoCapture" | "servers" | "skills" | "verify" | "snippetCategory" | "snippetTags" | "webPreviewUrl" | "appPreviewUrl" | "fileProjectRef" | "profile" | "technologies">>,
   ): Promise<AssistantProject | null> {
     const clean: Partial<AssistantProject> = {};
+    if (patch.profile !== undefined) clean.profile = patch.profile.trim().slice(0, 2000);
+    if (patch.technologies !== undefined) clean.technologies = sanitizeTechnologies(patch.technologies);
     if (patch.title !== undefined) clean.title = patch.title.slice(0, 120);
     if (patch.icon !== undefined) clean.icon = patch.icon;
     if (patch.path !== undefined) clean.path = patch.path;

@@ -1,3 +1,4 @@
+import { resolveAgentContext, admitAgentWork } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -61,19 +62,9 @@ export async function validateWorkerProject(
   executor: Executor,
   worker: AssistantAgent,
   wantProject: string,
+  user?: SessionUser,
 ): Promise<string | null> {
-  if (!wantProject) return null;
-  let all: Awaited<ReturnType<typeof projectsRepository.list>>;
-  try {
-    all = await projectsRepository.list(executor);
-  } catch {
-    throw new Error("No se pudieron resolver los proyectos del agente.");
-  }
-  const closure = projectClosure(all, worker.projectIds ?? []);
-  if (!closure.has(wantProject)) {
-    throw new Error(`El proyecto "${wantProject}" no pertenece al agente "${worker.name}".`);
-  }
-  return wantProject;
+  return (await resolveAgentContext(executor, worker.id, wantProject, user)).projectId;
 }
 
 export interface SpawnWorkerInput {
@@ -238,7 +229,10 @@ export function startWorkerRun(args: {
  */
 export async function spawnWorker(input: SpawnWorkerInput): Promise<{ conversationId: string }> {
   const { executor, user, userId, worker, task, projectId, depth, runAgent, panelOrigin, beforeStart, onDone } = input;
-  const convId = await createWorkerConversation(executor, worker, task, projectId, { appendUserMessage: true });
+  const admission = await admitAgentWork(executor, worker.id, projectId, user);
+  try {
+  input.projectId = admission.projectId;
+  const convId = await createWorkerConversation(executor, worker, task, admission.projectId, { appendUserMessage: true });
   const pre = await beforeStart?.(convId);
   startWorkerRun({
     executor,
@@ -255,4 +249,5 @@ export async function spawnWorker(input: SpawnWorkerInput): Promise<{ conversati
     ...(onDone ? { onDone } : {}),
   });
   return { conversationId: convId };
+  } finally { admission.release(); }
 }

@@ -1,3 +1,4 @@
+import { admitAgentWork, resolveConversationBinding } from "../services/agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -92,9 +93,17 @@ function store(executor?: Executor | null) {
 }
 
 export const agentQueueRepository = {
+  async listPending(executor: Executor | null | undefined): Promise<QueuedTurn[]> {
+    return store(executor).list();
+  },
+
   /** Append a follow-up turn. Returns the created record (with id). */
   async enqueue(executor: Executor | null | undefined, item: Omit<QueuedTurn, "id" | "ts">): Promise<QueuedTurn> {
-    return store(executor).create({ ...item, ts: new Date().toISOString() });
+    const binding = await resolveConversationBinding(executor, item, item.user ?? undefined);
+    const admission = await admitAgentWork(executor, binding.agentId, binding.projectId, item.user ?? undefined);
+    try {
+      return await store(executor).create({ ...item, agentId: binding.agentId, projectId: binding.projectId, ts: new Date().toISOString() });
+    } finally { admission.release(); }
   },
 
   /** Fetch one queued turn by id (full content incl. attachments) — for editing. */

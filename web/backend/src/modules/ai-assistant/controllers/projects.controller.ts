@@ -40,6 +40,8 @@ const previewUrlSchema = z.string().trim().max(2048).refine((value) => {
 const fileProjectRefSchema = z.object({ targetId: z.string().min(1).max(128), path: z.string().startsWith("/").max(512) }).nullable();
 
 const createSchema = z.object({
+  profile: z.string().trim().max(2000).optional(),
+  technologies: z.array(z.string().trim().min(1).max(60)).max(40).optional(),
   title: z.string().min(1).max(120),
   icon: z.string().max(48).default("folder"),
   path: z.string().max(512).default(""),
@@ -69,6 +71,8 @@ const createSchema = z.object({
 });
 
 const updateSchema = z.object({
+  profile: z.string().trim().max(2000).optional(),
+  technologies: z.array(z.string().trim().min(1).max(60)).max(40).optional(),
   title: z.string().min(1).max(120).optional(),
   icon: z.string().max(48).optional(),
   path: z.string().max(512).optional(),
