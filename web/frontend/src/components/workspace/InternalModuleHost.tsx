@@ -15,6 +15,7 @@ import type { LocaleCode } from "@/i18n/config";
 import { mountModuleAiFooter } from "@/lib/module-ai-footer";
 import { MODULE_REGISTRY } from "./module-registry";
 import { disposeChatStreams } from "@/lib/chat-event-stream";
+import { INTERNAL_ROUTE_CHANGED_EVENT } from "@/lib/panel-routes";
 import { ModuleVisibilityContext } from "./module-visibility";
 import { describeModule, type ModuleDescriptor } from "./module-descriptor";
 import {
@@ -274,8 +275,10 @@ export default function InternalModuleHost({
     }
     setActiveKey(null);
     setSettingsAvailable(false);
-    if (updateHistory)
+    if (updateHistory) {
       history.replaceState({ ...history.state, lxpModule: null }, "", "/panel");
+      window.dispatchEvent(new Event(INTERNAL_ROUTE_CHANGED_EVENT));
+    }
     window.__lxpModuleNav?.reset();
     const parent = parentRoute.current;
     parentRoute.current = null;
@@ -328,12 +331,14 @@ export default function InternalModuleHost({
         setEntries((previous) =>
           new Map(previous).set(descriptor.key, { ...entry!, descriptor }),
         );
-      if (historyMode === "push" && descriptor.url.href !== location.href)
+      if (historyMode === "push" && descriptor.url.href !== location.href) {
         history.pushState(
           { ...history.state, lxpModule: descriptor.key },
           "",
           descriptor.url.pathname + descriptor.url.search + descriptor.url.hash,
         );
+        window.dispatchEvent(new Event(INTERNAL_ROUTE_CHANGED_EVENT));
+      }
       if (link) window.__lxpModuleNav?.opened(link);
       // Use the navigation controller so the panel, backdrop and scroll lock
       // all finish closing together, including rapid close/reopen sequences.

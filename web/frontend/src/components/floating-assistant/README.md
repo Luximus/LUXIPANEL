@@ -107,6 +107,18 @@ desde un chip se conserva `luxipanel:assistant-settings-open` con
 proyecto del chat. La pestaña Agentes de `ProjectModal` configura las asignaciones
 en ese proyecto; no mueve el perfil global ni cambia chats anteriores.
 
+La vista dedicada también tiene entrada directa en `/panel/assistant/market`
+(URL pública canónica `/assistant/market`, normalizada por el middleware).
+`AssistantView` sincroniza `requestedTab` con `astro:page-load` y `popstate`,
+porque el layout persiste la isla entre páginas. `AssistantPanel.onNavigateTab`
+notifica las acciones del usuario al wrapper, que navega con el router de Astro;
+sin ese callback, el drawer conserva sus pestañas locales. La sincronización de
+una ruta no crea entradas de historial. El chat sigue montado y no cambia el
+proyecto/subproyecto, el borrador ni la conversación actual al visitar el Market.
+El host de módulos emite `lxp:internal-modules:route-changed` después de sus
+push/replace de historial; la misma vista lo escucha para volver al chat al
+abrir o cerrar un módulo, sin iniciar otra navegación ni recrear la conversación.
+
 ## 3. Cómo consumir el bus desde un caller nuevo
 
 1. **Importa el helper.** Desde scripts extraídos

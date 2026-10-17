@@ -9,7 +9,7 @@ import { isEmbeddedClientUA } from "@/lib/embedded-source";
  */
 
 import { defineMiddleware, sequence } from "astro:middleware";
-import { getSession } from "@/lib/auth";
+import { getSession, hasView } from "@/lib/auth";
 import { getUiBootstrap } from "@/lib/ui-bootstrap";
 import { seedLayoutContext } from "@/lib/layout-context";
 const authenticatedRequest = Symbol("authenticated-request");
@@ -362,8 +362,12 @@ const authMiddleware = defineMiddleware(async (context, next) => {
   if (requiredView && user.kind !== "admin") {
     const allowedViews = requiredView === "terminal.view"
       ? user.permissions?.actions ?? [] : user.permissions?.views ?? [];
+    // Home is the assistant workspace. Keep the legacy dashboard permission,
+    // and allow an assistant-only user to return from Market without a loop
+    // through the legacy /assistant redirect back to home.
+    const assistantHome = panelPublicPath === "/" && hasView(user, "panel.assistant");
     if (!allowedViews.includes(requiredView) && !allowedViews.includes("*")
-      && !(requiredView === "terminal.view" && allowedViews.includes("terminal.*"))) {
+      && !(requiredView === "terminal.view" && allowedViews.includes("terminal.*")) && !assistantHome) {
       const fallbackPath = firstAllowedPanelPath(allowedViews);
       if (fallbackPath && fallbackPath !== panelPublicPath) {
         return applyNoCacheHeaders(context.redirect(fallbackPath));

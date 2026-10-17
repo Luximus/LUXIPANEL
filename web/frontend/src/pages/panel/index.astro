@@ -15,11 +15,11 @@
 import PanelLayout from "@/layouts/PanelLayout.astro";
 import { getPageLocale, getPageMessages } from "@/pages/_page-context";
 import { NO_CACHE_HEADER } from "@/lib/http-cache";
-import { canSeeSidebar } from "@/lib/auth";
+import { hasView } from "@/lib/auth";
 
 const locale = getPageLocale(Astro);
 const t = await getPageMessages(Astro, ['assistant', 'panelLayout']);
-const canUseAssistant = Boolean(Astro.locals.user && canSeeSidebar(Astro.locals.user, "assistant"));
+const canUseAssistant = Boolean(Astro.locals.user && hasView(Astro.locals.user, "panel.assistant"));
 
 // Prevent Cloudflare/browser caching of the home HTML so that script
 // references always reflect the latest deploy.

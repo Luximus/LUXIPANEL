@@ -8,6 +8,9 @@
  * importing the other's module just for a string test.
  */
 
+/** Internal module drawers update history without an Astro page swap. */
+export const INTERNAL_ROUTE_CHANGED_EVENT = "lxp:internal-modules:route-changed";
+
 /**
  * Dedicated Assistant view — the panel HOME (`/` public, `/panel` internal),
  * plus the legacy `/panel/assistant` mount (now a redirect to `/`). There the
@@ -27,6 +30,12 @@ export function pathIsAssistantView(pathname: string): boolean {
     pathname === "/assistant" ||
     pathname.startsWith("/assistant/")
   );
+}
+
+/** The Market route has both the public and internal panel URL. */
+export function pathIsAgentMarket(pathname: string): boolean {
+  const path = (pathname.split(/[?#]/)[0] ?? "").replace(/\/$/, "");
+  return path === "/assistant/market" || path === "/panel/assistant/market";
 }
 
 /**

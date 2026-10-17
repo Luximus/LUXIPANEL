@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocked = vi.hoisted(() => ({ session: vi.fn() }));
 vi.mock("astro:middleware", () => ({ defineMiddleware: (handler: unknown) => handler, sequence: (...handlers: any[]) => (context: any, next: any) => { const run = (i: number): any => i < handlers.length ? handlers[i](context, () => run(i + 1)) : next(); return run(0); } }));
 vi.mock("@/lib/ui-bootstrap", () => ({ getUiBootstrap: async () => null }));
-vi.mock("@/lib/auth", () => ({ getSession: mocked.session }));
+vi.mock("@/lib/auth", async original => ({ ...await original<Record<string, unknown>>(), getSession: mocked.session }));
 import { onRequest } from "./middleware";
 
 const routes = [
   ["/mail", "panel.mail"], ["/mail/7/inbox", "panel.mail"], ["/mail/compose", "panel.mail"],
   ["/monitor", "panel.monitor"], ["/files", "panel.files"], ["/firewall", "panel.firewall"],
-  ["/bitninja", "panel.bitninja"], ["/assistant", "panel.assistant"], ["/nginx", "panel.dns"],
+  ["/bitninja", "panel.bitninja"], ["/assistant", "panel.assistant"], ["/assistant/market", "panel.assistant"], ["/nginx", "panel.dns"],
   ["/backups", "panel.backups"], ["/cron", "panel.cron"], ["/databases", "panel.databases"],
   ["/obsidian", "panel.obsidian"], ["/cloudflare", "panel.cloudflare"], ["/expo", "panel.expo"],
   ["/webhooks", "panel.webhooks"], ["/users", "panel.users"], ["/modules", "panel.modules"],
@@ -41,6 +41,58 @@ describe("all panel routes", () => {
     const { response, rewrite } = await navigate(path!);
     expect(response.status).toBe(200);
     expect(rewrite).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Market route", () => {
+  it.each(["/", "/panel?__lxp_internal__=1"])("allows returning to chat at %s with the assistant view and a hidden menu", async path => {
+    mocked.session.mockResolvedValue({ kind: "user", permissions: { sidebar: [], views: ["panel.assistant"], actions: [] } });
+    const { response } = await navigate(path);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Location")).toBeNull();
+  });
+  it("retains the legacy dashboard permission for the home page", async () => {
+    mocked.session.mockResolvedValue({ kind: "user", permissions: { sidebar: [], views: ["panel.dashboard"], actions: [] } });
+    expect((await navigate("/")).response.status).toBe(200);
+    const { response, rewrite } = await navigate("/assistant/market");
+    expect(response.headers.get("Location")).toBe("/");
+    expect(rewrite).not.toHaveBeenCalled();
+  });
+  it("does not treat a visible assistant menu as permission to open home or Market", async () => {
+    mocked.session.mockResolvedValue({ kind: "user", permissions: { sidebar: ["assistant"], views: [], actions: ["*"] } });
+    for (const path of ["/", "/assistant/market"]) {
+      const { response, rewrite } = await navigate(path);
+      expect(response.status).toBe(403);
+      expect(rewrite).not.toHaveBeenCalled();
+    }
+  });
+  it("rechecks the current session when changing to a target without the view", async () => {
+    mocked.session.mockResolvedValueOnce({ kind: "user", direct: true, targetId: "server-a", permissions: { sidebar: [], views: ["panel.assistant"], actions: [] } });
+    expect((await navigate("/assistant/market")).response.status).toBe(200);
+    mocked.session.mockResolvedValueOnce({ kind: "user", direct: true, targetId: "server-b", permissions: { sidebar: ["assistant"], views: [], actions: [] } });
+    expect((await navigate("/assistant/market")).response.status).toBe(403);
+  });
+  it("normalizes the internal panel link while preserving its query", async () => {
+    const { response, rewrite } = await navigate("/panel/assistant/market?from=search");
+    expect(response.headers.get("Location")).toBe("/assistant/market?from=search");
+    expect(rewrite).not.toHaveBeenCalled();
+  });
+  it("requires a session before rendering Market", async () => {
+    mocked.session.mockResolvedValue(null);
+    const { response, rewrite } = await navigate("/assistant/market");
+    expect(response.headers.get("Location")).toBe("/login");
+    expect(rewrite).not.toHaveBeenCalled();
+  });
+  it("does not let an internal rewrite flag bypass its view permission", async () => {
+    const { response, next } = await navigate("/panel/assistant/market?__lxp_internal__=1");
+    expect(response.status).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+  it("rewrites a permitted public visit to the dedicated Market page", async () => {
+    mocked.session.mockResolvedValue({ kind: "user", permissions: { sidebar: [], views: ["panel.assistant"], actions: [] } });
+    const { response, rewrite } = await navigate("/assistant/market");
+    expect(response.status).toBe(200);
+    expect(new URL((rewrite.mock.calls[0] as unknown as [Request])[0].url).pathname).toBe("/panel/assistant/market");
   });
 });
 

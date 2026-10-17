@@ -1,0 +1,17 @@
+---
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 LUXISOFT
+import PanelLayout from "@/layouts/PanelLayout.astro";
+import { getPageMessages } from "@/pages/_page-context";
+import { NO_CACHE_HEADER } from "@/lib/http-cache";
+
+const t = await getPageMessages(Astro, ["assistant"]);
+Astro.response.headers.set("Cache-Control", NO_CACHE_HEADER);
+Astro.response.headers.set("Pragma", "no-cache");
+---
+
+<PanelLayout title={t.assistant.agentMarket.title} activeModule="assistant" titleInActions flush>
+  {/* PanelLayout owns the persistent AssistantView. Its route listener selects
+      Market without mounting a second assistant or replacing the open chat. */}
+  <div aria-hidden="true"></div>
+</PanelLayout>

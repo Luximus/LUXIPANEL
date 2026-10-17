@@ -43,6 +43,20 @@ src/
   `dashboard-v2.js`, namespace i18n `dashboard`) se eliminó el 2026-08-25;
   `pages/panel/assistant/index.astro` redirige a `/`. `lib/panel-routes.ts`
   `pathIsAssistantView` incluye `/` para que los FABs se oculten en la home.
+- **`pages/panel/assistant/market.astro`** — entrada directa al Market. El
+  middleware conserva la normalización `/panel/assistant/market` →
+  `/assistant/market`, exige sesión y permiso `panel.assistant`, y reescribe
+  internamente a la página Astro. Reutiliza el `AssistantView` persistente del
+  layout. La vista escucha `astro:page-load`, `popstate` y
+  `lxp:internal-modules:route-changed` (apertura/cierre de módulos sin swap);
+  las acciones Market / volver usan `astro:transitions/client`, conservando
+  chat, borrador y proyecto.
+  El drawer mantiene su navegación local. No se monta otra instancia del catálogo.
+  El montaje del asistente depende de `hasView(user, "panel.assistant")`,
+  separado de la visibilidad del menú. La home admite ese permiso además del
+  legado `panel.dashboard`, evitando el bucle `/assistant` → `/` al volver
+  desde Market con permiso de asistente únicamente. Sesión y permisos de las
+  operaciones siguen validándose por los mecanismos existentes.
 - **`pages/panel/<feature>/`** — una carpeta por módulo del backend:
   `files`, `terminal`, `dns`, `ssl`, `mail`, `firewall`, `backups`, `cron`,
   `monitor`, `clamav`, `hosting`, `webhooks`, `users`, `assistant`,

@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   isAdmin,
   hasAction,
+  hasView,
   canSeeSidebar,
   getInitials,
   type SessionUser,
@@ -65,6 +66,19 @@ describe("canSeeSidebar", () => {
     expect(canSeeSidebar(makeUser({ permissions: perms({ sidebar: ["files"] }) }), "mail")).toBe(false);
     expect(canSeeSidebar(makeUser({ permissions: perms({ sidebar: ["*"] }) }), "anything")).toBe(true);
     expect(canSeeSidebar(makeUser(), "files")).toBe(false);
+  });
+});
+
+describe("hasView", () => {
+  it("allows admins, explicit views and the global view wildcard", () => {
+    expect(hasView(makeUser({ kind: "admin" }), "panel.assistant")).toBe(true);
+    expect(hasView(makeUser({ permissions: perms({ views: ["panel.assistant"] }) }), "panel.assistant")).toBe(true);
+    expect(hasView(makeUser({ permissions: perms({ views: ["*"] }) }), "panel.assistant")).toBe(true);
+  });
+  it("does not grant a view from menu visibility, actions or a different view", () => {
+    for (const permissions of [undefined, perms({ sidebar: ["assistant"], actions: ["*"] }), perms({ views: ["panel.dashboard"] }), perms({ views: ["panel.*"] })]) {
+      expect(hasView(makeUser({ permissions }), "panel.assistant")).toBe(false);
+    }
   });
 });
 

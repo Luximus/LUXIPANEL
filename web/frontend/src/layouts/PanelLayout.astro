@@ -15,7 +15,7 @@ import "@/styles/motion.css";
 import "@/styles/modal-drawer.css";
 import "@/styles/reactbits-kit.css";
 import DbLogo from "@/components/layout/DbLogo.astro";
-import { getInitials, canSeeSidebar as canSeeSidebarItem, hasAction } from "@/lib/auth";
+import { getInitials, canSeeSidebar as canSeeSidebarItem, hasAction, hasView } from "@/lib/auth";
 import { getMessages } from '@/i18n';
 import { localeFromRequest } from '@/i18n/server';
 import { LOCALES } from '@/i18n/config';
@@ -136,7 +136,9 @@ if (!hasTitleActionsSlot) {
 const t = await getMessages(locale, ['panelLayout', 'common', 'components']);
 // LUXIPANEL is standalone: logout always returns to this panel's own /login.
 const directSession = Boolean(user?.direct);
-const canUseAssistant = canSee("assistant");
+// Keep the permitted assistant mounted across Market/chat routes even when
+// its menu is hidden. A visible menu alone does not grant view access.
+const canUseAssistant = Boolean(user && hasView(user, "panel.assistant"));
 // One panel shell for every user. Groups decide which content can be opened.
 const workspaceShell = !embed;
 const moduleDrawerOpen = false;

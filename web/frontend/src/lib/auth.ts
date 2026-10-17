@@ -137,6 +137,13 @@ export function hasAction(user: SessionUser, action: string): boolean {
   return Boolean(prefix && actions.includes(`${prefix}.*`));
 }
 
+/** View access is independent of menu visibility and action permissions. */
+export function hasView(user: SessionUser, view: string): boolean {
+  if (user.kind === "admin") return true;
+  const views = user.permissions?.views ?? [];
+  return views.includes(view) || views.includes("*");
+}
+
 export function canSeeSidebar(user: SessionUser, item: string): boolean {
   if (user.kind === "admin") return true;
   const sidebar = user.permissions?.sidebar ?? [];

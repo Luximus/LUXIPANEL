@@ -115,6 +115,8 @@ interface AssistantPanelProps {
   /** Tab requested externally (deep-link / window API). Applied when `requestNonce` changes. */
   requestedTab?: AssistantTab | null;
   requestNonce?: number;
+  /** The persistent view synchronizes user navigation with the Astro router. */
+  onNavigateTab?: (tab: AssistantTab) => void;
   /** Seed handoff from another module; forwarded to the active ChatPane. */
   seed?: AssistantSeed | null;
   onSeedConsumed?: () => void;
@@ -182,6 +184,7 @@ export default function AssistantPanel({
   onClose,
   requestedTab,
   requestNonce,
+  onNavigateTab,
   seed,
   onSeedConsumed,
   pendingRequest,
@@ -197,7 +200,11 @@ export default function AssistantPanel({
   useVisualViewportHeight(variant === "drawer");
   // El módulo asistente ya NO tiene Dashboard: tanto en móvil como en escritorio
   // el panel entra directo al chat / lista de conversaciones.
-  const [tab, setTab] = useState<AssistantTab>("chat");
+  const [tab, setSelectedTab] = useState<AssistantTab>("chat");
+  const setTab = useCallback((next: AssistantTab) => {
+    setSelectedTab(next);
+    onNavigateTab?.(next);
+  }, [onNavigateTab]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsVisited, setSettingsVisited] = useState(false);
   useEffect(() => { if (settingsOpen) setSettingsVisited(true); }, [settingsOpen]);
@@ -255,7 +262,7 @@ export default function AssistantPanel({
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [config?.enabled, activeProviders.join(",")],
+    [config?.enabled, activeProviders.join(","), setTab],
   );
 
   // A closed drawer has no mounted AssistantPanel when the request event fires.
@@ -321,7 +328,7 @@ export default function AssistantPanel({
         setAgentLaunchError(error instanceof Error ? error.message : messages.assistantErrorBoundary.errorMessage);
       }
     }
-  }, [config, messages.assistantErrorBoundary.errorMessage, messages.agentMarket]);
+  }, [config, messages.assistantErrorBoundary.errorMessage, messages.agentMarket, setTab]);
 
   const openSettings = useCallback((section?: AssistantSettingsSection | "agentes" | null, agentId?: string | null) => {
     if (section === "agentes" && !agentId) { setTab("market"); return; }
@@ -332,7 +339,7 @@ export default function AssistantPanel({
     }
     setSettingsSection(section ?? null);
     setSettingsOpen(true);
-  }, []);
+  }, [setTab]);
 
   const openProviderCredentials = useCallback(() => {
     window.location.assign("/panel/settings#cred-assistant");
@@ -392,7 +399,8 @@ export default function AssistantPanel({
       openSettings(requestedTab);
       return;
     }
-    setTab(requestedTab);
+    // Route/prop synchronization must not create another history entry.
+    setSelectedTab(requestedTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestNonce, requestedTab, openSettings, openProviderCredentials]);
 
@@ -412,7 +420,7 @@ export default function AssistantPanel({
     };
     window.addEventListener("luxipanel:assistant-settings-open", handleOpenSettings);
     return () => window.removeEventListener("luxipanel:assistant-settings-open", handleOpenSettings);
-  }, [openSettings, openProviderCredentials]);
+  }, [openSettings, openProviderCredentials, setTab]);
 
   /**
    * Deep-link a una conversación IA existente (notificación "Chat IA
@@ -451,7 +459,7 @@ export default function AssistantPanel({
     };
     window.addEventListener("luxipanel:assistant-open-conversation", onOpenConversation);
     return () => window.removeEventListener("luxipanel:assistant-open-conversation", onOpenConversation);
-  }, [config?.enabled, activeProviders]);
+  }, [config?.enabled, activeProviders, setTab]);
 
   /**
    * Deep-link EXTERNO por query-string (`/panel?c=<id>&provider=<p>`): la home
@@ -474,7 +482,7 @@ export default function AssistantPanel({
       url.searchParams.delete("provider");
       window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     } catch { /* ignore */ }
-  }, [initialOpen?.conversationId, initialOpen?.provider, activeProviders]);
+  }, [initialOpen?.conversationId, initialOpen?.provider, activeProviders, setTab]);
 
   // Bridge externo `lxp:assistant:request v1`. Recibe solicitudes de otros
   // módulos (Monitor, Mail, Obsidian, …) y las traduce a un `openReq` con
@@ -506,7 +514,7 @@ export default function AssistantPanel({
     };
     window.addEventListener(ASSISTANT_REQUEST_EVENT, onRequest);
     return () => window.removeEventListener(ASSISTANT_REQUEST_EVENT, onRequest);
-  }, [openAssistantRequest, variant, config?.enabled, openSettings, openProviderCredentials]);
+  }, [openAssistantRequest, variant, config?.enabled, openSettings, openProviderCredentials, setTab]);
 
   // Exponer API global para page scripts que hablan window en lugar de CustomEvent.
   // El shape es el de `LxpAssistantAPI` (lib/assistant-request.ts): los
@@ -545,7 +553,7 @@ export default function AssistantPanel({
         delete window.__lxpAssistantAPI;
       }
     };
-  }, [openAssistantRequest, config?.enabled, openSettings, openProviderCredentials]);
+  }, [openAssistantRequest, config?.enabled, openSettings, openProviderCredentials, setTab]);
 
   // Becoming visible loads config; usage bars load on their own mount. The drawer
   // unmounts this panel on close (vaul) and remounts on open, so mount is the
@@ -573,7 +581,9 @@ export default function AssistantPanel({
       window.removeEventListener("luxipanel:credentials-changed", refreshCredentials);
       window.removeEventListener("luxipanel:credentials-open", closeSettings);
     };
-  }, [reload, closeSettings]);
+  }, [reload, closeSettings, setTab]);
+
+  const chatVisible = tab === "chat" || config?.enabled !== true;
 
   return (
     <AssistantI18nProvider value={messages}>
@@ -608,7 +618,7 @@ export default function AssistantPanel({
               {/* Chat stays mounted across tab switches so in-flight streams and
                   the open conversation are never lost. */}
               {tab === "market" && config?.enabled && <Suspense fallback={<p role="status" className="p-4">{messages.agentMarket.loading}</p>}><AgentMarket locale={locale} projectId={workspaceState.getSnapshot().project?.id} onBack={() => setTab("chat")} /></Suspense>}
-              <div className="flex-1 min-h-0 flex flex-col" style={{ display: tab === "chat" ? "flex" : "none" }}>
+              <div className="flex-1 min-h-0 flex flex-col" style={{ display: chatVisible ? "flex" : "none" }}>
                 <ChatTab
                   enabled={Boolean(config?.enabled)}
                   config={config}
@@ -616,7 +626,7 @@ export default function AssistantPanel({
                   onOpenProviders={openProviderCredentials}
                   onConfigChange={setConfig}
                   openReq={openReq}
-                  chatVisible={tab === "chat"}
+                  chatVisible={chatVisible}
                   onLaunchAgent={launchAgent}
                   seedText={seed?.text ?? null}
                   seedAutoSend={seed?.autoSend ?? false}

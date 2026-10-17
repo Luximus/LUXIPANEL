@@ -93,6 +93,7 @@ const runtimeUrlResolver: PluginOption = {
   },
   resolveId(source: string) {
     if (source === "astro:middleware") return "\0lxp-astro-middleware";
+    if (source === "astro:transitions/client") return "\0lxp-astro-transitions-client";
     if (source === "virtual:lxp-sudo-source") return "\0lxp-sudo-source";
     const runtimePath = source.split("?", 1)[0] ?? source;
     const mapped = runtimeSrcMap[runtimePath];
@@ -114,6 +115,7 @@ const runtimeUrlResolver: PluginOption = {
   },
   load(id: string) {
     if (id === "\0lxp-astro-middleware") return "export const defineMiddleware = (handler) => handler;";
+    if (id === "\0lxp-astro-transitions-client") return "export function navigate() { throw new Error('Mock Astro navigation in the test'); }";
     if (id === "\0lxp-sudo-source") {
       return readFileSync(fileURLToPath(new URL("./public/scripts/extracted/lib/sudo.js", import.meta.url)), "utf8");
     }
