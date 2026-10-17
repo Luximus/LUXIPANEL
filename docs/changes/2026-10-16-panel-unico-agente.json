@@ -1,0 +1,8 @@
+{
+  "title": "Un único panel al editar agentes desde el chat",
+  "changes": [
+    "Al editar un agente desde el chat, se abre directamente su configuración cuando termina la carga, sin mostrar antes el selector de proyectos.",
+    "La carga se puede cancelar y las respuestas tardías no vuelven a abrir un panel cerrado.",
+    "Los errores se muestran sin pedir seleccionar otro proyecto y el selector general conserva su funcionamiento."
+  ]
+}

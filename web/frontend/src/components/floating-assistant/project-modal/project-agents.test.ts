@@ -181,9 +181,10 @@ function observeDrawers() {
   return { count: () => { collect(observer.takeRecords()); return opened.size; }, stop: () => observer.disconnect() };
 }
 
-async function closeDrawer(onClose: ReturnType<typeof vi.fn>, count: number) {
+async function closeDrawer(onClose: ReturnType<typeof vi.fn>, count: number, method = "close button") {
   await act(async () => {
-    document.querySelector<HTMLButtonElement>('button[aria-label="Cerrar"]')!.click();
+    if (method === "Escape") window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    else document.querySelector<HTMLButtonElement>('button[aria-label="Cerrar"]')!.click();
     // Wait for the real drawer close callback, including its exit animation.
     await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(count));
   });
@@ -207,7 +208,7 @@ it.each(["projects", "agents"] as const)("opens exactly one editor when the %s c
       pendingAgents.resolve(agents);
     });
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
-    expect(drawers.count()).toBe(1);
+    await vi.waitFor(() => expect(drawers.count()).toBe(1));
     expect(document.body.textContent).not.toContain("Selecciona un proyecto");
     expect(document.body.textContent).toContain(beta.title);
     expect([...document.querySelectorAll("input")].some((input) => input.value === agents[2].name)).toBe(true);
@@ -223,7 +224,6 @@ it.each(["Escape", "close button"] as const)("cancels pending agent loading with
   await act(async () => {
     if (method === "Escape") window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     else document.querySelector<HTMLButtonElement>('button[aria-label="Cerrar"]')!.click();
-    await new Promise((resolve) => setTimeout(resolve, 250));
   });
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(document.querySelector('[role="dialog"], [role="status"]')).toBeNull();
@@ -235,7 +235,7 @@ it.each(["Escape", "close button"] as const)("cancels pending agent loading with
   await act(async () => newRequest.resolve(projects));
   expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
   expect([...document.querySelectorAll("input")].some((input) => input.value === agents[2].name)).toBe(true);
-  await closeDrawer(onClose, 2);
+  await closeDrawer(onClose, 2, method);
   expect(onClose).toHaveBeenCalledTimes(2);
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   await click("Reabrir");
@@ -250,7 +250,6 @@ it("ignores a late rejection from a closed request while a fresh editor is open"
   await mount(createElement(ReopenableDialog, { onClose }));
   await act(async () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    await new Promise((resolve) => setTimeout(resolve, 250));
   });
   expect(onClose).toHaveBeenCalledTimes(1);
   await click("Reabrir");
@@ -320,7 +319,7 @@ it("preserves the generic selector's empty and error states", async () => {
   expect(document.body.textContent).toContain("Selecciona un proyecto");
   expect(document.querySelector('[role="status"]')).toBeNull();
   expect(document.querySelector('[role="alert"]')).toBeNull();
-  expect(document.body.textContent).toContain(mergeAssistantMessages({}).projectModal.noProjectsRegistered);
+  expect(document.body.textContent).toContain("No hay proyectos registrados.");
   await act(async () => root!.unmount());
   root = undefined;
   vi.mocked(api.assistantProjectsApi.list).mockRejectedValueOnce(new Error("Catálogo no disponible"));
