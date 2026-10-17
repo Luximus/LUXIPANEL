@@ -200,7 +200,7 @@ export function AgentsListView({ vm }: { vm: AgentsTabVM }) {
                       <AgentAvatar agent={a} size={64} />
                       <p className="max-w-full truncate text-sm font-semibold text-foreground">{a.name}</p>
                       {a.roleId && roleNameById.has(a.roleId) && (
-                        <span className="inline-flex items-center gap-1 rounded bg-indigo-500/15 px-1.5 py-0.5 text-indigo-600" title={t.list.roleAssignedTitle}>
+                        <span className="inline-flex items-center gap-1 rounded bg-indigo-500/15 px-1.5 py-0.5 text-white" title={t.list.roleAssignedTitle}>
                           <i className="ti ti-shield" aria-hidden></i> {roleNameById.get(a.roleId)}
                         </span>
                       )}

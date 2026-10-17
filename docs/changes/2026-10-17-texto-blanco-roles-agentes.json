@@ -1,0 +1,6 @@
+{
+  "title": "Roles de agentes con texto blanco",
+  "changes": [
+    "Las etiquetas de rol en las tarjetas de agentes muestran el texto en blanco para facilitar su lectura sobre el fondo oscuro."
+  ]
+}
