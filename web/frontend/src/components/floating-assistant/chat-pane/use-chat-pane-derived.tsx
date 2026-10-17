@@ -11,6 +11,7 @@ import { historyReady } from "@/lib/startup-state";
 import { isLooseConversation, projectScopeIds } from "./project-search";
 import { rootProjectId } from "./project-history-picker";
 import { projectAgentScope, projectForAgent } from "../project-modal/agent-scope";
+import { availableInProject, legacyHistoryAgentIds } from "../agent-market-state";
 import { createProjectHistory, emptyProjectHistory } from "./project-history";
 import {
   assistantConversationsApi,
@@ -336,29 +337,30 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   }, [roles]);
   // Custom agents (sidebar "Agentes" section + active-agent badge). Reloaded on
   // the agents-updated event so creating one in the Agents tab shows up here.
-  const catalogScope = JSON.stringify([resolveTargetScope(), scopeHeaders()]);
+  const catalogScope = JSON.stringify([resolveTargetScope(), scopeHeaders(), currentProjectId]);
   const [agentsLoadedScope, setAgentsLoadedScope] = useState<string | null>(null);
   const agentsLoaded = agentsLoadedScope === catalogScope;
   const [agentsError, setAgentsError] = useState<unknown>(null);
   const catalogScopeRef = useRef(catalogScope);
   catalogScopeRef.current = catalogScope;
   const reloadAgents = useCallback(() => {
-    void assistantAgentsApi.list().then(items => {
+    void assistantAgentsApi.list(currentProjectId ? { contextProjectId: currentProjectId } : {}).then(items => {
       if (catalogScopeRef.current !== catalogScope) return;
       setAgents(items); setAgentsLoadedScope(catalogScope); setAgentsError(null);
     }).catch(error => { if (catalogScopeRef.current === catalogScope) setAgentsError(error); });
     // Roles power the header agent pill's role chip; refreshed alongside agents.
     void assistantAgentRolesApi.list().then(items => { if (catalogScopeRef.current === catalogScope) setRoles(items); }).catch(() => { /* ignore */ });
-  }, [catalogScope]);
+  }, [catalogScope, currentProjectId]);
   const projectTeam = useMemo(() => currentProject ? projectAgentScope(currentProject, projects) : null, [currentProject, projects]);
-  const projectTeamAgents = useMemo(() => agents.filter(a => a.id && a.teamId === projectTeam?.teamId)
-    .sort((a, b) => Number(b.id === projectTeam?.root.leaderAgentId) - Number(a.id === projectTeam?.root.leaderAgentId) || a.name.localeCompare(b.name)), [agents, projectTeam?.teamId, projectTeam?.root.leaderAgentId]);
+  const projectTeamAgents = useMemo(() => agents.filter(a => a.id && availableInProject(a, currentProjectId))
+    .sort((a, b) => Number(b.id === projectTeam?.root.leaderAgentId) - Number(a.id === projectTeam?.root.leaderAgentId) || a.name.localeCompare(b.name)), [agents, currentProjectId, projectTeam?.root.leaderAgentId]);
 
   const selectedRoot = rootProjectId(currentProjectId, projectById);
   const historyProjectIds = selectedRoot ? [...projectScopeIds(selectedRoot, projects)].sort().join(",") : "none";
   const historyAgentId = projectTeam ? currentAgentId ?? undefined : undefined;
-  const includeLegacy = !!historyAgentId && !!projectTeam && projects.filter(p => !p.parentId && p.teamId === projectTeam.teamId).length === 1;
-  const legacyAgentIds = includeLegacy ? projectTeamAgents.filter(a => a.id === historyAgentId).map(a => a.id!).join(",") : "";
+  const legacyMembers = selectedRoot ? legacyHistoryAgentIds(agents, projects, selectedRoot) : [];
+  const includeLegacy = !!historyAgentId && legacyMembers.includes(historyAgentId);
+  const legacyAgentIds = includeLegacy ? historyAgentId! : "";
   const historyKey = JSON.stringify([catalogScope, search.trim(), historyProjectIds, historyAgentId, legacyAgentIds, agentsLoaded]);
   const [historyState, setHistoryState] = useState({ key: "", data: emptyProjectHistory() });
   const historyData = historyState.key === historyKey ? historyState.data : emptyProjectHistory();
@@ -373,6 +375,10 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
       ? [activeMeta, ...rows] : rows;
   }, [historyState, historyKey, convos, activeMeta, historyProjectIds, selectedRoot, includeLegacy, legacyAgentIds, search, historyAgentId]);
   const historySummary = historyData.summary;
+  const historicalProjectAgents = agents.filter(agent => !availableInProject(agent, currentProjectId) && (
+    agent.id === currentAgentId || (historySummary?.agents[agent.id] ?? 0) > 0 || legacyMembers.includes(agent.id) ||
+    agent.assignments?.some(assignment => historyProjectIds.split(",").includes(assignment.projectId))
+  ));
 
   // Auto-expand the collapsable branch that holds the ACTIVE conversation, so
   // the lists can start fully collapsed yet still reveal the open chat. Runs
@@ -429,7 +435,7 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   const looseProjectTree = useMemo(() => {
     // Display legacy mailboxes under their unique owning root, without changing
     // the metadata used to open/send the conversation.
-    const displayed = sidebarConvos.map(c => !c.projectId && includeLegacy && c.agentId && projectTeamAgents.some(a => a.id === c.agentId)
+    const displayed = sidebarConvos.map(c => !c.projectId && includeLegacy && c.agentId === historyAgentId
       ? { ...c, projectId: selectedRoot } : c);
     const tree = buildProjectConversationTree(displayed, projects, { includeEmpty: true });
     if (historySummary) {
@@ -465,7 +471,7 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
       const project = projectById.get(pid);
       if (!project) return;
       setCurrentProjectId(pid);
-      newConversation({ preserveAgent: !!historyAgentId && projectAgentScope(project, projects)?.teamId === projectTeam?.teamId });
+      newConversation({ preserveAgent: !!historyAgentId && agents.some(agent => agent.id === historyAgentId && availableInProject(agent, pid)) });
     },
     onEditProject: (pid: string) => { const p = projectById.get(pid); if (p) setModalProject(p); },
   };
@@ -476,6 +482,8 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     const a = agentById.get(agentId);
     if (!a) return;
     const project = projectForAgent(a, projects, currentProjectId ?? undefined);
+    if (currentProjectId && !project) return;
+    if (!currentProjectId && (!a.capabilities?.canExecute || a.execution?.projectId)) return;
     const pending = preserveDraft ? { text: draft, attachments } : undefined;
     if (a.providerId === provider) {
       newConversation({ preserveAgent: false });
@@ -868,6 +876,7 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
     projectTeam,
     agentCatalogReady: agentsLoaded,
     projectTeamAgents: agentsLoaded ? projectTeamAgents : [],
+    historicalProjectAgents: agentsLoaded ? historicalProjectAgents : [],
     sidebarConvos,
     historyAgentId,
     historySearchStatus: historyData.searchStatus,

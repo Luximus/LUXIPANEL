@@ -10,7 +10,7 @@ import { LucideIcon } from "../LucideIcon";
 import { TimelineRow, ProjectsPager, SidebarTabs } from "./sidebar-chrome";
 import { ConvoRow } from "./ConvoRow";
 import { AgentThreadedConvos } from "./agent-threaded-convos";
-import { projectForAgent } from "../project-modal/agent-scope";
+import { legacyHistoryAgentIds } from "../agent-market-state";
 import { ProjectTreeConvos } from "./project-tree-convos";
 import { rootProjectId, SelectedProjectConvos } from "./project-history-picker";
 import { type ChatPaneVM } from "./use-chat-pane";
@@ -108,8 +108,8 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
     if (!chat.projectId && chat.agentId && !agentCatalogReady) return;
     autoProjectForRef.current = activeId;
     const agent = chat.agentId ? agentById.get(chat.agentId) : undefined;
-    const legacyRoot = !chat.projectId && agent?.teamId && projects.filter(p => !p.parentId && p.teamId === agent.teamId).length === 1
-      ? projectForAgent(agent, projects, currentProjectId ?? undefined) : null;
+    const legacyRoot = !chat.projectId && agent
+      ? projects.find(project => !project.parentId && legacyHistoryAgentIds([agent], projects, project.id).includes(agent.id)) : null;
     setCurrentProjectId(chat.projectId && projectById.has(chat.projectId) ? chat.projectId : legacyRoot?.id ?? null);
   }, [activeId, activeMeta, convos, projectById, agentById, agentCatalogReady, projects, currentProjectId, setCurrentProjectId]);
   // In the workspace, the existing conversation tree lives in the left rail.

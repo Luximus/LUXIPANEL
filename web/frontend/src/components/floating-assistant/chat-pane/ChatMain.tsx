@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { formatAssistantMessage, useAssistantI18n } from "../i18n";
 import { chatEngine } from "../chat-engine";
 import { resolveTargetScope } from "@/lib/api-client";
+import { legacyHistoryAgentIds } from "../agent-market-state";
 import { groupTeamNotices, isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
 import { ExecutionDisclosure } from "./tool-disclosure";
 import { assistantConversationsApi, type ConversationMeta } from "../assistant-api";
@@ -51,7 +52,7 @@ const PROMPT_EFFORTS: Record<string, string[]> = {
 
 export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentImages: ReadonlyMap<string, string> }) {
   const mobileNavigation = useIsMobile(1024);
-  const { welcomeTitle } = useAssistantI18n();
+  const { welcomeTitle, agentMarket: marketMessages } = useAssistantI18n();
   const { copied: chatIdCopied, copy: copyChatId } = useCopyToClipboard();
   const [userInitials, setUserInitials] = useState<string | null>(null);
   const [serverLogo, setServerLogo] = useState("/logo_150.webp");
@@ -202,9 +203,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     if (!selectedRootProject || !projectTeam) return [];
     const ids = [...projectScopeIds(selectedRootProject.id!, projects)];
     // Match the history selector's legacy mailboxes only for a uniquely owned team.
-    if (projects.filter(project => !project.parentId && project.teamId === projectTeam.teamId).length === 1) ids.push("none");
+    if (legacyHistoryAgentIds(projectTeamAgents, projects, selectedRootProject.id).length) ids.push("none");
     return ids;
-  }, [selectedRootProject, projectTeam, projects]);
+  }, [selectedRootProject, projectTeam, projects, projectTeamAgents]);
   // The project landing offers agents; a selected agent or an opened chat
   // uses the regular conversation view, including when its history is empty.
   const showAgentShortcuts = !!currentProject && !currentAgentId && !activeId && !chatLoading && turns.length === 0;
@@ -214,6 +215,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     || (agent.id === projectTeam?.root.leaderAgentId ? (ct.agentRoleLeader ?? "Líder") : (ct.agentBadgeModel ?? "Agente"));
   const selectProjectAgent = (key: string) => {
     if (key === (currentAgentId ?? "")) return;
+    if (vm.historicalProjectAgents.some(agent => agent.id === key)) {
+      newConversation(); vm.setCurrentAgentId(key); setDraft(draft); setAttachments(attachments); return;
+    }
     if (key) handleNewAgentChat(key, true);
     else { newConversation(); setDraft(draft); setAttachments(attachments); }
   };
@@ -466,6 +470,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               options: [
                 { key: "", name: ct.agentHistoryAll ?? "Todos los agentes" },
                 ...projectTeamAgents.map(agent => ({ key: agent.id!, name: `[${agentRoleLabel(agent)}] ${agent.name}` })),
+                ...vm.historicalProjectAgents.map(agent => ({ key: agent.id, name: `${agent.name} · ${marketMessages.historical}` })),
               ],
               onChange: selectProjectAgent,
             }] : []),
