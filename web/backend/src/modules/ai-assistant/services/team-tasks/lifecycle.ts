@@ -40,6 +40,7 @@ import { workerRunStarted, workerRunEnded, hasWorkerSlot } from "./worker-quota.
 import { isInterruptionPlaceholder, TASK_INTERRUPTED_ERROR } from "./interruption.js";
 
 const log = createModuleLogger("assistant-team-tasks");
+const nudgeInFlight = new Set<string>();
 
 // ── Despacho diferido (lease ocupado / cupo lleno) ──────────────────────────
 //
@@ -229,7 +230,7 @@ interface FinalizeOpts {
 }
 
 /** Serializa los cierres concurrentes del MISMO task (onDone del run vs el
- *  listener AI_CHAT_FINISHED disparan a la vez al terminar el mismo run; la
+ *  listener AI_TURN_SETTLED disparan a la vez al terminar el mismo run; la
  *  idempotencia del repo evitaba el doble patch, pero los side-effects de
  *  cierre — captura de artefactos, cleanup del worktree — no son idempotentes
  *  gratis). */
@@ -278,7 +279,11 @@ async function runVerifyGate(
     await teamTasksRepository
       .updateTask(executor, taskId, { verify: { state: "skipped", attempts: attempt - 1 } })
       .catch(() => undefined);
-    return { verdict: "passed" };
+    return {
+      verdict: "failed",
+      error: "No se pudo confirmar el directorio necesario para verificar la tarea.",
+      logTail: "La verificación requerida no llegó a iniciarse.",
+    };
   }
   const running = await teamTasksRepository.updateTask(executor, taskId, {
     verify: { state: "running", attempts: attempt, startedAt: new Date().toISOString() },
@@ -375,9 +380,25 @@ async function finalizeTaskInner(
       ...(outcome.resultSummary ? { resultSummary: outcome.resultSummary } : {}),
     };
   }
+  if (outcome.status === "done" && !outcome.resultSummary?.trim()) {
+    outcome = { status: "failed", error: "El agente no dejó un resultado final verificable." };
+  }
+
+  // Skipping execution during recovery is not evidence that the configured
+  // verification passed. Preserve the partial answer, but never publish this
+  // task as done or replay commands whose prior effects are unconfirmed.
+  if (outcome.status === "done" && opts.skipVerify && (current.verifyCommands?.length ?? 0) > 0 && current.verify?.state !== "passed") {
+    outcome = {
+      ...outcome,
+      status: "failed",
+      error: current.verify?.state === "failed"
+        ? "La verificación de la tarea falló. Revisa su resultado antes de continuar."
+        : "No se pudo confirmar la verificación de la tarea recuperada. Revisa el estado antes de repetir cambios.",
+    };
+  }
 
   // Verify gate: solo cierres "done" con receta. En retry la tarea SIGUE
-  // running (el turno de corrección volverá a entrar por AI_CHAT_FINISHED).
+  // running (el turno de corrección volverá a entrar por AI_TURN_SETTLED).
   if (outcome.status === "done" && !opts.skipVerify && (current.verifyCommands?.length ?? 0) > 0) {
     const gate = await runVerifyGate(executor, current);
     if (gate.verdict === "retry") return null;
@@ -458,8 +479,8 @@ async function finalizeTaskInner(
   // Capture BEFORE pinging: waitForPing removes its waiter synchronously when
   // pinged, so checking after would misread "a collect was waiting" as "nobody
   // is waiting" and fire a spurious nudge alongside the collect.
-  const hadWaiters = hasWaiters(updated.leaderConversationId);
-  pingWaiters(updated.leaderConversationId);
+  const hadWaiters = hasWaiters(updated.leaderConversationId, executor.target.id);
+  pingWaiters(updated.leaderConversationId, executor.target.id);
   await updatePlanFromTask(executor, updated).catch((err) =>
     log.warn({ err: (err as Error).message }, "team plan step update failed"),
   );
@@ -514,34 +535,44 @@ async function updatePlanFromTask(executor: Executor, task: TeamTask): Promise<v
  * task of a leader conversation is terminal AND no team.collect is waiting AND
  * the leader has no live run, enqueue-nudge the leader via
  * AI_TEAM_LEADER_NUDGE (agent.controller listens and drains the queue). Tasks
- * are marked `nudged` BEFORE emitting so a model that ignores the nudge can't
- * loop the wake-up forever.
+ * are acknowledged by the listener AFTER durable enqueue. An in-process
+ * guard deduplicates concurrent checks; the queued task ids survive restart.
  */
 export async function maybeNudgeLeader(executor: Executor, leaderConversationId: string): Promise<void> {
-  if (liveVoiceSession(leaderConversationId, executor.target.id)) return;
-  if (hasWaiters(leaderConversationId)) return; // a collect will grab them
-  if (agentRunRegistry.isActive(leaderConversationId, executor.target.id)) return; // leader mid-turn
-  const tasks = await teamTasksRepository.listForLeaderConversation(executor, leaderConversationId);
-  const candidates = tasks.filter((t) => t.id && !t.collected && !t.nudged);
-  if (candidates.length === 0) return;
-  // Voice coordinators have no persisted agent identity; their task cards remain authoritative.
-  if (candidates.every(t => t.leaderAgentId.startsWith("realtime:"))) return;
-  if (candidates.some((t) => !isTerminalTaskStatus(t.status))) return; // team still working
-  for (const t of candidates) {
-    await teamTasksRepository.updateTask(executor, t.id ?? "", { nudged: true }).catch(() => undefined);
-  }
-  const sample = candidates[0]!;
+  const key = JSON.stringify([executor.target.id, leaderConversationId]);
+  if (nudgeInFlight.has(key)) return;
+  nudgeInFlight.add(key);
+  let emitted = false;
   try {
-    eventBus.emit(Events.AI_TEAM_LEADER_NUDGE, {
-      executor,
-      leaderConversationId,
-      leaderAgentId: sample.leaderAgentId,
-      userId: sample.userId ?? undefined,
-      user: sample.user ?? undefined,
-      taskIds: candidates.map((t) => t.id ?? ""),
-    });
-  } catch (err) {
-    log.warn({ err: (err as Error).message }, "AI_TEAM_LEADER_NUDGE emit failed");
+    if (liveVoiceSession(leaderConversationId, executor.target.id)) return;
+    if (hasWaiters(leaderConversationId, executor.target.id)) return; // a collect will grab them
+    if (agentRunRegistry.isActive(leaderConversationId, executor.target.id)) return; // leader mid-turn
+    const tasks = await teamTasksRepository.listForLeaderConversation(executor, leaderConversationId);
+    const candidates = tasks.filter((t) => t.id && !t.collected && !t.nudged);
+    if (candidates.length === 0) return;
+    // Voice coordinators have no persisted agent identity; their task cards remain authoritative.
+    if (candidates.every(t => t.leaderAgentId.startsWith("realtime:"))) return;
+    if (candidates.some((t) => !isTerminalTaskStatus(t.status))) return; // team still working
+    if (candidates.every(t => t.status === "canceled")) return;
+    const { items } = await conversationsRepository.messages(executor, leaderConversationId, { limit: 1 });
+    const last = items.at(-1);
+    if (last?.role === "assistant" && (last.interrupted || last.error || last.ask?.length)) return;
+    const sample = candidates[0]!;
+    try {
+      emitted = eventBus.emit(Events.AI_TEAM_LEADER_NUDGE, {
+        executor,
+        leaderConversationId,
+        leaderAgentId: sample.leaderAgentId,
+        userId: sample.userId ?? undefined,
+        user: sample.user ?? undefined,
+        taskIds: candidates.map((t) => t.id ?? ""),
+        onSettled: () => nudgeInFlight.delete(key),
+      });
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "AI_TEAM_LEADER_NUDGE emit failed");
+    }
+  } finally {
+    if (!emitted) nudgeInFlight.delete(key);
   }
 }
 
@@ -549,4 +580,5 @@ export async function maybeNudgeLeader(executor: Executor, leaderConversationId:
 export function resetLifecycleState(): void {
   pendingDispatch.length = 0;
   finalizeLocks.clear();
+  nudgeInFlight.clear();
 }

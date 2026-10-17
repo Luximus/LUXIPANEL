@@ -757,3 +757,17 @@ describe("project team history summaries", () => {
     expect(result.summary?.agents).toEqual({ a: 1 });
   });
 });
+
+describe("queued history receipts", () => {
+  it("keeps one message when a saved queued turn is delivered again after recovery", async () => {
+    const executor = makeExecutor([]);
+    const conversation = await conversationsRepository.create(executor, "claude", "Inicio");
+    const queued = msg("user", "Resultados del equipo", "2026-10-17T12:00:00Z");
+    await conversationsRepository.appendMessages(executor, String(conversation.id), [queued], { queueTurnId: "turn-1" });
+    await conversationsRepository.appendMessages(executor, String(conversation.id), [queued], { queueTurnId: "turn-1" });
+    expect((await conversationsRepository.allMessages(executor, String(conversation.id))).filter(item => item.content === queued.content)).toEqual([queued]);
+    // A distinct follow-up with identical prose is still a distinct request.
+    await conversationsRepository.appendMessages(executor, String(conversation.id), [queued], { queueTurnId: "turn-2" });
+    expect((await conversationsRepository.allMessages(executor, String(conversation.id))).filter(item => item.content === queued.content)).toHaveLength(2);
+  });
+});

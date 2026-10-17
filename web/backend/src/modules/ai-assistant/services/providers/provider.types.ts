@@ -22,7 +22,7 @@ export interface AgentMessage {
 // renamed `type` string, changed fields) MUST be mirrored there or the stream
 // parser drifts. Do not add variants without updating both.
 export type AgentEvent =
-  | { type: "text"; delta: string }
+  | { type: "text"; delta: string; phase?: "commentary" | "final_answer" }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; id: string; success: boolean; output: string }
   // `headroomSavedTokens` = input tokens that the Headroom compression layer
@@ -36,8 +36,8 @@ export type AgentEvent =
   // answering with the FIRST option sends `planDecision: "approve"` so the next
   // turn runs with the manual gate instead of `--permission-mode plan`.
   | { type: "ask"; id: string; questions: AskQuestion[]; kind?: "plan-approval" }
-  // Background translation: the run-registry synthesizes these. Providers never
-  // emit `status`. When translation is active, live English text deltas are
+  // Transient progress, including provider commentary and background translation.
+  // When translation is active, live English text deltas are
   // suppressed; the client shows this transient state instead, and the final
   // answer arrives as ONE already-translated `text` event before `done`.
   // "working" = producing the (hidden) English answer · "translating" = final
@@ -66,7 +66,9 @@ export type AgentEvent =
   // clients → harmlessly ignored; the UI also rehydrates from
   // `GET /api/ai/team/tasks`.
   | { type: "team_task_update"; task: TeamTaskView }
-  | { type: "done" }
+  // The provider stream ended while background/delegated work needs collection.
+  // No final answer is published in that case; team cards remain authoritative.
+  | { type: "done"; pending?: true }
   | { type: "error"; message: string };
 
 export interface ProviderAttachment {

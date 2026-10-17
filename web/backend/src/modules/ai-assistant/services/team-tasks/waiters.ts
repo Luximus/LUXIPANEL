@@ -7,9 +7,10 @@
  */
 
 const waiters = new Map<string, Set<() => void>>();
+const waiterKey = (conversationId: string, targetId: string) => JSON.stringify([targetId, conversationId]);
 
-export function pingWaiters(leaderConversationId: string): void {
-  for (const fn of waiters.get(leaderConversationId) ?? []) {
+export function pingWaiters(leaderConversationId: string, targetId: string): void {
+  for (const fn of waiters.get(waiterKey(leaderConversationId, targetId)) ?? []) {
     try {
       fn();
     } catch {
@@ -19,24 +20,26 @@ export function pingWaiters(leaderConversationId: string): void {
 }
 
 /** ¿Hay algún collect esperando en esta conversación de líder? */
-export function hasWaiters(leaderConversationId: string): boolean {
-  return (waiters.get(leaderConversationId)?.size ?? 0) > 0;
+export function hasWaiters(leaderConversationId: string, targetId: string): boolean {
+  return (waiters.get(waiterKey(leaderConversationId, targetId))?.size ?? 0) > 0;
 }
 
 /** Resolve on ping / timeout / abort — whichever comes first. */
-export function waitForPing(leaderConversationId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+export function waitForPing(leaderConversationId: string, timeoutMs: number, signal: AbortSignal | undefined, targetId: string): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  const key = waiterKey(leaderConversationId, targetId);
   return new Promise<void>((resolve) => {
-    let set = waiters.get(leaderConversationId);
+    let set = waiters.get(key);
     if (!set) {
       set = new Set();
-      waiters.set(leaderConversationId, set);
+      waiters.set(key, set);
     }
     const timer = setTimeout(done, Math.max(0, timeoutMs));
     timer.unref?.();
     function done(): void {
       clearTimeout(timer);
       set?.delete(done);
-      if (set && set.size === 0) waiters.delete(leaderConversationId);
+      if (set && set.size === 0) waiters.delete(key);
       signal?.removeEventListener("abort", done);
       resolve();
     }

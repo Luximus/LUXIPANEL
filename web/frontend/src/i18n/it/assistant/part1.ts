@@ -251,6 +251,7 @@ const assistantPart1 = {
     "processTitle": "Processo",
     "noFinalAnswer": "L'agente ha terminato senza una risposta finale; controlla il blocco del processo.",
     "toolTrace": {
+      "historyTruncated": "Alcuni dettagli non sono stati conservati a causa del limite della cronologia.",
       "waiting": "In attesa",
       "unconfirmed": "Risultato non confermato",
       "running": "in esecuzione…",

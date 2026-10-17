@@ -55,6 +55,9 @@ const mcpServerService = {
   },
 };
 vi.mock("../../auth/services/live-authorization.service.js", () => ({ resolveLiveAuthorization: async (user: SessionUser) => user }));
+// Identity entitlements have their own tests; wire dispatch must not read the
+// host's GitHub credentials while exercising these synthetic capabilities.
+vi.mock("../../../shared/github/user-connection.js", () => ({ requireGithub: async () => {} }));
 
 function mkCap(): AgentCapability {
   return {
@@ -166,7 +169,7 @@ describe("mcpServerService", () => {
       ctx,
     );
     const result = r?.result as { content: Array<{ type: string; text: string }>; isError: boolean };
-    expect(result.isError).toBe(false);
+    expect(result.isError, result.content[0]?.text).toBe(false);
     expect(result.content[0]?.text).toBe("pong: hola");
   });
 
@@ -220,7 +223,7 @@ describe("mcpServerService", () => {
           { executor: localExecutor, userId: user ? String(user.userId) : undefined, user },
         );
       const owner = (await call(mkUser(7)))?.result as { isError: boolean; content: Array<{ text: string }> };
-      expect(owner.isError).toBe(false);
+      expect(owner.isError, owner.content[0]?.text).toBe(false);
       expect(owner.content[0]?.text).toBe("hi");
       const intruder = (await call(mkUser(8)))?.result as { isError: boolean };
       expect(intruder.isError).toBe(true);

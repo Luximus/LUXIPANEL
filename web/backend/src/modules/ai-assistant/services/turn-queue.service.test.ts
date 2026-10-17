@@ -95,6 +95,7 @@ const registryState = vi.hoisted(() => ({ active: new Set<string>(), runs: [] as
 vi.mock("./agent-run-registry.js", () => ({
   agentRunRegistry: {
     isActive: vi.fn((key: string) => registryState.active.has(key)),
+    deferQueueDrain: vi.fn((key: string) => registryState.active.has(key)),
     activeRuns: vi.fn(() => registryState.runs),
     start: vi.fn((args: { makeGen: () => AsyncGenerator<unknown> }) => {
       calls.push("run:start");
@@ -119,6 +120,7 @@ vi.mock("../repositories/team-tasks.repository.js", () => ({
   teamTasksRepository: {
     listForLeaderConversation: vi.fn(async () => teamState.forLeaderConv),
     findByWorkerConversation: vi.fn(async () => teamState.byWorkerConv),
+    updateTask: vi.fn(async (_e: unknown, _id: string, patch: unknown) => { calls.push("team:acknowledge"); return patch; }),
   },
 }));
 const steerState = vi.hoisted(() => ({ result: false }));
@@ -150,7 +152,9 @@ vi.mock("../repositories/agent-roles.repository.js", () => ({ agentRolesReposito
 
 import { eventBus, Events } from "../../../shared/events/index.js";
 import { getContextExecutor, localExecutor, runWithExecutor } from "../../../shared/executor/index.js";
-import { drainConversationQueue, initAgentMessageListener } from "./turn-queue.service.js";
+import { drainConversationQueue, initAgentMessageListener, initTeamNudgeListener } from "./turn-queue.service.js";
+import { teamTasksService } from "./team-tasks.service.js";
+import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
@@ -201,6 +205,58 @@ async function settle(): Promise<void> {
 }
 
 initAgentMessageListener();
+initTeamNudgeListener();
+
+describe("durable team result delivery", () => {
+  function setup() {
+    meta.current = { id: "leader", provider: "claude", agentId: "a-mateo", projectId: null };
+    registryState.active.add("leader"); // persist the follow-up; do not run it yet
+    teamState.forLeaderConv = [{ id: "task-1", title: "Ajuste", workerAgentName: "Worker", status: "done", resultSummary: "Verificado" }];
+    const onSettled = vi.fn();
+    const payload = { executor: localExecutor, leaderConversationId: "leader", leaderAgentId: "a-mateo", user: sender, userId: "7", taskIds: ["task-1"], onSettled };
+    return { onSettled, emit: () => eventBus.emit(Events.AI_TEAM_LEADER_NUDGE, payload) };
+  }
+  it("acknowledges tasks only after their result turn is durably queued", async () => {
+    const delivery = setup();
+    delivery.emit();
+    await vi.waitFor(() => expect(delivery.onSettled).toHaveBeenCalledOnce());
+    expect(calls.indexOf("enqueue")).toBeLessThan(calls.indexOf("team:acknowledge"));
+    expect(queue.items[0]).toMatchObject({ auto: true, teamTaskIds: ["task-1"], user: sender });
+    expect(teamTasksService.markCollected).toHaveBeenCalledWith(localExecutor, ["task-1"]);
+    expect(queue.items[0]?.userText).toContain("Verificado");
+  });
+  it("leaves tasks recoverable on enqueue failure and can deliver on the next reconciliation", async () => {
+    const delivery = setup();
+    vi.mocked(agentQueueRepository.enqueue).mockRejectedValueOnce(new Error("storage unavailable"));
+    delivery.emit();
+    await vi.waitFor(() => expect(delivery.onSettled).toHaveBeenCalledTimes(1));
+    expect(teamTasksRepository.updateTask).not.toHaveBeenCalled();
+    expect(teamTasksService.markCollected).not.toHaveBeenCalled();
+    delivery.emit();
+    await vi.waitFor(() => expect(delivery.onSettled).toHaveBeenCalledTimes(2));
+    expect(queue.items).toHaveLength(1);
+    expect(teamTasksService.markCollected).toHaveBeenCalledOnce();
+  });
+  it("reuses a queued delivery left by a restart instead of duplicating it", async () => {
+    const delivery = setup();
+    queue.items.push({ id: "saved", conversationId: "leader", withContext: true, userText: "Resultados", ts: "2026-10-17", teamTaskIds: ["task-1"], auto: true });
+    delivery.emit();
+    await vi.waitFor(() => expect(delivery.onSettled).toHaveBeenCalledOnce());
+    expect(agentQueueRepository.enqueue).not.toHaveBeenCalled();
+    expect(queue.items).toHaveLength(1);
+    expect(teamTasksService.markCollected).toHaveBeenCalledWith(localExecutor, ["task-1"]);
+  });
+  it("does not restart the leader after a human stop", async () => {
+    setup();
+    registryState.active.delete("leader");
+    queue.items.push({ id: "saved", conversationId: "leader", withContext: true, userText: "Resultados", ts: "2026-10-17", teamTaskIds: ["task-1"], auto: true });
+    vi.mocked(conversationsRepository.messages).mockResolvedValueOnce({ items: [{ role: "assistant", content: "", interrupted: true, ts: "2026-10-17" }], total: 1 } as never);
+    await drainConversationQueue(localExecutor, "leader");
+    expect(calls).not.toContain("drain:takeNext");
+    expect(calls).not.toContain("run:start");
+    expect(queue.items).toHaveLength(1);
+  });
+});
 
 beforeEach(() => {
   calls.length = 0;
@@ -219,6 +275,8 @@ beforeEach(() => {
   vi.mocked(conversationsRepository.create).mockClear();
   vi.mocked(agentQueueRepository.enqueue).mockClear();
   vi.mocked(agentMessagesRepository.update).mockClear();
+  vi.mocked(teamTasksRepository.updateTask).mockClear();
+  vi.mocked(teamTasksService.markCollected).mockClear();
 });
 
 afterEach(() => {
@@ -440,7 +498,7 @@ it("persists recorded audio with the user turn and keeps only text in model hist
   vi.mocked(attachmentsRepository.storeMany).mockResolvedValueOnce([ref]);
   await persistUserMessage(localExecutor, "voice-conv", "Hello", "codex", [recording], { textOriginal: "Hola", lang: "es" });
   expect(attachmentsRepository.storeMany).toHaveBeenCalledWith(localExecutor, "voice-conv", [recording]);
-  expect(conversationsRepository.appendMessages).toHaveBeenCalledWith(localExecutor, "voice-conv", [expect.objectContaining({ content: "Hello", textOriginal: "Hola", attachments: [ref] })]);
+  expect(conversationsRepository.appendMessages).toHaveBeenCalledWith(localExecutor, "voice-conv", [expect.objectContaining({ content: "Hello", textOriginal: "Hola", attachments: [ref] })], {});
   vi.mocked(conversationsRepository.messages).mockResolvedValueOnce({ items: [{ role: "user", content: "Hello", ts: "", attachments: [ref] }], total: 1, hasMore: false });
   expect(await buildMessagesFromHistory(localExecutor, "voice-conv")).toEqual([{ role: "user", content: "Hello" }]);
 });
@@ -494,4 +552,40 @@ it("restores a queued sender's target and user context before validating a proje
   await drainConversationQueue(localExecutor, "restored");
   expect(runOptions.last).toMatchObject({ user: sender, agentId: "a-mateo", projectId: "p1" });
   expect(runOptions.targetId).toBe(localExecutor.target.id);
+});
+
+it.each([false, true])("keeps a queued turn when its history cannot be saved, auto=%s", async auto => {
+  queue.items.push({ id: "unsaved", conversationId: "unsaved-chat", withContext: true, user: sender, userText: "Continuar", ts: "2026-10-17", auto });
+  vi.mocked(conversationsRepository.appendMessages).mockRejectedValueOnce(new Error("history unavailable"));
+  await expect(drainConversationQueue(localExecutor, "unsaved-chat")).rejects.toThrow("history unavailable");
+  expect(queue.items.map(turn => turn.id)).toEqual(["unsaved"]);
+  expect(calls).not.toContain("drain:takeNext");
+  expect(calls).not.toContain("run:start");
+  await drainConversationQueue(localExecutor, "unsaved-chat");
+  expect(queue.items).toHaveLength(0);
+  expect(calls.filter(call => call === "run:start")).toHaveLength(1);
+  expect(calls.indexOf("appendMessages")).toBeLessThan(calls.indexOf("drain:takeNext"));
+});
+
+it("keeps the continuation queued when rebuilding context fails", async () => {
+  queue.items.push({ id: "context", conversationId: "context-chat", withContext: true, user: sender, userText: "Continuar", ts: "2026-10-17" });
+  vi.mocked(conversationsRepository.messages).mockRejectedValueOnce(new Error("history unavailable"));
+  await expect(drainConversationQueue(localExecutor, "context-chat")).rejects.toThrow("history unavailable");
+  expect(queue.items.map(turn => turn.id)).toEqual(["context"]);
+  expect(calls).not.toContain("run:start");
+  await drainConversationQueue(localExecutor, "context-chat");
+  expect(calls.filter(call => call === "run:start")).toHaveLength(1);
+  expect(vi.mocked(conversationsRepository.appendMessages).mock.calls.at(-1)?.[3]).toMatchObject({ queueTurnId: "context" });
+});
+
+it.each([
+  { interrupted: true },
+  { error: "Resultado sin confirmar" },
+  { ask: [{ id: "q", type: "text", text: "¿Continuar?" }] },
+])("keeps automatic continuations blocked by the latest outcome %j", async outcome => {
+  queue.items.push({ id: "blocked-auto", conversationId: "blocked-chat", withContext: true, user: sender, userText: "Continuar", ts: "2026-10-17", auto: true });
+  vi.mocked(conversationsRepository.messages).mockResolvedValueOnce({ items: [{ role: "assistant", content: "", ts: "", ...outcome }], total: 1 } as never);
+  await drainConversationQueue(localExecutor, "blocked-chat");
+  expect(queue.items).toHaveLength(1);
+  expect(calls).not.toContain("run:start");
 });

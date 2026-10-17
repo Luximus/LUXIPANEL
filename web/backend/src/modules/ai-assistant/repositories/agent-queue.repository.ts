@@ -58,6 +58,8 @@ export interface QueuedTurn {
    * background translation layer (it's an internal instruction).
    */
   auto?: boolean;
+  /** Durable identity of an automatic team-result delivery (dedupe on recovery). */
+  teamTaskIds?: string[];
   /**
    * cwd forzado del run drenado (worktree de una tarea de equipo): gana sobre
    * project.path manteniendo el contexto del proyecto. Los turnos de

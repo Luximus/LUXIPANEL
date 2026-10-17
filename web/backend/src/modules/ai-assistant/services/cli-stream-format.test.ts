@@ -8,6 +8,7 @@ import {
   createGeminiStreamTransformer,
   parseGeminiFinalAnswer,
   parseGeminiUsage,
+  parseClaudeFinalAnswer,
 } from "./cli-stream-format.js";
 
 // A representative `codex exec --json` log (one JSON object per line), including
@@ -100,7 +101,8 @@ describe("gemini stream format", () => {
     // Multiple assistant chunks concatenate.
     const log =
       '{"type":"message","role":"assistant","content":"Part one. "}\n' +
-      '{"type":"message","role":"assistant","content":"Part two."}\n';
+      '{"type":"message","role":"assistant","content":"Part two."}\n' +
+      '{"type":"result","status":"success"}\n';
     expect(parseGeminiFinalAnswer(log)).toBe("Part one. Part two.");
   });
 
@@ -117,6 +119,28 @@ describe("gemini stream format", () => {
     expect(() => createGeminiStreamTransformer()("not json\n{bad\n")).not.toThrow();
     expect(parseGeminiFinalAnswer("")).toBe("");
     expect(parseGeminiUsage("garbage\n")).toBeNull();
+  });
+});
+
+describe("structured CLI final answers", () => {
+  const prose = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Voy a cambiarlo. Falta verificar." }] } });
+  it("does not promote Claude progress when result is absent or empty", () => {
+    expect(parseClaudeFinalAnswer(prose)).toBe("");
+    expect(parseClaudeFinalAnswer(prose + '\n{"type":"result","result":"","subtype":"success"}')).toBe("");
+    expect(parseClaudeFinalAnswer(prose + '\n{"type":"result","result":"Verificado","subtype":"success"}')).toBe("Verificado");
+  });
+  it("rejects an error result even if it contains text", () => {
+    expect(parseClaudeFinalAnswer('{"type":"result","is_error":true,"result":"Trabajo parcial"}')).toBe("");
+  });
+  it("keeps Gemini text after the final tool and requires a successful result", () => {
+    const raw = [
+      { type: "message", role: "assistant", content: "Voy a cambiarlo" },
+      { type: "tool_use", tool_id: "1" },
+      { type: "message", role: "assistant", content: "Verificado" },
+    ].map(frame => JSON.stringify(frame)).join("\n");
+    expect(parseGeminiFinalAnswer(raw)).toBe("");
+    expect(parseGeminiFinalAnswer(raw + '\n{"type":"result","status":"success"}')).toBe("Verificado");
+    expect(parseGeminiFinalAnswer(raw + '\n{"type":"result","status":"error"}')).toBe("");
   });
 });
 

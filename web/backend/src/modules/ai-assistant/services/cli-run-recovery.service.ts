@@ -5,6 +5,7 @@ import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { teamIsolationService } from "./team-isolation.service.js";
 import { workerRunStarted, workerRunEnded } from "./team-tasks/worker-quota.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
+import { guardTurnFinalization, hasUncollectedTeamTasks } from "./turn-finalization.js";
 import { cliJobsRepository, type CliJobDescriptor } from "../repositories/cli-jobs.repository.js";
 import { cliSessionsRepository } from "../repositories/cli-sessions.repository.js";
 import { makeRecoveredCliGen } from "./providers/cli/recovered-run.js";
@@ -82,14 +83,14 @@ function resumeCliRun(
       }
       try {
         contribution=await recoverOwnerContribution(user,desc,executor.target.id);
-        yield* makeRecoveredCliGen(executor, conversationId, desc);
+        yield* guardTurnFinalization(makeRecoveredCliGen(executor, conversationId, desc), () => hasUncollectedTeamTasks(executor, conversationId));
       }
       finally { release(); if (task) workerRunEnded(task.userId, conversationId); }
     },
     onEvent: recordUsage,
     onComplete: async (assistantText, errored, ask, _translation, durationMs, cliLog, askKind, outcome) => {
       const contributionId=await finishOwnerContribution(contribution,!errored && !ask?.length && !outcome?.interrupted && !outcome?.error);
-      if(contributionId)assistantText+="\n\nEl aporte quedó registrado para envío automático a developer; su estado está en la conexión GitHub.";
+      if(contributionId && !outcome?.pending)assistantText+="\n\nEl aporte quedó registrado para envío automático a developer; su estado está en la conexión GitHub.";
       const tokens =
         tokensHolder.input + tokensHolder.output > 0
           ? {
@@ -103,7 +104,7 @@ function resumeCliRun(
       // verbose terminal log rides along as `cliLog` for the console box.
       await persistAssistantMessage(executor, conversationId, assistantText, desc.provider, true, ask, undefined, tokens, durationMs, cliLog, askKind, outcome);
       await cliJobsRepository.delete(executor, conversationId).catch(() => undefined);
-      await drainConversationQueue(executor, conversationId);
+      if (!outcome?.interrupted) await drainConversationQueue(executor, conversationId);
     },
   });
 }

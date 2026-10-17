@@ -22,7 +22,7 @@ type ExecutionContentProps = { children?: ReactNode; attention?: ReactNode };
  * One tool trace rendered as a collapsible `<details>`. For a CLI tool (the
  * server console) the disclosure starts collapsed, including while the agent
  * is working. The user can expand it whenever they want to watch the process.
- * Non-CLI tool traces stay collapsed by default (native uncontrolled).
+ * Non-CLI tool traces stay collapsed by default and retain manual toggles.
  */
 export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, attention }: { t: ToolTraceLite; turn: ChatTurn; uiMode: "simple" | "advanced"; embedded?: boolean } & ExecutionContentProps) {
   const tt = useAssistantI18n().chatTab.toolTrace;
@@ -31,13 +31,13 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
     ? ((t.input as Record<string, unknown>).startedAt as number)
     : null;
   const human = uiMode === "simple" ? humanizeToolName(t.name) : null;
-  const running = !t.result && !turn.stopped;
-  const apiStatus = isCliTool ? undefined : apiToolStatus(t, turn);
-  const status = apiStatus
-    ? apiStatus === "failed" ? "error" : apiStatus === "unconfirmed" || apiStatus === "waiting" || apiStatus === "stopped" ? "idle" : apiStatus
-    : !t.result ? (turn.stopped ? "idle" : "running") : t.result.success ? "done" : "error";
-  const statusLabel = apiStatus === "failed" ? tt.error : apiStatus === "unconfirmed" ? tt.unconfirmed : apiStatus === "waiting" ? tt.waiting
-    : !t.result ? (turn.stopped ? tt.stopped : tt.running) : t.result.success ? tt.done : tt.withWarnings;
+  const toolState = apiToolStatus(t, turn);
+  const running = toolState === "running";
+  const status = toolState === "failed" ? "error"
+    : toolState === "done" || toolState === "running" ? toolState : "idle";
+  const statusLabel = toolState === "failed" ? tt.error : toolState === "unconfirmed" ? tt.unconfirmed
+    : toolState === "waiting" ? tt.waiting : toolState === "stopped" ? tt.stopped
+      : toolState === "done" ? tt.done : tt.running;
   const icon: CallChipIcon = /search|find|query/i.test(t.name) ? "search" : /edit|write|patch/i.test(t.name) ? "edit" : /file|read/i.test(t.name) ? "file" : "terminal";
 
   // Keep manual toggles intact as the run changes state.
@@ -54,21 +54,15 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
         onToggle={(e) => setConsoleOpen(e.currentTarget.open)}
         className={`group overflow-hidden text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-gray-200 dark:bg-black/95"}`}
       >
-        <summary className={`flex flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] text-muted-foreground [&::-webkit-details-marker]:hidden ${embedded ? "px-3" : "px-2 dark:text-zinc-300"}`}>
-          <CallChip icon="terminal" name="CLI" argument={(tt as Record<string, any>).serverConsole ?? "Consola del servidor"} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
+        <summary aria-expanded={consoleOpen} aria-controls={toolContentId} className={`flex min-h-11 flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden ${embedded ? "px-3" : "px-2"}`}>
+          <CallChip icon="terminal" name="CLI" argument={(tt as Record<string, any>).serverConsole ?? "Consola del servidor"} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
           <span className="ml-auto flex items-center gap-1.5 text-[10px] opacity-80">
-            {!t.result
-              ? turn.stopped
-                ? tt.stopped
-                : cliStartedAt
-                  ? <CliTimer startedAt={cliStartedAt} />
-                  : tt.running
-              : t.result.success ? tt.viewHistory : tt.withWarnings}
-            <i className="ti ti-chevron-right transition-transform group-open:rotate-90" aria-hidden></i>
+            {running && cliStartedAt ? <CliTimer startedAt={cliStartedAt} /> : toolState === "done" ? tt.viewHistory : statusLabel}
+            <ChevronRight className={`size-3 transition-transform duration-200 ${consoleOpen ? "rotate-90" : ""}`} aria-hidden />
           </span>
           {attention}
         </summary>
-        <div className={`border-t border-border/60 p-1 ${embedded ? "bg-gray-200 dark:bg-black/95" : ""}`}>
+        <div id={toolContentId} className={`border-t border-border/60 p-1 ${embedded ? "bg-gray-200 dark:bg-black/95" : ""}`}>
           <CliTerminalView bare output={t.terminal ?? ""} lanes={t.lanes} laneOrder={t.laneOrder} running={running} />
           {t.result && !t.result.success && (
             <p className="mt-1 px-1 text-[10px] text-amber-500">{t.result.output}</p>
@@ -86,7 +80,7 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
             que el modo avanzado, también en modo simple para que el comando/tool en
             curso siempre indique que está corriendo); detenido → stop; done → check;
             error → x. La etiqueta humanizada se conserva aparte (ver abajo). */}
-        <CallChip icon={icon} name={human ? human.label : t.name} argument={statusLabel} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
+        <CallChip icon={icon} name={human ? human.label : t.name} argument={statusLabel} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
         {/* Disclosure arrow pinned to the right corner; rotates when expanded. */}
         <ChevronRight className={`ml-auto size-3 text-muted-foreground transition-transform duration-200 ${consoleOpen ? "rotate-90" : ""}`} aria-hidden />
         {attention}
@@ -108,27 +102,32 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
  * stays compact; the user expands it to read the full execution history. A
  * maximize button (and clicking the box) opens a full-screen scrollable modal.
  */
-export function CliHistoryView({ text, embedded = false, children, attention }: { text: string; embedded?: boolean } & ExecutionContentProps) {
+export function CliHistoryView({ text, embedded = false, children, attention, activityStatus = "done" }: { text: string; embedded?: boolean; activityStatus?: ThoughtLineEntryStatus } & ExecutionContentProps) {
   const tt = useAssistantI18n().chatTab.toolTrace;
   const ct = useAssistantI18n().chatTab as Record<string, any>;
   const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  const statusLabel = activityStatus === "failed" ? tt.error : activityStatus === "stopped" ? tt.stopped
+    : activityStatus === "waiting" ? tt.waiting : activityStatus === "unconfirmed" ? tt.unconfirmed
+      : activityStatus === "running" ? tt.running : tt.viewHistory;
   return (
-    <details className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-black/95"}`}>
-      <summary className={`flex flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] ${embedded ? "px-3 text-muted-foreground" : "px-2 text-zinc-300"}`}>
-        <CallChip icon="terminal" name="CLI" argument={ct.toolTrace?.serverConsole ?? "Consola del servidor"} status="done" showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--muted-foreground)" className="lxp-tool-call-chip" />
-        <span className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
-          {tt.viewHistory}
+    <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-black/95"}`}>
+      <summary aria-expanded={open} aria-controls={contentId} className={`flex min-h-11 flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden ${embedded ? "px-3 text-foreground" : "px-2 text-zinc-300"}`}>
+        <CallChip icon="terminal" name="CLI" argument={ct.toolTrace?.serverConsole ?? "Consola del servidor"} status={activityStatus === "failed" ? "error" : activityStatus === "running" ? "running" : activityStatus === "done" ? "done" : "idle"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
+        <span className="ml-auto flex items-center gap-1 text-[10px]">
+          {statusLabel}
           <i className="ti ti-chevron-right transition-transform group-open:rotate-90" aria-hidden></i>
         </span>
         {attention}
       </summary>
-      <div className={`relative border-t border-border/60 p-1 ${embedded ? "bg-black/95" : ""}`}>
+      <div id={contentId} className={`relative border-t border-border/60 p-1 ${embedded ? "bg-black/95" : ""}`}>
         <button
           type="button"
           onClick={() => setExpanded(true)}
           title={tt.expandFullscreen}
           aria-label={tt.expandFullscreen}
-          className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-white/10 text-zinc-200 opacity-70 transition hover:bg-white/25 hover:opacity-100"
+          className="absolute right-1.5 top-1.5 z-10 flex h-11 w-11 items-center justify-center rounded-md bg-white/10 text-zinc-200 transition hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <i className="ti ti-arrows-maximize text-[12px]" aria-hidden></i>
         </button>

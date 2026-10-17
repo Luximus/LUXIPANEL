@@ -134,6 +134,7 @@ export function makeOpenAiCompatibleProvider(args: MakeArgs): AgentProvider {
 
       // Headroom: tool-output tokens removed since the last `usage` emit.
       let pendingHeadroomSaved = 0;
+      let completed = false;
 
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         const res = await fetch(endpoint, {
@@ -177,7 +178,12 @@ export function makeOpenAiCompatibleProvider(args: MakeArgs): AgentProvider {
         }
         const msg = data.choices[0]?.message;
         if (!msg) {
-          yield { type: "done" };
+          yield { type: "error", message: "El proveedor no devolvió una respuesta final." };
+          return;
+        }
+        const finish = data.choices[0]?.finish_reason;
+        if (finish && finish !== "stop" && finish !== "tool_calls") {
+          yield { type: "error", message: "El proveedor interrumpió la respuesta antes de completarla. Revisa el estado antes de repetir cambios." };
           return;
         }
 
@@ -202,6 +208,7 @@ export function makeOpenAiCompatibleProvider(args: MakeArgs): AgentProvider {
             const outcome = await runToolHandler(opts.tools, realName, input, opts);
             const { output, success } = outcome;
             yield { type: "tool_result", id: call.id, success, output };
+            if (outcome.unconfirmed) { yield { type: "error", message: outcome.unconfirmed }; return; }
 
             const compressed = await compressForHistory(outcome, args.api.model, realName, opts.signal);
             pendingHeadroomSaved += compressed.savedTokens;
@@ -220,6 +227,7 @@ export function makeOpenAiCompatibleProvider(args: MakeArgs): AgentProvider {
           continue;
         }
 
+        completed = typeof msg.content === "string" && !!msg.content.trim();
         break;
       }
 
@@ -229,7 +237,7 @@ export function makeOpenAiCompatibleProvider(args: MakeArgs): AgentProvider {
         pendingHeadroomSaved = 0;
       }
 
-      yield { type: "done" };
+      yield completed ? { type: "done" } : { type: "error", message: "Se alcanzó el límite del turno o no hubo respuesta final. El trabajo sigue sin confirmar; revisa su estado antes de continuar." };
     },
   };
 }

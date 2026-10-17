@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import type { AskQuestion, TeamTaskView, AgentMessage, ChatAttachment } from "../assistant-api";
+import type { ApiActivity } from "../assistant-api/api-activity";
 
 /**
  * One terminal "lane" inside a CLI tool. A multi-agent run (opus 4.8) produces
@@ -56,6 +57,14 @@ export interface ChatTurn {
   role: "user" | "assistant";
   provider?: string;
   text: string;
+  /** API text received before the latest unique tool call is process narration.
+   *  Display-only boundary: preserve text/raw and the outbound conversation. */
+  apiTextOffset?: number;
+  /** Ordered process events, separate from the final answer, live or restored. */
+  apiActivity?: ApiActivity;
+  /** Server outcome; distinct from pending (the local stream is producing data).
+   *  Historical pending turns must not keep the whole conversation streaming. */
+  completionPending?: boolean;
   tools: ToolTrace[];
   /**
    * User turns only: extra lines the user appended to THIS message while the run

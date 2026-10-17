@@ -38,6 +38,8 @@ import { deriveNotificationPreview } from "./conversation-message-normalizer.js"
 import { humanizePreview } from "../../../shared/text/humanize-preview.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { executionKey, executionTargetId } from "./execution-scope.js";
+import type { ApiActivity } from "../models/api-activity.types.js";
+import { createApiActivity } from "./api-activity.js";
 
 const log = createModuleLogger("ai-agent-registry");
 
@@ -67,7 +69,14 @@ interface AgentRun {
   cli: boolean;
   /** Ordered event buffer; `seq` of an event is its index here. */
   events: AgentEvent[];
+  /** True only after persistence/close settle and the terminal is published. */
   done: boolean;
+  /** The provider has stopped; translation/persistence/close may still run. */
+  closing: boolean;
+  /** Shutdown must not start a queued successor after an in-flight save. */
+  shutdownRequested?: boolean;
+  /** Coalesced queue wake-up, invoked only after a successful save and release. */
+  deferredQueueDrain?: () => Promise<void>;
   /** Accumulated assistant text (English when translation is active). */
   assistantText: string;
   /** Background translation: the final answer in the user's language (set in
@@ -137,7 +146,9 @@ export interface StartRunParams {
    *  `ask` carries any interactive question the agent posed (so it persists
    *  on the turn and re-renders on reload). `translation` carries the final
    *  answer already rendered in the user's language (when `translate` was set);
-   *  `assistantText` remains the canonical English context text. */
+   *  `assistantText` remains the canonical English context text. The run still
+   *  owns its key here: drainConversationQueue defers dispatch until release,
+   *  so this callback must never wait for its own run's completion. */
   onComplete?: (
     assistantText: string,
     errored: boolean,
@@ -153,7 +164,8 @@ export interface StartRunParams {
     /** "plan-approval" when `ask` is a plan-approval request (persisted on the
      *  turn so answering can send `planDecision: "approve"`). */
     askKind?: "plan-approval",
-    outcome?: { error?: string; interrupted?: boolean },
+    outcome?: { error?: string; interrupted?: boolean; pending?: boolean },
+    apiActivity?: ApiActivity,
   ) => Promise<void> | void;
   /**
    * Background translation. When set, an API-mode run suppresses live English
@@ -230,7 +242,7 @@ function scheduleGc(run: AgentRun): void {
 }
 
 export const agentRunRegistry = {
-  /** True when a run for this key is currently streaming. */
+  /** True while a run is streaming or persisting/closing its turn. */
   isActive(key: string, targetId?: string): boolean {
     const run = runs.get(executionKey(key, targetId));
     return Boolean(run && !run.done);
@@ -242,7 +254,7 @@ export const agentRunRegistry = {
   },
 
   /**
-   * Snapshot of every run still streaming (`!done`), with its provider + cli
+   * Snapshot of every run still streaming or closing (`!done`), with provider + cli
    * flag. Powers `GET /api/ai/agent/active`, which lets the Dashboard and chat
    * list show background runs after a WebView reload wiped the client engine —
    * without the user having to open each chat to rediscover it. Keys are
@@ -289,6 +301,24 @@ export const agentRunRegistry = {
   },
 
   /**
+   * Queue drains requested during a run (including inside onComplete) must
+   * return without waiting for that same run. Coalesce the wake-up on its
+   * owner; dispatch it after storage, terminal delivery and key release.
+   * A failed save, explicit stop or shutdown discards only this in-memory
+   * wake-up: the durable queued turn remains available for recovery/review.
+   */
+  deferQueueDrain(key: string, drain: () => Promise<void>, targetId?: string): boolean {
+    const run = runs.get(executionKey(key, targetId));
+    if (!run) return false;
+    // An async enqueue/verify listener may reach us after the save settled.
+    // Keep its durable turn queued even when this run is already retained.
+    if (run.shutdownRequested) return true;
+    if (run.done) return false;
+    run.deferredQueueDrain ??= drain;
+    return true;
+  },
+
+  /**
    * Start a run for `key`, or return the existing one if a live (or
    * recently-finished, still-buffered) run already exists. The run executes
    * detached from any request — it survives the SSE connection closing.
@@ -316,6 +346,7 @@ export const agentRunRegistry = {
       cli: params.cli === true,
       events: [],
       done: false,
+      closing: false,
       assistantText: "",
       ac: new AbortController(),
       subscribers: new Set(),
@@ -331,11 +362,23 @@ export const agentRunRegistry = {
     run.completion = runWithExecutor(params.executor, async () => {
       let errored = false;
       let terminalError: string | undefined;
+      let terminalSeen = false;
+      let pending = false;
       let workingStatusPushed = false;
+      const apiActivity = createApiActivity();
       try {
         for await (const event of params.makeGen()) {
           if (run.ac.signal.aborted) break;
-          if (event.type === "text") run.assistantText += event.delta;
+          if (event.type === "text" && event.phase !== "commentary") run.assistantText += event.delta;
+          // API prose before a tool belongs to progress. Keep it in the event
+          // replay but persist/translate only the answer after the last call.
+          if (event.type === "tool_use" && !run.cli && !event.name.endsWith(".cli")) run.assistantText = "";
+          if (event.type === "done" || event.type === "error") terminalSeen = true;
+          if (event.type === "done") pending = event.pending === true;
+          if (event.type === "done" && !pending && !run.ask?.length && !(run.cli ? run.cliEnglishAnswer : run.assistantText)?.trim() && !errored) {
+            errored = true;
+            terminalError = "El asistente terminó sin una respuesta final verificable. Revisa el estado antes de repetir cambios.";
+          }
           if (event.type === "ask") {
             run.ask = event.questions;
             run.askKind = event.kind;
@@ -348,11 +391,12 @@ export const agentRunRegistry = {
             run.cli = true;
             run.cliToolId = event.id;
           } else if (event.type === "usage" && (event.model.endsWith("-cli") || event.estimated)) run.cli = true;
+          if (!run.cli) apiActivity.record(event);
           // CLI runs persist the clean final answer from the provider's
           // terminal `tool_result`; without this, non-translated runs fall back
           // to the accumulated terminal transcript and store that as `content`.
           if (run.cli && event.type === "tool_result" && event.id === run.cliToolId) {
-            if (event.output && !event.output.startsWith("[")) run.cliEnglishAnswer = event.output;
+            if (event.success && event.output && !event.output.startsWith("[")) run.cliEnglishAnswer = event.output;
             if (!event.success) {
               errored = true;
               terminalError = event.output || "La ejecución CLI no terminó correctamente.";
@@ -392,18 +436,24 @@ export const agentRunRegistry = {
             }
           }
 
-          push(run, event.type === "done" && errored ? { type: "error", message: terminalError || "La ejecución no terminó correctamente." } : event);
+          // Both terminal outcomes are provisional until onComplete settles.
+          // SSE closes on either frame; publish exactly one after persistence.
           if (event.type === "done" || event.type === "error") break;
+          push(run, event);
         }
       } catch (err) {
         errored = true;
         terminalError = (err as Error).message ?? "Error interno del agente";
-        push(run, { type: "error", message: terminalError });
       } finally {
+        run.closing = true;
+        if (!terminalSeen && !errored && !run.ac.signal.aborted) {
+          errored = true;
+          terminalError = "La ejecución terminó sin confirmar su resultado. Revisa el estado antes de repetir cambios.";
+        }
         // Background translation: deliver the answer once, already translated.
         // Guarded so an errored/aborted run never blocks on a translation call
         // and never loses its terminal frame.
-        if (translate && !errored && !run.ac.signal.aborted && !hasTerminal(run)) {
+        if (translate && !pending && !errored && !run.ac.signal.aborted && !hasTerminal(run)) {
           // Translate while reporting whether it actually succeeded. The hook
           // already retried internally; if it still failed, we deliver the
           // English fallback AND surface the reason as a `translation_error`.
@@ -422,12 +472,11 @@ export const agentRunRegistry = {
             }
           };
           if (run.cli) {
-            // CLI: translate the clean answer (captured from the provider's
-            // tool_result; fall back to the raw terminal for providers that emit
-            // no clean answer, e.g. codex/gemini — `translateText` strips ANSI).
+            // CLI: translate only the clean answer from the terminal tool_result.
+            // A missing answer must never promote the raw terminal to a final.
             // Deliver it as a `tool_result` so it REPLACES the (empty) bubble
             // text while the live terminal stays intact.
-            const english = run.cliEnglishAnswer ?? run.assistantText;
+            const english = run.cliEnglishAnswer ?? "";
             if (english.trim()) {
               push(run, { type: "status", state: "translating" });
               const res = await doTranslate(english);
@@ -444,21 +493,19 @@ export const agentRunRegistry = {
             push(run, { type: "status", state: "translating" });
             const res = await doTranslate(run.assistantText);
             run.translatedText = res.text || run.assistantText;
-            if (run.translatedText.trim()) push(run, { type: "text", delta: run.translatedText });
+            if (run.translatedText.trim()) push(run, { type: "text", delta: run.translatedText, phase: "final_answer" });
             if (!res.ok && res.error) {
               run.translationError = res.error;
               push(run, { type: "translation_error", message: res.error });
             }
           }
         }
-        // Guarantee a terminal frame so attached clients always settle.
-        if (!hasTerminal(run)) push(run, errored ? { type: "error", message: terminalError || "La ejecución no terminó correctamente." } : { type: "done" });
-        run.done = true;
         // CLI runs: `content` should be the CLEAN final answer (captured from the
         // provider's tool_result), not the verbose terminal log — the log is
         // persisted separately as `cliLog` for the console box. API runs already
         // accumulate the clean answer into `assistantText`.
-        const cleanAnswer = run.cli ? (run.cliEnglishAnswer ?? (errored || run.ac.signal.aborted ? "" : run.assistantText)) : run.assistantText;
+        const cleanAnswer = pending ? "" : run.cli ? (run.cliEnglishAnswer ?? "") : run.assistantText;
+        let persisted = false;
         try {
           await params.onComplete?.(
             cleanAnswer,
@@ -470,16 +517,35 @@ export const agentRunRegistry = {
             Date.now() - run.startedAt,
             run.cli ? run.assistantText : undefined,
             run.askKind,
-            terminalError || run.ac.signal.aborted ? { ...(terminalError ? { error: terminalError } : {}), ...(run.ac.signal.aborted ? { interrupted: true } : {}) } : undefined,
+            terminalError || run.ac.signal.aborted || pending ? { ...(terminalError ? { error: terminalError } : {}), ...(run.ac.signal.aborted ? { interrupted: true } : {}), ...(pending ? { pending: true } : {}) } : undefined,
+            run.cli ? undefined : apiActivity.snapshot(),
           );
+          persisted = true;
         } catch (err) {
+          errored = true;
+          terminalError = "No se pudo confirmar el guardado y cierre del turno. Revisa el historial y el estado de la tarea antes de repetir cambios.";
           log.warn({ err: (err as Error).message }, "agent run persistence failed");
+        }
+        // No await between release and terminal delivery: reconnects either
+        // subscribe to the closing run or replay its one settled terminal.
+        run.done = true;
+        if (!hasTerminal(run)) push(run, errored ? { type: "error", message: terminalError || "La ejecución no terminó correctamente." } : { type: "done", ...(pending ? { pending: true } : {}) });
+        const drain = run.deferredQueueDrain;
+        run.deferredQueueDrain = undefined;
+        if (persisted && !run.ac.signal.aborted && !run.shutdownRequested && drain) {
+          try {
+            await drain();
+          } catch (err) {
+            // Dispatch has its own durable queue. Its failure cannot rewrite
+            // this saved turn or produce a second terminal for its subscribers.
+            log.warn({ err: (err as Error).message }, "agent deferred queue drain failed");
+          }
         }
         // Worklog: a finished, non-errored assistant run is significant
         // activity. The user prompt isn't kept in the registry, so the detail
         // is the answer's first 200 chars. Fail-open fire-and-forget; runs
         // inside the executor scope so identity resolves from the ALS context.
-        if (!errored && !run.ac.signal.aborted) {
+        if (!errored && !pending && !run.ask?.length && !run.ac.signal.aborted) {
           void recordActivity({
             module: "ai-assistant",
             action: run.cli ? "cli_task" : "assistant_task",
@@ -490,9 +556,10 @@ export const agentRunRegistry = {
         }
         // "Chat finished" notification: the in-app bell (always) + an owner push
         // to web/app/desktop when NO client was attached (user navigated away).
-        // Skipped for user-aborted runs — a manual stop isn't a "finished" chat.
+        // Skipped on stop/shutdown: settled listeners can enqueue fresh work.
+        // Persisted task/history reconciliation resumes after restart.
         // Fire-and-forget; a listener failure must never break the run.
-        if (!run.ac.signal.aborted) {
+        if (!run.ac.signal.aborted && !run.shutdownRequested) {
           // Título + agente de la conversación para que la campana muestre
           // «Auditoría del servidor» — Riesgo: medio · … en vez de un id.
           // Best-effort: la meta puede no existir (chat efímero) o la lectura
@@ -514,18 +581,24 @@ export const agentRunRegistry = {
             deriveNotificationPreview(run.translatedText, rawForPreview, 160) ||
             humanizePreview((run.translatedText || cleanAnswer || "").trim(), 160);
           try {
-            eventBus.emit(Events.AI_CHAT_FINISHED, {
+            const completionEvent = {
               conversationId: run.key,
               userId: params.user?.userId,
               targetId: run.executor.target.id,
               provider: run.provider,
               cli: run.cli,
               errored,
+              ...(pending ? { pending: true } : {}),
+              ...(run.ask?.length ? { awaitingInput: true } : {}),
               preview,
               ...(conversationTitle ? { conversationTitle } : {}),
               ...(agentId ? { agentId } : {}),
               hadSubscribers: run.subscribers.size > 0,
-            });
+            };
+            // Team lifecycle must observe every settled provider turn. User
+            // notifications and agent-message acknowledgments need a final.
+            eventBus.emit(Events.AI_TURN_SETTLED, completionEvent);
+            if (!pending && !run.ask?.length) eventBus.emit(Events.AI_CHAT_FINISHED, completionEvent);
           } catch (err) {
             log.warn({ err: (err as Error).message }, "AI_CHAT_FINISHED emit failed");
           }
@@ -616,10 +689,12 @@ export const agentRunRegistry = {
    * Best-effort graceful shutdown (SIGTERM/SIGINT). API-mode runs are in-process
    * and cannot survive a restart, so abort them and await their persistence:
    * the run's `finally`→`onComplete` saves whatever answer was produced so the
-   * thread isn't left frozen at the user's turn. CLI-mode runs are LEFT ALONE —
-   * their `nohup` keeps running on the target and a recovery descriptor lets a
+   * thread isn't left frozen at the user's turn. CLI providers still running
+   * are LEFT ALONE — their `nohup` keeps running and a recovery descriptor lets a
    * later request re-attach and persist the real answer (persisting here would
-   * race that and double-write). Bounded by `timeoutMs` so process exit is never
+   * race that and double-write). A CLI already closing is awaited too: its
+   * save belongs to this process. No queued successor starts during shutdown.
+   * Bounded by `timeoutMs` so process exit is never
    * blocked indefinitely.
    */
   async gracefulShutdown(timeoutMs = 5_000): Promise<{ flushed: number; cliDetached: number }> {
@@ -628,19 +703,26 @@ export const agentRunRegistry = {
     const waits: Promise<unknown>[] = [];
     for (const run of runs.values()) {
       if (run.done) continue;
-      if (run.cli) {
+      run.shutdownRequested = true;
+      if (run.cli && !run.closing) {
         cliDetached++;
         continue;
       }
-      run.ac.abort();
+      // Do not relabel a result interrupted after its save already began.
+      if (!run.closing) run.ac.abort();
       flushed++;
       if (run.completion) waits.push(run.completion.catch(() => undefined));
     }
     if (waits.length > 0) {
-      await Promise.race([
-        Promise.allSettled(waits),
-        new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
-      ]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.allSettled(waits),
+          new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     }
     return { flushed, cliDetached };
   },

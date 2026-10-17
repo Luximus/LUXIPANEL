@@ -8,6 +8,7 @@
  */
 
 import type { AskQuestion } from "../../models/ask.types.js";
+import type { ApiActivity } from "../../models/api-activity.types.js";
 import type { ConversationSearchMatch } from "./message-search.js";
 
 export interface MessageAttachmentRef {
@@ -21,6 +22,10 @@ export interface MessageAttachmentRef {
 export interface ConversationMessage {
   error?: string;
   interrupted?: boolean;
+  /** Delegated tasks still require completion/collection; content is not a final answer. */
+  pending?: boolean;
+  /** API activity belongs in the process details, never in the final bubble. */
+  apiActivity?: ApiActivity;
   role: "user" | "assistant";
   /** Provider that handled this turn. Keeps per-bubble branding stable. */
   provider?: string;

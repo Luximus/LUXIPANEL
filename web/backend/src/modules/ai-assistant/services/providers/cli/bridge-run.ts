@@ -881,15 +881,15 @@ export function makeCliBridgeProvider(args: {
           success: true,
           output: `[corriendo en background — PID ${r.pid} en ${serverName}]`,
         };
-        yield { type: "done" };
+        yield { type: "done", pending: true };
         return;
       }
 
       // Job finished while streaming. Parse the clean final answer from the raw
       // log via the provider's structured parser (claude stream-json / codex
-      // --json); gemini/minimax have none → fall back to terminal output below.
-      const finalAnswer = r.exitCode === 0 ? spec.parseFinalAnswer?.(r.accumulated) ?? "" : "";
-      const success = r.exitCode === 0 && !(args.id === "codex" && (codexFailure(r.accumulated, r.exitCode) || !finalAnswer.trim()));
+      // --json / gemini stream-json). Plain-output providers have no parser.
+      const finalAnswer = r.exitCode === 0 ? spec.parseFinalAnswer ? spec.parseFinalAnswer(r.accumulated) : r.accumulated.replace(ANSI_RE, "") : "";
+      const success = r.exitCode === 0 && !!finalAnswer.trim() && !(args.id === "codex" && codexFailure(r.accumulated, r.exitCode));
       const failureMessage = cliFailureMessage(r.accumulated, r.exitCode);
 
       // Did the agent stop to ask the user a decision? Scan the finished output

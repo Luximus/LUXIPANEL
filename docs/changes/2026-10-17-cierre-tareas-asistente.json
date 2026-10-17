@@ -1,0 +1,8 @@
+{
+  "title": "Cierre verificado de las tareas recuperadas del asistente",
+  "changes": [
+    "Al recuperar una tarea interrumpida, el asistente ya no la presenta como completada si su verificación requerida falló o no tiene un resultado confirmado.",
+    "Se conserva la respuesta parcial y se indica que debe revisarse el resultado antes de repetir cambios.",
+    "Las verificaciones en curso y las correcciones pendientes mantienen la tarea abierta; una verificación ya aprobada no se repite durante la recuperación."
+  ]
+}

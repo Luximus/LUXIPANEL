@@ -4,6 +4,7 @@ import type { ChatTurn, TurnAttachment } from "./types";
 import type { ConversationMessage } from "../assistant-api";
 import { attachmentUrl, displayText } from "../assistant-api";
 import { deriveCliSummary, looksLikeCliTranscript, stripLaneTokens } from "./cli-lanes";
+import { apiActivityTools } from "./api-activity";
 
 /** History message → renderable turn, resolving attachment refs to URLs. */
 export function historyTurn(m: ConversationMessage, fallbackProvider?: string): ChatTurn {
@@ -29,22 +30,25 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
   const hasSplitLog = isCliAssistant && typeof m.cliLog === "string" && m.cliLog.length > 0;
   const cliRawLog = hasSplitLog ? m.cliLog! : isCliAssistant ? m.content : "";
   const persistedSummary = displayText(m);
-  const cliSummary = m.error || m.interrupted ? (looksLikeCliTranscript(persistedSummary) ? "" : persistedSummary) : hasSplitLog
+  const cliSummary = m.pending ? "" : m.error || m.interrupted ? (looksLikeCliTranscript(persistedSummary) ? "" : persistedSummary) : hasSplitLog
     ? (
       persistedSummary.trim() && !looksLikeCliTranscript(persistedSummary)
         ? persistedSummary
         : deriveCliSummary(m.textTranslated, cliRawLog)
     )
     : deriveCliSummary(m.textTranslated, cliRawLog);
+  const apiActivity = m.role === "assistant" && !m.cli ? m.apiActivity : undefined;
   return {
     role: m.role,
+    ...(m.role === "assistant" && m.pending ? { completionPending: true } : {}),
     ...(m.error ? { error: m.error } : {}),
     ...(m.interrupted ? { stopped: true } : {}),
     ...((m.provider ?? fallbackProvider) ? { provider: m.provider ?? fallbackProvider } : {}),
     // CLI turns: clean answer (split) or summary derived from the log
     // (pre-split); otherwise the user-facing variant when translation was active.
     text: isCliAssistant ? cliSummary : displayText(m),
-    tools: [],
+    tools: apiActivity ? apiActivityTools(apiActivity) : [],
+    ...(apiActivity ? { apiActivity } : {}),
     ...(forwardedEnglish ? { raw: forwardedEnglish } : {}),
     ...(m.cli ? { cli: true } : {}),
     // Carry the persisted execution log so the collapsed console can be rebuilt

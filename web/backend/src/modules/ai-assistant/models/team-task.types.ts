@@ -226,7 +226,15 @@ export function toTaskView(t: TeamTask): TeamTaskView {
             ...(t.artifacts.filesChangedTotal != null ? { filesChangedTotal: t.artifacts.filesChangedTotal } : {}),
             ...(t.artifacts.insertions != null ? { insertions: t.artifacts.insertions } : {}),
             ...(t.artifacts.deletions != null ? { deletions: t.artifacts.deletions } : {}),
-            ...(t.artifacts.tokens ? { tokens: t.artifacts.tokens } : {}),
+            ...(t.artifacts.tokens ? {
+              tokens: {
+                inputTokens: t.artifacts.tokens.inputTokens,
+                outputTokens: t.artifacts.tokens.outputTokens,
+                totalTokens: t.artifacts.tokens.totalTokens,
+                estimated: t.artifacts.tokens.estimated,
+                ...(t.artifacts.tokens.overBudget !== undefined ? { overBudget: t.artifacts.tokens.overBudget } : {}),
+              },
+            } : {}),
           },
         }
       : {}),
@@ -259,6 +267,10 @@ export interface TeamTaskSnapshot {
   stepIndex: number | null;
   pendingPermission: boolean;
   error: string | null;
+  /** Optional for old tasks/snapshots; the same allowlisted detail as SSE. */
+  artifacts?: TeamTaskView["artifacts"];
+  verify?: TeamTaskView["verify"];
+  isolation?: TeamTaskView["isolation"];
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -266,6 +278,9 @@ export interface TeamTaskSnapshot {
 
 /** Map a persisted task to its conversation-scoped rehydration snapshot. */
 export function toTeamTaskSnapshot(t: TeamTask): TeamTaskSnapshot {
+  // Reuse the compact projection: never serialize the full task, command
+  // output, diff, filesystem paths or assigning user's session into history.
+  const { artifacts, verify, isolation } = toTaskView(t);
   return {
     taskId: t.id ?? "",
     leaderConversationId: t.leaderConversationId,
@@ -278,6 +293,9 @@ export function toTeamTaskSnapshot(t: TeamTask): TeamTaskSnapshot {
     stepIndex: t.stepIndex ?? null,
     pendingPermission: t.pendingPermission ?? false,
     error: t.error ?? null,
+    ...(artifacts ? { artifacts } : {}),
+    ...(verify ? { verify } : {}),
+    ...(isolation ? { isolation } : {}),
     createdAt: t.createdAt,
     startedAt: t.startedAt ?? null,
     finishedAt: t.finishedAt ?? null,

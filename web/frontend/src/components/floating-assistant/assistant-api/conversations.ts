@@ -3,6 +3,7 @@ import { createLoadCoordinator, shareAssistantReads } from "./load-coordinator";
 // Copyright (C) 2026 LUXISOFT
 import { api, unwrap, resolveTargetScope, scopeHeaders } from "@/lib/api-client";
 import type { AskQuestion } from "./agent-stream";
+import type { ApiActivity } from "./api-activity";
 
 // ── Conversation history (ChatGPT-style) ──────────────────────────────────
 
@@ -54,6 +55,10 @@ export interface MessageAttachmentRef {
 }
 
 export interface ConversationMessage {
+  /** The stream ended, but this turn still awaits background work/collection. */
+  pending?: boolean;
+  /** Ordered API process history; content/textTranslated hold only the answer. */
+  apiActivity?: ApiActivity;
   error?: string;
   interrupted?: boolean;
   role: "user" | "assistant";

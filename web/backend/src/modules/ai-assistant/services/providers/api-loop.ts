@@ -57,6 +57,8 @@ export interface ToolCallOutcome {
   success: boolean;
   /** True when the resolved tool is the `lxp_ask` protocol tool. */
   isAsk: boolean;
+  /** A failed operation may have applied changes. End this loop without retry. */
+  unconfirmed?: string;
 }
 
 /**
@@ -81,6 +83,7 @@ export async function runToolHandler(
   const isAsk = isAskToolName(name) && Boolean(toolObj);
   let output = "";
   let success = false;
+  let unconfirmed: string | undefined;
   try {
     if (!toolObj) {
       output = `Tool no permitida o desconocida: ${name}`;
@@ -104,6 +107,11 @@ export async function runToolHandler(
       }
       const r = await toolObj.handler(input);
       success = r.ok;
+      if (!r.ok && r.output && typeof r.output === "object" && "operationStatus" in r.output && r.output.operationStatus === "unconfirmed") {
+        const detail = r.output as Record<string, unknown>;
+        unconfirmed = [detail.message, detail.nextStep].filter(value => typeof value === "string").join(" ") ||
+          "No se pudo confirmar el resultado de la operación. Comprueba su estado antes de repetir cambios.";
+      }
       output =
         typeof r.output === "string"
           ? r.output
@@ -114,7 +122,7 @@ export async function runToolHandler(
   } catch (err) {
     output = (err as Error).message;
   }
-  return { output, success, isAsk };
+  return { output, success, isAsk, ...(unconfirmed ? { unconfirmed } : {}) };
 }
 
 export interface CompressedToolOutput {

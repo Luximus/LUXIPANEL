@@ -30,6 +30,8 @@ vi.mock("../services/mcp-config-writer.service.js", () => ({
 vi.mock("../../auth/services/token.service.js", () => ({
   tokenService: { verify: vi.fn(), signWithExpiry: vi.fn(), toSessionUser: vi.fn() },
 }));
+// This suite owns synthetic identities; live account policy is tested in auth.
+vi.mock("../../auth/services/live-authorization.service.js", () => ({ resolveLiveAuthorization: async (user: SessionUser) => user }));
 // Both regular resolutions MISS: the direct-executor lookup and the bridged
 // session are what the fallback kicks in after.
 vi.mock("../../../shared/executor/index.js", async (importOriginal) => {

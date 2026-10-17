@@ -28,7 +28,7 @@ vi.mock("../../../shared/github/owner-contributions.js", () => ({
   finishOwnerContribution: vi.fn(async () => {}),
   saveContribution: vi.fn(async () => {}),
 }));
-vi.mock("../repositories/team-tasks.repository.js", () => ({ teamTasksRepository: { findByWorkerConversation: vi.fn(async () => state.worker) } }));
+vi.mock("../repositories/team-tasks.repository.js", () => ({ teamTasksRepository: { findByWorkerConversation: vi.fn(async () => state.worker), listForLeaderConversation: vi.fn(async () => []) } }));
 vi.mock("../repositories/conversations.repository.js", () => ({ conversationsRepository: { getMeta: vi.fn(async () => ({ approvalMode: state.mode })) } }));
 vi.mock("../repositories/assistant-config.repository.js", () => ({ assistantConfigRepository: { load: vi.fn(async () => ({
   enabled: state.enabled, activeProvider: "codex", approval: { mode: "auto" }, autoRouting: { enabled: false }, providers: { codex: { mode: "api" } },

@@ -155,18 +155,31 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
     finishedCliTool?.result?.output && !finishedCliTool.result.output.startsWith("[")
       ? finishedCliTool.result.output
       : "";
-  // `turn.text` is always the clean summary (live: derived from the terminal on
-  // `done`; history: derived from the persisted log in `historyTurn`). The raw
-  // log lives in the collapsed console above, so just show the summary here.
-  const summaryText = turn.text || cliFallbackAnswer;
-  const groupApiTools = !isUser && !hasCliConsole && visibleTools.length > 0;
-  // API text events do not distinguish commentary from the final answer.
-  // Keep that text intact; activity comes only from actual tool traces.
-  const answerText = summaryText;
+  // CLI text holds its answer (live or derived from the saved log).
+  // API text retains all narration for conversation context; the observed
+  // tool boundary below controls presentation without rewriting that text.
+  const summaryText = turn.text || (turn.completionPending || turn.error || turn.stopped || turn.interrupted ? "" : cliFallbackAnswer);
+  const hasApiActivity = !isUser && !turn.cli && !hasCliConsole
+    && Boolean(turn.apiActivity?.events.length || turn.apiActivity?.truncated || (turn.completionPending && turn.text));
+  const groupApiTools = !isUser && !hasCliConsole && (visibleTools.length > 0 || hasApiActivity);
+  // Use only observed tool boundaries, never paragraph/word heuristics.
+  // Legacy history has no boundary: retain its original text intact.
+  const apiTextOffset = groupApiTools && typeof turn.apiTextOffset === "number"
+    && Number.isInteger(turn.apiTextOffset) && turn.apiTextOffset >= 0 && turn.apiTextOffset <= summaryText.length
+    ? turn.apiTextOffset : 0;
+  const holdApiText = groupApiTools && turn.pending && !turn.stopped && !turn.error
+    && !turn.interrupted && !turn.permission && !turn.ask?.length;
+  const answerText = holdApiText || turn.completionPending ? "" : summaryText.slice(apiTextOffset);
+  const apiProgressText = groupApiTools
+    ? turn.apiActivity
+      ? (holdApiText || turn.completionPending ? summaryText.slice(apiTextOffset) : "")
+      : (holdApiText || turn.completionPending ? summaryText : summaryText.slice(0, apiTextOffset))
+    : "";
   const apiEntries = groupApiTools
     ? visibleTools.map(tool => ({ id: tool.id, label: tool.name, status: apiToolStatus(tool, turn) }))
     : undefined;
-  const apiStatus = groupApiTools ? apiExecutionStatus(turn, teamTasks) : undefined;
+  const executionStatus = apiExecutionStatus(turn, teamTasks);
+  const apiStatus = groupApiTools ? executionStatus : undefined;
   const activityLabels: Record<ThoughtLineEntryStatus, string> = {
     done: ct.toolTrace.done, failed: ct.toolTrace.error, running: ct.toolTrace.running,
     waiting: ct.toolTrace.waiting, unconfirmed: ct.toolTrace.unconfirmed, stopped: ct.toolTrace.stopped,
@@ -175,17 +188,19 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // agent supplies the requested summary + details format, show a short
   // preview and let the reader expand the exact text being approved.
   const planPreview = !isUser && turn.askKind === "plan-approval" && !turn.pending
-    ? /^(?:\*\*)?(?:Resumen|Summary)(?:\*\*)?:\s*(.+?)\n\s*\n((?:Plan completo|Full plan):[\s\S]+)$/i.exec(summaryText.trim())
+    ? /^(?:\*\*)?(?:Resumen|Summary)(?:\*\*)?:\s*(.+?)\n\s*\n((?:Plan completo|Full plan):[\s\S]+)$/i.exec(answerText.trim())
     : null;
-  // A CLI run that settled without a separate final answer: never dump the
-  // terminal into the bubble — show a muted note pointing at the process block.
-  const cliNoAnswer =
+  // An execution without a final answer keeps its process available.
+  const noFinalAnswer =
     !isUser &&
     !turn.pending &&
-    !summaryText &&
+    !turn.completionPending &&
+    !answerText.trim() &&
     !turn.error &&
     !turn.stopped &&
-    (!!turn.cli || turn.tools.some((t) => t.name.endsWith(".cli")));
+    !turn.ask?.length &&
+    !turn.permission &&
+    (!!turn.cli || turn.tools.length > 0 || !!turn.apiActivity);
   // Addenda: extra lines the user appended to THIS message while the run was
   // live. Rendered inside the same bubble (so it doesn't look like a new
   // message) and folded into the text for copy / edit-and-resend.
@@ -204,13 +219,9 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // Console, modified files and answer share one assistant message surface.
   // Their disclosure controls and content remain separate sections inside it.
   const showWorkingIndicator = cliRunningHidden && !summaryText;
-  const turnStatus: StatusMarkStatus = apiStatus
-    ? apiStatus === "failed" ? "failed" : apiStatus === "stopped" ? "cancelled"
-      : apiStatus === "waiting" || apiStatus === "unconfirmed" ? "pending" : apiStatus
-    : turn.error ? "failed" : turn.stopped ? "cancelled" : turn.pending || turn.interrupted || turn.status ? "running" : "done";
-  const turnStatusLabel = apiStatus ? activityLabels[apiStatus]
-    : turnStatus === "done" ? ct.toolTrace.done : turnStatus === "failed" ? ct.toolTrace.error
-      : turnStatus === "cancelled" ? ct.toolTrace.stopped : ct.toolTrace.running;
+  const turnStatus: StatusMarkStatus = executionStatus === "stopped" ? "cancelled"
+    : executionStatus === "waiting" || executionStatus === "unconfirmed" ? "pending" : executionStatus;
+  const turnStatusLabel = activityLabels[executionStatus];
   const cliTranscript = turn.tools.filter(tool => tool.name.endsWith(".cli"))
     .map(tool => (tool.laneOrder?.length
       ? tool.laneOrder.map(id => tool.lanes?.[id]?.output ?? "").join("\n")
@@ -226,10 +237,10 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   const executionAttention = hasExecutionDetails && teamTasks?.length ? <TeamExecutionAttention tasks={teamTasks} /> : undefined;
   const hasConsole =
     !isUser &&
-    (visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog) || hasExecutionDetails);
+    (groupApiTools || visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog) || hasExecutionDetails);
   const hasModifiedFiles = !isUser && !!onOpenFile && showModifiedFiles && modifiedFiles.length > 0;
   const hasCliTool = turn.tools.some(tool => tool.name.endsWith(".cli"));
-  const hasThought = !isUser && (turn.pending || thoughtSteps.length > 0 || (showTerminal && (groupApiTools || isHistoryCli || hasCliTool)));
+  const hasThought = !isUser && (turn.pending || turn.completionPending || thoughtSteps.length > 0 || (showTerminal && (groupApiTools || isHistoryCli || hasCliTool)));
   // Only render the answer bubble when it actually has content. Otherwise a live
   // run (console populated, answer not yet produced) would leave an empty box.
   const hasBubbleContent =
@@ -244,7 +255,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
     !!turn.translationError ||
     !!(turn.attachments && turn.attachments.length) ||
     (!!turn.pending && !visibleTools.length && !cliRunningHidden) ||
-    cliNoAnswer;
+    noFinalAnswer;
   if (isTeamNotice(turn)) {
     return <ExecutionDisclosure><TeamExecutionContent notices={[turn]} /></ExecutionDisclosure>;
   }
@@ -297,9 +308,12 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
       {hasThought && (
         <div data-message-section="reasoning" className="border-b border-border/60 px-3 py-2 text-muted-foreground">
           <ThoughtLine
-            working={apiStatus ? apiStatus === "running" : !!turn.pending && !turn.stopped && !turn.error}
+            key={groupApiTools ? "api" : "cli"}
+            autoExpand={!groupApiTools}
+            breathDepth={groupApiTools ? 0 : undefined}
+            working={executionStatus === "running"}
             label={apiStatus ? activityLabels[apiStatus] : currentThought}
-            doneLabel={apiStatus ? activityLabels[apiStatus] : turn.error ? ct.toolTrace.error : turn.stopped ? ct.toolTrace.stopped : ct.toolTrace.done}
+            doneLabel={activityLabels[executionStatus]}
             steps={thoughtSteps}
             entries={showTerminal ? apiEntries : undefined}
             entryStatusLabels={activityLabels}
@@ -325,7 +339,34 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
                 {groupApiTools ? (
                   <ExecutionDisclosure source="API" activityStatus={apiStatus} attention={executionAttention}>
                     <div className="divide-y divide-border/60 border-t border-border/60">
-                      {visibleTools.map(t => <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded />)}
+                      {turn.apiActivity ? turn.apiActivity.events.map((event, index) => {
+                        if (event.type === "text") return (
+                          <div key={`text-${index}`} data-api-progress className="px-3 py-2 text-foreground">
+                            <MessageContent text={event.delta} scrollContainerRef={scrollContainerRef} />
+                          </div>
+                        );
+                        if (event.type === "tool_use") {
+                          if (turn.apiActivity!.events.findIndex(item => item.type === "tool_use" && item.id === event.id) !== index) return null;
+                          const tool = visibleTools.find(item => item.id === event.id);
+                          return tool ? <ToolDisclosure key={tool.id} t={tool} turn={turn} uiMode={uiMode} embedded /> : null;
+                        }
+                        // A limited trace can contain a result without its call.
+                        // Keep that received output reachable, without inventing a call.
+                        return visibleTools.some(tool => tool.id === event.id) ? null : (
+                          <div key={`result-${event.id}`} data-api-result className="px-3 py-2">
+                            <span>{event.success ? ct.toolTrace.done : ct.toolTrace.error}</span>
+                            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-[11px]">{event.output}</pre>
+                          </div>
+                        );
+                      }) : visibleTools.map(t => <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded />)}
+                      {apiProgressText.trim() && (
+                        <div data-api-progress className="px-3 py-2 text-foreground">
+                          <MessageContent text={apiProgressText} scrollContainerRef={scrollContainerRef} streaming={!!holdApiText} />
+                        </div>
+                      )}
+                      {turn.apiActivity?.truncated && (
+                        <p data-api-truncated className="px-3 py-2 text-muted-foreground">{ct.toolTrace.historyTruncated}</p>
+                      )}
                     </div>
                     {executionDetails}
                   </ExecutionDisclosure>
@@ -335,9 +376,9 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
                   </ToolDisclosure>
                 ))}
                 {/* Reloaded CLI turn: collapsed "Consola del servidor" from the log. */}
-                {hasHistoryConsole && <CliHistoryView text={historyLog} embedded attention={executionAttention}>{executionDetails}</CliHistoryView>}
-                {hasExecutionDetails && !visibleTools.length && !hasHistoryConsole && (
-                  <ExecutionDisclosure running={!!turn.pending || teamTasks?.some(task => task.status === "running" || task.status === "pending")} failed={!!turn.error} stopped={!!turn.stopped} attention={executionAttention}>
+                {hasHistoryConsole && <CliHistoryView text={historyLog} embedded activityStatus={executionStatus} attention={executionAttention}>{executionDetails}</CliHistoryView>}
+                {hasExecutionDetails && !groupApiTools && !visibleTools.length && !hasHistoryConsole && (
+                  <ExecutionDisclosure activityStatus={executionStatus} attention={executionAttention}>
                     {executionDetails}
                   </ExecutionDisclosure>
                 )}
@@ -430,8 +471,8 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
             ? <TranslatingShimmer state={turn.status} />
             : turn.pending && !visibleTools.length && !cliRunningHidden
               ? <PendingDot />
-              : cliNoAnswer
-                ? <p className="text-xs italic text-muted-foreground">{ct.noFinalAnswer ?? "El agente terminó sin una respuesta final; revisa el bloque de proceso."}</p>
+              : noFinalAnswer
+                ? <p className="text-xs italic text-muted-foreground">{ct.noFinalAnswer}</p>
                 : null}
         {/* Addenda appended mid-run: extra lines of the SAME message, stacked
             just below the original text so it reads as one continuous message. */}
@@ -461,7 +502,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
         )}
         {/* Quick replies — only on the last finished assistant turn. One-tap
             follow-ups; great for non-technical users who don't know what to ask. */}
-        {!isUser && isLast && onAnswer && turn.text && !turn.pending && !turn.stopped && !turn.error && !(turn.ask && turn.ask.length) && (
+        {!isUser && isLast && onAnswer && answerText && !turn.pending && !turn.stopped && !turn.error && !(turn.ask && turn.ask.length) && (
           <>
           {/* Divider between the answer text and the quick-reply buttons. */}
           <div className="mt-2 border-t border-border" />
@@ -570,11 +611,11 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
             <TurnMeta turn={turn} isUser />
           </div>
         )}
-        {!isUser && summaryText && !turn.pending && !turn.error && (
+        {!isUser && answerText && !turn.pending && !turn.error && (
           <div className="mt-1.5 flex items-center gap-1">
-            <CopyButton text={summaryText} />
-            {ttsAvailable && turn.text && (
-              <SpeakButton text={turn.text} voiceName={voiceName} conversationId={conversationId} autoPlay={!!autoSpeak && !!isLast} />
+            <CopyButton text={answerText} />
+            {ttsAvailable && answerText && (
+              <SpeakButton text={answerText} voiceName={voiceName} conversationId={conversationId} autoPlay={!!autoSpeak && !!isLast} />
             )}
           </div>
         )}

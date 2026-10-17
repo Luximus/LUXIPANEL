@@ -90,6 +90,7 @@ export function makeGeminiApiProvider(api: ProviderApiConfig): AgentProvider {
 
       // Headroom: tool-output tokens removed since the last `usage` emit.
       let pendingHeadroomSaved = 0;
+      let completed = false;
 
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         const res = await fetch(endpoint, {
@@ -133,7 +134,11 @@ export function makeGeminiApiProvider(api: ProviderApiConfig): AgentProvider {
         const candidate = data.candidates?.[0];
         const content = candidate?.content;
         if (!content) {
-          yield { type: "done" };
+          yield { type: "error", message: "El proveedor no devolvió una respuesta final." };
+          return;
+        }
+        if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+          yield { type: "error", message: "El proveedor interrumpió la respuesta antes de completarla. Revisa el estado antes de repetir cambios." };
           return;
         }
 
@@ -166,6 +171,7 @@ export function makeGeminiApiProvider(api: ProviderApiConfig): AgentProvider {
             const outcome = await runToolHandler(opts.tools, realName, call.args, opts);
             const { output, success } = outcome;
             yield { type: "tool_result", id: call.id, success, output };
+            if (outcome.unconfirmed) { yield { type: "error", message: outcome.unconfirmed }; return; }
 
             const compressed = await compressForHistory(outcome, api.model, realName, opts.signal);
             pendingHeadroomSaved += compressed.savedTokens;
@@ -191,6 +197,7 @@ export function makeGeminiApiProvider(api: ProviderApiConfig): AgentProvider {
           continue;
         }
 
+        completed = content.parts.some(part => !!part.text?.trim());
         break;
       }
 
@@ -200,7 +207,7 @@ export function makeGeminiApiProvider(api: ProviderApiConfig): AgentProvider {
         pendingHeadroomSaved = 0;
       }
 
-      yield { type: "done" };
+      yield completed ? { type: "done" } : { type: "error", message: "Se alcanzó el límite del turno o no hubo respuesta final. El trabajo sigue sin confirmar; revisa su estado antes de continuar." };
     },
   };
 }

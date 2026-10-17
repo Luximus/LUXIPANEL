@@ -1,5 +1,6 @@
 import { admitAgentWork, resolveAgentContext, resolveConversationBinding } from "./agent-context.service.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
+import { guardTurnFinalization, hasUncollectedTeamTasks } from "./turn-finalization.js";
 import { assertCoreDeveloper, beginOwnerContribution, finishOwnerContribution, saveContribution } from "../../../shared/github/owner-contributions.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -145,7 +146,7 @@ export const agentService = {
     let ticket:Awaited<ReturnType<typeof beginOwnerContribution>>=null;
     let completed=false,failed=false;
     try{
-      for await(const event of agentService.runUntracked(messages,options,async(cwd,mode)=>{
+      for await(const event of guardTurnFinalization(agentService.runUntracked(messages,options,async(cwd,mode)=>{
         // Use the same resolved workspace and approval mode as the provider.
         // Agent-only workers can get their cwd from projectPaths without a
         // projectId or options.cwd; they must join the batch before editing.
@@ -155,8 +156,10 @@ export const agentService = {
           if(worker?.id){ticket.job.teamTaskId=worker.id;await saveContribution(ticket.job);}
         }
         return ticket?.job.isolated?undefined:ticket?.job.root;
-      })){
+      }), () => hasUncollectedTeamTasks(executor, options.conversationId))){
         if(event.type==="error"||event.type==="ask")failed=true;
+        // This tracks the leader's source delta only. Worker contributions
+        // retain their own verification gate and keep the shared batch open.
         if(event.type==="done")completed=true;
         yield event;
       }

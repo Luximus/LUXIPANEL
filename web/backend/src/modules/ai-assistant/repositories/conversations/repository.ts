@@ -43,6 +43,9 @@ import { assessContext } from "../../services/context-window.service.js";
 import { pageConversations } from "./list-pages.js";
 
 const log = createModuleLogger("assistant-conversations");
+// Internal receipt in the same atomic sidecar write as the queued user turn.
+// Separate from messages/metadata: never returned by the history API.
+const QUEUE_RECEIPT_DOC_ID = "__queue_receipt";
 
 export const conversationsRepository = {
   /**
@@ -451,7 +454,7 @@ export const conversationsRepository = {
     executor: Executor | null | undefined,
     id: string,
     messages: ConversationMessage[],
-    opts: { unreviewed?: boolean } = {},
+    opts: { unreviewed?: boolean; queueTurnId?: string } = {},
   ): Promise<ConversationMeta | null> {
     if (messages.length === 0) return getMetaAny(executor, id);
     const scope = await resolveScope(executor, id);
@@ -463,7 +466,7 @@ export const conversationsRepository = {
     // language, not the English canonical `content` used for agent context.
     const display = (m: ConversationMessage) =>
       (m.role === "user" ? m.textOriginal : m.textTranslated) ?? m.content;
-    const last = normalizedBatch[normalizedBatch.length - 1]!;
+    let last = normalizedBatch[normalizedBatch.length - 1]!;
     // Resolve the title BEFORE writing so the embedded header never persists the
     // placeholder "Nueva conversación" (which would beat message-derivation on
     // reconstruction). Once a real title exists it is preserved verbatim.
@@ -484,13 +487,21 @@ export const conversationsRepository = {
     await store.transaction(async (current) => {
       const curMap = current as Record<string, ConversationDoc & Record<string, unknown>>;
       const prev = (curMap[MSG_DOC_ID]?.messages ?? []) as ConversationMessage[];
-      const nextMessages = [...prev, ...normalizedBatch];
+      const alreadySaved = opts.queueTurnId !== undefined &&
+        curMap[QUEUE_RECEIPT_DOC_ID]?.["queueTurnId"] === opts.queueTurnId;
+      const nextMessages = alreadySaved ? prev : [...prev, ...normalizedBatch];
+      last = nextMessages.at(-1) ?? last;
       nextLen = nextMessages.length;
       indexedMessages = nextMessages;
       const next = { ...curMap, [MSG_DOC_ID]: { messages: nextMessages } } as Record<
         string,
         ConversationDoc
       >;
+      if (opts.queueTurnId !== undefined) {
+        // FIFO draining needs only the most recent receipt, not an unbounded log.
+        const receipt = { messages: [], queueTurnId: opts.queueTurnId };
+        next[QUEUE_RECEIPT_DOC_ID] = receipt;
+      }
       if (existingMeta) {
         (next as Record<string, unknown>)[META_DOC_ID] = embeddedFromMeta({
           ...existingMeta,

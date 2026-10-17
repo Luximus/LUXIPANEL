@@ -91,8 +91,8 @@ export async function* makeRecoveredCliGen(
   }
 
   const accumulated = job.accumulated;
-  const finalAnswer = jobExitCode === 0 ? spec?.parseFinalAnswer?.(accumulated) ?? "" : "";
-  const success = jobExitCode === 0 && (desc.provider !== "codex" || !!finalAnswer.trim());
+  const finalAnswer = jobExitCode === 0 ? spec?.parseFinalAnswer ? spec.parseFinalAnswer(accumulated) : accumulated.replace(ANSI_RE, "") : "";
+  const success = jobExitCode === 0 && !!finalAnswer.trim();
   const failureMessage = cliFailureMessage(accumulated, jobExitCode);
   const askSource = spec?.parseFinalAnswer ? finalAnswer : accumulated.replace(ANSI_RE, "");
   const ask = success ? extractAskRequest(askSource) : null;

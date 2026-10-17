@@ -24,7 +24,7 @@ export interface TeamTaskArtifacts {
   filesChangedTotal?: number;
   insertions?: number;
   deletions?: number;
-  tokens?: { inputTokens: number; outputTokens: number; totalTokens: number; estimated: boolean };
+  tokens?: { inputTokens: number; outputTokens: number; totalTokens: number; estimated: boolean; overBudget?: boolean };
 }
 
 /** Compact view of a delegated background task (progress card). */
@@ -89,10 +89,10 @@ export interface TeamPlan {
 /**
  * Persisted rehydration snapshot of ONE delegated task, as returned by
  * `GET /api/ai/conversations/:id/team-tasks` (assignee-first field names —
- * mirrors the backend's `TeamTaskSnapshot`). Leaner than `TeamTaskView` (no
- * verify/isolation/artifacts): it exists purely to REBUILD the "Equipo
- * trabajando" board from history after a reload, not to replace the live
- * `team_task_update` stream.
+ * mirrors the backend's `TeamTaskSnapshot`). Optional task details use the
+ * same compact, server-sanitized projection as `team_task_update`; older
+ * snapshots may omit them. Rebuilds the "Equipo trabajando" board after a
+ * reload without requiring an in-memory stream.
  */
 export interface TeamTaskSnapshot {
   taskId: string;
@@ -108,6 +108,10 @@ export interface TeamTaskSnapshot {
   stepIndex: number | null;
   pendingPermission: boolean;
   error: string | null;
+  /** Optional for old tasks/snapshots; the same allowlisted detail as SSE. */
+  artifacts?: TeamTaskView["artifacts"];
+  verify?: TeamTaskView["verify"];
+  isolation?: TeamTaskView["isolation"];
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -139,6 +143,9 @@ export function snapshotToTaskView(s: TeamTaskSnapshot): TeamTaskView {
     planId: s.planId,
     ...(s.pendingPermission ? { pendingPermission: true } : {}),
     ...(s.error ? { error: s.error } : {}),
+    ...(s.artifacts ? { artifacts: s.artifacts } : {}),
+    ...(s.verify ? { verify: s.verify } : {}),
+    ...(s.isolation ? { isolation: s.isolation } : {}),
     createdAt: s.createdAt,
     ...(s.finishedAt ? { finishedAt: s.finishedAt } : {}),
   };

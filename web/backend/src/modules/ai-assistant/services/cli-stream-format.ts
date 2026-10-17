@@ -291,24 +291,16 @@ export function parseClaudeUsage(raw: string): { inputTokens: number; outputToke
 export function parseClaudeFinalAnswer(raw: string): string {
   const lines = raw.split("\n");
   let result = "";
-  const assistantText: string[] = [];
   for (const line of lines) {
     const t = line.trim();
     if (!t) continue;
     let ev: Record<string, unknown>;
     try { ev = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
-    if (ev.type === "result" && typeof ev.result === "string") {
-      result = ev.result;
-    } else if (ev.type === "assistant") {
-      const msg = (ev.message ?? {}) as { content?: unknown };
-      const content = Array.isArray(msg.content) ? msg.content : [];
-      for (const block of content) {
-        const b = block as Record<string, unknown>;
-        if (b?.type === "text" && typeof b.text === "string") assistantText.push(b.text);
-      }
+    if (ev.type === "result") {
+      result = ev.is_error === true || (ev.subtype !== undefined && ev.subtype !== "success") || typeof ev.result !== "string" ? "" : ev.result;
     }
   }
-  return (result || assistantText.join("\n")).trim();
+  return result.trim();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -508,8 +500,8 @@ export function parseCodexUsage(raw: string): { inputTokens: number; outputToken
  *   {"type":"error","message":"…"}
  *   {"type":"result","status":"success","stats":{"input_tokens":…,"output_tokens":…,"cached":…}}
  *
- * The clean final answer is the concatenation of the assistant `message`
- * events; usage comes from the terminal `result` event's `stats`.
+ * The clean final answer joins assistant messages after the last tool call
+ * only after a successful terminal result; usage comes from its `stats`.
  */
 
 /** Readable one-line label for a gemini non-message event. */
@@ -579,21 +571,23 @@ export function createGeminiStreamTransformer(): (chunk: string) => string {
   };
 }
 
-/** Clean final answer from a `gemini -o stream-json` log: the assistant
- *  `message` events, concatenated. */
+/** Clean final answer after the last tool call and a successful terminal result. */
 export function parseGeminiFinalAnswer(raw: string): string {
   const lines = raw.split("\n");
   const parts: string[] = [];
+  let completed = false;
   for (const line of lines) {
     const t = line.trim();
     if (!t) continue;
     let ev: Record<string, unknown>;
     try { ev = JSON.parse(t) as Record<string, unknown>; } catch { continue; }
+    if (ev.type === "tool_use") parts.length = 0;
+    if (ev.type === "result") completed = ev.status === "success";
     if (ev.type === "message" && ev.role === "assistant" && typeof ev.content === "string") {
       parts.push(ev.content);
     }
   }
-  return parts.join("").trim();
+  return completed ? parts.join("").trim() : "";
 }
 
 /** Real token usage from a `gemini -o stream-json` log's `result` event stats.

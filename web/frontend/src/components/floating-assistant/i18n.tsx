@@ -101,6 +101,7 @@ export type AssistantMessages = {
       closeTitle: string;
     };
     toolTrace: {
+      historyTruncated: string;
       waiting: string;
       unconfirmed: string;
       running: string;

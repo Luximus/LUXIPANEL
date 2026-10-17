@@ -87,7 +87,7 @@ export interface SpawnWorkerInput {
   ) => Promise<{ forcedCwd?: string } | void> | { forcedCwd?: string } | void;
   /** Extra completion hook (team.assign closes its task here). Runs AFTER the
    *  worker's answer was persisted to its conversation. */
-  onDone?: (result: { assistantText: string; errored: boolean }) => Promise<void> | void;
+  onDone?: (result: { assistantText: string; errored: boolean; interrupted?: boolean }) => Promise<void> | void;
 }
 
 /** Create the worker's persisted chat (optionally appending the user turn —
@@ -132,7 +132,7 @@ export function startWorkerRun(args: {
    *  worker CLI arranca SIN canal MCP cross → sin `servers.*` ni
    *  `permissions.approve` ("no están disponibles para los subordinados"). */
   panelOrigin?: string;
-  onDone?: (result: { assistantText: string; errored: boolean }) => Promise<void> | void;
+  onDone?: (result: { assistantText: string; errored: boolean; interrupted?: boolean }) => Promise<void> | void;
 }): void {
   const { executor, user, userId, worker, task, projectId, conversationId: convId, depth, runAgent, forcedCwd, panelOrigin, onDone } = args;
   const provider = worker.providerId;
@@ -191,17 +191,8 @@ export function startWorkerRun(args: {
         signal: undefined,
       }),
     onEvent: recordUsage,
-    onComplete: async (assistantText: string, errored: boolean, ask, translation, durationMs, cliLog, askKind, outcome) => {
+    onComplete: async (assistantText: string, errored: boolean, ask, translation, durationMs, cliLog, askKind, outcome, apiActivity) => {
       workerRunEnded(userId, convId);
-      // Un run CLI dejó un descriptor cli-job persistido (cli-bridge lo crea
-      // para todo run con conversationId). Sin este delete el descriptor queda
-      // huérfano (el tracker borra sus artefactos al completar) y el barrido
-      // post-reinicio lo interpreta como run interrumpido → nota falsa
-      // "⚠️ La ejecución se interrumpió…" en el chat del worker y tarea done
-      // reclasificada como failed. Paridad con turn-queue.service.
-      if (cliHolder.value) {
-        await cliJobsRepository.delete(executor, convId).catch(() => undefined);
-      }
       const content = (assistantText ?? "").trim();
       const total = tokensHolder.input + tokensHolder.output;
       const tokens = total > 0 ? {
@@ -209,11 +200,18 @@ export function startWorkerRun(args: {
         ...(tokensHolder.estimated ? { estimated: true } : {}),
       } : undefined;
       await persistAssistantMessage(executor, convId, content, provider, cliHolder.value,
-        ask, translation, tokens, durationMs, cliLog, askKind, outcome);
+        ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity);
+      // Retain recovery evidence until the answer has actually been saved.
+      if (cliHolder.value) {
+        await cliJobsRepository.delete(executor, convId).catch(() => undefined);
+      }
+      // A question or a pending delegation ends a provider turn, not the task.
+      if (!errored && !outcome?.interrupted && (ask?.length || outcome?.pending)) return;
       try {
-        await onDone?.({ assistantText: content || outcome?.error || "", errored });
+        await onDone?.({ assistantText: outcome?.error || content, errored, ...(outcome?.interrupted ? { interrupted: true } : {}) });
       } catch (err) {
         log.warn({ err: (err as Error).message }, "team spawnWorker onDone hook failed");
+        throw err;
       }
     },
   });

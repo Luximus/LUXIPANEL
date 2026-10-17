@@ -249,6 +249,7 @@ const assistantPart1 = {
     "processTitle": "العملية",
     "noFinalAnswer": "أنهى الوكيل دون إجابة نهائية؛ راجع كتلة العملية.",
     "toolTrace": {
+      "historyTruncated": "لم تُحفظ بعض التفاصيل بسبب الحد الأقصى للسجل.",
       "waiting": "قيد الانتظار",
       "unconfirmed": "النتيجة غير مؤكدة",
       "running": "قيد التشغيل…",

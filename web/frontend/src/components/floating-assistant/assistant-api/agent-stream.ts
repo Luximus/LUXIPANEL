@@ -21,7 +21,7 @@ export interface AskQuestion {
 // SSE `event:` payloads are decoded here by `type`, so a divergence silently
 // drops or mis-handles a frame.
 export type AgentEvent =
-  | { type: "text"; delta: string }
+  | { type: "text"; delta: string; phase?: "commentary" | "final_answer" }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; id: string; success: boolean; output: string }
   | { type: "usage"; model: string; inputTokens: number; outputTokens: number; estimated?: boolean }
@@ -47,7 +47,7 @@ export type AgentEvent =
   // chat renders live progress cards; the board also rehydrates via
   // `teamApi.listTasks` after a reload.
   | { type: "team_task_update"; task: TeamTaskView }
-  | { type: "done" }
+  | { type: "done"; pending?: true }
   | { type: "error"; message: string };
 
 export interface AgentMessage {

@@ -1,0 +1,9 @@
+{
+  "title": "Actividad compacta y estados pendientes del asistente",
+  "changes": [
+    "El chat separa los avances y las llamadas a herramientas de la respuesta final en una única Consola del servidor por mensaje.",
+    "El historial conserva los resultados y errores de las llamadas API y avisa cuando el detalle guardado está limitado.",
+    "Los turnos que esperan resultados o una decisión mantienen su estado de espera al recuperar el historial.",
+    "Los detalles de ejecución se pueden abrir con el teclado en pantallas móviles y de escritorio."
+  ]
+}

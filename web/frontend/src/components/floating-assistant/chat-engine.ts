@@ -35,6 +35,7 @@ import { startBackgroundPoll, stopBackgroundPoll } from "./chat-engine/resume-po
 export type { CliLane, ToolTrace, TurnAttachment, ChatTurn, LiveChat } from "./chat-engine/types";
 export { historyTurn, historyTurns } from "./chat-engine/history";
 let backgroundRefreshTask: Promise<void> | null = null;
+const pendingOutcomeReads = new Set<string>();
 
 export const chatEngine = {
   subscribe(fn: Listener): () => void {
@@ -154,6 +155,7 @@ export const chatEngine = {
    * No-op (keeps the board empty) for conversations without delegated tasks.
    */
   async refreshTeamTasks(key: string): Promise<void> {
+    const scope = resolveTargetScope();
     const chat = chats.get(key);
     const conversationId = chat?.conversationId ?? (key.startsWith("new:") ? null : key);
     if (!conversationId) return;
@@ -165,6 +167,7 @@ export const chatEngine = {
       return; // fail-open: cards just stay as-is
     }
     const current = chats.get(key);
+    if (scope !== resolveTargetScope() || (current && current.conversationId !== conversationId)) return;
     if (!current) {
       if (tasks.length === 0) return;
       // Chat not held locally (yet) — nothing to attach the board to.
@@ -176,6 +179,8 @@ export const chatEngine = {
     // artifacts arrive via `team_task_update`; the persisted snapshot is leaner).
     for (const task of tasks) {
       const prev = merged[task.id];
+      // An SSE/WS update received during the read is newer than its snapshot.
+      if (prev && prev !== chat?.teamTasks?.[task.id]) continue;
       merged[task.id] = prev ? { ...prev, ...task } : task;
     }
     chats.set(key, { ...current, teamTasks: merged });
@@ -279,10 +284,41 @@ export const chatEngine = {
     }
 
     if (changed) emit();
+    // A closed stream may still await workers. Follow only the visible chat,
+    // using persisted messages and existing SSE runs; never resend its prompt.
+    for (const [key, chat] of chats) {
+      const last = chat.turns[chat.turns.length - 1];
+      if (!chat.streaming && isActivelyViewing(key) && chat.conversationId
+        && (last?.completionPending || (last?.role === "user" && backgroundActive.has(chat.conversationId)))) {
+        void chatEngine.refreshPendingOutcome(key);
+      }
+    }
     })();
     backgroundRefreshTask = task;
     try { await task; }
     finally { if (backgroundRefreshTask === task) backgroundRefreshTask = null; }
+  },
+
+  /** Reconcile a pending outcome without keeping a closed stream active. */
+  async refreshPendingOutcome(key: string): Promise<void> {
+    const before = chats.get(key), scope = resolveTargetScope();
+    if (!before?.conversationId || before.streaming || !isActivelyViewing(key)) return;
+    const readKey = scope + ":" + key;
+    if (pendingOutcomeReads.has(readKey)) return;
+    pendingOutcomeReads.add(readKey);
+    try {
+      await chatEngine.refreshVoiceHistory(key, before.conversationId);
+      const current = chats.get(key);
+      if (scope !== resolveTargetScope() || !current || current.conversationId !== before.conversationId
+        || current.streaming || !isActivelyViewing(key)) return;
+      if (current.turns[current.turns.length - 1]?.role === "user") {
+        const run = backgroundActive.get(before.conversationId);
+        const lastAssistant = current.turns.findLast(turn => turn.role === "assistant");
+        void chatEngine.adopt(key, run?.provider ?? current.provider, before.conversationId,
+          run?.cli ?? current.isCli ?? lastAssistant?.cli ?? false);
+      }
+    } catch { /* Keep the pending outcome; a later visible poll may read it again. */ }
+    finally { pendingOutcomeReads.delete(readKey); }
   },
 
   /** Clear the "sin revisar" flag once the user has seen the conversation.
@@ -317,7 +353,7 @@ export const chatEngine = {
     clearActiveViewKey(key);
   },
 
-  /** Refresh persisted voice messages without navigation or dropping task state. */
+  /** Refresh persisted messages for voice/pending work without dropping task state or older history. */
   async refreshVoiceHistory(key: string, conversationId: string): Promise<void> {
     const before = chats.get(key), scope = resolveTargetScope();
     if (!before || before.conversationId !== conversationId || before.streaming) return;
@@ -660,6 +696,7 @@ export const chatEngine = {
    * authoritative. Must be called AFTER `seed()` so history turns are the base.
    */
   async adopt(key: string, provider: string, conversationId: string, isCli: boolean): Promise<boolean> {
+    const scope = resolveTargetScope();
     const existing = chats.get(key);
     if (existing?.streaming) return true; // already live locally
     if (adopting.has(key)) return true; // a probe is already deciding for this key
@@ -677,6 +714,12 @@ export const chatEngine = {
     } catch {
       adopting.delete(key);
       return false; // probe failed → keep the loaded history
+    }
+
+    if (scope !== resolveTargetScope() || chats.get(key)?.conversationId !== conversationId) {
+      ac.abort();
+      adopting.delete(key);
+      return false;
     }
 
     // History already ends with the assistant's answer ⇒ this run finished and
@@ -698,22 +741,27 @@ export const chatEngine = {
     // A run IS live and the thread is frozen at the user turn. Append a pending
     // assistant turn and replay the buffered + live events into it.
     const turns: ChatTurn[] = [...baseTurns, { role: "assistant", provider, text: "", tools: [], pending: true }];
-    chats.set(key, { provider, conversationId, turns, streaming: true, abort: ac, isCli });
+    chats.set(key, { provider, conversationId, turns, streaming: true, abort: ac, isCli,
+      ...(chats.get(key)?.teamTasks ? { teamTasks: chats.get(key)!.teamTasks } : {}),
+    });
     adopting.delete(key); // `streaming` now guards re-entry
     emit();
 
     try {
       for await (const frame of gen) {
+        if (scope !== resolveTargetScope() || chats.get(key)?.abort !== ac) { ac.abort(); break; }
         applyEvent(key, frame.event, { isCli, startedAt, seq: frame.seq });
       }
     } catch (err) {
-      handleStreamThrow(key, err, startedAt, isCli);
+      if (scope === resolveTargetScope() && chats.get(key)?.abort === ac) handleStreamThrow(key, err, startedAt, isCli);
     } finally {
       const c = chats.get(key);
-      if (c) chats.set(key, { ...c, streaming: false, abort: undefined });
-      emit();
-      if (lastTurnInterrupted(key)) scheduleResume(key);
-      else if (!lastTurnStopped(key)) onCleanSettle(key, conversationId, provider, isCli);
+      if (scope === resolveTargetScope() && c?.abort === ac) {
+        chats.set(key, { ...c, streaming: false, abort: undefined });
+        emit();
+        if (lastTurnInterrupted(key)) scheduleResume(key);
+        else if (!lastTurnStopped(key)) onCleanSettle(key, conversationId, provider, isCli);
+      }
     }
     return true;
   },

@@ -512,6 +512,21 @@ describe("teamTasksService reconciliation", () => {
 });
 
 describe("leader nudge watcher (AI_TEAM_LEADER_NUDGE)", () => {
+  it("recovers a missed delivery without restarting workers", async () => {
+    const deliveries: Array<{ onSettled: () => void }> = [];
+    const listener = (payload: unknown) => deliveries.push(payload as { onSettled: () => void });
+    eventBus.on(Events.AI_TEAM_LEADER_NUDGE, listener);
+    try {
+      await assign();
+      await registryState.started[0]?.onComplete?.("Verificado", false);
+      expect(deliveries).toHaveLength(1);
+      deliveries[0]!.onSettled(); // enqueue failed; no durable acknowledgment
+      await teamTasksService.listForLeaderConversation(executor, "conv-leader");
+      expect(deliveries).toHaveLength(2);
+      expect(registryState.started).toHaveLength(1);
+    } finally { eventBus.off(Events.AI_TEAM_LEADER_NUDGE, listener); }
+  });
+
   it("emits ONCE when the last uncollected task closes with no leader run and no waiters", async () => {
     const events: Array<{ taskIds: string[] }> = [];
     const listener = (p: unknown) => events.push(p as { taskIds: string[] });
@@ -524,9 +539,11 @@ describe("leader nudge watcher (AI_TEAM_LEADER_NUDGE)", () => {
       await registryState.started[1]?.onComplete?.("ok B", false);
       expect(events).toHaveLength(1);
       expect(events[0]?.taskIds.sort()).toEqual([a.id, b.id].sort());
-      // Tasks are marked nudged BEFORE emitting → no re-emission loop.
-      expect(board.get(a.id ?? "")?.["nudged"]).toBe(true);
-      expect(board.get(b.id ?? "")?.["nudged"]).toBe(true);
+      // In-flight delivery dedupes; durable acknowledgment belongs to enqueue.
+      expect(board.get(a.id ?? "")?.["nudged"]).not.toBe(true);
+      expect(board.get(b.id ?? "")?.["nudged"]).not.toBe(true);
+      await teamTasksService.listForLeaderConversation(executor, "conv-leader");
+      expect(events).toHaveLength(1);
     } finally {
       eventBus.off(Events.AI_TEAM_LEADER_NUDGE, listener);
     }
@@ -618,6 +635,28 @@ describe("teamTasksService.cancelTask", () => {
 });
 
 describe("interruption placeholders (restart recovery)", () => {
+  it("keeps a worker waiting for its human answer instead of closing it", async () => {
+    const task = await assign();
+    await registryState.started[0]?.onComplete?.("Necesito el destino", false, [{ id: "q", type: "text", text: "Destino" }]);
+    expect(board.get(task.id!)?.status).toBe("running");
+    board.get(task.id!)!["startedAt"] = new Date(Date.now() - 600000).toISOString();
+    const tasks = await teamTasksService.listForLeaderConversation(executor, "conv-leader");
+    expect(tasks[0]?.status).toBe("running");
+  });
+
+  it("does not turn a partial failed answer into success during reconciliation", async () => {
+    const task = await assign();
+    conversationMessages.get(task.workerConversationId)?.push({ role: "assistant", content: "Voy a cambiarlo", error: "Resultado sin confirmar", ts: new Date().toISOString() } as never);
+    const tasks = await teamTasksService.listForLeaderConversation(executor, "conv-leader");
+    expect(tasks[0]).toMatchObject({ status: "failed", error: "Resultado sin confirmar" });
+  });
+
+  it("keeps a manual worker stop canceled even if text was produced", async () => {
+    const task = await assign();
+    await registryState.started[0]?.onComplete?.("Trabajo parcial", false, undefined, undefined, undefined, undefined, undefined, { interrupted: true });
+    expect(board.get(task.id!)?.status).toBe("canceled");
+  });
+
   it("matches the recovery note and this service's own error text", () => {
     expect(isInterruptionPlaceholder(CLI_RECOVERY_INTERRUPTED_TEXT)).toBe(true);
     expect(isInterruptionPlaceholder(TASK_INTERRUPTED_ERROR)).toBe(true);
@@ -759,6 +798,76 @@ describe("verify gate (finalizeTask)", () => {
     const started = registryState.started.at(-1)!;
     await started.onComplete?.("hecho", false);
   };
+
+
+  it.each([undefined, "failed", "skipped", "running"] as const)(
+    "does not recover an orphan as done without confirmed verification (%s)",
+    async state => {
+      const id = await assignWithVerify();
+      const stored = board.get(id)!;
+      stored["startedAt"] = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+      delete stored["isolation"]; // Reconciliation does not need real Git or shell effects.
+      if (state) stored["verify"] = { state, attempts: 1, startedAt: stored["startedAt"] };
+      conversationMessages.get(stored.workerConversationId)?.push({
+        role: "assistant", content: "Cambios preparados", ts: new Date().toISOString(),
+      });
+      verifyQueue.push({ ok: true, logTail: "must not execute", durationMs: 1 });
+
+      const [recovered] = await teamTasksService.listForLeaderConversation(executor, "conv-verify");
+
+      expect(recovered).toMatchObject({
+        status: "failed",
+        resultSummary: "Cambios preparados",
+      });
+      expect(recovered?.error).toContain("verificación");
+      expect(verifyQueue).toHaveLength(1);
+      expect(registryState.started).toHaveLength(1);
+    },
+  );
+
+  it("recovers an already verified answer without executing its verification again", async () => {
+    const id = await assignWithVerify();
+    const stored = board.get(id)!;
+    stored["startedAt"] = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+    delete stored["isolation"];
+    stored["verify"] = { state: "passed", attempts: 1 };
+    conversationMessages.get(stored.workerConversationId)?.push({
+      role: "assistant", content: "Cambios verificados", ts: new Date().toISOString(),
+    });
+    verifyQueue.push({ ok: true, logTail: "must not execute", durationMs: 1 });
+
+    const [recovered] = await teamTasksService.listForLeaderConversation(executor, "conv-verify");
+
+    expect(recovered).toMatchObject({ status: "done", verify: { state: "passed" } });
+    expect(verifyQueue).toHaveLength(1);
+    expect(registryState.started).toHaveLength(1);
+  });
+
+  it.each(["verification", "queued-repair"] as const)(
+    "keeps recovery pending while %s is still active",
+    async active => {
+      const id = await assignWithVerify();
+      const stored = board.get(id)!;
+      stored["startedAt"] = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+      delete stored["isolation"];
+      if (active === "verification") {
+        stored["verify"] = { state: "running", attempts: 1, startedAt: new Date().toISOString() };
+      } else {
+        stored["verify"] = { state: "failed", attempts: 1 };
+        queuedTurns.push({ conversationId: stored.workerConversationId, auto: true, userText: "Revisar el fallo" });
+      }
+      conversationMessages.get(stored.workerConversationId)?.push({
+        role: "assistant", content: "Cambios preparados", ts: new Date().toISOString(),
+      });
+      verifyQueue.push({ ok: true, logTail: "must not execute", durationMs: 1 });
+
+      const [recovered] = await teamTasksService.listForLeaderConversation(executor, "conv-verify");
+
+      expect(recovered?.status).toBe("running");
+      expect(verifyQueue).toHaveLength(1);
+      expect(registryState.started).toHaveLength(1);
+    },
+  );
 
   it("verify OK → cierra done con verify passed", async () => {
     const id = await assignWithVerify();
@@ -983,4 +1092,61 @@ it.each(["manual","auto",undefined])("voice workers inherit the conversation mod
     worker,title:"Revisar",task:"Solo revisar",projectId:null,depth:0,runAgent,
   });
   expect(patchedRuntime).toContainEqual([task.workerConversationId,{approvalMode:mode??"plan"}]);
+});
+
+it("does not close a worker or delete its recovery descriptor after a failed history write", async () => {
+  const { conversationsRepository } = await import("../repositories/conversations.repository.js");
+  const task = await assign();
+  const run = registryState.started[0]!;
+  run.onEvent?.({ type: "tool_use", id: "cli", name: "claude.cli", input: {} });
+  const append = vi.spyOn(conversationsRepository, "appendMessages").mockRejectedValueOnce(new Error("history unavailable"));
+  try {
+    await expect(run.onComplete?.("Resultado parcial", false)).rejects.toThrow("history unavailable");
+    expect(board.get(task.id ?? "")?.status).toBe("running");
+    expect(cliJobsDeleted).not.toContain(task.workerConversationId);
+  } finally { append.mockRestore(); }
+});
+
+it("fails a required verification when its working directory cannot be confirmed", async () => {
+  const task = await assign();
+  const current = board.get(task.id ?? "")!;
+  current["verifyCommands"] = ["npm test"];
+  delete current["isolation"];
+  const { teamVerifyService } = await import("./team-verify.service.js");
+  vi.mocked(teamVerifyService.run).mockClear();
+  await registryState.started[0]?.onComplete?.("Hecho", false);
+  expect(board.get(task.id ?? "")).toMatchObject({ status: "failed", verify: { state: "skipped" } });
+  expect(teamVerifyService.run).not.toHaveBeenCalled();
+});
+
+it.each(["running", "queued"] as const)("does not close a newer worker continuation from an older settled event (%s)", async state => {
+  const { runWithExecutor } = await import("../../../shared/executor/index.js");
+  teamTasksService.init();
+  const task = await assign();
+  conversationMessages.get(task.workerConversationId)!.push({ role: "user", content: "Corrección pendiente", ts: "2026-10-17" });
+  if (state === "running") registryState.isActive.mockImplementation(key => key === task.workerConversationId);
+  else queuedTurns.push({ conversationId: task.workerConversationId, userText: "Corrección pendiente", auto: true });
+  await runWithExecutor(executor, async () => {
+    eventBus.emit(Events.AI_TURN_SETTLED, { conversationId: task.workerConversationId });
+    await new Promise(resolve => setImmediate(resolve));
+  });
+  expect(board.get(task.id ?? "")?.status).toBe("running");
+  registryState.isActive.mockReturnValue(false);
+  queuedTurns.length = 0;
+  conversationMessages.get(task.workerConversationId)!.push({ role: "assistant", content: "Corrección verificada", ts: "2026-10-17" });
+  await runWithExecutor(executor, async () => {
+    eventBus.emit(Events.AI_TURN_SETTLED, { conversationId: task.workerConversationId });
+    await new Promise(resolve => setImmediate(resolve));
+  });
+  expect(board.get(task.id ?? "")).toMatchObject({ status: "done", resultSummary: "Corrección verificada" });
+});
+
+it("propagates an unconfirmed task close instead of accepting the worker's answer as success", async () => {
+  const task = await assign();
+  const { teamTasksRepository } = await import("../repositories/team-tasks.repository.js");
+  const update = vi.spyOn(teamTasksRepository, "updateTask").mockRejectedValueOnce(new Error("task board unavailable"));
+  try {
+    await expect(registryState.started[0]?.onComplete?.("Respuesta guardada", false)).rejects.toThrow("task board unavailable");
+    expect(board.get(task.id ?? "")?.status).toBe("running");
+  } finally { update.mockRestore(); }
 });

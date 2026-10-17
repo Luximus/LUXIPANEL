@@ -2,6 +2,7 @@
 // Copyright (C) 2026 LUXISOFT
 import type { Executor } from "../../../shared/executor/index.js";
 import type { AskQuestion } from "../models/ask.types.js";
+import type { ApiActivity } from "../models/api-activity.types.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { stripAskBlock } from "./ask-protocol.js";
 import { ANSI_RE } from "./providers/cli/shell.js";
@@ -26,7 +27,8 @@ export async function persistAssistantMessage(
   durationMs?: number,
   cliLog?: string,
   askKind?: "plan-approval",
-  outcome?: { error?: string; interrupted?: boolean },
+  outcome?: { error?: string; interrupted?: boolean; pending?: boolean },
+  apiActivity?: ApiActivity,
 ): Promise<void> {
   // Drop the raw ask sentinel block from the persisted text — the question is
   // stored structurally in `ask` and re-rendered as controls on reload.
@@ -38,7 +40,7 @@ export async function persistAssistantMessage(
   const cliLogField = log.trim() && log.trim() !== content.trim() ? log : "";
   // Persist when there's text OR a pending question (an ask with no preamble
   // would otherwise be lost, leaving the thread frozen at the user's turn).
-  if (!content.trim() && !ask?.length && !outcome?.error && !outcome?.interrupted) return;
+  if (!content.trim() && !ask?.length && !outcome?.error && !outcome?.interrupted && !outcome?.pending) return;
   await conversationsRepository
     .appendMessages(
       executor,
@@ -50,6 +52,8 @@ export async function persistAssistantMessage(
           role: "assistant",
           ...(outcome?.error ? { error: outcome.error } : {}),
           ...(outcome?.interrupted ? { interrupted: true } : {}),
+          ...(outcome?.pending ? { pending: true } : {}),
+          ...(!cli && apiActivity ? { apiActivity } : {}),
           ...(provider ? { provider } : {}),
           content,
           ts: new Date().toISOString(),
@@ -66,6 +70,5 @@ export async function persistAssistantMessage(
       // The run just finished → mark it for review until the user opens it.
       // Surfaces "ended but unreviewed" on the Dashboard across panel reloads.
       { unreviewed: true },
-    )
-    .catch(() => undefined);
+    );
 }

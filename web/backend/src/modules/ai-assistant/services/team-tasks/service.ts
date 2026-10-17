@@ -39,7 +39,9 @@ import { hasWorkerSlot, resetWorkerQuota } from "./worker-quota.js";
 import { preserveWorkerExecution } from "./worker-recovery.js";
 import { waitForPing, pingWaiters } from "./waiters.js";
 import { emitTaskUpdate, injectTaskUpdate } from "./task-events.js";
-import { isInterruptionPlaceholder, TASK_INTERRUPTED_ERROR } from "./interruption.js";
+import { TASK_INTERRUPTED_ERROR } from "./interruption.js";
+import { persistedWorkerOutcome } from "./persisted-outcome.js";
+import type { ConversationMessage } from "../../repositories/conversations.repository.js";
 import {
   finalizeTask,
   enforceBudgets,
@@ -128,7 +130,7 @@ export const teamTasksService = {
     };
     eventBus.on(Events.AI_PERMISSION_REQUESTED, onPermission(true));
     eventBus.on(Events.AI_PERMISSION_RESOLVED, onPermission(false));
-    eventBus.on(Events.AI_CHAT_FINISHED, (payload: { conversationId: string; errored?: boolean }) => {
+    eventBus.on(Events.AI_TURN_SETTLED, (payload: { conversationId: string; errored?: boolean; pending?: boolean; awaitingInput?: boolean }) => {
       // The registry emits inside the run's executor scope — capture it NOW
       // (fail-closed: no context executor → not a per-server run → skip).
       let executor: Executor | null = null;
@@ -141,19 +143,22 @@ export const teamTasksService = {
       void (async () => {
         const task = await teamTasksRepository.findByWorkerConversation(executor, payload.conversationId);
         if (!task?.id || isTerminalTaskStatus(task.status)) return;
+        // onComplete may already have started/queued a verification repair or
+        // follow-up. This event belongs to the previous turn, not that work.
+        if (agentRunRegistry.isActive(task.workerConversationId, executor.target.id)) return;
+        if ((await agentQueueRepository.listFor(executor, task.workerConversationId)).length > 0) return;
         if (payload.errored) {
           await finalizeTask(executor, task.id, { status: "failed", error: "El agente terminó con error." });
           return;
         }
+        if (payload.pending || payload.awaitingInput) return;
         // Our own onDone may still be about to close it — finalizeTask
         // serializes per-task and terminal states are idempotent, so a
         // duplicate close is a no-op.
         const { items } = await conversationsRepository.messages(executor, task.workerConversationId, { limit: 5 });
-        const lastAssistant = [...items].reverse().find((m) => m.role === "assistant");
-        await finalizeTask(executor, task.id, {
-          status: "done",
-          resultSummary: lastAssistant?.content ?? "",
-        });
+        const outcome = persistedWorkerOutcome(items);
+        if (outcome === null) return;
+        await finalizeTask(executor, task.id, outcome ?? { status: "failed", error: TASK_INTERRUPTED_ERROR });
       })()
         .then(async () => {
           // The finished chat may also BE a leader conversation whose last
@@ -163,7 +168,7 @@ export const teamTasksService = {
           await maybeNudgeLeader(executor, payload.conversationId);
         })
         .catch((err) => {
-          log.warn({ err: (err as Error).message }, "team-tasks AI_CHAT_FINISHED close failed");
+          log.warn({ err: (err as Error).message }, "team-tasks AI_TURN_SETTLED close failed");
         });
     });
   },
@@ -351,8 +356,10 @@ export const teamTasksService = {
     }
 
     // 4. Gate de despacho: lease libre + hueco en el cupo de workers.
-    const closeHandler = async ({ assistantText, errored }: { assistantText: string; errored: boolean }) => {
-      if (errored) {
+    const closeHandler = async ({ assistantText, errored, interrupted }: { assistantText: string; errored: boolean; interrupted?: boolean }) => {
+      if (interrupted) {
+        await finalizeTask(executor, taskId, { status: "canceled", error: TASK_INTERRUPTED_ERROR });
+      } else if (errored) {
         await finalizeTask(executor, taskId, {
           status: "failed",
           error: assistantText ? assistantText.slice(0, 500) : "El agente terminó con error.",
@@ -487,7 +494,7 @@ export const teamTasksService = {
   ): Promise<{ tasks: TeamTask[]; timedOut: boolean }> {
     const deadline = Date.now() + Math.max(0, timeoutMs);
     for (;;) {
-      const all = await this.listForLeaderConversation(executor, leaderConversationId);
+      const all = await this.listForLeaderConversation(executor, leaderConversationId, false);
       // Corte por presupuesto de tokens (≤1 lectura del ledger por iteración,
       // acotado por WAIT_POLL_MS). Best-effort.
       await enforceBudgets(executor, all).catch(() => undefined);
@@ -496,7 +503,7 @@ export const teamTasksService = {
       if (pending.length === 0) return { tasks: subset, timedOut: false };
       const remaining = deadline - Date.now();
       if (remaining <= 0 || signal?.aborted) return { tasks: subset, timedOut: true };
-      await waitForPing(leaderConversationId, Math.min(remaining, WAIT_POLL_MS), signal);
+      await waitForPing(leaderConversationId, Math.min(remaining, WAIT_POLL_MS), signal, executor.target.id);
     }
   },
 
@@ -506,7 +513,7 @@ export const teamTasksService = {
    * the persisted conversation — covers API runs killed by a panel restart
    * without needing a background loop.
    */
-  async listForLeaderConversation(executor: Executor, leaderConversationId: string): Promise<TeamTask[]> {
+  async listForLeaderConversation(executor: Executor, leaderConversationId: string, notifyLeader = true): Promise<TeamTask[]> {
     const tasks = await teamTasksRepository.listForLeaderConversation(executor, leaderConversationId);
     const out: TeamTask[] = [];
     for (const t of tasks) {
@@ -517,6 +524,9 @@ export const teamTasksService = {
       const reconciled = await this.reconcileRunningTask(executor, t);
       out.push(reconciled ?? t);
     }
+    // Also recovers a missed wake-up after restart/enqueue failure. This only
+    // collects already-existing work; it does not restart workers or tools.
+    if (notifyLeader) await maybeNudgeLeader(executor, leaderConversationId);
     return out;
   },
 
@@ -587,29 +597,30 @@ export const teamTasksService = {
     // staleness venza (o para siempre, si nadie volvía a leer el board). Solo
     // llegamos aquí sin run vivo en el registry ni CLI job, así que esta
     // lectura extra no compite con ningún camino de cierre normal.
-    let items: Array<{ role: string; content: string }> = [];
+    let items: ConversationMessage[] = [];
     try {
       items = (await conversationsRepository.messages(executor, task.workerConversationId, { limit: 5 })).items;
     } catch {
-      /* unreadable conversation → treat as no answer */
+      return null; // unavailable evidence is not a terminal outcome
     }
-    const lastAssistant = [...items].reverse().find((m) => m.role === "assistant");
-    if (isInterruptionPlaceholder(lastAssistant?.content)) {
+    const persisted = persistedWorkerOutcome(items);
+    if (persisted === null) return null; // waiting for the human or its own team
+    if (persisted && persisted.status !== "done") {
       return finalizeTask(
         executor,
         task.id,
-        { status: "failed", error: TASK_INTERRUPTED_ERROR, resultSummary: lastAssistant?.content ?? "" },
+        persisted,
         { skipVerify: true },
       );
     }
     const started = Date.parse(task.startedAt ?? task.createdAt);
     if (Number.isFinite(started) && Date.now() - started < STALE_RUNNING_MS) return null;
-    if (lastAssistant?.content?.trim()) {
+    if (persisted) {
       // El guard de finalizeTaskInner re-verifica el placeholder (belt & braces).
       return finalizeTask(
         executor,
         task.id,
-        { status: "done", resultSummary: lastAssistant.content },
+        persisted,
         { skipVerify: true },
       );
     }
@@ -624,7 +635,8 @@ export const teamTasksService = {
   /** Mark a batch of tasks as consumed by the leader (team.collect). */
   async markCollected(executor: Executor, taskIds: string[]): Promise<void> {
     for (const id of taskIds) {
-      await teamTasksRepository.updateTask(executor, id, { collected: true }).catch(() => undefined);
+      const task = await teamTasksRepository.getTask(executor, id);
+      if (task && isTerminalTaskStatus(task.status)) await teamTasksRepository.updateTask(executor, id, { collected: true });
     }
   },
 
@@ -637,7 +649,7 @@ export const teamTasksService = {
     const updated = await teamTasksRepository.updateTask(executor, task.id, { pendingPermission: pending });
     if (updated) {
       injectTaskUpdate(updated, executor.target.id);
-      pingWaiters(updated.leaderConversationId);
+      pingWaiters(updated.leaderConversationId, executor.target.id);
     }
   },
 

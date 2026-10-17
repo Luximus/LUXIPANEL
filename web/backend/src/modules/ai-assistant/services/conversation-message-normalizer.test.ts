@@ -112,3 +112,10 @@ it("preserves an empty failed answer instead of promoting progress", () => {
   expect(out.content).toBe("");
   expect(out.error).toBe("timeout");
 });
+
+it("keeps a pending team result out of the answer when reloading its console", () => {
+  const out = normalizeConversationMessage({ role: "assistant", cli: true, pending: true, content: "", cliLog: "$ codex\nEstoy revisando. Falta verificarlo.", ts: "" });
+  expect(out.content).toBe("");
+  expect(out.pending).toBe(true);
+  expect(out.cliLog).toContain("Falta verificarlo");
+});

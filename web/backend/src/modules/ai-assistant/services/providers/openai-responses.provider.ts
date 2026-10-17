@@ -55,6 +55,7 @@ export function makeOpenAiResponsesProvider(api: ProviderApiConfig): AgentProvid
       // Responses uses flat function definitions, unlike Chat Completions.
       const tools = toOpenAiTools(opts.tools).map((t) => ({ type: "function", ...t.function }));
       let pendingHeadroomSaved = 0;
+      let completed = false;
 
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         const res = await fetch(`${baseUrl}/v1/responses`, {
@@ -77,6 +78,7 @@ export function makeOpenAiResponsesProvider(api: ProviderApiConfig): AgentProvid
         }
 
         const data = (await res.json()) as {
+          status?: string;
           output?: ResponseItem[];
           usage?: { input_tokens?: number; output_tokens?: number };
         };
@@ -91,6 +93,10 @@ export function makeOpenAiResponsesProvider(api: ProviderApiConfig): AgentProvid
         }
 
         const output = data.output ?? [];
+        if (data.status && data.status !== "completed") {
+          yield { type: "error", message: "El proveedor interrumpió la respuesta antes de completarla. Revisa el estado antes de repetir cambios." };
+          return;
+        }
         // Replay all output items, including encrypted reasoning, for a stateless
         // continuation after tool results. OpenAI does not store the response.
         input.push(...output);
@@ -100,12 +106,15 @@ export function makeOpenAiResponsesProvider(api: ProviderApiConfig): AgentProvid
           if (item.type === "message") {
             for (const part of Array.isArray(item.content) ? item.content : []) {
               if (part.type === "output_text" && part.text) {
-                for (const word of part.text.split(/(?<=\s)/)) yield { type: "text", delta: word };
+                for (const word of part.text.split(/(?<=\s)/)) yield { type: "text", delta: word, ...(item.phase === "commentary" ? { phase: "commentary" as const } : {}) };
               }
             }
           }
         }
-        if (!calls.length) break;
+        if (!calls.length) {
+          completed = output.some(item => item.type === "message" && item.phase !== "commentary" && Array.isArray(item.content) && item.content.some(part => part.type === "output_text" && !!part.text?.trim()));
+          break;
+        }
 
         for (const call of calls) {
           if (!call.call_id || !call.name) {
@@ -118,6 +127,7 @@ export function makeOpenAiResponsesProvider(api: ProviderApiConfig): AgentProvid
           yield { type: "tool_use", id: call.call_id, name: realName, input: args };
           const outcome = await runToolHandler(opts.tools, realName, args, opts);
           yield { type: "tool_result", id: call.call_id, success: outcome.success, output: outcome.output };
+          if (outcome.unconfirmed) { yield { type: "error", message: outcome.unconfirmed }; return; }
           const compressed = await compressForHistory(outcome, api.model, realName, opts.signal);
           pendingHeadroomSaved += compressed.savedTokens;
           input.push({ type: "function_call_output", call_id: call.call_id, output: compressed.modelOutput });
@@ -135,7 +145,7 @@ export function makeOpenAiResponsesProvider(api: ProviderApiConfig): AgentProvid
       if (pendingHeadroomSaved > 0) {
         yield { type: "usage", model: api.model, inputTokens: 0, outputTokens: 0, headroomSavedTokens: pendingHeadroomSaved };
       }
-      yield { type: "done" };
+      yield completed ? { type: "done" } : { type: "error", message: "Se alcanzó el límite del turno o no hubo respuesta final. El trabajo sigue sin confirmar; revisa su estado antes de continuar." };
     },
   };
 }

@@ -175,6 +175,8 @@ export const Events = {
    *  NOT emitted for user-aborted runs. Payload: { conversationId, userId?,
    *  provider?, cli, errored, preview, hadSubscribers }. */
   AI_CHAT_FINISHED: "ai:chat:finished",
+  /** Provider turn settled; may still await team results or human input. */
+  AI_TURN_SETTLED: "ai:turn:settled",
   /** The CLI agent paused mid-run asking the user to APPROVE a mutating tool —
    *  a permission prompt is now pending. Drives the in-app "approval required"
    *  notification (the chat list + Dashboard yellow dot come from the active-runs

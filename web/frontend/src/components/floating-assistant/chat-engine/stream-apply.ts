@@ -4,9 +4,11 @@ import type { AgentEvent } from "../assistant-api";
 import { assistantConversationsApi } from "../assistant-api";
 import type { ChatTurn, LiveChat } from "./types";
 import { chats, emit, isActivelyViewing, syncReviewedIfViewing, backgroundActive, backgroundPending } from "./state";
-import { applyCliDelta, settleLanes, freshMainLane, deriveCliSummary, stripLaneTokens } from "./cli-lanes";
+import { applyCliDelta, settleLanes, freshMainLane, stripLaneTokens } from "./cli-lanes";
 import { markAssistantTeamTaskSeen } from "@/lib/assistant-ws";
 import { historyTurn } from "./history";
+import { appendApiActivity } from "./api-activity";
+import { resolveTargetScope } from "@/lib/api-client";
 
 // ── Event application + recovery helpers ────────────────────────────────────
 
@@ -19,6 +21,7 @@ export function applyEvent(
   const { isCli, startedAt, seq } = ctx;
   const chat = chats.get(key);
   if (!chat) return;
+  if (seq !== undefined && seq >= 0 && chat.lastSeq !== undefined && seq <= chat.lastSeq) return;
   // A local terminal event is newer than the last background poll.
   if (ev.type === "done" || ev.type === "error") {
     backgroundActive.delete(chat.conversationId ?? key);
@@ -60,7 +63,14 @@ export function applyEvent(
       out[i] = { ...t, translationError: ev.message, status: undefined, raw: `${raw}\n[translation_error] ${ev.message}\n` };
       break;
     case "text":
-      if (isCli && cliIdx >= 0) {
+      if (!isCli && ev.phase === "commentary") {
+        out[i] = { ...t, apiActivity: appendApiActivity(t.apiActivity, { type: "text", phase: "commentary", delta: ev.delta }), raw: raw + ev.delta };
+      } else if (ev.phase === "final_answer") {
+        // The server explicitly separated the final answer (also after translation).
+        // Discard only the known legacy prefix; never infer a boundary from prose.
+        out[i] = { ...t, text: t.text.slice(t.apiTextOffset ?? 0) + ev.delta,
+          apiTextOffset: undefined, status: undefined, raw: raw + ev.delta };
+      } else if (isCli && cliIdx >= 0) {
         // Demux the delta into per-agent lanes (orchestrator + sub-agents) and
         // funnel each lane's raw ANSI into its own terminal buffer; the bubble
         // text stays empty until the run finishes. The raw transcript keeps the
@@ -82,8 +92,18 @@ export function applyEvent(
       if (t.tools.some((tr) => tr.id === ev.id)) {
         out[i] = { ...t, raw: `${raw}\n[→ tool] ${ev.name} ${JSON.stringify(ev.input)} (replay, ignorado)\n` };
       } else {
+        let apiActivity = t.apiActivity;
+        if (!isCli && !ev.name.endsWith(".cli")) {
+          const legacyProgress = t.text.slice(t.apiTextOffset ?? 0);
+          if (legacyProgress) apiActivity = appendApiActivity(apiActivity, { type: "text", phase: "commentary", delta: legacyProgress });
+          apiActivity = appendApiActivity(apiActivity, ev);
+        }
         out[i] = {
           ...t,
+          ...(apiActivity ? { apiActivity } : {}),
+          // A new API call proves the preceding text belongs to the process.
+          // Replays must not move this boundary into an already received answer.
+          ...(!isCli && !ev.name.endsWith(".cli") ? { apiTextOffset: t.text.length } : {}),
           tools: [...t.tools, { id: ev.id, name: ev.name, input: ev.input, ...(ev.name.endsWith(".cli") ? { terminal: "", lanes: { main: freshMainLane() }, laneOrder: ["main"], activeLane: "main" } : {}) }],
           raw: `${raw}\n[→ tool] ${ev.name} ${JSON.stringify(ev.input)}\n`,
         };
@@ -96,12 +116,13 @@ export function applyEvent(
       const isCliAnswer = isCli && cliIdx >= 0 && t.tools[cliIdx]?.id === ev.id;
       out[i] = {
         ...t,
+        ...(!isCli ? { apiActivity: appendApiActivity(t.apiActivity, ev) } : {}),
         // CLI: the provider sends the clean final answer here → bubble text
         // (the terminal keeps the raw live activity). Ignore `[…]` placeholders.
-        text: isCliAnswer && ev.output && !ev.output.startsWith("[") ? ev.output : t.text,
+        text: isCliAnswer && ev.success && ev.output && !ev.output.startsWith("[") ? ev.output : t.text,
         tools: t.tools.map((tr) =>
           tr.id === ev.id
-            ? settleLanes({ ...tr, result: { success: ev.success, output: ev.output } }, ev.success ? "done" : "failed")
+            ? (ev.success ? { ...tr, result: { success: true, output: ev.output } } : settleLanes({ ...tr, result: { success: false, output: ev.output } }, "failed"))
             : tr,
         ),
         raw: `${raw}[← ${ev.success ? "ok" : "err"}] ${ev.output}\n`,
@@ -149,6 +170,8 @@ export function applyEvent(
       out[i] = {
         ...t,
         error: ev.message,
+        status: undefined,
+        completionPending: false,
         permission: undefined,
         interrupted: false,
         pending: false,
@@ -160,22 +183,23 @@ export function applyEvent(
     case "done": {
       const finishedAt = Date.now();
       const timing = { createdAt: finishedAt, durationMs: finishedAt - startedAt, permission: undefined };
-      // CLI mode: derive the bubble's clean final text from the terminal
-      // output (drop the synthetic `$ …` header line, strip ANSI).
-      // Settle every lane (running → done) so no sub-agent tab keeps spinning.
-      const settledTools = isCli
-        ? t.tools.map((tr, idx) => (idx === cliIdx ? settleLanes(tr, "done") : tr))
-        : t.tools;
-      if (isCli && cliIdx >= 0 && !t.text) {
-        const term = settledTools[cliIdx]?.terminal ?? "";
-        // Same rule as reload (`historyTurn`): the bubble gets the LAST narrative
-        // block only — never the whole cleaned terminal (a run that died mid-tool
-        // would otherwise dump the raw console as the "answer").
-        const clean = deriveCliSummary(undefined, term);
-        out[i] = { ...t, tools: settledTools, text: clean, pending: false, interrupted: false, status: undefined, ...timing };
-      } else {
-        out[i] = { ...t, tools: settledTools, pending: false, interrupted: false, status: undefined, ...timing };
+      // A terminal frame closes only this stream. Pending background work is
+      // an outcome, not local streaming and never a successful final answer.
+      let apiActivity = t.apiActivity;
+      if (ev.pending && !isCli) {
+        const provisional = t.text.slice(t.apiTextOffset ?? 0);
+        if (provisional) apiActivity = appendApiActivity(apiActivity, { type: "text", phase: "commentary", delta: provisional });
       }
+      const confirmedCli = isCli && !ev.pending && !t.error && !!t.text.trim() && t.tools[cliIdx]?.result?.success;
+      out[i] = { ...t,
+        ...(confirmedCli ? { tools: t.tools.map((tool, index) => index === cliIdx ? settleLanes(tool, "done") : tool) } : {}),
+        ...(apiActivity ? { apiActivity } : {}),
+        ...(ev.pending ? { text: "", apiTextOffset: undefined } : {}),
+        completionPending: ev.pending === true && !t.error,
+        pending: false, interrupted: false, status: undefined, ...timing,
+      };
+      // Do not derive a final answer or complete CLI lanes from terminal prose.
+      // Their tool_result is the confirmation; absent results remain unconfirmed.
       // A turn finished → its usage record is now persisted. Nudge the CLI usage
       // bars (and any other usage listeners) to refetch.
       if (typeof window !== "undefined") {
@@ -241,7 +265,7 @@ function updateLastAssistantTurn(key: string, fn: (t: ChatTurn) => ChatTurn): vo
 /** Settle the live assistant turn without an error (user stop). Mark it
  *  `stopped` so the bubble shows "proceso parado" and collapses the terminal. */
 export function finalizeTurn(key: string): void {
-  updateLastAssistantTurn(key, (t) => ({ ...t, pending: false, stopped: true, permission: undefined }));
+  updateLastAssistantTurn(key, (t) => ({ ...t, pending: false, completionPending: false, status: undefined, stopped: true, permission: undefined }));
 }
 
 /** True when the last turn of `key` was stopped on purpose by the user. */
@@ -277,11 +301,17 @@ export function clearInterruptedFlag(chat: LiveChat): LiveChat {
 
 /** Reload a conversation's persisted messages and reseed the chat turns. */
 export async function reloadHistory(key: string, conversationId: string): Promise<void> {
+  const scope = resolveTargetScope();
+  const initial = chats.get(key);
+  if (!initial || initial.conversationId !== conversationId) return;
   try {
     const { items } = await assistantConversationsApi.messages(conversationId, 30, 0);
     const chat = chats.get(key);
-    const provider = chat?.provider ?? "claude";
+    if (resolveTargetScope() !== scope || !chat || chat.conversationId !== conversationId) return;
+    if (chat.streaming && (!initial.streaming || chat.abort !== initial.abort || chat.turns !== initial.turns)) return;
+    const provider = chat.provider;
     chats.set(key, {
+      ...chat,
       provider,
       conversationId,
       // `map(historyTurn)` NO: `Array.map` invoca `fn(valor, índice, array)`, así

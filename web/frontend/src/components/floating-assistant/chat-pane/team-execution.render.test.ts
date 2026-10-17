@@ -12,6 +12,10 @@ import { useAssistantI18n } from "../i18n";
 import { bubblePrefs } from "../bubble-prefs";
 import { openConfirm } from "@/lib/confirm";
 import { groupTeamNotices, isTeamNotice } from "./team-execution";
+import { historyTurn } from "../chat-engine/history";
+import { applyEvent } from "../chat-engine/stream-apply";
+import { chats } from "../chat-engine/state";
+import type { AgentEvent, ConversationMessage } from "../assistant-api";
 
 const scope = vi.hoisted(() => {
   // Some imported services preload data; isolate those requests before imports.
@@ -162,7 +166,7 @@ describe.each([false, true])("normal/agent chat: agent=%s", withAgent => {
     expect(visibleText(host)).not.toContain(notice.text);
     if (history) expect(visibleText(host)).toContain(response.text);
     expect(details.querySelector("summary")!.textContent).toContain("Consola del servidor");
-    if (!cli) expect(visibleText(host)).toContain("team.assign");
+    if (!cli) expect(visibleText(host)).not.toContain("team.assign");
     if (cli) expect(host.textContent).not.toContain("Salida anidada no duplicada");
     await toggle(details);
     expect(details.open).toBe(true);
@@ -191,7 +195,7 @@ describe.each([false, true])("normal/agent chat: agent=%s", withAgent => {
   });
 });
 
-it.each([null, agent])("shows real API activity above one console and keeps streamed text intact: %j", async currentAgent => {
+it.each([null, agent])("keeps API activity compact and streamed process text inside its details: %j", async currentAgent => {
   const response = { ...reply(false, false), text: "Reviso el estado del proyecto.\n\nAhora compruebo los cambios." };
   const saved = JSON.stringify(response);
   await renderThread({ mode: "api", turns: [user, response], agent: currentAgent });
@@ -205,9 +209,15 @@ it.each([null, agent])("shows real API activity above one console and keeps stre
   expect(activity.querySelector('[data-entry-id="read"]')?.getAttribute("data-status")).toBe("done");
   expect(activity.querySelector('[data-entry-id="assign"]')?.getAttribute("data-status")).toBe("running");
   expect(activity.textContent).not.toContain("Reviso el estado");
-  expect([...host.querySelectorAll('[data-message-section="answer"] p')].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+  expect(host.querySelector('[data-message-section="answer"]')).toBeNull();
+  expect(group.querySelector("[data-api-progress]")?.textContent).toContain("Reviso el estado");
+  expect(visibleText(host)).not.toContain("Reviso el estado");
+  expect(visibleText(host)).not.toContain("files.read");
+  expect(visibleText(host)).not.toContain("team.assign");
+  const activityToggle = activity.querySelector<HTMLButtonElement>("button")!;
+  expect(activityToggle.getAttribute("aria-expanded")).toBe("false");
+  await act(async () => activityToggle.click());
   expect(visibleText(host)).toContain("files.read");
-  expect(visibleText(host)).toContain("team.assign");
   expect(visibleText(host)).not.toContain("Lectura conservada");
   await toggle(group);
   expect(visibleText(host)).toContain("files.read");
@@ -245,13 +255,15 @@ it("signals an API tool failure in the closed console and preserves its details"
   expect(visibleText(host)).toContain("El archivo solicitado no existe");
 });
 
-it("keeps ordinary API text and the no-live-console preference readable", async () => {
+it("keeps ordinary API text and honors background display for active tool runs", async () => {
   const text = "Respuesta de texto conservada.";
   await renderThread({ mode: "api", turns: [user, { role: "assistant", text, tools: [], pending: true }], agent });
   expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain(text);
   await act(async () => bubblePrefs.set("codex", { terminalLive: false }));
   await renderThread({ mode: "api", turns: [user, { ...reply(false, false), text }], agent });
-  expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain(text);
+  expect(host.querySelector('[data-message-section="answer"]')).toBeNull();
+  expect(visibleText(host)).not.toContain(text);
+  expect(host.querySelector("[data-api-progress]")?.textContent).toContain(text);
   expect(host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')?.open).toBe(false);
 });
 
@@ -423,7 +435,7 @@ it("retains a lone generated notice until any reply or task exists", async () =>
   expect(host.querySelectorAll('[data-message-section="console"]')).toHaveLength(1);
 });
 
-it("keeps confirmed API calls expanded under Listo and the full trace behind one history control", async () => {
+it("keeps confirmed API calls collapsed under Listo and the full trace behind one history control", async () => {
   const response: ChatTurn = {
     role: "assistant", text: "Respuesta final intacta.\n\nSegundo párrafo conservado.", tools: [
       { id: "plan", name: "team.plan", input: { title: "Dato original del plan" }, result: { success: true, output: "Plan original completo" } },
@@ -439,6 +451,9 @@ it("keeps confirmed API calls expanded under Listo and the full trace behind one
   expect(entries.map(entry => [entry.dataset.entryId, entry.querySelector(".thought-line__step-text")?.textContent, entry.dataset.status]))
     .toEqual([["plan", "team.plan", "done"], ["assign-one", "team.assign", "done"], ["assign-two", "team.assign", "done"], ["collect", "team.collect", "done"]]);
   expect(activity.querySelector(".thought-line__text[data-active]")?.textContent).toBe("Listo");
+  expect(header.getAttribute("aria-expanded")).toBe("false");
+  expect(visibleText(activity)).not.toContain("team.plan");
+  await act(async () => header.click());
   expect(header.getAttribute("aria-expanded")).toBe("true");
   header.focus();
   expect(document.activeElement).toBe(header);
@@ -494,6 +509,8 @@ it.each([
   const entry = activity.querySelector('[data-entry-id="actual-call"]')!;
   expect(entry.getAttribute("data-status")).toBe(scenario.expected);
   expect(entry.querySelector("svg")).not.toBeNull();
+  expect(visibleText(activity)).not.toContain("files.write");
+  await act(async () => activity.querySelector<HTMLButtonElement>("button")!.click());
   expect(visibleText(activity)).toContain("files.write");
   const history = host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')!;
   expect(history.open).toBe(false);
@@ -539,4 +556,174 @@ it("does not reconstruct API calls from historical answer paragraphs", async () 
   expect(host.querySelector("[data-entry-id]")).toBeNull();
   expect(host.querySelector('[data-execution-source="API"]')).toBeNull();
   expect([...host.querySelectorAll('[data-message-section="answer"] p')].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+});
+
+it("separates observed API narration from the final answer and copy action", async () => {
+  const narration = "Voy a revisar el archivo.\n\n";
+  const answer = "Archivo revisado.\n\nNo quedan cambios pendientes.";
+  const response: ChatTurn = { ...reply(false, true), text: narration + answer, apiTextOffset: narration.length };
+  const saved = JSON.stringify(response);
+  await renderThread({ mode: "api", turns: [user, response] });
+  const bubble = host.querySelector('[data-message-section="answer"]')!;
+  expect([...bubble.querySelectorAll("p")].map(el => el.textContent)).toEqual(answer.split("\n\n"));
+  expect(visibleText(host)).not.toContain(narration.trim());
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  const copy = [...bubble.querySelectorAll<HTMLButtonElement>("button")].find(el => el.textContent?.trim() === "Copiar")!;
+  await act(async () => copy.click());
+  expect(clipboard).toHaveBeenCalledWith(answer);
+  const history = host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')!;
+  await toggle(history);
+  expect(visibleText(history)).toContain(narration.trim());
+  expect(history.querySelector("[data-api-progress]")?.textContent).not.toContain(answer);
+  expect(JSON.stringify(response)).toBe(saved);
+});
+
+it("keeps manual activity expansion through permission, progress and completion", async () => {
+  const response = reply(false, false);
+  await renderThread({ mode: "api", turns: [user, response] });
+  const header = host.querySelector<HTMLButtonElement>(".thought-line__head")!;
+  expect(header.getAttribute("aria-expanded")).toBe("false");
+  await act(async () => header.click());
+  const permission = { id: "approval", tool: "files.write", title: "Permiso original" };
+  await renderThread({ mode: "api", turns: [user, { ...response, permission }] });
+  expect(header.getAttribute("aria-expanded")).toBe("true");
+  await act(async () => header.click());
+  await renderThread({ mode: "api", turns: [user, response] });
+  expect(header.getAttribute("aria-expanded")).toBe("false");
+  await renderThread({ mode: "api", turns: [user, reply(false, true)] });
+  expect(header.getAttribute("aria-expanded")).toBe("false");
+});
+
+it.each([false, true])("never marks a pending, canceled or verifying historical worker as done: cli=%s", async cli => {
+  // happy-dom has no Web Animations API; exercise the reduced-motion path.
+  const matchMedia = window.matchMedia.bind(window);
+  vi.spyOn(window, "matchMedia").mockImplementation(query => {
+    const media = matchMedia(query);
+    if (query === "(prefers-reduced-motion: reduce)") Object.defineProperty(media, "matches", { value: true });
+    return media;
+  });
+  const response: ChatTurn = { role: "assistant", text: "Respuesta guardada", tools: [], cli,
+    ...(cli ? { cliHistoryLog: "Registro guardado" } : {}) };
+  for (const [worker, label] of [
+    [task({ status: "pending" }), "En espera"],
+    [task({ status: "canceled" }), "detenido"],
+    [task({ status: "done", verify: { state: "running", attempts: 1 } }), "ejecutando"],
+    [task({ status: "failed" }), "Error"],
+  ] as const) {
+    await renderThread({ mode: cli ? "cli" : "api", turns: [user, response], tasks: [worker] });
+    const summary = boardDisclosure().querySelector("summary")!;
+    expect(summary.textContent).toContain(label);
+    expect(summary.textContent).not.toContain("Listo");
+    expect(host.querySelector('[role="img"][aria-label^="' + label + '"]')).not.toBeNull();
+  }
+});
+
+it("reports an absent final API answer without promoting narration to completion", async () => {
+  const text = "Voy a comprobar los cambios.";
+  const response: ChatTurn = { role: "assistant", text, apiTextOffset: text.length, tools: [
+    { id: "read", name: "files.read", input: {}, result: { success: true, output: "Lectura completa" } },
+  ] };
+  await renderThread({ mode: "api", turns: [user, response] });
+  expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain("sin una respuesta final");
+  expect(visibleText(host)).toContain("Resultado no confirmado");
+  expect(visibleText(host)).not.toContain(text);
+  await toggle(host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')!);
+  expect(visibleText(host)).toContain(text);
+});
+
+it("keeps a failed reloaded CLI console in error", async () => {
+  const response: ChatTurn = { role: "assistant", text: "", tools: [], cli: true, error: "Fallo conservado", cliHistoryLog: "Registro del fallo" };
+  await renderThread({ mode: "cli", turns: [user, response] });
+  const history = host.querySelector<HTMLDetailsElement>('[data-message-section="console"] details')!;
+  expect(history.querySelector("summary")?.textContent).toContain("Error");
+  expect(history.open).toBe(false);
+  await toggle(history);
+  expect(visibleText(host)).toContain("Registro del fallo");
+});
+
+it("preserves ordered API details and final-only copy across SSE and history reload", async () => {
+  const key = "api-history-render";
+  const answer = "Respuesta final conservada.";
+  const events: AgentEvent[] = [
+    { type: "text", phase: "commentary", delta: "Primer avance conservado." },
+    { type: "tool_use", id: "call-one", name: "files.read", input: { path: "first.txt" } },
+    { type: "tool_result", id: "call-one", success: true, output: "Primera salida íntegra" },
+    { type: "text", phase: "commentary", delta: "Segundo avance conservado." },
+    { type: "tool_use", id: "call-two", name: "files.read", input: { path: "second.txt" } },
+    { type: "tool_result", id: "call-two", success: true, output: "Segunda salida íntegra" },
+    { type: "text", phase: "commentary", delta: "Avance posterior a la última llamada." },
+    { type: "text", phase: "final_answer", delta: answer },
+    { type: "done" },
+  ];
+  chats.set(key, { provider: "codex", conversationId: key, streaming: false,
+    turns: [{ role: "assistant", text: "", pending: true, tools: [] }] });
+  await act(async () => events.forEach((event, seq) => applyEvent(key, event, { isCli: false, startedAt: 0, seq })));
+  const live = chats.get(key)!.turns[0]!;
+  const message: ConversationMessage = JSON.parse(JSON.stringify({
+    role: "assistant", content: answer, ts: "2026-10-17T00:00:00Z", apiActivity: live.apiActivity,
+  }));
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  for (const response of [live, historyTurn(message)]) {
+    await renderThread({ mode: "api", turns: [user, response] });
+    const history = host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')!;
+    expect(host.querySelectorAll('[data-message-section="console"] > details')).toHaveLength(1);
+    expect(history.open).toBe(false);
+    expect(visibleText(host)).not.toContain("avance");
+    const bubble = host.querySelector('[data-message-section="answer"]')!;
+    expect([...bubble.querySelectorAll("p")].map(p => p.textContent)).toEqual([answer]);
+    const copy = bubble.querySelector<HTMLButtonElement>('button[title="Copiar"]')!;
+    await act(async () => copy.click());
+    expect(clipboard).toHaveBeenLastCalledWith(answer);
+    await toggle(history);
+    const blocks = [...history.querySelectorAll("[data-api-progress], details")];
+    expect(blocks.map(block => block.matches("details") ? block.querySelector("summary")!.textContent : block.textContent))
+      .toEqual(["Primer avance conservado.", expect.stringContaining("files.read"), "Segundo avance conservado.",
+        expect.stringContaining("files.read"), "Avance posterior a la última llamada."]);
+    const tools = history.querySelectorAll<HTMLDetailsElement>("details");
+    for (const tool of tools) if (!tool.open) await toggle(tool);
+    expect(visibleText(history)).toContain("Primera salida íntegra");
+    expect(visibleText(history)).toContain("Segunda salida íntegra");
+    expect(visibleText(history)).toContain("first.txt");
+    expect(visibleText(history)).toContain("second.txt");
+    expect(visibleText(history)).not.toContain(answer);
+    await toggle(history);
+  }
+  chats.delete(key);
+});
+
+it.each([false, true])("renders a persisted pending outcome as waiting, without a fabricated final: cli=%s", async cli => {
+  const response = historyTurn({
+    role: "assistant", content: "", ts: "", pending: true,
+    ...(cli ? { cli: true, cliLog: "$ codex\nTrabajo en curso." } : {
+      apiActivity: { events: [{ type: "text", phase: "commentary", delta: "Trabajo en curso." }] },
+    }),
+  });
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, response] });
+  expect(host.querySelector('[role="img"][aria-label="En espera"]')).not.toBeNull();
+  expect(host.querySelector('[data-message-section="answer"]')).toBeNull();
+  expect(host.querySelectorAll('[data-message-section="console"] > details')).toHaveLength(1);
+  const history = host.querySelector<HTMLDetailsElement>('[data-message-section="console"] details')!;
+  expect(history.querySelector("summary")!.textContent).toContain("En espera");
+  expect(visibleText(host)).not.toContain("Trabajo en curso.");
+  expect(visibleText(host)).not.toContain("Listo");
+  await toggle(history);
+  expect(visibleText(history)).toContain("Trabajo en curso.");
+});
+
+it("keeps truncated and orphaned historical API details reachable, without duplicating the team board", async () => {
+  const response = historyTurn({ role: "assistant", content: "", ts: "", error: "Fallo que requiere revisión",
+    apiActivity: { truncated: true, events: [
+      { type: "text", phase: "commentary", delta: "Avance guardado." },
+      { type: "tool_result", id: "orphan", success: false, output: "Salida histórica sin llamada" },
+    ] },
+  });
+  await renderThread({ mode: "api", turns: [user, response], tasks: [task({ status: "failed" })] });
+  const history = boardDisclosure();
+  expect(host.querySelectorAll('[data-message-section="console"] > details')).toHaveLength(1);
+  expect(visibleText(host)).toContain("Error");
+  expect(visibleText(host)).not.toContain("Salida histórica");
+  await toggle(history);
+  expect(visibleText(history)).toContain("Salida histórica sin llamada");
+  expect(history.querySelector("[data-api-truncated]")?.textContent).toBe("Parte del detalle no se conservó por el límite del historial.");
+  expect(history.querySelector("[data-api-result]")?.textContent).toContain("Error");
 });

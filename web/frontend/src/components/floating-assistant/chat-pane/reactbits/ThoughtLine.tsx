@@ -27,6 +27,8 @@ export interface ThoughtLineProps {
   entryStatusLabels?: Record<ThoughtLineEntryStatus, string>;
   collapsible?: boolean;
   collapseOnSettle?: boolean;
+  /** Open initially and when work resumes; disable for compact activity. */
+  autoExpand?: boolean;
   color?: string;
   glyphColor?: string;
   fontSize?: number;
@@ -67,6 +69,7 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
   entryStatusLabels,
   collapsible = true,
   collapseOnSettle = true,
+  autoExpand = true,
   color = 'currentColor',
   glyphColor = '',
   fontSize = 16,
@@ -86,7 +89,7 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
 }) => {
   const reduce = useReducedMotion();
   const [autoSettled, setAutoSettled] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(autoExpand);
   const isWorking = working && !autoSettled;
   const doneText = doneLabel || (showTimer ? 'Thought for' : 'Done thinking');
   const hasTrace = (entries ?? steps).length > 0;
@@ -112,9 +115,9 @@ const ThoughtLine: React.FC<ThoughtLineProps> = ({
     if (working) setAutoSettled(false);
   }, [working]);
   useEffect(() => {
-    if (isWorking) setOpen(true);
-    else if (collapseOnSettle) setOpen(false);
-  }, [isWorking, collapseOnSettle]);
+    if (isWorking && autoExpand) setOpen(true);
+    else if (!isWorking && collapseOnSettle) setOpen(false);
+  }, [isWorking, collapseOnSettle, autoExpand]);
 
   useEffect(() => {
     const glyphEl = glyphRef.current;

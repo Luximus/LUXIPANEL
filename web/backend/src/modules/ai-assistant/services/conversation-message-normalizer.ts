@@ -110,7 +110,7 @@ function normalizeCliAssistantMessage(message: ConversationMessage): Conversatio
   // content, and never turn old progress into a final answer after a failure.
   const cleanContent = stripAskBlock(stripMcpTransportNoise(stripAnsi(content))).trim();
   const contentIsTranscript = looksLikeCliTranscript(content) || /^(?:⏺ | {2}⎿ )/m.test(content);
-  const cleanAnswer = message.error || message.interrupted
+  const cleanAnswer = message.pending ? "" : message.error || message.interrupted
     ? (contentIsTranscript ? "" : cleanContent)
     : cliLog && cleanContent && !contentIsTranscript
       ? cleanContent
@@ -121,6 +121,7 @@ function normalizeCliAssistantMessage(message: ConversationMessage): Conversatio
     cli: true,
     content: cleanAnswer,
   };
+  if (message.pending) delete next.textTranslated;
   if (cleanLog && cleanLog !== cleanAnswer.trim()) next.cliLog = cleanLog;
   else delete next.cliLog;
   return next;

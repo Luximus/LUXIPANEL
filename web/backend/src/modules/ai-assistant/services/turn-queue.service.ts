@@ -72,6 +72,7 @@ export async function persistUserMessage(
   provider: string | undefined,
   attachments: QueuedAttachment[] | undefined,
   translation?: { textOriginal: string; lang: string },
+  queueTurnId?: string,
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -104,7 +105,7 @@ export async function persistUserMessage(
         ...(attachmentRefs.length ? { attachments: attachmentRefs } : {}),
         ...(translation ? { textOriginal: translation.textOriginal, lang: translation.lang } : {}),
       },
-    ]);
+    ], queueTurnId === undefined ? {} : { queueTurnId });
 }
 
 /** How many trailing conversation messages to replay as context on a drain. */
@@ -235,7 +236,7 @@ export function startConversationRun(args: {
     },
     translate: args.translate,
     onEvent: recordUsage,
-    onComplete: async (assistantText, errored, ask, translation, durationMs, cliLog, askKind, outcome) => {
+    onComplete: async (assistantText, errored, ask, translation, durationMs, cliLog, askKind, outcome, apiActivity) => {
       if (args.isWorker) workerRunEnded(args.userId, args.conversationId);
       const tokens =
         tokensHolder.input + tokensHolder.output > 0
@@ -246,14 +247,14 @@ export function startConversationRun(args: {
               ...(tokensHolder.estimated ? { estimated: true } : {}),
             }
           : undefined;
-      await persistAssistantMessage(args.executor, args.conversationId, assistantText, args.provider, cliHolder.value, ask, translation, tokens, durationMs, cliLog, askKind, outcome);
+      await persistAssistantMessage(args.executor, args.conversationId, assistantText, args.provider, cliHolder.value, ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity);
       // B2 — auto-captura opt-in: avisa al módulo Obsidian que un turno OK
       // terminó (él decide si el proyecto la tiene habilitada). Captura al vault
       // del proyecto del chat (args.projectId) O, en chats ligados a un agente con
       // `autoCapture`, al vault de su primer proyecto adjunto. Best-effort,
       // fail-open: nunca rompe la persistencia ni el drain.
       const captureProjectId = args.projectId ?? null;
-      if (!errored && captureProjectId && assistantText.trim()) {
+      if (!errored && !outcome?.interrupted && !outcome?.pending && !ask?.length && captureProjectId && assistantText.trim()) {
         try {
           // Capture the CLEAN, user-language answer: prefer the translated
           // variant (assistantText is English when translation is active), and
@@ -277,19 +278,22 @@ export function startConversationRun(args: {
       }
       // Chain: kick off the next queued follow-up (if any). Runs inside the
       // executor scope, so it survives the client being gone entirely.
-      await drainConversationQueue(args.executor, args.conversationId);
+      if (!outcome?.interrupted) await drainConversationQueue(args.executor, args.conversationId);
     },
   });
 }
 
 /**
- * If no run is active for the conversation, pop the oldest queued follow-up,
- * persist its user message (ordered AFTER the assistant turn that just landed)
- * and start its run. No-op when a run is already active (its own onComplete
- * will drain) or the queue is empty.
+ * If no run is active, prepare the oldest follow-up while it stays queued.
+ * Persist its user message once, rebuild its context, then consume and start.
+ * The message stays ordered AFTER the assistant turn that just landed.
+ * An active run coalesces a deferred drain after its persistence and terminal.
+ * Returning immediately is essential when its own onComplete awaits us.
+ * An empty queue remains a no-op.
  */
 const drainingConversations = new Map<string, Promise<void>>();
 export async function drainConversationQueue(executor: Executor, conversationId: string): Promise<void> {
+  if (agentRunRegistry.deferQueueDrain(conversationId, () => drainConversationQueue(executor, conversationId), executor.target.id)) return;
   const key = JSON.stringify([executor.target.id, conversationId]);
   const previous = drainingConversations.get(key) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(() => drainNextTurn(executor, conversationId));
@@ -300,30 +304,29 @@ export async function drainConversationQueue(executor: Executor, conversationId:
 async function drainNextTurn(executor: Executor, conversationId: string): Promise<void> {
   if (liveVoiceSession(conversationId, executor.target.id) || agentRunRegistry.isActive(conversationId, executor.target.id)) return;
   const candidate = (await agentQueueRepository.listFor(executor, conversationId))[0];
-  if (!candidate) return;
+  if (!candidate?.id) return;
+  if (candidate.auto || candidate.teamTaskIds?.length) {
+    const { items } = await conversationsRepository.messages(executor, conversationId, { limit: 1 });
+    const last = items.at(-1);
+    if (last?.role === "assistant" && (last.interrupted || last.error || last.ask?.length)) return;
+  }
   const queuedIdentity = candidate.user ?? getContextUser() ?? undefined;
   await runWithExecutor(executor, async () => {
   const binding = await resolveConversationBinding(executor, candidate, queuedIdentity);
   const admission = await admitAgentWork(executor, binding.agentId, binding.projectId, queuedIdentity);
   try {
-  let next;
-  try {
-    next = await agentQueueRepository.takeNext(executor, conversationId, candidate.id);
-  } catch (err) {
-    log.warn({ err: (err as Error).message }, "agent: queue takeNext failed");
-    return;
-  }
-  if (!next) return;
+  // Keep the turn queued until its history and run context are ready. The
+  // receipt makes a later delivery safe after an interrupted history write.
+  const next = candidate;
 
   // Persist queued turns exactly as entered; the agent receives the same text.
   if (next.auto) {
     await conversationsRepository
       .appendMessages(executor, conversationId, [
         { role: "user", provider: next.provider, content: next.userText, ts: new Date().toISOString(), auto: true },
-      ])
-      .catch((err) => log.warn({ err: (err as Error).message }, "agent: auto-turn persist failed"));
+      ], { queueTurnId: next.id });
   } else {
-    await persistUserMessage(executor, conversationId, next.userText, next.provider, next.attachments);
+    await persistUserMessage(executor, conversationId, next.userText, next.provider, next.attachments, undefined, next.id);
   }
 
   const messages = await buildMessagesFromHistory(executor, conversationId);
@@ -359,6 +362,16 @@ async function drainNextTurn(executor: Executor, conversationId: string): Promis
     } catch { /* fail-closed */ }
   }
 
+  // All fallible preparation precedes consumption. No provider/tool is
+  // started when saving or rebuilding history fails.
+  if (agentRunRegistry.isActive(conversationId, executor.target.id)) return;
+  if (next.teamTaskIds?.length) await teamTasksService.markCollected(executor, next.teamTaskIds);
+  try {
+    if (!await agentQueueRepository.takeNext(executor, conversationId, next.id)) return;
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, "agent: queue takeNext failed");
+    return;
+  }
   startConversationRun({
     executor,
     conversationId,
@@ -412,8 +425,9 @@ export function initTeamNudgeListener(): void {
       userId?: string;
       user?: SessionUser;
       taskIds: string[];
+      onSettled?: () => void;
     }) => {
-      void (async () => {
+      void runWithExecutor(payload.executor, async () => {
         const { executor, leaderConversationId } = payload;
         const meta = await conversationsRepository.getMeta(executor, leaderConversationId);
         if (!meta) return;
@@ -430,6 +444,7 @@ export function initTeamNudgeListener(): void {
         const tasks = (await teamTasksRepository.listForLeaderConversation(executor, leaderConversationId)).filter(
           (t) => t.id && wanted.has(t.id),
         );
+        if (!tasks.length || tasks.some(task => !isTerminalTaskStatus(task.status))) return;
         const PER_TASK = 3_000;
         const TOTAL = 12_000;
         let spent = 0;
@@ -445,7 +460,9 @@ export function initTeamNudgeListener(): void {
           "[EQUIPO] Tus subordinados terminaron las tareas delegadas. Resultados:\n\n" +
           lines.join("\n\n") +
           "\n\nSintetiza y entrega al usuario la respuesta final consolidada (breve y accionable; NO pegues la salida cruda).";
-        await enqueueAgentTurn(executor, {
+        const queued = await agentQueueRepository.listFor(executor, leaderConversationId);
+        const alreadyQueued = queued.some(turn => tasks.every(task => turn.teamTaskIds?.includes(task.id ?? "")));
+        if (!alreadyQueued) await enqueueAgentTurn(executor, {
           conversationId: leaderConversationId,
           ...(provider ? { provider } : {}),
           projectId: meta.projectId ?? null,
@@ -455,13 +472,18 @@ export function initTeamNudgeListener(): void {
           userId: payload.userId ?? null,
           user: payload.user ?? null,
           auto: true,
+          teamTaskIds: tasks.map(task => task.id!).filter(Boolean),
         });
+        // Acknowledge only AFTER the turn exists durably. A failed enqueue
+        // remains eligible for recovery; a queued turn prevents duplicate work.
+        for (const task of tasks) if (task.id) await teamTasksRepository.updateTask(executor, task.id, { nudged: true });
         await teamTasksService.markCollected(
           executor,
           tasks.map((t) => t.id ?? "").filter(Boolean),
         );
         await drainConversationQueue(executor, leaderConversationId);
-      })().catch((err) => log.warn({ err: (err as Error).message }, "agent: team leader nudge failed"));
+      }, payload.user?.userId, payload.user).catch((err) => log.warn({ err: (err as Error).message }, "agent: team leader nudge failed"))
+        .finally(() => payload.onSettled?.());
     },
   );
 }

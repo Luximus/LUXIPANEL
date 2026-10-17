@@ -253,6 +253,7 @@ export function makeClaudeApiProvider(args: MakeArgs): AgentProvider {
       // Headroom: tool-output tokens removed since the last `usage` emit. Attached
       // to the next usage event (incremental) so the recorder can sum savings.
       let pendingHeadroomSaved = 0;
+      let completed = false;
 
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         const res = await fetch(endpoint, {
@@ -320,6 +321,10 @@ export function makeClaudeApiProvider(args: MakeArgs): AgentProvider {
           pendingHeadroomSaved = 0;
         }
 
+        if (data.stop_reason && !["end_turn", "tool_use", "stop_sequence"].includes(data.stop_reason)) {
+          yield { type: "error", message: "El proveedor interrumpió la respuesta antes de completarla. Revisa el estado antes de repetir cambios." };
+          return;
+        }
         const toolUses: AnthropicContentBlock[] = [];
         const toolResults: AnthropicContentBlock[] = [];
 
@@ -337,6 +342,7 @@ export function makeClaudeApiProvider(args: MakeArgs): AgentProvider {
             const outcome = await runToolHandler(opts.tools, realName, input, opts);
             const { output, success } = outcome;
             yield { type: "tool_result", id: block.id, success, output };
+            if (outcome.unconfirmed) { yield { type: "error", message: outcome.unconfirmed }; return; }
 
             const compressed = await compressForHistory(outcome, api.model, realName, opts.signal);
             const modelOutput = compressed.modelOutput;
@@ -363,27 +369,11 @@ export function makeClaudeApiProvider(args: MakeArgs): AgentProvider {
 
         history.push({ role: "assistant", content: data.content });
 
-        // The model hit the output-token ceiling mid-answer. Don't swallow it:
-        // surface a visible notice (the partial text already streamed above) and
-        // stop — continuing a truncated turn would send a malformed history.
-        if (data.stop_reason === "max_tokens") {
-          log.warn(
-            { model: api.model, maxTokens: env.ASSISTANT_API_MAX_TOKENS },
-            "response truncated: stop_reason=max_tokens",
-          );
-          yield {
-            type: "text",
-            delta:
-              "\n\n⚠️ _Respuesta truncada: se alcanzó el límite de tokens de salida " +
-              "(`max_tokens`). Pide «continúa» para seguir, o sube `ASSISTANT_API_MAX_TOKENS`._",
-          };
-          break;
-        }
-
         if (toolUses.length > 0 && toolResults.length > 0) {
           history.push({ role: "user", content: toolResults });
           continue;
         }
+        completed = data.content.some(block => block.type === "text" && !!block.text?.trim());
         break;
       }
 
@@ -395,7 +385,7 @@ export function makeClaudeApiProvider(args: MakeArgs): AgentProvider {
         pendingHeadroomSaved = 0;
       }
 
-      yield { type: "done" };
+      yield completed ? { type: "done" } : { type: "error", message: "Se alcanzó el límite del turno o no hubo respuesta final. El trabajo sigue sin confirmar; revisa su estado antes de continuar." };
     },
   };
 }
