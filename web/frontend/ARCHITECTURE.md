@@ -248,7 +248,7 @@ completos en `frontend/src/components/floating-assistant/README.md` y
     (`"auto"` envía, `"prefill"` deja el texto cargado sin enviar),
     `providerId?`, `origin`, `conversation:"new"`.
   - `"navigate"` — salta a una pestaña del Asistente (`tab` ∈
-    `chat | market | agentes | providers | modules | stats | servers | access`).
+    `chat | market | agentes | providers | modules | stats | access`).
   - **Agentes IA → Market** presenta los perfiles reutilizables y sus asignaciones
     al proyecto seleccionado. `ProjectModal` monta el mismo catálogo con su proyecto
     o subproyecto fijado. El alias `agentes` abre Market; un enlace con `agentId`

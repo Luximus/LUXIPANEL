@@ -546,7 +546,7 @@ export function ChatSidebar({ vm }: { vm: ChatPaneVM }) {
           {searchingHistory ? (ct.loadingMore ?? "Cargando…") : (ct.pagerNext ?? "Página siguiente")}
         </button>}
         <div className="lxp-history-create-actions" data-history-create-actions>
-          <button type="button" data-search-target="agent-market" onClick={() => requestAssistant({ kind: "navigate", tab: "market", origin: { module: "assistant", action: "market" } })}>
+          <button type="button" className="!min-h-11 transition-colors duration-150" data-search-target="agent-market" onClick={() => requestAssistant({ kind: "navigate", tab: "market", origin: { module: "assistant", action: "market" } })}>
             <Store size={18} aria-hidden="true" /><span>{marketMessages.title}</span>
           </button>
           {mobileNavigation ? <>{newProjectButton}{newChatButton}{newRootChatButton}</> : <>{newChatButton}{newRootChatButton}{newProjectButton}</>}

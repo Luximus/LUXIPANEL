@@ -95,7 +95,7 @@ requestAssistant({
 });
 ```
 
-`tab` ∈ `"chat" | "market" | "agentes" | "providers" | "modules" | "stats" | "servers" | "access"`.
+`tab` ∈ `"chat" | "market" | "agentes" | "providers" | "modules" | "stats" | "access"`.
 
 No lleva `prompt`, `target` ni `conversation` — sólo cambia la pestaña visible
 del consumidor. Es lo que sustituye al legacy `lxp:assistant:open`.
