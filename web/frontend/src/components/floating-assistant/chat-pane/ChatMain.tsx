@@ -19,6 +19,7 @@ import { chatEngine } from "../chat-engine";
 import { resolveTargetScope } from "@/lib/api-client";
 import { availableInProject, legacyHistoryAgentIds } from "../agent-market-state";
 import { groupTeamNotices, isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
+import { groupExecutionTurns } from "./execution-turns";
 import { ExecutionDisclosure } from "./tool-disclosure";
 import { assistantConversationsApi, type ConversationMeta } from "../assistant-api";
 import { PROVIDER_META, SLASH_COMMANDS, type AssistantProviderId, type ApprovalMode } from "../assistant-api";
@@ -287,10 +288,11 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
   // `turns.slice(0,i).reverse().find(...)` made each render O(N²) — and this pane
   // re-renders on every streaming SSE token.
   const lastUserTurnIndex = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i--) if (turns[i]?.role === "user") return i;
+    for (let i = turns.length - 1; i >= 0; i--) if (turns[i]?.role === "user" && !isTeamNotice(turns[i]!)) return i;
     return -1;
   }, [turns]);
   const teamNotices = useMemo(() => groupTeamNotices(turns), [turns]);
+  const executionTurns = useMemo(() => groupExecutionTurns(turns), [turns]);
   const { lastAssistantTurnIndex, lastVisibleTurnIndex } = teamNotices;
   // Native disclosures and board state belong to this target and conversation.
   const executionScope = `${resolveTargetScope()}:${chatKey}`;
@@ -299,7 +301,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     let lastText: string | null = null;
     for (let i = 0; i < turns.length; i++) {
       out[i] = lastText;
-      if (turns[i]?.role === "user") lastText = turns[i]?.text ?? null;
+      if (turns[i]?.role === "user" && !isTeamNotice(turns[i]!)) lastText = turns[i]?.text ?? null;
     }
     return out;
   }, [turns]);
@@ -371,8 +373,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                    </div>
                   </div>
               )}
-              {turns.map((t, i) => {
-                if (isTeamNotice(t)) return null; // Retained once inside execution details.
+              {executionTurns.map(({ turn: t, index: i, firstIndex, indices, phases }) => {
                 // Compaction summary: render a divider, not a chat bubble — it's
                 // a synthetic note that replaced the older turns it folded.
                 if (t.compacted) {
@@ -384,17 +385,18 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                 // resend the user request that produced this assistant turn.
                 const retryText =
                   t.role === "assistant"
-                    ? precedingUserText[i]
+                    ? precedingUserText[firstIndex]
                     : null;
-                const turnTeamTasks = t.role === "assistant" ? [
-                  ...(teamBoardGroups.byTurn.get(i) ?? []),
+                const turnTeamTasks = t.role === "assistant" ? [...new Map([
+                  ...indices.flatMap(index => teamBoardGroups.byTurn.get(index) ?? []),
                   ...(i === lastAssistantTurnIndex ? teamBoardGroups.unanchored : []),
-                ] : [];
-                const teamBoards = [renderTeamBoard(turnTeamTasks, `team-board-turn-${i}`, true)].filter(Boolean);
+                ].map(task => [task.id, task])).values()] : [];
+                const teamBoards = [renderTeamBoard(turnTeamTasks, `team-board-turn-${firstIndex}`, true)].filter(Boolean);
                 return (
-                  <Fragment key={`${executionScope}:${i}`}>
+                  <Fragment key={`${executionScope}:${firstIndex}`}>
                     <Suspense fallback={<div aria-busy="true" className="min-h-12" />}><TurnView
                       turn={t}
+                      executionPhases={phases}
                       provider={provider}
                       uiMode={uiMode}
                       isLast={i === lastVisibleTurnIndex}
@@ -421,7 +423,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                       scrollContainerRef={scrollerRef}
                       teamBoards={teamBoards}
                       teamTasks={turnTeamTasks}
-                      teamNotices={teamNotices.byTurn.get(i)}
+                      teamNotices={indices.flatMap(index => teamNotices.byTurn.get(index) ?? [])}
                     /></Suspense>
                   </Fragment>
                 );

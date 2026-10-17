@@ -132,3 +132,35 @@ it("does not reopen an agent after the user changes the current chat", async () 
  await act(async () => finish(activated("claude")));
  expect(host.querySelector('[data-pane="claude"]')).toBeNull();
 });
+
+// Corrective QA: a catalog request can also outlive edits with an active provider.
+it("keeps the latest draft when the destination is active and the catalog is delayed", async () => {
+ await choose();
+ chatUiState.setActiveProvider("codex");
+ const current = chatUiState.getPane("codex");
+ let resolve!:(value:AssistantAgent[])=>void;
+ m.listAgents.mockReturnValueOnce(new Promise<AssistantAgent[]>(yes => {resolve=yes;}));
+ await choose();
+ const updated = {text:"Texto editado durante catálogo",attachments:[...draft.attachments,{name:"ultimo.txt",mimeType:"text/plain",dataBase64:"Yw=="}]};
+ chatUiState.patchPane("codex",{draft:updated.text,attachments:updated.attachments});
+ await act(async () => resolve([{...agent,capabilities:{canExecute:true}} as AssistantAgent]));
+ expect(JSON.parse(host.querySelector('[data-pane="claude"]')?.getAttribute("data-draft")??"null")).toEqual(updated);
+ expect(chatUiState.getPane("codex").activeId).toBe(current.activeId);
+});
+
+it.each(["project","conversation","target","session","route"])("discards delayed catalog after changing %s", async kind => {
+ let resolve!:(value:AssistantAgent[])=>void;
+ m.listAgents.mockReturnValueOnce(new Promise<AssistantAgent[]>(yes => {resolve=yes;}));
+ await choose();
+ await act(async () => {
+   if(kind==="project") chatUiState.patchPane("codex",{currentProjectId:"other"});
+   if(kind==="conversation") chatUiState.patchPane("codex",{activeId:"other"});
+   if(kind==="target") m.scope="server-b";
+   if(kind==="session") m.session="session-b";
+   if(kind==="route") { window.history.pushState({}, "", "/assistant/market"); window.dispatchEvent(new Event("astro:page-load")); }
+ });
+ await act(async () => resolve([{...agent,capabilities:{canExecute:true}} as AssistantAgent]));
+ expect(m.setProvider).not.toHaveBeenCalled();
+ expect(host.querySelector('[data-pane="claude"]')).toBeNull();
+ window.history.replaceState({}, "", "/");
+});

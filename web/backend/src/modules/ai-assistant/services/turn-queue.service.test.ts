@@ -589,3 +589,38 @@ it.each([
   expect(queue.items).toHaveLength(1);
   expect(calls).not.toContain("run:start");
 });
+
+it.each(["incorporation", "withdrawal"] as const)("keeps a recovered turn intact after concurrent %s during binding", async change => {
+  const { agentRolesRepository } = await import("../repositories/agent-roles.repository.js");
+  const projectId = change === "incorporation" ? null : "p1";
+  recipient.current = { ...recipient.current, projectIds: projectId ? [projectId] : [], roleId: "base" };
+  meta.current = { id: "chat", agentId: "a-mateo", projectId, messageCount: 2 };
+  queue.items.push({ id: "recovered", conversationId: "chat", agentId: "a-mateo", projectId,
+    user: sender, userText: "Queued work", ts: "", withContext: true });
+  const savedQueue = JSON.stringify(queue.items);
+  const savedMeta = JSON.stringify(meta.current);
+  let resume!: () => void, entered!: () => void;
+  const waiting = new Promise<void>(resolve => { resume = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const role = { id: "base", name: "Base", description: "", systemPrompt: "", allowedTools: null };
+  const roleSpy = vi.spyOn(agentRolesRepository, "get").mockResolvedValue(role)
+    .mockImplementationOnce(async () => { entered(); await waiting; return role; });
+  const draining = runWithExecutor(localExecutor, () => drainConversationQueue(localExecutor, "chat"), 7, sender);
+  const rejected = expect(draining).rejects.toMatchObject({
+    code: change === "incorporation" ? "ASSISTANT_CONTEXT_MISMATCH" : "ASSISTANT_ASSIGNMENT_REMOVED",
+  });
+  try {
+    await started;
+    recipient.current = { ...recipient.current, projectIds: ["p1"],
+      assignments: [{ projectId: "p1", status: change === "incorporation" ? "active" : "removed" }],
+    };
+    resume();
+    await rejected;
+    expect(JSON.stringify(queue.items)).toBe(savedQueue);
+    expect(JSON.stringify(meta.current)).toBe(savedMeta);
+    expect(calls).not.toContain("appendMessages");
+    expect(calls).not.toContain("drain:takeNext");
+    expect(calls).not.toContain("run:start");
+    expect(runOptions.last).toBeNull();
+  } finally { resume(); await draining.catch(() => undefined); roleSpy.mockRestore(); }
+});

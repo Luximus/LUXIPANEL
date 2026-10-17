@@ -144,6 +144,51 @@ function boardDisclosure() {
 async function toggle(details: HTMLDetailsElement) {
   await act(async () => details.querySelector("summary")!.click());
 }
+
+it.each([false, true])("updates one bubble across automatic phases and preserves the full execution history: cli=%s", async cli => {
+  const first: ChatTurn = { ...reply(cli, true), text: "Avance de la primera fase", completionPending: true };
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, first] });
+  const bubble = host.querySelector("[data-assistant-message]");
+  const second = { ...reply(cli, false), text: "", permission: { id: "permission", tool: "files.write", title: "Autorizar cambio" } };
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, first, notice, second],
+    byTurn: new Map([[1, [task({ id: "one", title: "Fase inicial", status: "done" })]], [3, [task({ id: "two", title: "Fase actual" })]]]),
+  });
+  expect(host.querySelectorAll("[data-assistant-message]")).toHaveLength(1);
+  expect(host.querySelector("[data-assistant-message]")).toBe(bubble);
+  expect(host.querySelectorAll("[data-execution-phase]")).toHaveLength(1);
+  expect(visibleText(host)).not.toContain("Avance de la primera fase");
+  expect(visibleText(host)).toContain("Autorizar cambio");
+  expect(host.querySelectorAll('[data-testid="team-task-board"]')).toHaveLength(1);
+  await act(async () => button("Aprobar").click());
+  expect(chatEngine.respondPermission).toHaveBeenCalledWith("leader", "permission", "allow", "files.write");
+  const details = boardDisclosure();
+  await toggle(details);
+  expect(visibleText(host)).toContain("Avance de la primera fase");
+  expect(visibleText(host)).toContain("Fase inicial");
+  expect(visibleText(host)).toContain("Fase actual");
+  const last: ChatTurn = { ...reply(cli, true), text: "Resultado consolidado" };
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, first, notice, { ...second, pending: false, permission: undefined }, notice, last] });
+  expect(host.querySelectorAll("[data-assistant-message]")).toHaveLength(1);
+  expect(host.querySelector("[data-assistant-message]")).toBe(bubble);
+  expect(host.querySelectorAll("[data-execution-phase]")).toHaveLength(2);
+  expect(host.querySelectorAll("[data-team-notice]")).toHaveLength(2);
+  expect(host.querySelector('[data-message-section="answer"]')?.textContent).toContain("Resultado consolidado");
+  await act(async () => button("Reintentar").click());
+  expect(send).toHaveBeenCalledWith(user.text);
+  await renderThread({ mode: cli ? "cli" : "api", turns: [user, first, notice, last, { ...user, text: "Otra petición" }, reply(cli, true)] });
+  expect(host.querySelectorAll("[data-assistant-message]")).toHaveLength(2);
+});
+
+it("keeps a failure visible on the single current bubble and earlier failures in history", async () => {
+  await renderThread({ mode: "api", turns: [user, { role: "assistant", text: "", tools: [], error: "Fallo de la primera fase" }, notice,
+    { role: "assistant", text: "", tools: [], error: "No se pudo completar la tarea" }] });
+  expect(host.querySelectorAll("[data-assistant-message]")).toHaveLength(1);
+  expect(visibleText(host)).toContain("No se pudo completar la tarea");
+  expect(visibleText(host)).not.toContain("Fallo de la primera fase");
+  const history = host.querySelector<HTMLDetailsElement>('[data-message-section="console"] > details')!;
+  await toggle(history);
+  expect(visibleText(host)).toContain("Fallo de la primera fase");
+});
 function button(label: string) {
   const result = [...host.querySelectorAll<HTMLButtonElement>("button")].find(el => el.title === label || el.textContent?.trim() === label);
   expect(result, label).toBeTruthy();

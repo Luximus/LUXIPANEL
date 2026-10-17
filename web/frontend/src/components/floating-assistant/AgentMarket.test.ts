@@ -149,3 +149,40 @@ it("provides retry for load errors and an empty catalog state", async () => {
   expect(document.querySelector('[role="alert"]')).not.toBeNull();
   records = []; await click("Reintentar"); expect(host.textContent).toContain("Todavía no hay perfiles");
 });
+
+it("keeps the assignment editor usable when close is requested during a rejected PUT", async () => {
+ await mount(); await click("Configurar asignación", article("Miembro"));
+ const input = document.querySelector<HTMLInputElement>('input[maxlength="200"]')!;
+ await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,"Revisor"); input.dispatchEvent(new Event("input",{bubbles:true})); });
+ let reject!:(error:unknown)=>void;
+ mock.put.mockReturnValueOnce(new Promise((_resolve,no) => {reject=no;}));
+ vi.useFakeTimers();
+ try {
+   await click("Guardar cambios");
+   const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+   await act(async () => {
+     dialog.querySelector<HTMLButtonElement>('button[aria-label="Cerrar"]')!.click();
+     window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"}));
+     dialog.click();
+     await vi.advanceTimersByTimeAsync(250);
+   });
+   expect(mock.put).toHaveBeenCalledTimes(1);
+   expect(dialog.classList.contains("pointer-events-none")).toBe(false);
+   expect(dialog.querySelector(".animate-out")).toBeNull();
+   await act(async () => reject(new AgentRequestError(409,"ASSISTANT_ASSIGNMENT_BUSY","busy")));
+   expect(dialog.textContent).toContain("Hay trabajo");
+   expect(dialog.classList.contains("pointer-events-none")).toBe(false);
+   await click("Reintentar",dialog);
+   expect(document.querySelector('[role="dialog"]')).toBeNull();
+   expect(mock.put).toHaveBeenCalledTimes(1);
+ } finally { vi.useRealTimers(); }
+});
+it("gives the assignment dialog its visible, stable accessible name", async () => {
+ await mount(); await click("Configurar asignación",article("Miembro"));
+ const dialog = document.querySelector('[role="dialog"]')!;
+ const labelId = dialog.getAttribute("aria-labelledby");
+ expect(labelId).toBeTruthy();
+ expect(document.getElementById(labelId!)?.textContent).toBe("Configurar asignación · Miembro");
+ await act(async () => mock.projects.mockResolvedValue(projects));
+ expect(dialog.getAttribute("aria-labelledby")).toBe(labelId);
+});

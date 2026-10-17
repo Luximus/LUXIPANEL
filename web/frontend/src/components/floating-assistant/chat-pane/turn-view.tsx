@@ -28,6 +28,7 @@ import { extractModifiedFiles } from "./helpers";
 import { type ModifiedFileEntry } from "./types";
 import { ToolDisclosure, CliHistoryView, ExecutionDisclosure } from "./tool-disclosure";
 import { isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
+import { ExecutionPhases } from "./execution-phases";
 import { AskView, PermissionView } from "./ask-permission";
 import { TranslatingShimmer, PendingDot, CopyButton } from "./message-bits";
 import { SpeakButton } from "./voice-controls";
@@ -108,7 +109,7 @@ export function ModifiedFilesView({ files, onOpen, embedded = false }: { files: 
   );
 }
 
-export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer, onPermission, onNewChat, onRetry, onEditMessage, onImageClick, attachmentImageUrls, onOpenFile, projectPath, ttsAvailable, voiceName, autoSpeak, conversationId, agent, scrollContainerRef, teamBoards, teamNotices, teamTasks }: { turn: ChatTurn; provider: string; uiMode?: "simple" | "advanced"; isLast?: boolean; onAnswer?: (text: string, opts?: { planDecision?: "approve" }) => Promise<void> | void; onPermission?: (requestId: string, decision: "allow" | "deny" | "always", tool?: string) => void; onNewChat?: () => void; onRetry?: () => void; onEditMessage?: (text: string) => void; onImageClick?: (url: string) => void; attachmentImageUrls?: ReadonlyMap<string, string>; onOpenFile?: (path: string) => void; projectPath?: string; ttsAvailable?: boolean; voiceName?: string; autoSpeak?: boolean; conversationId?: string; agent?: AssistantAgent | null; scrollContainerRef?: RefObject<HTMLDivElement | null>; teamBoards?: ReactNode[]; teamNotices?: ChatTurn[]; teamTasks?: TeamTaskView[] }) {
+export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer, onPermission, onNewChat, onRetry, onEditMessage, onImageClick, attachmentImageUrls, onOpenFile, projectPath, ttsAvailable, voiceName, autoSpeak, conversationId, agent, scrollContainerRef, teamBoards, teamNotices, teamTasks, executionPhases }: { turn: ChatTurn; provider: string; uiMode?: "simple" | "advanced"; isLast?: boolean; onAnswer?: (text: string, opts?: { planDecision?: "approve" }) => Promise<void> | void; onPermission?: (requestId: string, decision: "allow" | "deny" | "always", tool?: string) => void; onNewChat?: () => void; onRetry?: () => void; onEditMessage?: (text: string) => void; onImageClick?: (url: string) => void; attachmentImageUrls?: ReadonlyMap<string, string>; onOpenFile?: (path: string) => void; projectPath?: string; ttsAvailable?: boolean; voiceName?: string; autoSpeak?: boolean; conversationId?: string; agent?: AssistantAgent | null; scrollContainerRef?: RefObject<HTMLDivElement | null>; teamBoards?: ReactNode[]; teamNotices?: ChatTurn[]; teamTasks?: TeamTaskView[]; executionPhases?: ChatTurn[] }) {
   const i18n = useAssistantI18n() as Record<string, any>;
   const ct = i18n.chatTab as Record<string, any>;
   const editLabel = i18n.projectModal?.editChild ?? ct.editResendLabel ?? "Editar";
@@ -210,10 +211,11 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // Files the agent modified this turn (parsed from the CLI console). Shown in a
   // collapsible list under the console; clicking one opens the editor modal.
   const modifiedFiles = useMemo(
-    () => (!isUser && onOpenFile ? extractModifiedFiles(turn, projectPath) : []),
+    () => (!isUser && onOpenFile ? [...new Map([...(executionPhases ?? []), turn]
+      .flatMap(phase => extractModifiedFiles(phase, projectPath)).map(file => [file.path, file])).values()] : []),
     // Recompute as the live console grows (terminal) and once it settles (log).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isUser, onOpenFile, projectPath, turn.cliHistoryLog, turn.raw, turn.tools],
+    [isUser, onOpenFile, projectPath, turn.cliHistoryLog, turn.raw, turn.tools, executionPhases],
   );
   // The assistant avatar shows the responding provider's brand logo.
   const meta = PROVIDER_META[bubbleProvider as AssistantProviderId];
@@ -236,9 +238,12 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   const hasExecutionDetails = !isUser && Boolean(teamBoards?.length || teamNotices?.length);
   const executionDetails = hasExecutionDetails ? <TeamExecutionContent boards={teamBoards} notices={teamNotices} /> : undefined;
   const executionAttention = hasExecutionDetails && teamTasks?.length ? <TeamExecutionAttention tasks={teamTasks} /> : undefined;
+  const hasEarlierPhases = !isUser && !!executionPhases?.length;
+  const inlineExecutionDetails = hasEarlierPhases ? undefined : executionDetails;
+  const inlineExecutionAttention = hasEarlierPhases ? undefined : executionAttention;
   const hasConsole =
     !isUser &&
-    (groupApiTools || visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog) || hasExecutionDetails);
+    (groupApiTools || visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog) || hasExecutionDetails || hasEarlierPhases);
   const hasModifiedFiles = !isUser && !!onOpenFile && showModifiedFiles && modifiedFiles.length > 0;
   const hasCliTool = turn.tools.some(tool => tool.name.endsWith(".cli"));
   const hasThought = !isUser && (turn.pending || turn.completionPending || thoughtSteps.length > 0 || (showTerminal && (groupApiTools || isHistoryCli || hasCliTool)));
@@ -335,10 +340,10 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
             const hasHistoryConsole = showTerminal && isHistoryCli && !!historyLog;
             // API tools share one collapsed console, like a CLI execution.
             // Keep the team board and attention controls on that outer group.
-            return (
+            const currentConsole = (
               <>
                 {groupApiTools ? (
-                  <ExecutionDisclosure source="API" activityStatus={apiStatus} attention={executionAttention}>
+                  <ExecutionDisclosure source="API" activityStatus={apiStatus} attention={inlineExecutionAttention}>
                     <div className="divide-y divide-border/60 border-t border-border/60">
                       {turn.apiActivity ? turn.apiActivity.events.map((event, index) => {
                         if (event.type === "text") return (
@@ -369,22 +374,27 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
                         <p data-api-truncated className="px-3 py-2 text-muted-foreground">{ct.toolTrace.historyTruncated}</p>
                       )}
                     </div>
-                    {executionDetails}
+                    {inlineExecutionDetails}
                   </ExecutionDisclosure>
                 ) : visibleTools.map((t, index) => (
-                  <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded attention={index === 0 ? executionAttention : undefined}>
-                    {index === 0 ? executionDetails : undefined}
+                  <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded attention={index === 0 ? inlineExecutionAttention : undefined}>
+                    {index === 0 ? inlineExecutionDetails : undefined}
                   </ToolDisclosure>
                 ))}
                 {/* Reloaded CLI turn: collapsed "Consola del servidor" from the log. */}
-                {hasHistoryConsole && <CliHistoryView text={historyLog} embedded activityStatus={executionStatus} attention={executionAttention}>{executionDetails}</CliHistoryView>}
-                {hasExecutionDetails && !groupApiTools && !visibleTools.length && !hasHistoryConsole && (
-                  <ExecutionDisclosure activityStatus={executionStatus} attention={executionAttention}>
-                    {executionDetails}
+                {hasHistoryConsole && <CliHistoryView text={historyLog} embedded activityStatus={executionStatus} attention={inlineExecutionAttention}>{inlineExecutionDetails}</CliHistoryView>}
+                {hasExecutionDetails && !hasEarlierPhases && !groupApiTools && !visibleTools.length && !hasHistoryConsole && (
+                  <ExecutionDisclosure activityStatus={executionStatus} attention={inlineExecutionAttention}>
+                    {inlineExecutionDetails}
                   </ExecutionDisclosure>
                 )}
               </>
             );
+            return hasEarlierPhases ? <ExecutionDisclosure activityStatus={executionStatus} attention={executionAttention}>
+              <ExecutionPhases phases={executionPhases!} showTerminal={showTerminal} uiMode={uiMode} />
+              {currentConsole}
+              {executionDetails}
+            </ExecutionDisclosure> : currentConsole;
           })()}
           {/* Background mode: live console hidden — discreet "working" hint. */}
           {showWorkingIndicator && (

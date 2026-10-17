@@ -16,6 +16,7 @@ vi.mock("../../../shared/executor/context.js", () => ({ getContextUserId: () => 
 vi.mock("./execution-scope.js", () => ({ executionKey: (id: string, target: string) => JSON.stringify([target, id]) }));
 vi.mock("../repositories/assistant-config.repository.js", () => ({ assistantConfigRepository: { load: () => m.cfg } }));
 vi.mock("../repositories/projects.repository.js", () => ({ projectsRepository: { list: m.projects } }));
+vi.mock("../repositories/agent-roles.repository.js", () => ({ agentRolesRepository: { get: vi.fn(async () => null) } }));
 vi.mock("../repositories/agents.repository.js", () => ({ agentsRepository: {
   list: m.agents,
   get: async (id: string) => (await m.agents()).find((a: any) => a.id === id) ?? null,
@@ -241,4 +242,38 @@ it("does not infer a single new assignment for an existing general voice chat", 
   m.meta.mockResolvedValue({ agentId: "a1", projectId: null, messageCount: 2 });
   await expect(realtimeService.start(executor, user, input)).rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it.each(["incorporation", "withdrawal"] as const)("rejects voice after concurrent %s during the binding role read", async change => {
+  const { agentRolesRepository } = await import("../repositories/agent-roles.repository.js");
+  const { liveVoiceSession } = await import("./realtime-state.js");
+  const projectId = change === "incorporation" ? null : "p1";
+  const agent = { id: "a1", ownerId: 1, projectIds: projectId ? [projectId] : [], roleId: "base" };
+  const conversation = { agentId: "a1", projectId, messageCount: 2 };
+  m.meta.mockResolvedValue(conversation);
+  m.agents.mockResolvedValue([agent]);
+  let resume!: () => void, entered!: () => void;
+  const waiting = new Promise<void>(resolve => { resume = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const role = { id: "base", name: "Base", description: "", systemPrompt: "", allowedTools: null };
+  const roleSpy = vi.spyOn(agentRolesRepository, "get").mockResolvedValue(role)
+    .mockImplementationOnce(async () => { entered(); await waiting; return role; });
+  const starting = realtimeService.start(executor, user, input).then(result => { id = result.id; return result; });
+  const rejected = expect(starting).rejects.toMatchObject({
+    code: change === "incorporation" ? "ASSISTANT_CONTEXT_MISMATCH" : "ASSISTANT_ASSIGNMENT_REMOVED",
+  });
+  try {
+    await started;
+    m.agents.mockResolvedValue([{ ...agent, projectIds: ["p1"],
+      assignments: [{ projectId: "p1", status: change === "incorporation" ? "active" : "removed" }],
+    }]);
+    resume();
+    await rejected;
+    expect(fetch).not.toHaveBeenCalled();
+    expect(m.sockets).toEqual([]);
+    expect(m.append).not.toHaveBeenCalled();
+    expect(m.enqueue).not.toHaveBeenCalled();
+    expect(liveVoiceSession("chat", executor.target.id)).toBeUndefined();
+    expect(conversation).toEqual({ agentId: "a1", projectId, messageCount: 2 });
+  } finally { resume(); await starting.catch(() => undefined); roleSpy.mockRestore(); }
 });
