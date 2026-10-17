@@ -292,6 +292,11 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
       reasoningEffort?: "low" | "medium" | "high" | "xhigh" | "max";
     },
   ) {
+    // All entry points (suggestions, answers, retry, composer and queue) pass
+    // this guard before options, drafts or persisted history can be changed.
+    // Only the explicit external "new assistant" flow may leave this binding.
+    const freshAssistant = opts?.forceNew && opts.agentIdOverride === null;
+    if (d.agentInputBlocked && !freshAssistant) return;
     const voiceInput = !!opts?.attachmentsOverride?.some(a => a.voice);
     if (chatInputLocked(chatKey) && !voiceInput && !opts?.planDecision) return;
     if (!await s.conversationOptions.beforeSend()) return;

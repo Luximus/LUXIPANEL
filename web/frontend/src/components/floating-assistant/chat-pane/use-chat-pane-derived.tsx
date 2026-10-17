@@ -865,7 +865,19 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   }, []);
 
 
+  // The immutable chat binding owns admission, independently of sidebar navigation.
+  const boundAgentId = activeId ? activeMeta?.agentId ?? currentAgentId : currentAgentId;
+  const boundAgent = agents.find(agent => agent.id === boundAgentId);
+  const boundAgentAvailable = !!boundAgent && (effectiveProjectId
+    ? availableInProject(boundAgent, effectiveProjectId)
+    : boundAgent.capabilities?.canExecute === true && boundAgent.execution?.projectId === null);
+  const historicalOnly = !!boundAgentId && agentsLoaded && !boundAgentAvailable;
+  const agentInputBlocked = (!!activeId && (!activeMeta || (activeMeta.agentId ?? null) !== (currentAgentId ?? null)))
+    || (!!boundAgentId && (!agentsLoaded || !boundAgentAvailable));
+
   return {
+    agentInputBlocked,
+    historicalOnly,
     activeChatProject,
     activeMeta,
     agentById,

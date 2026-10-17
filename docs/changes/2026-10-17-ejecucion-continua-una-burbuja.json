@@ -1,0 +1,8 @@
+{
+  "title": "Una sola burbuja por ejecución del asistente",
+  "changes": [
+    "Las fases y continuaciones automáticas de una misma petición actualizan una sola burbuja con su estado y respuesta actuales.",
+    "El historial desplegable conserva los avances anteriores, las herramientas, los avisos del equipo y los errores sin llenar el chat de respuestas separadas.",
+    "Las nuevas peticiones mantienen sus propias respuestas y los permisos pendientes siguen disponibles en la ejecución actual."
+  ]
+}
