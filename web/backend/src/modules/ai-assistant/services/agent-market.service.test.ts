@@ -296,6 +296,7 @@ describe("effective runtime scope", () => {
 describe("assignment hierarchy and access validation", () => {
   it("changes the superior in X while keeping the hierarchy in Y", async () => {
     state.agents.get("a").parentAgentId = "leader-Y";
+    state.agents.set("leader-Y", profile({ id: "leader-Y", projectIds: ["Y"] }));
     state.agents.set("leader-X", profile({ id: "leader-X", projectIds: ["X"] }));
     await agentMarketService.put(executor, "a", "X", { parentAgentId: "leader-X", connections: [] }, user);
     expect((await resolveAgentContext(executor, "a", "X", user)).agent?.parentAgentId).toBe("leader-X");
@@ -328,6 +329,7 @@ it("fails closed when an explicit target differs from the contextual executor", 
 
 it("preserves a legacy superior when configuring or reincorporating its assignment", async () => {
   state.agents.get("a").parentAgentId = "legacy-superior";
+  state.agents.set("legacy-superior", profile({ id: "legacy-superior" }));
   state.projects.find(p => p.id === "X").leaderAgentId = "new-project-leader";
   await agentMarketService.put(executor, "a", "X", { jobTitle: "Backend" }, user);
   expect((await resolveAgentContext(executor, "a", "X", user)).agent?.parentAgentId).toBe("legacy-superior");
@@ -546,6 +548,14 @@ describe("post-review admission and contextual parity regressions", () => {
     expect(shown.capabilities.canExecute).toBe(true);
     expect(shown.context?.effectiveConfig?.parentAgentId).toBeNull();
     expect((await resolveAgentContext(executor, "a", "child", user)).agent?.parentAgentId).toBeNull();
+  });
+  it("rejects a stored cycle that a new assignment would make executable", async () => {
+    state.agents.set("a", profile({ projectIds: [] }));
+    state.agents.set("cyclic", profile({ id: "cyclic", projectIds: ["X"], parentAgentId: "a" }));
+    expect((await resolveAgentContext(executor, "cyclic", "X", user)).agent?.parentAgentId).toBeNull();
+    await expect(agentMarketService.put(executor, "a", "X", { parentAgentId: "cyclic" }, user))
+      .rejects.toMatchObject({ statusCode: 403 });
+    expect(agentAssignments(state.agents.get("a"))).toEqual([]);
   });
   it("a loose chat cannot expose connections assigned to another project", async () => {
     state.agents.set("a", profile({ projectIds: [], parentAgentId: "scoped", connections: ["scoped", "loose"] }));

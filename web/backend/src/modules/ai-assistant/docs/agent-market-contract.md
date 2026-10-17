@@ -146,6 +146,13 @@ habitual. canExecute no es un permiso para eludir esas comprobaciones.
 perfil/rol base/rol local/asignación, recursos del árbol activo acotados por el
 perfil/asignación, equipo raíz y superior/conexiones contextuales. allowedTools
 null significa sin restricción adicional; [] ninguna herramienta de módulo.
+Los aliases legados (por ejemplo files.list → files.list_dir) se normalizan
+antes de intersectar también en el DTO, usando el mismo helper del resolver.
+parentAgentId/connections efectivos solo contienen perfiles ejecutables en
+ese mismo contexto; se excluyen autorreferencias, ausentes, retirados, ajenos
+y miembros de otros proyectos. No se reescriben el perfil ni las asignaciones
+guardadas. La validación de ciclos en PUT recorre los vínculos guardados, para
+no ocultar un ciclo que la nueva pertenencia haría efectivo.
 El catálogo no enumera permisos efectivos de sesión/módulos: esos filtros
 siguen aplicándose en cada despacho. systemPrompt contiene las instrucciones
 de rol y luego perfil/asignación, sin prompt base, secretos ni contexto dinámico.
@@ -186,6 +193,11 @@ Padre asignado habilita descendientes autorizados. La asignación activa más ce
 Target y projectId se fijan al ejecutar. Solo para una conversación nueva, si falta projectId se resuelve un vínculo directo único; varios devuelven REQUIRED. Toda conversación persistida conserva agentId/projectId, incluso vacía o con projectId:null: no puede adoptar agente/proyecto nuevos ni inferir una asignación incorporada después. Devuelve CONTEXT_MISMATCH y exige abrir otra conversación. Un input null/omitido reanuda el vínculo persistido; no lo elimina. Sin vínculos actuales ni retirados continúa el chat libre. La misma validación se aplica antes de admitir cola, voz y respuestas de aprobación; no se modifica historial al rechazar.
 Contexto del proyecto activo + ancestros autorizados, hijos autorizados anunciados; nunca unión de otros projectIds raíz. Rutas/servidores/grafos se acotan al árbol activo y restricciones de asignación. Sesión/módulos/perfil/roles/asignación se intersectan, nunca se amplían.
 Chat, delegación, equipo y cola recuperada revalidan antes del despacho. Retirada y admisión comparten exclusión target/agente; trabajo durable pendiente bloquea tras reinicio.
+La admisión recibe el projectId ya resuelto y lo vuelve a validar bajo esa
+exclusión sin inferirlo otra vez, incluso si es null/undefined. Si una primera
+asignación gana la carrera entre vincular el chat y admitirlo, el chat libre
+se rechaza con CONTEXT_MISMATCH sin encolarlo ni modificar su historial. Si
+la admisión libre gana primero, incorporar devuelve BUSY hasta que se libere.
 Historial se conserva consultable; no autoriza nuevos runs después de retirada.
 
 ## Límites
@@ -201,43 +213,3 @@ Los límites de rutas del dispatcher son comparaciones normalizadas de parámetr
 La voz mantiene la admisión de la asignación mientras su sesión está activa. Recuperar un CLI puede conservar la lectura de sus logs/historial sin restablecer herramientas si su asignación ya no es válida.
 
 allowedTools conserva su significado existente: herramientas registradas de módulos, normalizando aliases legados antes de intersectar. La coordinación (equipo/mensajes/delegación) mantiene sus controles de jerarquía, pertenencia al proyecto y supervisión; no se añaden permisos globales al catálogo.
-
-
-## Evidencia focalizada (2026-10-17)
-
-Desde `web/backend`, en el checkout original `developer`:
-
-```sh
-NODE_OPTIONS=--max-old-space-size=2560 npm run typecheck
-```
-
-Salida 0; el script ejecuta `tsc --noEmit`. Sin build ni reinicio.
-
-```sh
-NODE_OPTIONS=--max-old-space-size=2560 npm test -- \
-  src/modules/ai-assistant/services/agent-market.service.test.ts \
-  src/modules/ai-assistant/controllers/agents.controller.test.ts \
-  src/modules/ai-assistant/repositories/agent-activity.repository.test.ts \
-  src/modules/ai-assistant/services/module-tools.service.test.ts \
-  src/modules/ai-assistant/services/team-tools.test.ts \
-  src/modules/ai-assistant/services/team-tasks.service.test.ts \
-  src/modules/ai-assistant/services/turn-queue.service.test.ts \
-  src/modules/ai-assistant/services/realtime.service.test.ts \
-  src/modules/ai-assistant/services/agent-messages.service.test.ts \
-  src/modules/ai-assistant/services/project-workspace.service.test.ts \
-  src/modules/ai-assistant/services/cli-run-recovery.service.test.ts \
-  --pool=threads --maxWorkers=2 --minWorkers=1
-```
-
-Salida 0; **11 archivos, 278 pruebas aprobadas**, sin fallos ni omitidas.
-Incluye X/Y con un perfil, otro propietario, ancestros ajenos/ausentes/cíclicos,
-herencia y personalización, idempotencia, retirada con historial, conflicto de
-admisión, colas/jobs/preguntas pendientes, chat null inmutable, filtros/capacidades,
-credenciales redactadas y separación de targets. La regresión de voz distingue
-metadatos de líder/trabajador y comprueba que una aprobación no recontextualiza
-al trabajador. Durante la integración se corrigieron dos expectativas de voz
-que asumían el comportamiento anterior; ninguna prueba se desactivó.
-
-No acredita despliegue: build serial, reinicio, logs y HTTP quedan para la fase
-de publicación coordinada. No se modificaron configuración real de usuarios,
-login directo, contratos LP, frontend ni infraestructura en este aporte.

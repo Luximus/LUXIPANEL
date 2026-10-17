@@ -14,7 +14,7 @@ import { agentRolesRepository } from "../repositories/agent-roles.repository.js"
 import { agentAssignments, type AssistantAgent, type AssignmentPatch, type AgentProjectAssignment } from "../models/assistant-agent.types.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { permissionBroker } from "./permission-broker.js";
-import { assignmentError, assertProjectScope, effectiveAssignment, mayUseProject, resolveAgentContext, visibleProjects, intersectLists } from "./agent-context.service.js";
+import { assignmentError, assertProjectScope, effectiveAssignment, mayUseProject, resolveAgentContext, visibleProjects, intersectToolLimits, assignmentParentAgentId } from "./agent-context.service.js";
 import { assertAssignmentTarget, withAssignmentLock, hasAssignmentAdmission } from "./agent-assignment-lock.js";
 import { projectClosure } from "./project-closure.js";
 import { normalizeAllowedTools } from "./tool-allowlist.js";
@@ -67,7 +67,13 @@ async function validatePatch(executor: Executor, agentId: string, projectId: str
     while (parent) {
       if (seen.has(parent)) throw relationError();
       seen.add(parent);
-      parent = (await resolveAgentContext(executor, parent, projectId, user)).agent?.parentAgentId;
+      await resolveAgentContext(executor, parent, projectId, user);
+      const candidate = await ownedAgent(parent, user);
+      const assignment = effectiveAssignment(candidate, scope.projects, projectId);
+      if (!assignment) throw relationError();
+      // Validate the stored edge: filtering it before a new membership exists
+      // could hide a cycle that this very assignment would make executable.
+      parent = assignmentParentAgentId(candidate, assignment, scope.ancestors[0]);
     }
   }
   return clean;
@@ -104,7 +110,7 @@ export const agentMarketService = {
       if (active && projectId) effectiveConfig = {
         systemPrompt: [resolved.role?.systemPrompt, active.systemPrompt].filter(Boolean).join("\n\n"),
         roleId: active.roleId ?? null,
-        allowedTools: intersectLists(active.allowedTools, resolved.role?.allowedTools),
+        allowedTools: intersectToolLimits(active.allowedTools, resolved.role?.allowedTools),
         canSpawnChats: Boolean(active.canSpawnChats || resolved.role?.canSpawnChats),
         projectPaths: active.projectPaths ?? [], serverIds: (active.servers ?? []).map(s => s.id),
         graphProjectIds: active.graphProjectIds ?? [], teamId: active.teamId ?? null,

@@ -63,11 +63,17 @@ export function effectiveAssignment(agent: AssistantAgent, all: AssistantProject
   }
   return null;
 }
+/** Stored hierarchy before contextual filtering, also used to reject write-time cycles. */
+export function assignmentParentAgentId(agent: AssistantAgent, assignment: EffectiveAssignment, root?: AssistantProject): string | null {
+  return assignment.parentAgentId !== undefined ? assignment.parentAgentId :
+    assignment.source === "legacy" ? agent.parentAgentId ?? null :
+    root?.leaderAgentId === agent.id ? null : root?.leaderAgentId ?? null;
+}
 export function intersectLists<T>(base: T[] | null | undefined, limit: T[] | null | undefined): T[] | null {
   if (limit == null) return base ?? null;
   return base == null ? [...limit] : base.filter(v => limit.includes(v));
 }
-function intersectToolLimits(...lists: (string[] | null | undefined)[]): string[] | null {
+export function intersectToolLimits(...lists: (string[] | null | undefined)[]): string[] | null {
   return lists.reduce<string[] | null>((current, list) => intersectLists(current,
     normalizeAllowedTools(list, { onUnknown: "drop", context: "agent-assignment" })?.valid ?? null), null);
 }
@@ -87,8 +93,8 @@ export interface AgentContext {
   ancestors: AssistantProject[];
   contextProjects: AssistantProject[];
 }
-/** Fail closed. Fresh on every admission and protected tool dispatch. */
-export async function resolveAgentContext(executor: Executor | null | undefined, agentId?: string | null, requestedProjectId?: string | null, user?: SessionUser, inferProject = true): Promise<AgentContext> {
+/** Resolve authority without traversing relationships (peers may reference each other). */
+async function resolveAgentScope(executor: Executor | null | undefined, agentId?: string | null, requestedProjectId?: string | null, user?: SessionUser, inferProject = true): Promise<AgentContext> {
   if (!executor) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "Se requiere el servidor conectado.", 403);
   assertAssignmentTarget(executor);
   const original = agentId ? await agentsRepository.get(agentId) : null;
@@ -146,20 +152,43 @@ export async function resolveAgentContext(executor: Executor | null | undefined,
         (assignment.serverIds == null || assignment.serverIds.includes(server.id)) &&
         (!original!.servers?.length || original!.servers.some(s => s.id === server.id))),
       teamId: ancestors[0]?.teamId ?? (assignment.source === "legacy" ? agent.teamId : null),
-      parentAgentId: assignment.parentAgentId !== undefined ? assignment.parentAgentId :
-        assignment.source === "legacy" ? agent.parentAgentId :
-        ancestors[0]?.leaderAgentId === agent.id ? null : ancestors[0]?.leaderAgentId ?? null,
+      parentAgentId: assignmentParentAgentId(agent, assignment, ancestors[0]),
       connections: assignment.connections ?? agent.connections,
 
     };
   }
   return { agent, role, projectId, assignment, projects, ancestors, contextProjects };
 }
+/** Fail closed. Fresh on every admission and protected tool dispatch. */
+export async function resolveAgentContext(executor: Executor | null | undefined, agentId?: string | null, requestedProjectId?: string | null, user?: SessionUser, inferProject = true): Promise<AgentContext> {
+  const context = await resolveAgentScope(executor, agentId, requestedProjectId, user, inferProject);
+  if (!context.agent) return context;
+  const agent = context.agent;
+  const related = new Set([agent.parentAgentId, ...(agent.connections ?? [])]
+    .filter((id): id is string => !!id && id !== agent.id));
+  const available = new Set<string>();
+  for (const id of related) {
+    try {
+      // Same authority as the runtime roster, without recursively walking peers.
+      // A null context must not infer a peer's unique project either.
+      await resolveAgentScope(executor, id, context.projectId, user, false);
+      available.add(id);
+    } catch (error) {
+      if (!(error instanceof AppError) || ![400, 403, 404, 409].includes(error.statusCode)) throw error;
+    }
+  }
+  return { ...context, agent: { ...agent,
+    parentAgentId: agent.parentAgentId && available.has(agent.parentAgentId) ? agent.parentAgentId : null,
+    connections: [...new Set(agent.connections ?? [])].filter(id => available.has(id)),
+  } };
+}
+
+/** Admit an already resolved context. null/undefined is pinned, never inferred again. */
 export async function admitAgentWork(executor: Executor | null | undefined, agentId?: string | null, projectId?: string | null, user?: SessionUser) {
   const target = executor ?? getContextExecutor();
   if (!target) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "Se requiere el servidor conectado.", 403);
   const admit = async () => {
-    const context = await resolveAgentContext(target, agentId, projectId, user);
+    const context = await resolveAgentContext(target, agentId, projectId, user, false);
     const release = agentId ? markAssignmentAdmission(target, agentId, context.projectId) : () => {};
     return { ...context, release };
   };
