@@ -8,6 +8,8 @@ import { loadProjects, setProjectsViewActive, updateProjectsControls } from "./p
 import { S, SHOW_HIDDEN_KEY, FILES_VIEW_KEY, dirSizeKnown, selected } from "./state";
 import { updateAiSelectionNotice } from "./ai-selection";
 import { patchFilesPreferences } from "./preferences";
+import { createFilePages, FILES_BATCH_SIZE } from "./file-pages";
+import { fetchFilesPage } from "./list-request";
 import type { FilesViewMode } from "./state";
 import { setStatus, showToast } from "./toast";
 import { api, resolvePanelApiPath, scopeHeaders } from "/scripts/extracted/lib/api-client.js?v=20260506a";
@@ -15,6 +17,117 @@ import { escapeJsAttr } from "/scripts/extracted/lib/escape.js";
 import { openDialog } from "/scripts/extracted/lib/dom.js";
 
 let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
+let directoryActive = false;
+let directoryContext = "";
+let localEntries: any[] = [], localShown = 0;
+let scrollBinding: AbortController | undefined;
+let scrollResize: ResizeObserver | undefined;
+let checkScroll = () => {};
+
+function listingContext() {
+  return JSON.stringify([S.activeTargetScope, S.activeFilesManagerId, S.currentPath, S.sortKey, S.sortDir, S.showHidden && filesCan("files.hidden"), getSearchQuery(), S.isSearchMode]);
+}
+
+const directoryPages = createFilePages(listingContext, (offset, limit) => fetchFilesPage(S.currentPath, offset, limit, {
+  sortKey: S.sortKey, sortDir: S.sortDir, showHidden: S.showHidden && filesCan("files.hidden"), query: getSearchQuery(),
+}), (state, added, replace) => {
+  if (added !== null) {
+    S.currentEntries = state.items;
+    if (replace) renderFiles(S.currentEntries);
+    else {
+      appendFiles(added);
+      if (!S.isSearchMode) void hydrateDirSizes(S.currentEntries);
+    }
+    if (!state.loading) setStatus(fmt(state.total === 1 ? t("status.itemCountOne", "{n} elemento") : t("status.itemCountMany", "{n} elementos"), { n: state.total }));
+  }
+  updateFileScroll();
+});
+
+export function cancelDirectoryListing() {
+  S.listingVersion++;
+  directoryActive = false;
+  directoryPages.cancel();
+  localEntries = []; localShown = 0;
+  S.dirSizeNav++;
+  updateFileScroll();
+}
+
+export function loadDirectoryListing() {
+  directoryActive = true;
+  directoryContext = listingContext();
+  return directoryPages.first();
+}
+
+function appendFiles(entries: any[]) {
+  if (!entries.length) return;
+  if (S.viewMode === "list") renderListView(entries, undefined, true);
+  else if (S.viewMode === "grid") renderGridView(entries, undefined, true);
+  syncCheckAll();
+}
+
+export async function loadMoreFiles(retry = false) {
+  if (S.contentResultsActive || S.viewMode === "projects") return;
+  if (directoryActive && !S.isSearchMode) {
+    if (directoryContext !== listingContext() || (directoryPages.get().error && !retry)) return;
+    if (retry && !directoryPages.get().items.length) {
+      await (window as any).navigate(S.currentPath, { skipHistory: true });
+    } else await directoryPages.next();
+  } else if (localShown < localEntries.length) {
+    const start = localShown;
+    const snapshot = localEntries;
+    localShown = Math.min(localShown + FILES_BATCH_SIZE, localEntries.length);
+    await Promise.resolve();
+    if (snapshot !== localEntries) return;
+    appendFiles(localEntries.slice(start, localShown));
+    updateFileScroll();
+  }
+}
+
+function updateFileScroll() {
+  const state = directoryActive && !S.isSearchMode ? directoryPages.get() : null;
+  const more = state?.hasMore ?? localShown < localEntries.length;
+  for (const id of ["view-list", "view-grid"]) {
+    const view = document.getElementById(id);
+    const status = view?.querySelector<HTMLElement>("[data-files-more]");
+    view?.setAttribute("aria-busy", String(!!state?.loading));
+    if (!status) continue;
+    status.classList.toggle("hidden", !more && !state?.loading && !state?.error);
+    status.replaceChildren();
+    if (state?.loading) status.textContent = t("status.loading", "Cargando…");
+    else if (state?.error) {
+      status.append(document.createTextNode(t("toasts.listError2", "No se pudo listar") + " "));
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "rounded border border-border px-3 py-1.5 text-foreground";
+      retry.textContent = t("projectMapDrawer.retry", "Reintentar");
+      retry.addEventListener("click", () => void loadMoreFiles(true), { signal: scrollBinding?.signal });
+      status.append(retry);
+    }
+  }
+  requestAnimationFrame(() => checkScroll());
+}
+
+/** Bind to the actual scroll containers, including resized/previously hidden drawers. */
+export function bindFileScroll() {
+  scrollBinding?.abort(); scrollResize?.disconnect();
+  scrollBinding = new AbortController();
+  const views = ["view-list", "view-grid"].map(id => document.getElementById(id)).filter((view): view is HTMLElement => !!view);
+  checkScroll = () => {
+    if (document.hidden) return;
+    const view = views.find(view => view.isConnected && !view.classList.contains("hidden") && view.clientHeight > 0);
+    if (view && view.scrollHeight - view.scrollTop - view.clientHeight <= 120) void loadMoreFiles();
+  };
+  for (const view of views) view.addEventListener("scroll", checkScroll, { passive: true, signal: scrollBinding.signal });
+  if (typeof ResizeObserver !== "undefined") {
+    scrollResize = new ResizeObserver(checkScroll);
+    views.forEach(view => scrollResize!.observe(view));
+  }
+  window.addEventListener("lxp:module:visibility", checkScroll, { signal: scrollBinding.signal });
+  window.addEventListener("lxp:module:dispose", () => {
+    cancelDirectoryListing(); scrollBinding?.abort(); scrollResize?.disconnect(); checkScroll = () => {};
+  }, { signal: scrollBinding.signal });
+  updateFileScroll();
+}
 
   export function filterEntries(entries: any[]) {
     const query = getSearchQuery();
@@ -204,13 +317,13 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
       listBtn.classList.remove("text-muted-foreground", "hover:bg-accent");
       listBtn.classList.add("bg-accent", "text-foreground");
       clearSelection();
-      renderFiles(S.currentEntries);
+      renderFiles(S.isSearchMode ? localEntries : S.currentEntries);
     } else if (mode === "grid") {
       gridEl.classList.remove("hidden");
       gridBtn.classList.remove("text-muted-foreground", "hover:bg-accent");
       gridBtn.classList.add("bg-accent", "text-foreground");
       clearSelection();
-      renderFiles(S.currentEntries);
+      renderFiles(S.isSearchMode ? localEntries : S.currentEntries);
     } else if (mode === "projects") {
       projEl.classList.remove("hidden");
       projBtn.classList.remove("text-muted-foreground", "hover:bg-accent");
@@ -248,7 +361,7 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
       showToast(res.error || t("toasts.saveError2", "No se pudo guardar"), false);
     });
     updateHiddenToggleUI();
-    if (S.viewMode !== "projects") renderFiles(S.currentEntries);
+    if (S.viewMode !== "projects") renderFiles(S.isSearchMode ? localEntries : S.currentEntries);
   }
 
   // ── Render — List ──────────────────────────────────────────
@@ -258,7 +371,7 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
     return `${S.currentPath}/${entryName}`.replace("//", "/");
   }
 
-  export function renderListView(sorted: any[], emptyMessage = t("empty.selectDirectory", "Selecciona un directorio para explorar")) {
+  export function renderListView(sorted: any[], emptyMessage = t("empty.selectDirectory", "Selecciona un directorio para explorar"), append = false) {
     const tbody = document.getElementById("file-tbody");
     if (!tbody) return;
     if (sorted.length === 0) {
@@ -267,7 +380,7 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
       return;
     }
 
-    tbody.innerHTML = sorted.map((e: any) => {
+    const html = sorted.map((e: any) => {
       const entryName = typeof e?.name === "string" ? e.name : t("labels.unnamed", "(sin nombre)");
       const fullPath = rowPathFor(e);
       const iconCls = fileIcon(entryName, e.isDir, e.isHidden, e.hasGit, e.gitStatus);
@@ -307,10 +420,15 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
           </td>
         </tr>`;
     }).join("");
+    if (append) {
+      const batch = document.createElement("tbody");
+      batch.innerHTML = html;
+      tbody.append(...batch.childNodes);
+    } else tbody.innerHTML = html;
   }
 
   // ── Render — Grid ──────────────────────────────────────────
-  export function renderGridView(sorted: any[], emptyMessage = t("empty.folderEmpty", "Carpeta vacía")) {
+  export function renderGridView(sorted: any[], emptyMessage = t("empty.folderEmpty", "Carpeta vacía"), append = false) {
     const grid = document.getElementById("file-grid");
     if (!grid) return;
     if (sorted.length === 0) {
@@ -319,7 +437,7 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
       return;
     }
 
-    grid.innerHTML = sorted.map((e: any) => {
+    const html = sorted.map((e: any) => {
       const entryName = typeof e?.name === "string" ? e.name : t("labels.unnamed", "(sin nombre)");
       const fullPath = rowPathFor(e);
       const iconCls = fileIcon(entryName, e.isDir, e.isHidden, e.hasGit, e.gitStatus);
@@ -364,6 +482,8 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
           </div>
         </div>`;
     }).join("");
+    if (append) grid.insertAdjacentHTML("beforeend", html);
+    else grid.innerHTML = html;
   }
 
   // ── Column sorting (list view headers) ─────────────────────
@@ -388,7 +508,7 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
         if (S.sortKey === key) S.sortDir = S.sortDir === 1 ? -1 : 1;
         else { S.sortKey = key; S.sortDir = 1; }
         updateSortIndicators();
-        renderFiles(S.currentEntries);
+        renderFiles(S.isSearchMode ? localEntries : S.currentEntries);
       });
     });
     updateSortIndicators();
@@ -428,14 +548,28 @@ let gridBulkBarTimer: ReturnType<typeof setTimeout> | undefined;
   }
 
   export function renderFiles(entries: any[]) {
-    const sorted = visibleSortedEntries(entries);
+    const remote = directoryActive && !S.isSearchMode && entries === S.currentEntries;
+    if (remote && directoryContext !== listingContext()) {
+      void (window as any).navigate(S.currentPath, { skipHistory: true });
+      return;
+    }
+    const sorted = remote ? entries : visibleSortedEntries(entries);
+    localEntries = remote ? [] : sorted;
+    localShown = remote ? 0 : Math.min(FILES_BATCH_SIZE, sorted.length);
+    const visible = remote ? sorted : sorted.slice(0, localShown);
     const query = getSearchQuery();
     const emptyMessage = query ? fmt(t("empty.noResultsFor", "No se encontraron resultados para \"{query}\""), { query }) : t("empty.selectDirectory", "Selecciona un directorio para explorar");
-    if (S.viewMode === "list") renderListView(sorted, emptyMessage);
-    else renderGridView(sorted, query ? emptyMessage : t("empty.folderEmpty", "Carpeta vacía"));
+    if (S.viewMode === "list") renderListView(visible, emptyMessage);
+    else renderGridView(visible, query ? emptyMessage : t("empty.folderEmpty", "Carpeta vacía"));
+    for (const id of ["view-list", "view-grid"]) {
+      const view = document.getElementById(id);
+      if (view) view.scrollTop = 0;
+    }
+    syncCheckAll();
+    updateFileScroll();
     // Fill recursive folder sizes (cache first, then live du). Skip in search
     // mode: result paths aren't children of S.currentPath.
-    if (!S.isSearchMode) void hydrateDirSizes(sorted);
+    if (!S.isSearchMode) void hydrateDirSizes(visible);
   }
 
   // Grid card click: single click selects, double click navigates/edits

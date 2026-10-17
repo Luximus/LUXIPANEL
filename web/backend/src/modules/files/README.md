@@ -33,6 +33,14 @@ documented deliberately:
 | GET | `/api/files/history` | `files.read` | Per-file timeline (#8): git `log --follow` commits merged with snapshots |
 | GET | `/api/files/history/git-show` | `files.read` | Content of the file at a git revision (for diff/restore) |
 
+The main Files list opts into directory windows using `limit` (1–200), `offset`,
+`sortKey` (`name`, `type`, `size`, `modified`), `sortDir` (`asc`, `desc`),
+`showHidden` and an optional name `query`. The response retains `data` and adds
+`meta.filesList: { total, nextOffset, hasMore }`. Sorting (folders first) and
+filtering happen before slicing, for both cached and freshly read directories.
+Requests without `limit` keep returning the complete directory for trees and
+path pickers; existing target, path and permission guards still apply.
+
 ### Git (native, phase 1 — `git.service.ts`, #14)
 
 Local work-tree operations only (no network/credentials yet): `git -C <repo> …`

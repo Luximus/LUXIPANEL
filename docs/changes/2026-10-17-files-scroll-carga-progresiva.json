@@ -1,0 +1,8 @@
+{
+  "title": "Exploración de archivos con scroll continuo",
+  "changes": [
+    "Files sustituye los botones de paginación por carga automática de más archivos al llegar al final del scroll, tanto en lista como en cuadrícula.",
+    "La carga conserva los archivos seleccionados y permite reintentar si falla una consulta.",
+    "Cambiar de carpeta, servidor o pestaña descarta las respuestas anteriores para evitar mezclar archivos de distintas ubicaciones."
+  ]
+}

@@ -1,7 +1,7 @@
 // Files page — search-replace submodule (code-move from index-script1.ts; no behavior change).
 import { getEditorApi } from "./editor";
 import { fmt, t } from "./i18n";
-import { renderFiles, setViewMode } from "./listing";
+import { clearSelection, renderFiles, setViewMode } from "./listing";
 import { escapeHtml, normalizeSearch } from "./paths";
 import { refreshCurrentView } from "./projects";
 import { S } from "./state";
@@ -66,7 +66,11 @@ import { openConfirm } from "/scripts/extracted/lib/confirm.js";
       S.searchQuery = normalizeSearch(q);
       if (S.searchQuery) scheduleTreeSearch(S.searchQuery); else clearTreeSearch();
       if (S.searchQuery && S.currentPath) void runNameSearch(S.searchQuery);
-      else { S.isSearchMode = false; renderFiles(S.currentEntries); }
+      else {
+        S.isSearchMode = false;
+        if (S.currentPath) void (window as any).navigate(S.currentPath, { skipHistory: true });
+        else renderFiles(S.currentEntries);
+      }
     } else {
       // Entering content search: the tree search only applies in name mode.
       clearTreeSearch();
@@ -116,8 +120,10 @@ import { openConfirm } from "/scripts/extracted/lib/confirm.js";
   /** Recursive name search (the old live "Buscar carpetas y archivos"). */
   export async function runNameSearch(query: string) {
     if (!S.currentPath) { renderFiles(S.currentEntries); return; }
+    const path = S.currentPath, target = S.activeTargetScope, manager = S.activeFilesManagerId, version = S.listingVersion;
     setStatus(fmt(t("status.searchingFor", "Buscando \"{query}\" en subcarpetas..."), { query }));
     const res = await api.get<any>("/api/files/search", { params: { path: S.currentPath, q: query } });
+    if (version !== S.listingVersion || path !== S.currentPath || target !== S.activeTargetScope || manager !== S.activeFilesManagerId || query !== S.searchQuery) return;
     if (!res.ok) {
       showToast(res.error ?? t("toasts.searchError", "Error al buscar"), false);
       setStatus(t("status.searchError", "Error al buscar"));
@@ -126,6 +132,7 @@ import { openConfirm } from "/scripts/extracted/lib/confirm.js";
     const payload = res.data as any;
     const hits = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
     S.isSearchMode = true;
+    clearSelection();
     renderFiles(hits);
     setStatus(fmt(t("status.searchResults", "{n} resultado(s) para \"{query}\""), { n: hits.length, query }));
   }

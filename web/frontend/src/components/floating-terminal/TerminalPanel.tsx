@@ -291,11 +291,14 @@ export default function TerminalPanel({
             "max-md:data-[mobile-open=false]:translate-x-full max-md:data-[mobile-open=false]:opacity-0 max-md:data-[mobile-open=false]:pointer-events-none"
           }
         >
-          <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-2">
+          <div data-terminal-sidebar-tabs className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-2">
             {SIDEBAR_TABS.map((t) => (
               <button
                 key={t}
                 type="button"
+                data-terminal-sidebar-tab={t}
+                aria-pressed={sidebarTab === t}
+                title={sidebarTabLabel(messages, t)}
                 onClick={() => setSidebarTab(t)}
                 className={
                   sidebarTab === t

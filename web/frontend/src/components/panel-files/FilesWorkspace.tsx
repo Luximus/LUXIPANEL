@@ -385,8 +385,8 @@ export function FilesWorkspace({ canUseAssistant = true, canExpo = false, locale
             </div>
           </div>
 
-          <div id="view-list" className="flex-1 overflow-y-auto">
-            <table className="w-full text-sm">
+          <div id="view-list" className="min-h-0 flex-1 overflow-auto" tabIndex={0}>
+            <table className="w-full text-sm" data-infinite-files>
               <thead className="sticky top-0 bg-card z-10">
                 <tr className="border-b border-border">
                   <th className="h-9 px-3 w-8">
@@ -411,10 +411,12 @@ export function FilesWorkspace({ canUseAssistant = true, canExpo = false, locale
                 </tr>
               </tbody>
             </table>
+            <div data-files-more className="hidden px-4 py-3 text-center text-xs text-muted-foreground" role="status" aria-live="polite"></div>
           </div>
 
-          <div id="view-grid" className="hidden flex-1 overflow-y-auto p-4">
+          <div id="view-grid" className="hidden min-h-0 flex-1 overflow-y-auto p-4" tabIndex={0}>
             <div id="file-grid" className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3"></div>
+            <div data-files-more className="hidden px-4 py-3 text-center text-xs text-muted-foreground" role="status" aria-live="polite"></div>
           </div>
 
           {/* Text-in-files search results — replaces the listing while active. */}

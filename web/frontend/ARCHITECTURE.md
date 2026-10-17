@@ -415,6 +415,7 @@ por el proxy de Astro ni por el backend del panel.
 ## Reglas
 
 - Astro `output: server`; React solo en islas interactivas.
+
 - Toda red al backend pasa por el proxy `pages/api/[...path].ts` (salvo WS).
 - Nueva feature de panel → carpeta en `pages/panel/<feature>/` alineada con
   el módulo backend homónimo + script extraído con el patrón canónico de
@@ -456,3 +457,15 @@ El badge verde indica una versión publicada; amarillo identifica cambios de `de
 
 ### Razonamiento Max en Codex (2026-10-16)
 Los ajustes generales y el compositor de Codex admiten `max` como nivel independiente de `xhigh` (Extra). La normalización, los metadatos del chat y los envíos inmediatos o en cola conservan el valor exacto. No se modifica la elección guardada en conversaciones anteriores.
+
+### Scroll continuo de Files
+
+La tabla y cuadrícula de `FilesWorkspace` cargan bloques de 50 entradas mediante
+`/api/files/list` al acercarse al final de su contenedor. `file-pages.ts` conserva
+las filas cargadas al añadir otro bloque o reintentar un fallo y descarta respuestas
+de otra carpeta, target, pestaña, orden o filtro. `listing.ts` añade nodos sin
+reemplazar los anteriores, conserva la selección y llena automáticamente vistas
+altas; elimina listeners al cerrar el módulo. La tabla declara `data-infinite-files`
+para excluirse del paginador de tablas heredadas. Orden y ocultos se aplican en el
+servidor antes de dividir el directorio; los resultados de búsqueda ya recibidos
+se incorporan por bloques al mismo scroll.

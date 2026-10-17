@@ -12,6 +12,7 @@ import { getExecutor, LOCAL_TARGET_ID, mapFsError } from "../../../shared/execut
 import { filesystemService } from "../services/index.js";
 import { permissionsService } from "../services/index.js";
 import { ALLOWED_BASES } from "../services/filesystem.service.js";
+import { directoryPage } from "../services/directory-page.js";
 import { FILE_ACTION_IDS, canAccessPath } from "../../../shared/auth/role-permissions.js";
 import {
   readCachedDir, writeCachedDir,
@@ -24,6 +25,12 @@ import {
 const listSchema = z.object({
   path: z.string().min(1),
   withDirSize: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  sortKey: z.enum(["name", "type", "size", "modified"]).optional(),
+  sortDir: z.enum(["asc", "desc"]).optional(),
+  showHidden: z.enum(["true", "false"]).optional(),
+  query: z.string().max(1000).optional(),
 });
 
 const statSchema = z.object({
@@ -100,14 +107,14 @@ export const browserController = {
    *  bounds drift from out-of-band changes. `withDirSize=true` skips cache
    *  because per-dir size requires a recursive walk we don't store. */
   list: asyncHandler(async (req: Request, res: Response) => {
-    const parsed = listSchema.parse({ path: req.query["path"], withDirSize: req.query["withDirSize"] });
+    const parsed = listSchema.parse(req.query);
     const withDirSize = parsed.withDirSize === "true" || parsed.withDirSize === "1";
     const executor = getExecutor(req);
 
     if (!withDirSize) {
-      const cached = await readCachedDir<ReturnType<typeof normalizeListEntry>>(executor, parsed.path);
+      const cached = await readCachedDir<NonNullable<ReturnType<typeof normalizeListEntry>>>(executor, parsed.path);
       if (cached) {
-        res.json({ ok: true, path: parsed.path, data: cached, fromCache: true });
+        res.json({ ok: true, path: parsed.path, ...directoryPage(cached, parsed), fromCache: true });
         return;
       }
     }
@@ -149,7 +156,7 @@ export const browserController = {
       // Fire-and-forget; never blocks the response.
       void writeCachedDir(executor, parsed.path, data);
     }
-    res.json({ ok: true, path: parsed.path, data });
+    res.json({ ok: true, path: parsed.path, ...directoryPage(data, parsed) });
   }),
 
   /** GET /api/files/search?path=/var/www&q=foo — recursive search by name.

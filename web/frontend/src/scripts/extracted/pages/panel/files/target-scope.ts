@@ -1,7 +1,7 @@
 // Files page — target-scope submodule (code-move from index-script1.ts; no behavior change).
 import { commitActiveTabFromEditor, getEditorApi, hideEditorView, openEditorUnsavedDialog, renderTabs, saveAllDirtyTabs, syncToolbarState } from "./editor";
 import { t } from "./i18n";
-import { clearSelection } from "./listing";
+import { cancelDirectoryListing, clearSelection } from "./listing";
 import { ensureFileAccessPolicy, invalidateFileAccessPolicy } from "./perm-gating";
 import { loadFilesManagers, renderFilesManagerTabs } from "./manager-tabs";
 import { FILES_CURRENT_PATH_KEY, FILES_TARGET_SCOPE_KEY, S, navHistory, dirSizeKnown, gitRepoCache, type OpenTab } from "./state";
@@ -64,6 +64,7 @@ import { LOCAL_TARGET_SCOPE, api, resolveTargetScope } from "/scripts/extracted/
   }
 
   export function resetStateForTargetSwitch(): void {
+    cancelDirectoryListing();
     if (S.openTabs.some((tab) => tab.dirty) && S.activeTargetScope) {
       draftsByTarget.set(S.activeTargetScope, { tabs: S.openTabs.map((tab) => ({ ...tab })), activeTabPath: S.activeTabPath });
     }

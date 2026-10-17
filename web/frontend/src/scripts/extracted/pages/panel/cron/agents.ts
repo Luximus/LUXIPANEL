@@ -13,6 +13,7 @@ import {
 import { updateBulkBar, refreshBulkSelectors, syncAgentsSelectAllState, selectedAgents } from "./agent-bulk";
 import { openLogs } from "./logs";
 import { openDialog } from "/scripts/extracted/lib/dom.js";
+import { listClasses, wireListView } from "./list-view";
 
   // ---------------------------------------------------------------------------
   // AI agent jobs
@@ -208,7 +209,8 @@ import { openDialog } from "/scripts/extracted/lib/dom.js";
     }
     const pg = paginate(view, agentsPage);
     agentsPage = pg.page;
-    el.innerHTML = `<div class="grid gap-4 p-5 md:grid-cols-2 2xl:grid-cols-3">` + pg.slice.map((a) => {
+    const classes = listClasses("agents");
+    el.innerHTML = `<div role="list" class="${classes.collection}">` + pg.slice.map((a) => {
       const statusDot = a.running ? `<span class="text-amber-500">${t("agents.statusRunning", "● en ejecución")}</span>`
         : a.lastStatus === "ok" ? `<span class="text-emerald-500">${t("agents.statusOk", "● último OK")}</span>`
         : a.lastStatus === "error" ? `<span class="text-destructive">${t("agents.statusError", "● último error")}</span>`
@@ -223,27 +225,27 @@ import { openDialog } from "/scripts/extracted/lib/dom.js";
       const tagsBadge = (a.tags ?? []).length ? `<span class="text-muted-foreground">${(a.tags as string[]).map((t) => `#${esc(t)}`).join(" ")}</span>` : "";
       const prompt = esc((a.prompt || "").trim());
       return `
-      <article class="flex h-full flex-col rounded-2xl border border-border bg-gradient-to-br from-card via-card to-muted/10 p-4 shadow-sm transition-colors hover:border-primary/30 hover:bg-muted/20">
-        <div class="flex items-start gap-3">
+      <article role="listitem" class="${classes.entry}">
+        <div class="flex min-w-0 items-start gap-3">
           <label class="flex cursor-pointer items-center pt-0.5">
-          <input type="checkbox" class="agent-pick h-4 w-4 rounded border-input" data-id="${esc(a.id)}" ${selectedAgents.has(a.id) ? "checked" : ""} />
+          <input type="checkbox" aria-label="${esc(a.name)}" class="agent-pick h-4 w-4 rounded border-input" data-id="${esc(a.id)}" ${selectedAgents.has(a.id) ? "checked" : ""} />
         </label>
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <span class="truncate text-sm font-semibold">${esc(a.name)}</span>
             <span class="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${a.enabled ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}">${a.enabled ? t("jobs.statusActive", "Activo") : t("jobs.statusPaused", "Pausado")}</span>
           </div>
-          <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <div class="${classes.schedule}">
             ${a.schedule ? `<span class="inline-flex items-center rounded-full bg-primary/10 px-2 py-1 font-mono text-primary">${esc(a.schedule)}</span>` : `<span class="inline-flex items-center rounded-full bg-muted px-2 py-1 text-muted-foreground"><i class="ti ti-hand-click mr-1"></i>${t("agents.noSchedule", "sin programación")}</span>`}
             <span class="text-muted-foreground">${PROVIDER_LABELS[a.providerId] ?? a.providerId}${a.model ? " · " + esc(a.model) : ""}</span>
             ${modeBadge}
           </div>
         </div>
         </div>
-        <div class="mt-4 flex-1 rounded-xl border border-border/70 bg-muted/20 p-3">
-          <div class="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">${t("agents.labelInstructions", "Instrucciones")}</div>
-          <p class="max-h-16 overflow-hidden text-sm leading-5 text-foreground/90">${prompt || t("agents.noInstructions", "Sin instrucciones adicionales")}</p>
-          <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <div class="${classes.body}">
+          <div class="${classes.label}">${t("agents.labelInstructions", "Instrucciones")}</div>
+          <p class="${classes.text}" title="${prompt}">${prompt || t("agents.noInstructions", "Sin instrucciones adicionales")}</p>
+          <div class="${classes.metadata}">
             ${projBadge}
             ${catBadge}
             ${tagsBadge}
@@ -252,7 +254,7 @@ import { openDialog } from "/scripts/extracted/lib/dom.js";
             <span class="text-muted-foreground">${last}</span>
           </div>
         </div>
-        <div class="mt-4 flex items-center justify-end gap-1 border-t border-border/60 pt-3">
+        <div class="${classes.actions}">
           <button onclick="runAgent('${escapeJsAttr(a.id)}')" class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="${t("actions.runNow", "Ejecutar ahora")}"><i class="ti ti-player-play text-sm"></i></button>
           <button onclick="viewAgentLogs('${escapeJsAttr(a.id)}','${escapeJsAttr(a.name)}')" class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="${t("actions.logs", "Registros")}"><i class="ti ti-file-text text-sm"></i></button>
           <button onclick="toggleAgent('${escapeJsAttr(a.id)}')" class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="${a.enabled ? t("actions.pause", "Pausar") : t("actions.activate", "Activar")}"><i class="ti ti-player-${a.enabled ? "pause" : "play"} text-sm"></i></button>
@@ -356,6 +358,7 @@ import { openDialog } from "/scripts/extracted/lib/dom.js";
   onFilterChange(() => { agentsPage = 1; renderAgents(); });
 
   export function wireAgents() {
+    wireListView("agents", renderAgents);
     $("btn-new-agent")?.addEventListener("click", () => openAgentDialog());
     $("agent-close")?.addEventListener("click", () => dlg("dialog-agent")!.close());
     $("agent-cancel")?.addEventListener("click", () => dlg("dialog-agent")!.close());

@@ -2,6 +2,13 @@
 import {expect,it,vi} from "vitest";
 import {mountLegacyTablePages} from "./legacy-table-pages";
 import {DATATABLE_EVENTS as E} from "./datatable-events";
+it("leaves the Files infinite listing visible without adding pagination", () => {
+ const root=document.createElement('div');root.innerHTML='<table data-infinite-files><tbody id="file-tbody">'+Array.from({length:50},()=>'<tr><td>file</td></tr>').join('')+'</tbody></table>';document.body.append(root);
+ const dispose=mountLegacyTablePages(root,window);
+ expect(root.querySelector('[data-legacy-table-pages]')).toBeNull();
+ expect(root.querySelectorAll('tr:not([hidden])')).toHaveLength(50);
+ dispose();root.remove();
+});
 it("pages grouped rows without losing their headers, inputs or click handlers",()=>{
  document.documentElement.lang="es";const root=document.createElement("div");root.innerHTML='<table><tbody id="grouped"></tbody></table>';document.body.append(root);const tbody=root.querySelector('tbody')!;
  for(let group=0;group<11;group++){const header=document.createElement('tr');header.dataset.group=String(group);tbody.append(header);for(let i=0;i<5;i++){const row=document.createElement('tr');row.dataset.groupMember=String(group);row.innerHTML='<td><input value="initial"></td>';tbody.append(row);}}

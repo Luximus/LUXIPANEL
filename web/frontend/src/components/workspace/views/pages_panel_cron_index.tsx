@@ -21,6 +21,38 @@ import { getSession, canSeeSidebar } from "../view-context";
 import ModuleDepsBanner from "./components_ModuleDepsBanner";
 import ScheduleBuilder from "./components_cron_ScheduleBuilder";
 import { getPageMessages } from "../view-context";
+
+function CronListToolbar({ pane, selectAllId, messages }: {
+  pane: "jobs" | "agents";
+  selectAllId: string;
+  messages: { bulk: { selectAll: string }; views: { list: string; grid: string } };
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/10 px-5 py-2">
+      <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+        <input id={selectAllId} type="checkbox" className="h-4 w-4 rounded border-input" />
+        {messages.bulk.selectAll}
+      </label>
+      <div id={`${pane}-view-controls`} className="flex items-center gap-1">
+        {(["list", "grid"] as const).map((view) => (
+          <button
+            key={view}
+            type="button"
+            data-cron-view={view}
+            aria-controls={`${pane}-list`}
+            aria-pressed={view === "grid"}
+            aria-label={messages.views[view]}
+            title={messages.views[view]}
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-transparent px-2.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-pressed:border-primary/25 aria-pressed:bg-primary/10 aria-pressed:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            <i className={`ti ti-${view === "list" ? "list" : "grid-dots"} text-sm`} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function pages_panel_cron_index(props: any) {
   const context = useViewContext();
   const slots = splitSlots(props.children);
@@ -51,13 +83,6 @@ export default function pages_panel_cron_index(props: any) {
         {/* Module settings — reuses the panel navbar's "Configuración" action via the
         title-actions slot (canonical ViewSettingsModal pattern, like mail/files). */}
         <div slot="title-actions" className="flex min-w-0 items-center gap-2">
-          <h1
-            id="panel-topbar-title"
-            data-panel-title
-            className="shrink-0 text-base font-semibold text-foreground"
-          >
-            {c.pageTitle}
-          </h1>
           <ViewSettingsModal
             id="cron-settings-modal"
             title={c.settings.title}
@@ -240,16 +265,9 @@ export default function pages_panel_cron_index(props: any) {
 
         <div
           id="cron-workspace"
-          className="flex h-full min-h-0 flex-col bg-background"
+          className="@container flex h-full min-h-0 flex-col bg-background"
         >
           <div id="cron-scroll" className="min-h-0 flex-1 overflow-y-auto p-5">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold">{c.header.heading}</h2>
-              <p className="text-sm text-muted-foreground">
-                {c.header.subheading}
-              </p>
-            </div>
-
             {/** Generic system-deps banner: covers the "cron not installed" state.
          The check hits GET /api/system-deps/cron; the install goes through the
          cron module's own POST /api/cron/install (extra runner setup). */}
@@ -293,13 +311,6 @@ export default function pages_panel_cron_index(props: any) {
               </div>
             </div>
 
-            {isolatedCronView && (
-              <Fragment>
-                <h2 className="mb-4 text-base font-semibold text-foreground">
-                  {cronView === "agents" ? c.tabs.agents : c.tabs.jobs}
-                </h2>
-              </Fragment>
-            )}
             <div
               className={
                 isolatedCronView
@@ -334,15 +345,7 @@ export default function pages_panel_cron_index(props: any) {
                   id="cron-jobs-pane"
                   className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden"
                 >
-                  <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-                    <div className="min-w-0 flex-1">
-                      <h2 className="text-base font-semibold">
-                        {c.jobsList.title}
-                      </h2>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {c.jobsList.description}
-                      </p>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
                     {isAdmin && (
                       <Fragment>
                         <label className="text-xs text-muted-foreground">
@@ -364,7 +367,15 @@ export default function pages_panel_cron_index(props: any) {
                       <i className="ti ti-plus mr-1"></i>
                       {c.header.btnNew}
                     </button>
+                    <input
+                      id="jobs-filter"
+                      type="search"
+                      aria-label={c.filters.search}
+                      placeholder={c.filters.searchPlaceholder}
+                      className="h-9 min-w-0 basis-48 flex-1 rounded-lg border border-input bg-background px-3 text-sm"
+                    />
                   </div>
+                  <CronListToolbar pane="jobs" selectAllId="jf-select-all" messages={c} />
                   <div
                     id="jobs-bulk"
                     className="mx-5 mt-4 hidden flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2"
@@ -397,22 +408,6 @@ export default function pages_panel_cron_index(props: any) {
                       {c.filters.clear}
                     </button>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        id="jf-select-all"
-                        type="checkbox"
-                        className="h-4 w-4"
-                      />
-                      {c.bulk.selectAll}
-                    </label>
-                    <input
-                      id="jobs-filter"
-                      type="search"
-                      placeholder={c.filters.searchPlaceholder}
-                      className="h-9 min-w-48 flex-1 rounded-lg border border-input bg-background px-3 text-sm"
-                    />
-                  </div>
                   <div id="jobs-list" className="min-h-40"></div>
                 </section>
               </Fragment>
@@ -421,137 +416,19 @@ export default function pages_panel_cron_index(props: any) {
               <Fragment>
                 <div id="cron-agents-pane" className="hidden space-y-6">
                   <section className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-                    <div className="flex flex-wrap items-start gap-3 border-b border-border px-5 py-4">
-                      <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-semibold">
-                          {c.agents.listTitle}
-                        </h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {c.agents.listDescription}
-                        </p>
-                        <span className="mt-2 inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                          <i className="ti ti-server-cog text-xs"></i>
-                          {c.agents.panelHostBadge}
-                        </span>
-                      </div>
-                      <label
-                        title={c.bulk.selectAll}
-                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs text-muted-foreground hover:bg-accent"
-                      >
-                        <input
-                          id="af-select-all"
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-input"
-                        />
-                        {c.bulk.selectAll}
-                      </label>
-                      <button
-                        id="btn-new-agent"
-                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-                      >
-                        <i className="ti ti-plus text-sm"></i>
-                        {c.agents.btnNew}
-                      </button>
-                    </div>
-
-                    <div
-                      id="agents-bulk"
-                      className="mx-5 mt-4 hidden flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2"
-                    >
-                      <span className="text-xs font-medium">
-                        <span id="bulk-count">0</span> {c.bulk.selected}
-                      </span>
-                      <select
-                        id="bulk-category"
-                        className="h-8 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
-                      >
-                        <option value="">{c.bulk.category}</option>
-                      </select>
-                      <details id="bulk-tags-dd" className="relative">
-                        <summary className="flex h-8 cursor-pointer select-none list-none items-center gap-1 rounded-lg border border-input bg-background px-2 text-xs">
-                          <span id="bulk-tags-label">{c.bulk.tags}</span>
-                          <i className="ti ti-chevron-down text-xs"></i>
-                        </summary>
-                        <div
-                          id="bulk-tags"
-                          className="absolute left-0 top-9 z-20 max-h-48 w-56 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
-                        ></div>
-                      </details>
-                      <select
-                        id="bulk-mode"
-                        className="h-8 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
-                      >
-                        <option value="">{c.bulk.mode}</option>
-                        <option value="single">{c.filters.single}</option>
-                        <option value="multi">{c.filters.multi}</option>
-                      </select>
-                      <details id="bulk-projects-dd" className="relative">
-                        <summary className="flex h-8 cursor-pointer select-none list-none items-center gap-1 rounded-lg border border-input bg-background px-2 text-xs">
-                          <span>{c.bulk.projects}</span>
-                          <i className="ti ti-chevron-down text-xs"></i>
-                        </summary>
-                        <div
-                          id="bulk-projects"
-                          data-remove-label={c.bulk.removeProjects}
-                          className="absolute left-0 top-9 z-20 max-h-48 w-72 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
-                        ></div>
-                      </details>
-                      <select
-                        id="bulk-provider"
-                        className="h-8 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
-                      >
-                        <option value="">{c.bulk.provider}</option>
-                      </select>
-                      <select
-                        id="bulk-model"
-                        className="h-8 max-w-40 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
-                      >
-                        <option value="">{c.bulk.model}</option>
-                      </select>
-                      <button
-                        id="bulk-apply"
-                        type="button"
-                        className="h-8 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-                      >
-                        {c.bulk.apply}
-                      </button>
-                      <span className="mx-1 h-5 w-px bg-border"></span>
-                      <button
-                        id="bulk-enable"
-                        type="button"
-                        className="h-8 rounded-lg border border-border px-2.5 text-xs hover:bg-accent"
-                      >
-                        {c.bulk.enable}
-                      </button>
-                      <button
-                        id="bulk-pause"
-                        type="button"
-                        className="h-8 rounded-lg border border-border px-2.5 text-xs hover:bg-accent"
-                      >
-                        {c.bulk.pause}
-                      </button>
-                      <button
-                        id="bulk-delete"
-                        type="button"
-                        className="h-8 rounded-lg border border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10"
-                      >
-                        {c.bulk.delete}
-                      </button>
-                      <button
-                        id="bulk-clear"
-                        type="button"
-                        className="ml-auto h-8 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent"
-                        title={c.filters.clear}
-                      >
-                        <i className="ti ti-x"></i>
-                      </button>
-                    </div>
-
                     <div className="border-b border-border/70 px-5 py-4">
                       <div
                         id="agents-filters"
                         className="flex flex-wrap items-center gap-1.5"
                       >
+                        <button
+                          id="btn-new-agent"
+                          type="button"
+                          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                        >
+                          <i className="ti ti-plus text-sm"></i>
+                          {c.agents.btnNew}
+                        </button>
                         <select
                           id="af-category"
                           className="h-9 max-w-36 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
@@ -670,12 +547,110 @@ export default function pages_panel_cron_index(props: any) {
                       </div>
                     </div>
 
+                    <CronListToolbar pane="agents" selectAllId="af-select-all" messages={c} />
+                    <div
+                      id="agents-bulk"
+                      className="mx-5 mt-4 hidden flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2"
+                    >
+                      <span className="text-xs font-medium">
+                        <span id="bulk-count">0</span> {c.bulk.selected}
+                      </span>
+                      <select
+                        id="bulk-category"
+                        className="h-8 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
+                      >
+                        <option value="">{c.bulk.category}</option>
+                      </select>
+                      <details id="bulk-tags-dd" className="relative">
+                        <summary className="flex h-8 cursor-pointer select-none list-none items-center gap-1 rounded-lg border border-input bg-background px-2 text-xs">
+                          <span id="bulk-tags-label">{c.bulk.tags}</span>
+                          <i className="ti ti-chevron-down text-xs"></i>
+                        </summary>
+                        <div
+                          id="bulk-tags"
+                          className="absolute left-0 top-9 z-20 max-h-48 w-56 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
+                        ></div>
+                      </details>
+                      <select
+                        id="bulk-mode"
+                        className="h-8 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
+                      >
+                        <option value="">{c.bulk.mode}</option>
+                        <option value="single">{c.filters.single}</option>
+                        <option value="multi">{c.filters.multi}</option>
+                      </select>
+                      <details id="bulk-projects-dd" className="relative">
+                        <summary className="flex h-8 cursor-pointer select-none list-none items-center gap-1 rounded-lg border border-input bg-background px-2 text-xs">
+                          <span>{c.bulk.projects}</span>
+                          <i className="ti ti-chevron-down text-xs"></i>
+                        </summary>
+                        <div
+                          id="bulk-projects"
+                          data-remove-label={c.bulk.removeProjects}
+                          className="absolute left-0 top-9 z-20 max-h-48 w-72 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl"
+                        ></div>
+                      </details>
+                      <select
+                        id="bulk-provider"
+                        className="h-8 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
+                      >
+                        <option value="">{c.bulk.provider}</option>
+                      </select>
+                      <select
+                        id="bulk-model"
+                        className="h-8 max-w-40 rounded-lg border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
+                      >
+                        <option value="">{c.bulk.model}</option>
+                      </select>
+                      <button
+                        id="bulk-apply"
+                        type="button"
+                        className="h-8 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                      >
+                        {c.bulk.apply}
+                      </button>
+                      <span className="mx-1 h-5 w-px bg-border"></span>
+                      <button
+                        id="bulk-enable"
+                        type="button"
+                        className="h-8 rounded-lg border border-border px-2.5 text-xs hover:bg-accent"
+                      >
+                        {c.bulk.enable}
+                      </button>
+                      <button
+                        id="bulk-pause"
+                        type="button"
+                        className="h-8 rounded-lg border border-border px-2.5 text-xs hover:bg-accent"
+                      >
+                        {c.bulk.pause}
+                      </button>
+                      <button
+                        id="bulk-delete"
+                        type="button"
+                        className="h-8 rounded-lg border border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10"
+                      >
+                        {c.bulk.delete}
+                      </button>
+                      <button
+                        id="bulk-clear"
+                        type="button"
+                        className="ml-auto h-8 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent"
+                        title={c.filters.clear}
+                      >
+                        <i className="ti ti-x"></i>
+                      </button>
+                    </div>
+
                     <div id="agents-list" className="min-h-40">
                       <div className="px-5 py-8 text-center text-sm text-muted-foreground">
                         {c.agents.loading}
                       </div>
                     </div>
                     <p className="px-5 pb-5 pt-2 text-xs text-muted-foreground">
+                      <span className="mb-2 flex items-center gap-1">
+                        <i className="ti ti-server-cog" aria-hidden="true"></i>
+                        {c.agents.panelHostBadge}
+                      </span>
                       <i className="ti ti-info-circle mr-1"></i>
                       {c.agents.permissionsHint}
                       <a

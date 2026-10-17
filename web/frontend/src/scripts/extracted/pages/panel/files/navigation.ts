@@ -1,13 +1,12 @@
 // Files page — navigation submodule (code-move from index-script1.ts; no behavior change).
 import { updateGitButtonState } from "./git";
 import { fmt, t } from "./i18n";
-import { clearSelection, hydrateDirSizes, renderFiles, setViewMode } from "./listing";
+import { cancelDirectoryListing, clearSelection, loadDirectoryListing, setViewMode } from "./listing";
 import { emitFilesPathChanged, getActiveFilesManager, persistFilesManagers, renderFilesManagerTabs } from "./manager-tabs";
 import { escapeAttr, escapeHtml } from "./paths";
 import { ensureFileAccessPolicy, filesCan } from "./perm-gating";
 import { exitContentResults } from "./search-replace";
 import { S, dirSizeKnown, navHistory, selected } from "./state";
-import { fetchFilesList } from "./list-request";
 import { updateBackButton } from "./target-scope";
 import { setRouteLoading, setStatus, showToast } from "./toast";
 import { api } from "/scripts/extracted/lib/api-client.js?v=20260506a";
@@ -116,8 +115,13 @@ import { api } from "/scripts/extracted/lib/api-client.js?v=20260506a";
     void fetchPathSuggest(input.value);
   }
 
+  let navigationEpoch = 0;
   (window as any).navigate = async (path: string, opts: { skipHistory?: boolean } = {}) => {
+    const epoch = ++navigationEpoch;
+    const target = S.activeTargetScope, manager = S.activeFilesManagerId;
+    cancelDirectoryListing();
     await ensureFileAccessPolicy();
+    if (epoch !== navigationEpoch || target !== S.activeTargetScope || manager !== S.activeFilesManagerId) return;
     // Navigating (breadcrumb, editable path bar, openProject…) leaves the
     // projects view back to the file list — the only toolbar exit while the
     // view buttons are hidden in projects mode.
@@ -129,6 +133,7 @@ import { api } from "/scripts/extracted/lib/api-client.js?v=20260506a";
     }
     updateBackButton();
     S.currentPath = path;
+    S.isSearchMode = false;
     // Drop folder sizes from the previous directory; cancel in-flight hydration.
     dirSizeKnown.clear();
     S.dirSizeNav++;
@@ -141,13 +146,15 @@ import { api } from "/scripts/extracted/lib/api-client.js?v=20260506a";
     try {
       // Folder sizes are filled separately via hydrateDirSizes() (cache +
       // lazy du), so we omit withDirSize and let the listing use its Redis cache.
-      res = await fetchFilesList(path);
+      res = await loadDirectoryListing();
     } catch {
       showToast(t("toasts.routeLoadNetworkError", "Error de red al cargar ruta"), false);
       setStatus(t("status.loadError", "Error al cargar"));
       setRouteLoading(false);
       return;
     }
+    if (epoch !== navigationEpoch || target !== S.activeTargetScope || manager !== S.activeFilesManagerId) return;
+    if (res?.code === "STALE_FILES_LIST") { setRouteLoading(false); return; }
     if (!res.ok) {
       let errorMsg = res.error ?? t("toasts.listError2", "No se pudo listar");
       // Path denied (outside the group's allowed paths / no permission): instead
@@ -179,13 +186,8 @@ import { api } from "/scripts/extracted/lib/api-client.js?v=20260506a";
       return;
     }
 
-    const payload = res.data as any;
-    S.currentEntries = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
-    S.isSearchMode = false;
-    renderFiles(S.currentEntries);
     // Enable/disable the Git button for this directory (cached, non-blocking).
     void updateGitButtonState(path);
-    setStatus(fmt(S.currentEntries.length === 1 ? t("status.itemCountOne", "{n} elemento") : t("status.itemCountMany", "{n} elementos"), { n: S.currentEntries.length }));
     const activeManager = getActiveFilesManager();
     if (activeManager) {
       activeManager.path = path;

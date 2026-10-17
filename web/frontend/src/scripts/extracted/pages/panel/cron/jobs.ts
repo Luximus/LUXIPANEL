@@ -9,6 +9,7 @@ import { getTextFilter, onFilterChange } from "./text-filter";
 import { setupBuilder, getSchedule, setScheduleAdvanced, resetBuilder } from "./schedule-builder";
 import { openLogs } from "./logs";
 import { openDialog } from "/scripts/extracted/lib/dom.js";
+import { listClasses, wireListView } from "./list-view";
 
   let jobsPage = 1;
   (window as any).jobsGoPage = (p: number) => { jobsPage = p; renderJobs(); };
@@ -87,17 +88,18 @@ import { openDialog } from "/scripts/extracted/lib/dom.js";
     }
     const pg = paginate(view, jobsPage);
     jobsPage = pg.page;
-    el.innerHTML = `<div class="grid gap-4 p-5 md:grid-cols-2 2xl:grid-cols-3">` + pg.slice.map((j) => {
+    const classes = listClasses("jobs");
+    el.innerHTML = `<div role="list" class="${classes.collection}">` + pg.slice.map((j) => {
       const name = esc(j.comment || j.command);
       const logsBtn = j.managed ? `<button data-job-action="logs" data-id="${esc(j.id)}" class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="${t("actions.logs", "Registros")}"><i class="ti ti-file-text text-sm"></i></button>` : "";
       const managedBadge = j.managed
         ? `<span class="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-500">LUXIPANEL</span>`
         : "";
       return `
-      <article class="flex h-full flex-col rounded-2xl border border-border bg-gradient-to-br from-card via-card to-muted/10 p-4 shadow-sm transition-colors hover:border-primary/30 hover:bg-muted/20">
-        <div class="flex items-start gap-3">
+      <article role="listitem" class="${classes.entry}">
+        <div class="flex min-w-0 items-start gap-3">
           <label class="flex cursor-pointer items-center pt-0.5">
-          <input type="checkbox" class="job-pick h-4 w-4 rounded border-input" data-id="${esc(j.id)}" ${selectedJobs.has(j.id) ? "checked" : ""} />
+          <input type="checkbox" aria-label="${name}" class="job-pick h-4 w-4 rounded border-input" data-id="${esc(j.id)}" ${selectedJobs.has(j.id) ? "checked" : ""} />
         </label>
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
@@ -106,17 +108,17 @@ import { openDialog } from "/scripts/extracted/lib/dom.js";
             <span class="shrink-0 inline-flex items-center rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">${esc(j.user || selectedLinuxUser() || "")}</span>
             ${managedBadge}
           </div>
-          <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <div class="${classes.schedule}">
             <span class="inline-flex items-center rounded-full bg-primary/10 px-2 py-1 font-mono text-primary">${esc(j.schedule)}</span>
             <span class="truncate text-muted-foreground">${esc(j.id)}</span>
           </div>
         </div>
         </div>
-        <div class="mt-4 flex-1 rounded-xl border border-border/70 bg-muted/20 p-3">
-          <div class="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">${t("jobs.labelCommand", "Comando")}</div>
-          <code class="block break-all text-xs leading-5 text-foreground/90">${esc(j.command)}</code>
+        <div class="${classes.body}">
+          <div class="${classes.label}">${t("jobs.labelCommand", "Comando")}</div>
+          <code class="${el.dataset.view === "list" ? classes.text : "block break-all text-xs leading-5 text-foreground/90"}" title="${esc(j.command)}">${esc(j.command)}</code>
         </div>
-        <div class="mt-4 flex items-center justify-end gap-1 border-t border-border/60 pt-3">
+        <div class="${classes.actions}">
           ${logsBtn}
           <button data-job-action="assistant" data-id="${esc(j.id)}" class="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" title="${t("ai.sendJob", "Enviar al Asistente")}"><i class="ti ti-sparkles text-sm"></i></button>
           <button data-job-action="toggle" data-id="${esc(j.id)}" class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="${j.enabled ? t("actions.pause", "Pausar") : t("actions.activate", "Activar")}"><i class="ti ti-player-${j.enabled ? "pause" : "play"} text-sm"></i></button>
@@ -234,6 +236,7 @@ import { openDialog } from "/scripts/extracted/lib/dom.js";
   }
 
   export function wireJobs() {
+    wireListView("jobs", renderJobs);
     $("cron-user")?.addEventListener("change", () => { selectedJobs.clear(); jobsPage = 1; void loadJobs(); });
     $("jobs-filter")?.addEventListener("input", () => { jobsPage = 1; renderJobs(); });
     $("jobs-list")?.addEventListener("click", (event) => {

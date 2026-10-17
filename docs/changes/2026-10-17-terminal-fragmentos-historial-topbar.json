@@ -1,0 +1,7 @@
+{
+  "title": "Fragmentos e historial en la barra superior de Terminal",
+  "changes": [
+    "En escritorio, Fragmentos e Historial se muestran en la barra superior sobre el panel lateral, liberando espacio para su contenido.",
+    "Los controles de la terminal quedan a la izquierda de un separador alineado con el panel lateral."
+  ]
+}

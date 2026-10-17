@@ -16,3 +16,10 @@ export function fetchFilesList(path: string): Promise<any> {
   pending.set(key, request);
   return request;
 }
+
+export function fetchFilesPage(path: string, offset: number, limit: number, options: { sortKey: string; sortDir: number; showHidden: boolean; query: string }): Promise<any> {
+  return api.get<any>("/api/files/list", { params: {
+    path, offset: String(offset), limit: String(limit), sortKey: options.sortKey,
+    sortDir: options.sortDir === -1 ? "desc" : "asc", showHidden: String(options.showHidden), query: options.query,
+  } });
+}

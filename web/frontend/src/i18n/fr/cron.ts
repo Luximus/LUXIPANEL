@@ -1,4 +1,8 @@
 const cron = {
+  "views": {
+    "list": "Affichage liste",
+    "grid": "Affichage grille"
+  },
   "pageTitle": "Cron",
   "settings": {
     "title": "Paramètres de Cron",

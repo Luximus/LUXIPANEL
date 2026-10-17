@@ -291,8 +291,8 @@ import "./context-menu";
         }
         if (!S.searchQuery) {
           S.isSearchMode = false;
-          renderFiles(S.currentEntries);
-          if (S.currentPath) setStatus(fmt(S.currentEntries.length === 1 ? t("status.itemCountOne", "{n} elemento") : t("status.itemCountMany", "{n} elementos"), { n: S.currentEntries.length }));
+          if (S.currentPath) void (window as any).navigate(S.currentPath, { skipHistory: true });
+          else renderFiles(S.currentEntries);
           return;
         }
         S.searchDebounce = setTimeout(() => void runNameSearch(S.searchQuery), 300);

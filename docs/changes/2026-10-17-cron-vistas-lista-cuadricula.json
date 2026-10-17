@@ -1,0 +1,8 @@
+{
+  "title": "Cron con vistas de lista y cuadrícula",
+  "changes": [
+    "Tareas y Agentes IA permiten alternar entre lista y cuadrícula, conservando los filtros, la página y la selección.",
+    "Seleccionar todo aparece debajo de los filtros, junto al selector de vista, y cada pestaña recuerda la vista elegida.",
+    "Se retiraron los encabezados repetidos y la franja de actualización para mostrar las tareas más arriba."
+  ]
+}

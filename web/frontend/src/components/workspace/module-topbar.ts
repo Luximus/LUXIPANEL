@@ -77,6 +77,7 @@ export function mountModuleTopbar(root: HTMLElement, drawer: HTMLElement): () =>
     ? window.matchMedia("(min-width: 1025px)") : null;
   let terminalRow: HTMLElement | null = null;
   let terminalHome: Comment | null = null;
+  let terminalSidebarTabs: HTMLElement | null = null;
   const restoreTerminal = () => {
     if (terminalRow && terminalHome?.parentNode) terminalHome.replaceWith(terminalRow);
     terminalRow?.removeAttribute("data-terminal-header-toolbar");
@@ -97,7 +98,9 @@ export function mountModuleTopbar(root: HTMLElement, drawer: HTMLElement): () =>
         tabsSlot.replaceChildren(terminalRow);
       }
     }
-    const tabs = terminalRow ? [] : primaryTabs(root);
+    const tabs = terminalRow
+      ? [...root.querySelectorAll<HTMLButtonElement>("[data-terminal-sidebar-tab]")]
+      : desktopTerminal ? [] : primaryTabs(root);
     const group = tabs[0]?.parentElement;
     const actions = [...root.querySelectorAll<HTMLButtonElement>(ACTION_SELECTOR)]
       .filter((button) => isModuleControl(button) && visibleInModule(button, root));
@@ -118,12 +121,23 @@ export function mountModuleTopbar(root: HTMLElement, drawer: HTMLElement): () =>
     sourceRow?.setAttribute("data-module-topbar-source-row", "");
 
     const focusedTabIndex = tabsSlot.contains(document.activeElement)
-      ? [...tabsSlot.querySelectorAll("button")].indexOf(document.activeElement as HTMLButtonElement)
+      ? [...tabsSlot.querySelectorAll('[data-module-header-proxy="tab"]')].indexOf(document.activeElement as HTMLButtonElement)
       : -1;
     const tabButtons = tabs.map((button) => proxy(button, "tab"));
-    if (!terminalRow) tabsSlot.replaceChildren(...tabButtons);
+    if (terminalRow) {
+      if (!terminalSidebarTabs) {
+        terminalSidebarTabs = document.createElement("div");
+        terminalSidebarTabs.className = "lxp-terminal-header-sidebar-tabs";
+        terminalSidebarTabs.setAttribute("role", "tablist");
+        tabsSlot.append(terminalSidebarTabs);
+      }
+      terminalSidebarTabs.replaceChildren(...tabButtons);
+    } else {
+      terminalSidebarTabs = null;
+      tabsSlot.replaceChildren(...tabButtons);
+    }
     if (focusedTabIndex >= 0) tabButtons[focusedTabIndex]?.focus();
-    tabsSlot.setAttribute("role", tabButtons.length ? "tablist" : "presentation");
+    tabsSlot.setAttribute("role", !terminalRow && tabButtons.length ? "tablist" : "presentation");
     tabsSlot.onkeydown = (event) => {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       const index = tabButtons.indexOf(document.activeElement as HTMLButtonElement);

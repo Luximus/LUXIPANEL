@@ -3,7 +3,7 @@
 // actions (delete / download / compress).
 import { fmt, t } from "./i18n";
 import { stageSelectedForAi } from "./ai-selection";
-import { clearSelection, setupColumnSorting, updateBulkBar } from "./listing";
+import { bindFileScroll, clearSelection, setupColumnSorting, updateBulkBar } from "./listing";
 import { scanProjects } from "./projects";
 import { S, selected } from "./state";
 import { setStatus, showToast } from "./toast";
@@ -11,6 +11,7 @@ import { api, uploadFile } from "/scripts/extracted/lib/api-client.js?v=20260506
 import { openConfirm } from "/scripts/extracted/lib/confirm.js";
 
 export function bindListing() {
+    bindFileScroll();
     // ── Projects ───────────────────────────────────────────────
     // All scan/rescan triggers (toolbar, mobile menu, in-view rescan, empty CTA)
     // funnel into scanProjects().

@@ -11,7 +11,7 @@ export function mountLegacyTablePages(root: HTMLElement, events: Window) {
   const refresh=()=>{
     for(const table of root.querySelectorAll<HTMLTableElement>("table")){
       const id=table.tBodies[0]?.id;
-      if(table.closest("[data-table-id]") || !id || table.closest('[data-module-id="docs-hosting-api"]'))continue;
+      if(table.closest("[data-table-id], [data-infinite-files]") || !id || table.closest('[data-module-id="docs-hosting-api"]'))continue;
       const rows=Array.from(table.tBodies[0].querySelectorAll<HTMLTableRowElement>(":scope > tr")).filter(row=>!row.dataset.group);
       let state=tables.get(table);
       if(!state){

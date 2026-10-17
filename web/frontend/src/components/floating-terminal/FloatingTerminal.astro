@@ -24,7 +24,7 @@ const isEmbedded = Astro.url.searchParams.get("embed") === "1";
 import { DIALOG_CHROME } from "@/lib/ui-classes";
 ---
 
-<link rel="stylesheet" href="/scripts/extracted/components/floating-terminal/floating-terminal.css?v=20261014-header-scroll" />
+<link rel="stylesheet" href="/scripts/extracted/components/floating-terminal/floating-terminal.css?v=20261017-sidebar-topbar" />
 
 {!isEmbedded && <FloatingTerminalDrawer client:load locale={locale} isAdmin={isAdmin} />}
 

@@ -14,26 +14,45 @@ it("moves live terminal controls into the header and restores them for mobile an
   Object.defineProperty(media, "matches", { get: () => desktop });
   vi.spyOn(window, "matchMedia").mockReturnValue(media);
   document.body.innerHTML = `<div id="drawer"><header><div data-module-header-tabs-slot></div><div data-module-header-actions-slot></div></header>
-    <div id="module" data-internal-module="terminal"><section><div data-terminal-toolbar><div id="tabs-container" role="tablist"><div role="tab" id="tab-1">Terminal 1</div></div><button id="btn-new-tab">+</button><button id="terminal-status">Connected</button><button id="btn-reconnect" class="hidden">Reconnect</button></div><div id="terminal-container"></div></section><button id="btn-new-snippet">Snippet</button></div></div>`;
+    <div id="module" data-internal-module="terminal"><section><div data-terminal-toolbar><div id="tabs-container" role="tablist"><div role="tab" id="tab-1">Terminal 1</div></div><button id="btn-new-tab">+</button><button id="terminal-status">Connected</button><button id="btn-reconnect" class="hidden">Reconnect</button></div><div id="terminal-container"></div></section><aside><div data-terminal-sidebar-tabs><button data-terminal-sidebar-tab="snippets" class="text-primary">Fragmentos</button><button data-terminal-sidebar-tab="history">Historial</button></div><button id="btn-new-snippet">Snippet</button></aside></div></div>`;
   const drawer = document.querySelector<HTMLElement>("#drawer")!;
   const module = document.querySelector<HTMLElement>("#module")!;
   const row = module.querySelector<HTMLElement>("[data-terminal-toolbar]")!;
   const tabs = row.querySelector("#tabs-container")!;
   const create = vi.fn();
   row.querySelector("#btn-new-tab")!.addEventListener("click", create);
+  const sidebar = module.querySelector<HTMLElement>("[data-terminal-sidebar-tabs]")!;
+  sidebar.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      sidebar.querySelectorAll("button").forEach((tab) => tab.classList.toggle("text-primary", tab === button));
+    });
+  });
   const dispose = mountModuleTopbar(module, drawer);
   expect(drawer.querySelector("header [data-terminal-toolbar]")).toBe(row);
   expect(drawer.querySelectorAll("#terminal-status")).toHaveLength(1);
   drawer.querySelector<HTMLButtonElement>("header #btn-new-tab")!.click();
   expect(create).toHaveBeenCalledOnce();
+  expect(sidebar.hasAttribute("data-module-topbar-source")).toBe(true);
+  const headerTabs = () => [...drawer.querySelectorAll<HTMLButtonElement>('.lxp-terminal-header-sidebar-tabs button')];
+  expect(headerTabs().map((tab) => tab.textContent)).toEqual(["Fragmentos", "Historial"]);
+  headerTabs()[0].focus();
+  headerTabs()[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+  await vi.advanceTimersByTimeAsync(100);
+  expect(headerTabs()[1].getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(headerTabs()[1]);
+  const newTab = row.querySelector<HTMLButtonElement>("#btn-new-tab")!;
+  newTab.focus();
   tabs.insertAdjacentHTML("beforeend", '<div role="tab" id="tab-2">Terminal 2</div>');
   module.querySelector("#btn-new-snippet")!.textContent = "New snippet";
   await vi.advanceTimersByTimeAsync(100);
   expect(drawer.querySelector("header #tab-2")).not.toBeNull();
-  expect(drawer.querySelectorAll("header [data-module-header-proxy]")).toHaveLength(1);
+  expect(drawer.querySelectorAll("header [data-module-header-proxy]")).toHaveLength(3);
+  expect(document.activeElement).toBe(newTab);
   desktop = false;
   media.dispatchEvent(new Event("change"));
   expect(module.querySelector("[data-terminal-toolbar]")).toBe(row);
+  expect(sidebar.hasAttribute("data-module-topbar-source")).toBe(false);
+  expect(headerTabs()).toHaveLength(0);
   const mobileHome = document.createComment("mobile-home");
   row.before(mobileHome);
   const mobileRail = document.createElement("aside");
@@ -48,10 +67,12 @@ it("moves live terminal controls into the header and restores them for mobile an
   mobileRail.remove();
   await vi.advanceTimersByTimeAsync(100);
   expect(drawer.querySelector("header [data-terminal-toolbar]")).toBe(row);
+  expect(headerTabs()[1].getAttribute("aria-selected")).toBe("true");
   dispose();
   expect(module.querySelector("section > [data-terminal-toolbar]")).toBe(row);
   expect(row.nextElementSibling?.id).toBe("terminal-container");
   expect(drawer.querySelector("header #terminal-status")).toBeNull();
+  expect(sidebar.hasAttribute("data-module-topbar-source")).toBe(false);
 });
 
 it("shows the Users tabs and actions in the header while keeping original handlers and IDs", async () => {

@@ -89,7 +89,7 @@ import { SCRIPT_INIT_COOLDOWN_MS } from "/scripts/extracted/lib/script-init.js";
     if (!root) return;
     if (root !== lastBoundRoot) {
       lastBoundRoot = root;
-    watchModuleData(["cron/jobs"], () => loadJobs(), root);
+      watchModuleData(["cron/jobs"], () => loadJobs(), root, { showStatus: false });
       wire();
       initLastAt = 0;
     }

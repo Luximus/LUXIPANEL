@@ -163,6 +163,7 @@ export const S = {
   treeExpansionMode: "multiple" as "multiple" | "single",
   searchQuery: "",
   currentEntries: [] as any[],
+  listingVersion: 0,
   // List-view column sorting.
   sortKey: "name" as "name" | "type" | "size" | "modified",
   sortDir: 1 as 1 | -1, // 1 = asc, -1 = desc

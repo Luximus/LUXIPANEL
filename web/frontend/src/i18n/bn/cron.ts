@@ -1,4 +1,8 @@
 const cron = {
+  "views": {
+    "list": "তালিকা দৃশ্য",
+    "grid": "গ্রিড দৃশ্য"
+  },
   "pageTitle": "Cron",
   "settings": {
     "title": "Cron সেটিংস",

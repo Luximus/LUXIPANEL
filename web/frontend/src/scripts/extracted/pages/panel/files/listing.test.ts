@@ -16,6 +16,7 @@ vi.mock("/scripts/extracted/lib/api-client.js", async (importOriginal) => ({
 
 import * as listing from "./listing";
 import { S, selected } from "./state";
+import { api } from "/scripts/extracted/lib/api-client.js";
 
 function makeFile(name: string, isDir = false): any {
   return {
@@ -49,6 +50,7 @@ function ensureListViewDom() {
 }
 
 beforeEach(() => {
+  listing.cancelDirectoryListing();
   ensureListViewDom();
   S.currentPath = "/etc";
   S.viewMode = "list";
@@ -56,11 +58,72 @@ beforeEach(() => {
   S.searchQuery = "";
   selected.clear();
   S.currentEntries = [];
+  S.sortKey = "name";
+  S.sortDir = 1;
+  S.showHidden = false;
+  S.contentResultsActive = false;
+  vi.mocked(api.get).mockReset();
 });
 
 afterEach(() => {
+  window.dispatchEvent(new Event("lxp:module:dispose"));
   vi.useRealTimers();
   document.body.innerHTML = "";
+});
+
+describe("continuous file scrolling", () => {
+  function scrollDom(mode: "list" | "grid" = "list") {
+    document.getElementById("view-list")!.outerHTML = '<div id="view-list"><table data-infinite-files><tbody id="file-tbody"></tbody></table><div data-files-more></div></div>';
+    document.getElementById("view-grid")!.innerHTML = '<div id="file-grid"></div><div data-files-more></div>';
+    S.viewMode = mode;
+    document.getElementById("view-list")!.classList.toggle("hidden", mode !== "list");
+    document.getElementById("view-grid")!.classList.toggle("hidden", mode !== "grid");
+    const view = document.getElementById(`view-${mode}`)!;
+    Object.defineProperties(view, { clientHeight: { value: 500 }, scrollHeight: { get: () => Math.max(50, S.currentEntries.length) * 60, configurable: true } });
+    listing.bindFileScroll();
+    return view;
+  }
+  function page(offset: number, count = 50, total = 120) {
+    return { ok: true, data: Array.from({ length: count }, (_, i) => makeFile(`file${offset + i}.txt`)), meta: { filesList: { total, nextOffset: offset + count, hasMore: offset + count < total } } } as any;
+  }
+  it.each(["list", "grid"] as const)("appends in %s mode at the bottom without replacing selected nodes", async (mode) => {
+    const view = scrollDom(mode);
+    vi.mocked(api.get).mockImplementation(async (_url, options: any) => page(Number(options.params.offset)));
+    await listing.loadDirectoryListing();
+    const selector = mode === "list" ? "#file-tbody tr" : ".grid-card";
+    expect(document.querySelectorAll(selector)).toHaveLength(50);
+    const first = document.querySelector<HTMLElement>(selector)!;
+    listing.toggleSelect("/etc/file0.txt", true);
+    view.scrollTop = 2440;
+    view.dispatchEvent(new Event("scroll"));
+    await vi.waitFor(() => expect(document.querySelectorAll(selector)).toHaveLength(100));
+    expect(document.querySelector(selector)).toBe(first);
+    expect(selected.has("/etc/file0.txt")).toBe(true);
+    expect(view.scrollTop).toBe(2440);
+    expect(vi.mocked(api.get).mock.calls.map(call => (call[1] as any).params.offset)).toEqual(["0", "50"]);
+  });
+  it("does not repeatedly retry a failed append and keeps the existing rows usable", async () => {
+    const view = scrollDom();
+    vi.mocked(api.get).mockResolvedValueOnce(page(0)).mockResolvedValueOnce({ ok: false, error: "offline" } as any).mockResolvedValueOnce(page(50, 10, 60));
+    await listing.loadDirectoryListing();
+    view.scrollTop = 2440;
+    view.dispatchEvent(new Event("scroll"));
+    await vi.waitFor(() => expect(view.querySelector("[data-files-more] button")).not.toBeNull());
+    view.dispatchEvent(new Event("scroll"));
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(document.querySelectorAll("#file-tbody tr")).toHaveLength(50);
+    view.querySelector<HTMLButtonElement>("[data-files-more] button")!.click();
+    await vi.waitFor(() => expect(document.querySelectorAll("#file-tbody tr")).toHaveLength(60));
+    expect(view.querySelector("[data-files-more]")!.classList.contains("hidden")).toBe(true);
+  });
+  it("fills a viewport that is taller than the first batch without requiring a scroll event", async () => {
+    const view = scrollDom();
+    Object.defineProperty(view, "scrollHeight", { value: 400 });
+    vi.mocked(api.get).mockResolvedValueOnce(page(0)).mockResolvedValueOnce(page(50, 10, 60));
+    await listing.loadDirectoryListing();
+    await vi.waitFor(() => expect(document.querySelectorAll("#file-tbody tr")).toHaveLength(60));
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("renderListView markup", () => {
