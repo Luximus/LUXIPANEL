@@ -107,7 +107,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
       </div>
     </header>
     <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <label className="grid gap-1 text-sm"><span>{t.project}</span><select className={marketControl} value={selected} disabled={!!projectId || !!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
+      <label className="grid gap-1 text-sm"><span>{t.project}</span><select className={marketControl} value={selected} disabled={(!!projectId && !onBack) || !!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
         <option value="">{t.chooseProject}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.parentId ? `${projectTitle(project.parentId)} / ` : ""}{project.title}</option>)}
       </select></label>
       <label className="grid gap-1 text-sm sm:col-span-2"><span>{t.search}</span><div className="relative"><Search className="pointer-events-none absolute start-3 top-3 text-muted-foreground" size={18} aria-hidden /><input type="search" value={filters.query} onChange={event => setFilters({ ...filters, query: event.target.value })} className={`${marketControl} w-full ps-10`} /></div></label>
@@ -132,9 +132,9 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
           <div className="flex items-start gap-3"><AgentAvatar agent={agent} size={44} /><div className="min-w-0 flex-1"><h3 className="break-words font-semibold">{agent.name}</h3><p className="text-sm text-muted-foreground">{agent.specialty || roles.find(role => role.id === agent.roleId)?.name || PROVIDER_META[agent.providerId]?.label}</p></div><span className="rounded-md bg-muted px-2 py-1 text-xs">{context?.membership === "inherited" ? t.inherited : assigned ? t.assigned : context?.membership === "removed" ? t.removed : t.unassigned}</span></div>
           {agent.description && <p className="whitespace-pre-wrap break-words text-sm">{agent.description}</p>}
           {!!agent.technologies?.length && <ul className="flex flex-wrap gap-1" aria-label={t.technologies}>{agent.technologies.map((tag, index) => <li key={`${tag}:${index}`} className="rounded bg-muted px-2 py-1 text-xs">{tag}</li>)}</ul>}
-          {inheritedFrom && <p className="text-sm text-muted-foreground">{formatAssistantMessage(t.inheritedHint, { project: projectTitle(inheritedFrom) })}</p>}
+          {inheritedFrom && <div className="text-sm text-muted-foreground"><p>{formatAssistantMessage(t.inheritedHint, { project: projectTitle(inheritedFrom) })}</p><button type="button" className={marketControl} disabled={!!pending} onClick={() => { setSelected(inheritedFrom); setAgents([]); setNotice(""); }}>{projectTitle(inheritedFrom)}</button></div>}
           <div className="mt-auto flex flex-wrap gap-2">
-            {context && agent.capabilities?.canAssign && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "add")}>{t.add}</button>}
+            {context && agent.capabilities?.canAssign && <button className={marketControl} disabled={!!pending || !!error} onClick={() => assigned ? setEditor(agent) : void mutate(agent, "add")}>{assigned ? t.configure : t.add}</button>}
             {selected && agent.capabilities?.canUpdateAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => setEditor(agent)}>{t.configure}</button>}
             {selected && agent.capabilities?.canRemoveAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "remove")}>{t.remove}</button>}
             {agent.capabilities?.canEditProfile ? <button className={marketControl} disabled={!!pending || !!error} onClick={() => setProfile(agent.id)}>{t.editProfile}</button> : <span className="self-center text-sm text-muted-foreground">{t.readOnly}</span>}
@@ -144,7 +144,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
     </div>}
     {editor && <ModalShell onClose={() => { if (!pending) setEditor(null); }} title={`${t.configure} · ${editor.name}`} description={t.assignmentHint} closeLabel={i18n.drawer.close}>
       {error && <p role="alert" className="px-4 pt-4 text-sm text-destructive">{error}</p>}
-      <AgentAssignmentEditor agent={editor} agents={agents} projects={projects} roles={roles} pending={!!pending} onSave={data => void mutate(editor, "configure", data)} />
+      <AgentAssignmentEditor agent={editor} agents={agents} projects={projects} roles={roles} pending={!!pending} onSave={data => void mutate(editor, editor.capabilities?.canUpdateAssignment ? "configure" : "add", data)} />
     </ModalShell>}
     {profile && <AgentProfileDialog agentId={profile === "new" ? undefined : profile} locale={locale} onClose={() => setProfile(null)} onSaved={() => void reload()} />}
   </section>;

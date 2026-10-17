@@ -339,7 +339,7 @@ export const assistantAgentsApi = {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value?.trim()) params.set(key, value.trim());
     const res = await api.get<{ ok: boolean; agents: AssistantAgent[] }>(`/api/ai/agents${params.size ? `?${params}` : ""}`);
-    return unwrap(res, "Failed to load agents").agents;
+    return assignmentResult(res).agents;
   },
   async assignments(id: string, projectId: string): Promise<{ assignments: AgentProjectAssignment[]; effective: AgentProjectAssignment | null }> {
     return assignmentResult(await api.get<{ ok: boolean; assignments: AgentProjectAssignment[]; effective: AgentProjectAssignment | null }>(`/api/ai/agents/${encodeURIComponent(id)}/assignments?${new URLSearchParams({ projectId })}`));

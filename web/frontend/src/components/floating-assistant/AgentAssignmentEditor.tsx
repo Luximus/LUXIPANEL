@@ -14,7 +14,7 @@ export function AgentAssignmentEditor({ agent, agents, projects, roles, pending,
   const [patch, setPatch] = useState<AgentAssignmentPayload>({});
   const [modules, setModules] = useState<ResolvedModule[]>([]);
   useModuleCatalog(setModules);
-  const original = agent.context?.directAssignment ?? {};
+  const original = agent.context?.directAssignment?.status === "active" ? agent.context.directAssignment : agent.context?.effectiveAssignment ?? {};
   const values: AgentAssignmentPayload = { ...original, ...patch };
   const projectId = agent.context?.projectId;
   const peers = agents.filter(a => a.id !== agent.id && assignedInProject(a, projectId));
@@ -32,7 +32,7 @@ export function AgentAssignmentEditor({ agent, agents, projects, roles, pending,
     { key: "serverIds" as const, label: e.associatedServers, options: servers },
     { key: "graphProjectIds" as const, label: e.graphIndexesTitle, options: projects.filter(p => subtree.has(p.id) && p.graphIndex?.status === "ready").map(p => ({ id: p.id, name: p.title })) },
   ];
-  return <form className="grid gap-4 p-4" onSubmit={event => { event.preventDefault(); if (!pending) onSave(patch); }}>
+  return <form className="grid gap-4 p-4" onSubmit={event => { event.preventDefault(); if (!pending) onSave({ ...patch, ...(patch.projectPaths ? { projectPaths: patch.projectPaths.map(path => path.trim()).filter(Boolean) } : {}) }); }}>
     <p className="text-sm text-muted-foreground">{t.assignmentHint}</p>
     <fieldset disabled={pending} className="grid gap-4">
       <label className="grid gap-1 text-sm">{t.jobTitle}<input className={control} maxLength={200} value={values.jobTitle ?? ""} onChange={event => setPatch({ ...patch, jobTitle: event.target.value })} /></label>

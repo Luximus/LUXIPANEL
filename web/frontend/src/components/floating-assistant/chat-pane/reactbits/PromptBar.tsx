@@ -115,6 +115,7 @@ export interface PromptBarProps {
   defaultEffort?: string;
   onEffortChange?: (effort: string) => void;
   busy?: boolean;
+  readOnly?: boolean;
   realtime?: { active: boolean; toggle: () => void; phase?: string; muted?: boolean; toggleMuted?: () => void;
     error?: string; previousId?: string | null; closePrevious?: () => void };
   onAudioPhaseChange?: (active: boolean) => void;
@@ -297,6 +298,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   defaultEffort = '',
   onEffortChange,
   busy = false,
+  readOnly = false,
   realtime,
   onAudioPhaseChange,
   onSend,
@@ -400,7 +402,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
     return [];
   }, [open, query, sources, commands, models, picker]);
   const cursor = Math.min(active, Math.max(0, list.length - 1));
-  const canSend = draft.trim().length > 0 || attachments.length > 0 || externalAttachmentCount > 0;
+  const canSend = !readOnly && (draft.trim().length > 0 || attachments.length > 0 || externalAttachmentCount > 0);
   const armed = busy || canSend;
   const level = efforts[effortIndex] ?? '';
   const visibleLevel = effortLabels[level] ?? level;
@@ -1065,6 +1067,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
             className="prompt-bar__input"
             rows={1}
             value={draft}
+            readOnly={readOnly}
             placeholder={realtime?.active ? (realtime.phase === "closing" ? "Terminando voz…" : realtime.phase === "connecting" ? "Conectando voz…" : realtime.muted ? "Micrófono silenciado" : "Habla con el agente…") : listening ? (transcribing ? 'Transcribiendo audio…' : 'Grabando audio…') : placeholder}
             aria-label="Prompt"
             onChange={e => {

@@ -221,6 +221,8 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     if (key) handleNewAgentChat(key, true);
     else { newConversation(); setDraft(draft); setAttachments(attachments); }
   };
+  const historicalOnly = !!currentAgentId && agentCatalogReady && !!currentProjectId &&
+    vm.historicalProjectAgents.some(agent => agent.id === currentAgentId);
   // An open conversation owns its project; sidebar navigation is only the
   // draft scope when no conversation is open.
   const locationNames = useMemo(() => projectLocation(
@@ -625,10 +627,12 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
           {attachError && <p className="lxp-chat-alert lxp-chat-alert--attachment" role="alert">⚠ {attachError}</p>}
 
           {support.enabled && <input ref={fileInputRef} type="file" multiple accept={support.acceptAttr} className="hidden" onChange={(event) => void onFilesPicked(event.target.files)} />}
+          {historicalOnly && <p role="status" className="text-center text-sm text-muted-foreground">{marketMessages.historical}</p>}
           <PromptBar
             key={`${provider}:${currentAgent?.id ?? "loose"}`}
             className="lxp-chat-prompt"
             mobileLayout={mobileNavigation}
+            readOnly={historicalOnly}
             value={draft}
             onChange={(text) => { setDraft(text); requestAnimationFrame(autosizeTextarea); }}
             inputRef={textareaRef}
@@ -660,9 +664,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               setSelectedEffort(value);
               chatUiState.patchConversationChoice(provider, activeId, { effort: value });
             }}
-            realtime={voiceEnabled && voice?.realtimeEnabled ? realtime : undefined}
+            realtime={!historicalOnly && voiceEnabled && voice?.realtimeEnabled ? realtime : undefined}
             onAudioPhaseChange={onAudioPhaseChange}
-            onDictate={voiceEnabled && !voice?.realtimeEnabled && canHoldRecord ? promptDictation.dictate : undefined}
+            onDictate={!historicalOnly && voiceEnabled && !voice?.realtimeEnabled && canHoldRecord ? promptDictation.dictate : undefined}
             onStopDictation={promptDictation.stop}
             onCancelDictation={promptDictation.cancel}
             cancelDictationLabel={ct.cancelAudio ?? "Cancelar audio"}
@@ -670,9 +674,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             stopDictationLabel={ct.sttStop ?? "Detener dictado"}
             dictateHint={`${ct.sttStart ?? "Dictar por voz"} · OpenAI`}
             externalAttachmentCount={attachments.length}
-            onSend={(text, detail) => { const level = detail.effort ?? "Auto"; return send(text, { ...(detail.recording ? { attachmentsOverride: [detail.recording], queue: true } : {}), reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" | "max" }); }}
+            onSend={(text, detail) => { if (historicalOnly) return; const level = detail.effort ?? "Auto"; return send(text, { ...(detail.recording ? { attachmentsOverride: [detail.recording], queue: true } : {}), reasoningEffort: level === "Extra" ? "xhigh" : level === "Auto" ? undefined : level.toLowerCase() as "low" | "medium" | "high" | "max" }); }}
             onStop={() => chatEngine.stop(chatKey)}
-            onQueue={() => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" | "max" })}
+            onQueue={historicalOnly ? undefined : () => void send(undefined, { queue: true, reasoningEffort: selectedEffort === "Extra" ? "xhigh" : selectedEffort === "Auto" ? undefined : selectedEffort.toLowerCase() as "low" | "medium" | "high" | "max" })}
             queueLabel={ct.queueMessage ?? "Encolar mensaje"}
             busy={streaming || backgroundRunning}
             width={780}
