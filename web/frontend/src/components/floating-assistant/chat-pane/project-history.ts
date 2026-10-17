@@ -23,6 +23,9 @@ export function createProjectHistory(
   publish: (state: ProjectHistoryState) => void,
   list = assistantConversationsApi.list,
 ) {
+  // Old agent mailboxes can lack projectId; they are still agent history.
+  // Apply the loose filter at the API so counts and every cursor agree.
+  const loose = scope.projectIds.length === 1 && scope.projectIds[0] === "none";
   const managers = new Map<string, ReturnType<typeof createPagedList<ConversationMeta>>>();
   const summaries = new Map<string, Summary>();
   let generation = 0;
@@ -46,7 +49,7 @@ export function createProjectHistory(
     if (manager) return manager;
     const epoch = generation;
     manager = createPagedList<ConversationMeta>(async ({ limit, offset, cursor }) => {
-      const page = await list(scope.query, limit, offset, undefined, undefined, undefined, {
+      const page = await list(scope.query, limit, offset, undefined, undefined, loose ? false : undefined, {
         cursor, fresh,
         projectIds: id === "legacy" ? ["none"] : id === "root" ? scope.projectIds : scope.projectIdsFor(id),
         ...(id === "legacy" ? { agentIds: scope.legacyAgentIds } : scope.agentId ? { agentId: scope.agentId } : {}),

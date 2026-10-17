@@ -19,5 +19,7 @@ describe("selected project search scope", () => {
     const ids = projectScopeIds(null, projects);
     expect(conversationInProjectScope(conversation(null), null, ids)).toBe(true);
     expect(conversationInProjectScope(conversation("root"), null, ids)).toBe(false);
+    expect(conversationInProjectScope({ ...conversation(null), agentId: "other-project-agent" }, null, ids)).toBe(false);
+    expect(conversationInProjectScope({ ...conversation("root"), agentId: "agent" }, "root", projectScopeIds("root", projects))).toBe(true);
   });
 });

@@ -6,6 +6,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Keep the assistant config dir deterministic and env-free.
 vi.mock("@config/paths.js", () => ({ CONFIG_DIR: "/etc/luxipanel" }));
+vi.mock("@config/env.js", () => ({ env: {
+  ASSISTANT_CONTEXT_GUARD_ENABLED: false,
+  ASSISTANT_CONTEXT_WINDOW_TOKENS: 200_000,
+  ASSISTANT_CONTEXT_COMPACT_KEEP: 6,
+  ASSISTANT_CONTEXT_WARN_RATIO: 0.8,
+  ASSISTANT_CONTEXT_AUTOCOMPACT_RATIO: 0.9,
+  ASSISTANT_CONTEXT_AUTOCOMPACT_RATIO_CLI: 0.8,
+} }));
+vi.mock("../../../shared/logger/index.js", () => ({
+  createModuleLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}));
 
 // Pin the context user so `userSuffix()` = "-u1" and the store scope is "user"
 // (mirrors the real incident: the visible list is `conversations-u1.json`).
@@ -698,6 +709,28 @@ describe("conversation history and options isolation", () => {
 
 
 describe("project team history summaries", () => {
+  it("excludes assigned agent chats from loose search, counts and cursor pages before pagination", async () => {
+    const executor = makeExecutor([], "loose-without-agents");
+    for (const [id, projectId, agentId] of [
+      ["normal-a", null, null], ["normal-b", null, null],
+      ["legacy-a", null, "agent-a"], ["legacy-b", null, "agent-b"],
+      ["project-normal", "other", null], ["project-agent", "other", "agent-b"],
+    ]) seedMeta("conversations-u1", id!, { projectId, agentId, title: "needle", preview: "", messageCount: 0 });
+    seedMeta("conversations-u2", "private", { projectId: null, agentId: null, title: "needle", preview: "" });
+    const options = { projectIds: ["none"], withAgent: false, q: "needle", paged: true, limit: 1, includeSummary: true, summaryScope: "filtered" as const };
+    const first = await conversationsRepository.list(executor, options);
+    expect(first.total).toBe(2);
+    expect(first.items.map(c => c.id)).toEqual(["normal-a"]);
+    expect(first.summary).toEqual({ projects: { none: 2 }, agents: { none: 2 } });
+    expect(first.nextCursor).toBeTruthy();
+    const next = await conversationsRepository.list(executor, { ...options, cursor: first.nextCursor! });
+    expect(next.items.map(c => c.id)).toEqual(["normal-b"]);
+    expect(next.hasMore).toBe(false);
+    expect(next.summary).toEqual(first.summary);
+    const team = await conversationsRepository.list(executor, { projectIds: ["none"], agentIds: ["agent-a"] });
+    expect(team.items.map(c => c.id)).toEqual(["legacy-a"]);
+  });
+
   it("counts the same search and project scope before pagination, while preserving legacy global counts", async () => {
     const executor = makeExecutor([], "filtered-summary");
     const rows = [

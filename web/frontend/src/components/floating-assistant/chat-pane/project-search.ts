@@ -19,6 +19,10 @@ export function projectScopeIds(selectedId: string | null, projects: AssistantPr
   return ids;
 }
 
+export function isLooseConversation(conversation: ConversationMeta): boolean {
+  return !conversation.projectId && !conversation.agentId;
+}
+
 export function conversationInProjectScope(conversation: ConversationMeta, selectedId: string | null, ids: Set<string>): boolean {
-  return selectedId === null ? !conversation.projectId : Boolean(conversation.projectId && ids.has(conversation.projectId));
+  return selectedId === null ? isLooseConversation(conversation) : Boolean(conversation.projectId && ids.has(conversation.projectId));
 }

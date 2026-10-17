@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { historyReady } from "@/lib/startup-state";
-import { projectScopeIds } from "./project-search";
+import { isLooseConversation, projectScopeIds } from "./project-search";
 import { rootProjectId } from "./project-history-picker";
 import { projectAgentScope, projectForAgent } from "../project-modal/agent-scope";
 import { createProjectHistory, emptyProjectHistory } from "./project-history";
@@ -364,9 +364,9 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   const historyData = historyState.key === historyKey ? historyState.data : emptyProjectHistory();
   // Hide previous-scope rows immediately, even before the next request starts.
   const sidebarConvos = useMemo(() => {
-    const rows = historyState.key === historyKey ? convos : [];
+    const rows = historyState.key === historyKey ? (selectedRoot ? convos : convos.filter(isLooseConversation)) : [];
     const activeInScope = activeMeta && (activeMeta.projectId ? historyProjectIds.split(",").includes(activeMeta.projectId)
-      : selectedRoot ? includeLegacy && legacyAgentIds.split(",").includes(activeMeta.agentId ?? "") : true);
+      : selectedRoot ? includeLegacy && legacyAgentIds.split(",").includes(activeMeta.agentId ?? "") : isLooseConversation(activeMeta));
     return historyState.key === historyKey && historyState.data.initialized && !search.trim() && activeInScope && (!historyAgentId || activeMeta.agentId === historyAgentId) && !rows.some(c => c.id === activeMeta.id)
       ? [activeMeta, ...rows] : rows;
   }, [historyState, historyKey, convos, activeMeta, historyProjectIds, selectedRoot, includeLegacy, legacyAgentIds, search, historyAgentId]);

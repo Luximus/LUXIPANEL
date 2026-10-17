@@ -84,6 +84,40 @@ it("does not lose the team sidebar when late metadata opens a loaded legacy mail
   } finally { await act(async () => root.unmount()); }
 });
 
+it("does not insert an open agent mailbox or stale project rows into loose chats", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  let vm!: ChatPaneVM;
+  function Probe() {
+    vm = useChatPane({ provider: "claude", mode: "api", active: true });
+    return createElement(ChatSidebar, { vm });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    await act(async () => { await vm.openConversation(legacy.id); });
+    expect(vm.sidebarConvos.some(c => c.id === legacy.id)).toBe(true);
+    await act(async () => { vm.setCurrentProjectId(null); });
+    expect(vm.sidebarConvos).toEqual([]);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    expect(vm.activeMeta?.id).toBe(legacy.id);
+    expect(vm.sidebarConvos).toEqual([]);
+    expect(host.querySelector('[data-selected-project-convos]')?.textContent).not.toContain(legacy.title);
+    expect(conversationApi.list).toHaveBeenLastCalledWith("", 15, 0, undefined, undefined, false,
+      expect.objectContaining({ projectIds: ["none"], summaryScope: "filtered" }));
+    const loose = { ...legacy, id: "normal", title: "Consulta general", agentId: null };
+    await act(async () => vm.setConvos([legacy, loose, { ...loose, id: "foreign", projectId: "other" }]));
+    expect(vm.sidebarConvos.map(c => c.id)).toEqual(["normal"]);
+    // Going back still finds the agent's unchanged legacy history.
+    await act(async () => vm.setCurrentProjectId("child"));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    expect(vm.sidebarConvos.some(c => c.id === legacy.id)).toBe(true);
+    expect(legacy.projectId).toBeNull();
+  } finally { await act(async () => root.unmount()); }
+});
+
 
 it("selects a member in PromptBar, filters nested history and preserves that member for a new project chat", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });

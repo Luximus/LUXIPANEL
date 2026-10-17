@@ -1,0 +1,7 @@
+{
+  "title": "Chats sueltos separados del historial de agentes",
+  "changes": [
+    "Chats sueltos muestra únicamente conversaciones sin proyecto ni agente asignado, también al buscar y cargar más resultados.",
+    "Los chats antiguos de agentes se conservan en el historial de su equipo y dejan de mezclarse con los chats sueltos."
+  ]
+}

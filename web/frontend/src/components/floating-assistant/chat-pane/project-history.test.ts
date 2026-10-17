@@ -10,10 +10,12 @@ const rows = [
   chat("leader-root", "root", "leader"), chat("general", "child", null), chat("retired", "child", "retired"),
   chat("legacy", null, "worker"), chat("legacy-leader", null, "leader"), chat("loose", null, null),
   chat("unrelated", "other", "worker"), chat("other-team-mailbox", null, "other-member"),
+  ...Array.from({ length: 32 }, (_, i) => chat(`loose-${i}`, null, null, i % 2 ? "codex" : "claude")),
 ];
 function fixture() {
   const list = vi.fn<typeof assistantConversationsApi.list>(async (q, limit = 30, offset = 0, _provider, _project, _withAgent, page) => {
     const matched = rows.filter(row => (!q || row.title.includes(q)) && page!.projectIds!.includes(row.projectId ?? "none")
+      && (_withAgent === undefined || !!row.agentId === _withAgent)
       && (!page!.agentId || row.agentId === page!.agentId) && (!page!.agentIds || page!.agentIds.includes(row.agentId ?? "none")));
     const start = page?.cursor ? Number(page.cursor) : offset;
     const end = start + limit;
@@ -33,6 +35,23 @@ function fixture() {
 }
 
 describe("project history filtered by member", () => {
+  it.each(["", "loose-", "mailbox"])("keeps agent mailboxes out of loose history, counts and all pages for search %j", async query => {
+    const f = fixture(), history = f.create({ projectIds: ["none"], agentId: undefined, legacyAgentIds: [], query });
+    await history.first();
+    while (f.state().hasMore) await history.next();
+    const expected = rows.filter(row => !row.projectId && !row.agentId && row.title.includes(query));
+    expect(f.state().items.map(row => row.id).sort()).toEqual(expected.map(row => row.id).sort());
+    expect(f.state().summary).toEqual(expected.length
+      ? { projects: { none: expected.length }, agents: { none: expected.length } }
+      : { projects: {}, agents: {} });
+    for (const args of f.list.mock.calls) {
+      expect(args[5]).toBe(false);
+      expect(args[6]).toMatchObject({ projectIds: ["none"], summaryScope: "filtered" });
+    }
+    if (expected.length > 15) expect(f.list.mock.calls.some(args => args[6]?.cursor)).toBe(true);
+    history.cancel();
+  });
+
   it("keeps counts for unloaded branches and pages every folder with the selected member across providers", async () => {
     const f = fixture(), history = f.create();
     await history.first();
