@@ -1,4 +1,5 @@
 import CommunityActivity from "./CommunityActivity";
+import OwnerContributions from "../auth/OwnerContributions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { version } from "../../../package.json";
 import { readPanelReleasePreflight, installPanelBranch, installPanelRelease, readPanelReleases, type PanelReleaseStatus, type PanelReleasePreflight } from "@/lib/panel-releases";
@@ -7,19 +8,21 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
   const [status, setStatus] = useState<PanelReleaseStatus | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [blockedReason, setBlockedReason] = useState<PanelReleasePreflight["reason"]>();
   const [catalogError, setCatalogError] = useState("");
   const [busy, setBusy] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const generation = useRef(0);
   const catalogRequest = useRef(0);
   const liveRequest = useRef(0);
+  const readinessRequest = useRef(0);
   const installing = useRef(false);
-  const blockedMessage = (reason: PanelReleasePreflight["reason"]) => {
+  const blockedMessage = useCallback((reason: PanelReleasePreflight["reason"]) => {
     const keys = { "assistant-active": "updateAssistantActive", "publication-pending": "updatePublicationPending", "contribution-review": "updateContributionReview", "checkout-sync": "updateCheckoutSync", "local-changes": "localChangesBlocked" };
     return (reason && labels[keys[reason]]) || labels.localChangesBlocked;
-  };
+  }, [labels]);
   useEffect(() => {
-    const reset = () => { generation.current++; catalogRequest.current++; liveRequest.current = 0; setStatus(null); setError(""); setNotice(""); setCatalogError(""); setEpoch(value => value + 1); };
+    const reset = () => { generation.current++; catalogRequest.current++; liveRequest.current = 0; setStatus(null); setError(""); setNotice(""); setBlockedReason(undefined); setCatalogError(""); setEpoch(value => value + 1); };
     window.addEventListener("luxipanel:target-changed", reset);
     return () => { generation.current++; window.removeEventListener("luxipanel:target-changed", reset); };
   }, []);
@@ -40,6 +43,27 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
       if (liveRequest.current === request) liveRequest.current = 0;
     }
   }, [labels.loadError]);
+  const recheckReadiness = useCallback(async () => {
+    const current = generation.current;
+    const request = ++readinessRequest.current;
+    try {
+      const next = await readPanelReleasePreflight();
+      if (current !== generation.current || request !== readinessRequest.current) return;
+      setBlockedReason(next.reason);
+      setError(next.ok ? "" : blockedMessage(next.reason));
+      if (next.ok) await loadStatus(true);
+    } catch { /* Preserve the last confirmed blocker until the next check. */ }
+  }, [blockedMessage, loadStatus]);
+  useEffect(() => {
+    if (!blockedReason) return;
+    let checking = false;
+    const timer = window.setInterval(async () => {
+      if (checking || document.hidden || installing.current) return;
+      checking = true;
+      try { await recheckReadiness(); } finally { checking = false; }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [blockedReason, recheckReadiness]);
   const refreshCatalog = useCallback(async () => {
     if (installing.current) return;
     setError(""); setNotice("");
@@ -55,10 +79,12 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     if (installing.current || !isAdmin || !status?.canInstall || !status.updateAvailable || status.error || catalogError || tag !== status.latest?.tag || status.operation?.status === "running") return;
     const current = generation.current;
     installing.current = true;
+    readinessRequest.current++;
     setBusy(true); setError(""); setNotice("");
     try {
       const readiness = await readPanelReleasePreflight();
       if (current !== generation.current) return;
+      setBlockedReason(readiness.reason);
       if (!readiness.ok) { setError(blockedMessage(readiness.reason)); return; }
       await installPanelRelease(tag);
       if (current !== generation.current) return;
@@ -72,10 +98,11 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     if (installing.current || !isAdmin || !status?.canInstall || status.comparisonKnown !== true || !row || !row.updateAvailable || row.ahead <= 0 || row.error || status.branchesError || catalogError || status.operation?.status === "running") return;
     if (status.installed?.commit === commit) return;
     const current = generation.current;
-    installing.current = true; setBusy(true); setError(""); setNotice("");
+    installing.current = true; readinessRequest.current++; setBusy(true); setError(""); setNotice("");
     try {
       const readiness = await readPanelReleasePreflight();
       if (current !== generation.current) return;
+      setBlockedReason(readiness.reason);
       if (!readiness.ok) { setError(blockedMessage(readiness.reason)); return; }
       const next = await loadStatus(true);
       if (!next || current !== generation.current) return;
@@ -104,5 +131,6 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
     finally { installing.current = false; setBusy(false); }
   };
   return <CommunityActivity labels={labels} locale={locale} status={status} installedVersion={version}
+    recovery={blockedReason && ["contribution-review", "publication-pending", "checkout-sync"].includes(blockedReason) ? <OwnerContributions locale={locale} onUpdated={recheckReadiness} /> : undefined}
     canInstall={isAdmin && status?.canInstall === true} busy={busy} error={error} notice={notice} catalogError={catalogError} onRefresh={refreshCatalog} onInstall={update} onInstallBranch={updateBranch} />;
 }

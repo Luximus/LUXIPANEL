@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import staticForm from "./__fixtures__/luxisoft-static-form.json";
+vi.mock("../../../config/env.js", () => ({ env: { NODE_ENV: "test" } }));
+vi.mock("../../../shared/logger/index.js", () => ({ createModuleLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }) }));
 const m = vi.hoisted(() => ({
   owned: vi.fn(),
   read: vi.fn(),

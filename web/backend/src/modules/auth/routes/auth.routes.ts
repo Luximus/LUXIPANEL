@@ -29,6 +29,8 @@ router.use(csrfCookieSetter);
 
 // Each authenticated identity can connect its own GitHub account without admin privileges.
 router.post("/api/auth/github/contributions/retry", requireAuthNoExecutor, csrfProtection, githubController.retry);
+router.get("/api/auth/github/contributions/:id/recovery", requireAuthNoExecutor, githubController.recoveryPreview);
+router.post("/api/auth/github/contributions/recover", requireAuthNoExecutor, csrfProtection, githubController.recover);
 router.get("/api/auth/github/contributions", requireAuthNoExecutor, githubController.contributions);
 router.get("/api/auth/github", requireAuthNoExecutor, githubController.status);
 router.post("/api/auth/github", requireAuthNoExecutor, csrfProtection, loginRateLimiter, githubController.connect);

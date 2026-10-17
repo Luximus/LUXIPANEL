@@ -52,10 +52,25 @@ def ports(source):
 
 def healthy(source):
     backend_port, frontend_port = ports(source)
-    for app in ("luxipanel-backend", "luxipanel-frontend"):
-        output = subprocess.check_output([PM2, "jlist"], text=True)
+    try:
+        output = subprocess.check_output([PM2, "jlist"], text=True, timeout=15)
         rows = json.loads(output)
-        if not any(row.get("name") == app and row.get("pm2_env", {}).get("status") == "online" for row in rows):
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        return False
+    for area, entry in (("backend", "dist/server.js"), ("frontend", "dist/server/entry.mjs")):
+        apps = [row for row in rows if row.get("name") == "luxipanel-" + area]
+        if len(apps) != 1:
+            return False
+        process = apps[0].get("pm2_env", {})
+        expected = application(source) / area
+        if not isinstance(process, dict) or process.get("status") != "online":
+            return False
+        # PM2 restart can keep the old script/cwd even when it reports online.
+        # Only the requested artifact may be recorded as installed.
+        if any(not isinstance(process.get(key), str) or not process[key] or Path(process[key]).resolve() != path.resolve()
+               for key, path in (("pm_cwd", expected), ("pm_exec_path", expected / entry))):
             return False
     for url in (f"http://127.0.0.1:{backend_port}/api/health", f"http://127.0.0.1:{frontend_port}/login"):
         try:

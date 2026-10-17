@@ -1,0 +1,83 @@
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+const config = vi.hoisted(() => ({ LUXIPANEL_CONFIG_DIR: "", LUXIPANEL_INSTALL_ROOT: "" }));
+vi.mock("../../config/env.js", () => ({ env: config }));
+vi.mock("./user-connection.js", () => ({ githubStatus: vi.fn(async () => ({ canEditCore: true })), githubToken: vi.fn(async () => ({ token: "unit-test", login: "Maintainer", id: 1 })) }));
+vi.mock("../logger/index.js", () => ({ createModuleLogger: () => ({ error: vi.fn(), warn: vi.fn() }) }));
+import { githubStatus } from "./user-connection.js";
+import { captureSource, contributionGit, saveContribution, readContributionJobs, contributionUpdateBlocker, deliverContribution, alignPublishedContribution, listOwnerContributions, type ContributionJob } from "./owner-contributions.js";
+import { previewContributionRecovery, reviewContributionRecovery } from "./contribution-review.js";
+let root: string, job: ContributionJob, snapshotHash: string;
+const user = { userId: 1, username: "maintainer", displayName: "Maintainer", kind: "admin", role: "admin", modules: [] } as ContributionJob["user"];
+const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const directory = () => path.join(root, "github-users/contributions", job.id);
+beforeEach(async () => {
+ root = await fs.mkdtemp(path.join(os.tmpdir(), "lxp-reviewed-"));
+ config.LUXIPANEL_CONFIG_DIR = root; config.LUXIPANEL_INSTALL_ROOT = root;
+ vi.mocked(githubStatus).mockResolvedValue({ canEditCore: true } as any);
+ git("init", "-q", "-b", "developer"); git("config", "user.name", "Test"); git("config", "user.email", "test@example.invalid");
+ await fs.mkdir(path.join(root, "web/src"), { recursive: true });
+ await fs.writeFile(path.join(root, "web/src/a.ts"), "export const a = 1;\n");
+ git("add", "web"); git("commit", "-qm", "baseline");
+ const before = await captureSource(root, path.join(root, "before.index"));
+ await fs.writeFile(path.join(root, "web/src/a.ts"), "export const a = 2;\n");
+ await fs.mkdir(path.join(root, "docs/changes"), { recursive: true });
+ await fs.writeFile(path.join(root, "docs/changes/2026-10-16-recovered.json"), JSON.stringify({ title: "Recuperación", changes: ["Se conservan los cambios revisados."] }) + "\n");
+ const after = await captureSource(root, path.join(root, "after.index"));
+ const patch = await contributionGit(root, ["diff", "--no-ext-diff", "--full-index", "--binary", before, after]);
+ snapshotHash = createHash("sha256").update(patch).digest("hex");
+ const now = new Date().toISOString();
+ job = { id: randomUUID(), conversationId: "interrupted", root, user, before, after, head: git("rev-parse", "HEAD"), status: "interrupted", succeeded: false, createdAt: now, updatedAt: now, completedAt: now, files: ["web/src/a.ts", "docs/changes/2026-10-16-recovered.json"], interruption: { observedAt: now, patchHash: snapshotHash } };
+ await saveContribution(job);
+ await fs.writeFile(path.join(directory(), "interrupted.patch"), patch);
+});
+afterEach(async () => { await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 25 }); });
+
+it("reviews, queues, delivers, and aligns the original checkout without approving the failed run", async () => {
+ const index = await fs.readFile(path.join(root, ".git/index"));
+ expect(await contributionUpdateBlocker(root, job.files!)).toBe("contribution-review");
+ const preview = await previewContributionRecovery(user, job.id);
+ expect(preview.snapshotHash).toBe(snapshotHash); expect(preview.patch).toContain("+export const a = 2;");
+ expect((await readContributionJobs()).length).toBe(1); // Preview cannot publish.
+ const queued = await reviewContributionRecovery(user, job.id, snapshotHash);
+ await vi.waitFor(async () => expect(await reviewContributionRecovery(user, job.id, snapshotHash)).toEqual(queued));
+ const jobs = await readContributionJobs(), recovered = jobs.find(j => j.id === queued.id)!;
+ expect(jobs).toHaveLength(2); expect(jobs.find(j => j.id === job.id)).toMatchObject({ status: "interrupted", succeeded: false, recoveredBy: queued.id });
+ expect(recovered).toMatchObject({ status: "pending", recoveryOf: job.id }); expect(recovered.succeeded).toBeUndefined();
+ expect(await fs.readFile(path.join(root, ".git/index"))).toEqual(index);
+ expect(git("rev-parse", "HEAD")).toBe(job.head);
+ expect(await contributionUpdateBlocker(root, job.files!)).toBe("publication-pending");
+ const listing = await listOwnerContributions(user);
+ expect(listing.find(j => j.id === job.id)).toMatchObject({ recoveredBy: queued.id, canRetry: false, canReview: false });
+ const remote = path.join(root, "remote.git"); git("init", "--bare", "-q", remote); git("push", "-q", remote, "HEAD:refs/heads/developer");
+ await deliverContribution(recovered, remote, async u => u);
+ expect(recovered.status).toBe("pushed");
+ expect(git("ls-remote", remote, "refs/heads/developer").split(/\s/)[0]).toBe(recovered.commit);
+ expect(await contributionUpdateBlocker(root, job.files!)).toBe("checkout-sync");
+ await vi.waitFor(async () => expect(await alignPublishedContribution(recovered)).toBe(true));
+ expect(git("rev-parse", "HEAD")).toBe(recovered.commit);
+ expect(git("diff", "--name-only", "HEAD", "--", "web", "docs")).toBe("");
+ expect(await contributionUpdateBlocker(root, [])).toBeUndefined();
+ expect(await fs.readFile(path.join(directory(), "interrupted.patch"), "utf8")).toBe(preview.patch);
+});
+it.each(["foreign", "not-maintainer", "stale", "tampered", "later-edits", "overlap"])("refuses %s recovery without changing source or queuing it", async reason => {
+ if (reason === "not-maintainer") vi.mocked(githubStatus).mockResolvedValue({ canEditCore: false } as any);
+ if (reason === "tampered") await fs.appendFile(path.join(directory(), "interrupted.patch"), "tampered\n");
+ if (reason === "later-edits") await fs.writeFile(path.join(root, "web/src/a.ts"), "export const a = 3;\n");
+ if (reason === "overlap") { job.overlapped = true; await saveContribution(job); }
+ const source = await fs.readFile(path.join(root, "web/src/a.ts"), "utf8");
+ await expect(reviewContributionRecovery(reason === "foreign" ? { ...user, userId: 2 } : user, job.id, reason === "stale" ? "f".repeat(64) : snapshotHash)).rejects.toThrow();
+ expect(await fs.readFile(path.join(root, "web/src/a.ts"), "utf8")).toBe(source);
+ expect(git("rev-parse", "HEAD")).toBe(job.head); expect(await readContributionJobs()).toHaveLength(1);
+});
+it("keeps a failed reviewed delivery visible instead of bypassing the update guard", async () => {
+ const queued = await reviewContributionRecovery(user, job.id, snapshotHash);
+ const recovered = (await readContributionJobs()).find(j => j.id === queued.id)!;
+ recovered.status = "blocked"; await saveContribution(recovered);
+ expect(await contributionUpdateBlocker(root, job.files!)).toBe("contribution-review");
+ expect((await listOwnerContributions(user)).find(j => j.id === queued.id)).toMatchObject({ canRetry: true, canReview: false });
+});

@@ -1,6 +1,11 @@
 import express from "express";
 import request from "supertest";
 import { beforeEach, expect, it, vi } from "vitest";
+vi.mock("../../../config/env.js", () => ({ env: { NODE_ENV: "test" } }));
+vi.mock("../../../shared/logger/index.js", () => ({ createModuleLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }) }));
+vi.mock("../../../config/paths.js", () => ({ panelConfigDir: () => "/test/config" }));
+vi.mock("../../../shared/executor/index.js", () => ({ quoteArg: (value: string) => JSON.stringify(value), pathExists: vi.fn() }));
+vi.mock("../../../shared/redis/index.js", () => ({ getRedis: vi.fn() }));
 const m = vi.hoisted(() => ({ authenticate: vi.fn(), assertOperation: vi.fn(), download: vi.fn(), remove: vi.fn() }));
 vi.mock("../services/provider.service.js", () => ({ providerService: { authenticate: m.authenticate, assertOperation: m.assertOperation } }));
 vi.mock("../services/deployment-data-provider.mjs", () => ({ deploymentDataRequest: vi.fn() }));

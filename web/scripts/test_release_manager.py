@@ -65,4 +65,30 @@ class ReleaseTests(unittest.TestCase):
   with self.assertRaisesRegex(RuntimeError,'hash'):manager.verify_bundle(self.release,'v1.0.1')
   file.unlink();file.symlink_to(self.root/'source')
   with self.assertRaisesRegex(RuntimeError,'fuera'):manager.verify_bundle(self.release,'v1.0.1')
+class RuntimeHealthTests(unittest.TestCase):
+ def setUp(self):
+  self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+  (self.root/'web/backend').mkdir(parents=True);(self.root/'web/frontend').mkdir()
+  self.rows=[{'name':'luxipanel-'+area,'pm2_env':{'status':'online','pm_cwd':str(self.root/'web'/area),'pm_exec_path':str(self.root/'web'/area/entry)}} for area,entry in [('backend','dist/server.js'),('frontend','dist/server/entry.mjs')]]
+ def tearDown(self):self.temp.cleanup()
+ def test_confirms_paths_and_both_http_services(self):
+  with patch.object(manager.subprocess,'check_output',return_value=json.dumps(self.rows)),patch.object(manager.urllib.request,'urlopen') as http:
+   http.return_value.__enter__.return_value.status=200
+   self.assertTrue(manager.healthy(self.root));self.assertEqual(http.call_count,2)
+ def test_rejects_online_processes_from_another_release(self):
+  for key in ['pm_cwd','pm_exec_path']:
+   with self.subTest(key=key):
+    rows=json.loads(json.dumps(self.rows));rows[0]['pm2_env'][key]='/previous-release/'+key
+    with patch.object(manager.subprocess,'check_output',return_value=json.dumps(rows)),patch.object(manager.urllib.request,'urlopen') as http:
+     self.assertFalse(manager.healthy(self.root));http.assert_not_called()
+ def test_rejects_missing_duplicate_and_unreadable_processes(self):
+  for value in [self.rows[:1],self.rows+[self.rows[0]],{},[None]]:
+   with self.subTest(value=value),patch.object(manager.subprocess,'check_output',return_value=json.dumps(value)):
+    self.assertFalse(manager.healthy(self.root))
+  with patch.object(manager.subprocess,'check_output',side_effect=subprocess.TimeoutExpired('pm2',15)):
+   self.assertFalse(manager.healthy(self.root))
+ def test_rejects_failed_http_even_with_correct_processes(self):
+  with patch.object(manager.subprocess,'check_output',return_value=json.dumps(self.rows)),patch.object(manager.urllib.request,'urlopen') as http:
+   http.return_value.__enter__.return_value.status=503
+   self.assertFalse(manager.healthy(self.root))
 if __name__=='__main__':unittest.main()

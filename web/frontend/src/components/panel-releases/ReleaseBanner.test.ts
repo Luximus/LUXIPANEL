@@ -31,6 +31,27 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); });
 
+it("opens the actual contribution recovery controls in the update drawer when a task blocks installation", async () => {
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: false, reason: "contribution-review" });
+  vi.mocked(api.get).mockImplementation(async url => ({ ok: true, status: 200, data: url === "/api/auth/github/contributions" ? [{ id: "saved", status: "interrupted", updatedAt: "2026-10-16T20:00:00Z", canReview: true }] : { items: [], unread: 0 } }) as any);
+  await render(); await open();
+  await act(async () => installButton()!.click());
+  expect(container.querySelector("dialog")?.textContent).toContain("Ver cambios conservados");
+  expect(installPanelRelease).not.toHaveBeenCalled();
+});
+
+it("clears a resolved contribution blocker and refreshes revisions without installing automatically", async () => {
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: false, reason: "publication-pending" });
+  await render(); await open();
+  await act(async () => installButton()!.click());
+  expect(container.textContent).toContain(labels.community.updatePublicationPending);
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: true });
+  await act(async () => vi.advanceTimersByTimeAsync(5000));
+  expect(container.textContent).not.toContain(labels.community.updatePublicationPending);
+  expect(readPanelReleases).toHaveBeenLastCalledWith(true);
+  expect(installPanelRelease).not.toHaveBeenCalled();
+});
+
 it("only installs the latest release after the explicit drawer action and prevents repeated clicks", async () => {
   let finish!: () => void;
   vi.mocked(installPanelRelease).mockImplementation(() => new Promise(resolve => { finish = resolve; }));

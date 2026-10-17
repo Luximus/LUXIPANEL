@@ -1,5 +1,5 @@
 import BranchChanges from "./BranchChanges";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api } from "@/lib/api-client";
 import { Markdown } from "../floating-assistant/Markdown";
 import "./community-activity.css";
@@ -8,13 +8,14 @@ type Tab = "notes" | "comments" | "activity";
 interface Entry { id: string; kind: string; title: string; author: string; url: string; updatedAt: string; read: boolean }
 interface Activity { items: Entry[]; unread: number; error?: string }
 interface Props {
+  recovery?: ReactNode;
   onRefresh?: () => Promise<void>;
   notice?: string;
   onInstallBranch?: (branch: string, commit: string) => Promise<void>;
   labels: Record<string, string>; locale: string; status: PanelReleaseStatus | null; installedVersion: string;
   canInstall: boolean; busy: boolean; error: string; catalogError?: string; onInstall: (tag: string) => Promise<void>;
 }
-export default function CommunityActivity({ labels: L, locale, status, installedVersion, canInstall, busy, error: installError, notice, catalogError, onRefresh, onInstall, onInstallBranch }: Props) {
+export default function CommunityActivity({ labels: L, locale, status, installedVersion, canInstall, busy, error: installError, notice, catalogError, onRefresh, onInstall, onInstallBranch, recovery }: Props) {
   const [feed, setFeed] = useState<Activity>();
   const [error, setError] = useState("");
   const [targetEpoch, setTargetEpoch] = useState(0);
@@ -195,6 +196,7 @@ export default function CommunityActivity({ labels: L, locale, status, installed
         : feedbackError && <p role="alert" className="lxp-community-feedback lxp-community-feedback--error"><i className="ti ti-alert-circle" aria-hidden="true" /><span>{feedbackError}</span></p>}
       {!updating && !feedbackError && notice && <p role="status" className="lxp-community-feedback"><i className="ti ti-refresh" aria-hidden="true" /><span>{notice}</span></p>}
       <div ref={content} className="lxp-community-content min-h-0 flex-1 overflow-auto p-4">
+        {opened && recovery}
         {branch !== "releases" && selectedBranch && status && <BranchChanges key={`${targetEpoch}:${branch}`} branch={selectedBranch} locale={locale} status={status} labels={L} canInstall={canInstall} busy={busy} unavailable={!!catalogError || !!status.branchesError} onInstall={onInstallBranch} />}
         {branch !== "releases" && !selectedBranch && <p role="status" className="text-sm text-muted-foreground">{!status ? L.loading : L.branchLoadError}</p>}
         {status?.branchesError && <p role="status" className="text-sm text-muted-foreground">{status.branchesError}</p>}

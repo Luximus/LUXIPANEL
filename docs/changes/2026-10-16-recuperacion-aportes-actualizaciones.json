@@ -1,0 +1,11 @@
+{
+  "title": "Recuperación de aportes que bloquean las actualizaciones",
+  "changes": [
+    "La pantalla de actualizaciones permite revisar los cambios conservados de una tarea interrumpida y solicitar su publicación como un aporte separado.",
+    "La recuperación conserva el historial original, evita envíos duplicados y se detiene si los archivos han cambiado después de la interrupción.",
+    "Los aportes muestran los errores de recuperación y solo ofrecen reintentar cuando existe un envío preparado.",
+    "La pantalla vuelve a comprobar el bloqueo y renueva las revisiones al resolverse, sin iniciar una instalación automática.",
+    "Se corrigen pruebas que dependían de la configuración privada del servidor y se añaden comprobaciones del flujo de recuperación y actualización.",
+    "Una actualización solo se confirma cuando ambos servicios ejecutan la versión preparada y responden correctamente."
+  ]
+}

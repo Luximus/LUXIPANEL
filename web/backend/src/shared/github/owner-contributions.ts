@@ -46,6 +46,8 @@ export interface ContributionJob {
  batchId?:string; completedAt?:string; succeeded?:boolean; after?:string; includedIn?:string; checkoutAligned?:boolean;
  /** Evidence for review only; never a publishable patch or a successful outcome. */
  interruption?:{observedAt:string;patchHash?:string};
+ /** A separate, explicitly reviewed delivery never changes the failed task's outcome. */
+ recoveryOf?:string; recoveredBy?:string; reviewedAt?:string;
  legacyRecovery?:{members:string[];after:string};
  overlapped?:boolean;
 }
@@ -264,7 +266,7 @@ export async function finishOwnerContribution(ticket:Ticket|null,success:boolean
  });
 }
 
-async function readContributionJobs():Promise<ContributionJob[]>{
+export async function readContributionJobs():Promise<ContributionJob[]>{
  const rows=await fs.readdir(outbox(),{withFileTypes:true}).catch(()=>[]);
  return Promise.all(rows.filter(e=>e.isDirectory()&&/^[a-f0-9-]{36}$/.test(e.name)).map(async e=>JSON.parse(await fs.readFile(path.join(outbox(),e.name,"job.json"),"utf8")) as ContributionJob));
 }
@@ -291,6 +293,9 @@ async function preserveInterruptedContribution(job:ContributionJob):Promise<void
 }
 
 export type ContributionUpdateBlocker="assistant-active"|"publication-pending"|"contribution-review"|"checkout-sync";
+export function reviewedContribution(job:ContributionJob,jobs:ContributionJob[]):ContributionJob|undefined{
+ return jobs.find(next=>next.recoveryOf===job.id && sameContributionPrincipal(next,job) && next.before===job.before && next.after===job.after && !!next.patchHash && !!next.reviewedAt);
+}
 /** Read-only diagnosis. No source is published, discarded, or reset by preflight. */
 export async function contributionUpdateBlocker(root:string,changedFiles:string[]):Promise<ContributionUpdateBlocker|undefined>{
  if(initialized)await initialized;
@@ -301,6 +306,7 @@ export async function contributionUpdateBlocker(root:string,changedFiles:string[
   const head=(await contributionGit(root,["rev-parse","HEAD"])).trim();
   let pending=false,synchronizing=false;
   for(const job of jobs){
+   if(reviewedContribution(job,jobs))continue;
    const files=job.files?.filter(f=>changed.has(f))??[];
    if(!files.length||job.status==="empty"||job.status==="capturing")continue;
    if(job.status==="pushed"&&job.commit){
@@ -392,7 +398,7 @@ export async function recoverClosedContributionBatches():Promise<void>{
  for(const id of new Set((await readContributionJobs()).map(j=>j.batchId).filter((id):id is string=>!!id)))await sealBatch(id);
 }
 
-export async function listOwnerContributions(user:SessionUser):Promise<Pick<ContributionJob,"id"|"conversationId"|"status"|"createdAt"|"updatedAt"|"commit"|"error"|"ci"|"sourceCommit"|"checksUrl"|"integratedBy">[]>{
+export async function listOwnerContributions(user:SessionUser){
  if(!(await githubStatus(user)).canEditCore)throw new ForbiddenError();
  const result:ContributionJob[]=[];
  for(const e of await fs.readdir(outbox(),{withFileTypes:true}).catch(()=>[])){
@@ -400,8 +406,16 @@ export async function listOwnerContributions(user:SessionUser):Promise<Pick<Cont
   const job=JSON.parse(await fs.readFile(path.join(outbox(),e.name,"job.json"),"utf8")) as ContributionJob;
   if(job.user.userId===user.userId&&job.user.username===user.username)result.push(job);
  }
- return result.sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,100).map(({id,conversationId,status,createdAt,updatedAt,commit,error,ci,sourceCommit,checksUrl,integratedBy})=>({id,conversationId,status,createdAt,updatedAt,commit,error,ci,sourceCommit,checksUrl,integratedBy}));
+ return result.sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,100).map(job=>{
+  const {id,conversationId,status,createdAt,updatedAt,commit,error,ci,sourceCommit,checksUrl,integratedBy}=job;
+  const recovery=reviewedContribution(job,result);
+  return {id,conversationId,status,createdAt,updatedAt,commit,error,ci,sourceCommit,checksUrl,integratedBy,
+   recoveredBy:recovery?.id,files:job.files??[],
+   canRetry:!recovery&&!job.includedIn&&["blocked","pending"].includes(status)&&!!job.patchHash,
+   canReview:!recovery&&status==="interrupted"&&!job.isolated&&!job.includedIn&&!job.overlapped&&!!job.interruption?.patchHash&&!!job.after};
+ });
 }
+export function requestContributionDelivery():void{void drain();}
 export async function retryOwnerContribution(user:SessionUser,id:string):Promise<void>{
  if(!/^[a-f0-9-]{36}$/.test(id)||!(await githubStatus(user)).canEditCore)throw new ForbiddenError();
  const job=JSON.parse(await fs.readFile(path.join(outbox(),id,"job.json"),"utf8")) as ContributionJob;
