@@ -257,8 +257,14 @@ Live `team_task_update` events can't reach a CLI leader (its loop is the
 upstream CLI's), so in-chat progress comes from the board REST rehydration;
 the model polls with `team.status`.
 
-The leader always respects the provider's configured CLI/API mode, including
-follow-up turns. A saved API key does not authorize an automatic API fallback.
+Every agent, including leaders and delegated workers, uses the CLI/API mode
+saved for its selected provider in Settings → Credentials → AI agents. An
+explicit provider selection takes precedence over the agent's assigned
+provider; otherwise that assignment applies. The global default's mode never
+overrides another provider's mode. Each new turn reloads the saved settings,
+including follow-ups in an existing chat; a running turn keeps its transport.
+A saved API key does not authorize an automatic API fallback, and an API
+failure does not authorize a CLI fallback.
 Codex receives the team channel in its private conversation `config.toml`,
 with fresh credentials and a 300-second tool timeout. Inherited team entries
 are stripped before attaching the current channel, alongside the existing

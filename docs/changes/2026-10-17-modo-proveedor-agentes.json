@@ -1,0 +1,7 @@
+{
+  "title": "Modo API o CLI según el proveedor de cada agente",
+  "changes": [
+    "Los agentes líderes y sus tareas delegadas respetan el modo API o CLI guardado en Credenciales para su proveedor asignado o seleccionado.",
+    "Los cambios de modo se aplican en el siguiente turno, también en chats existentes, sin cambiar automáticamente de API a CLI ni de CLI a API ante un error."
+  ]
+}
