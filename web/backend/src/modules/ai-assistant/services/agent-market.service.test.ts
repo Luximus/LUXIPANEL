@@ -47,7 +47,14 @@ vi.mock("../repositories/conversations.repository.js", () => ({ conversationsRep
 } }));
 vi.mock("./agent-run-registry.js", () => ({ agentRunRegistry: { isActive: (id: string) => state.active.has(id) } }));
 vi.mock("./permission-broker.js", () => ({ permissionBroker: { pendingCount: (id: string) => state.active.has("approval:" + id) ? 1 : 0 } }));
-vi.mock("./tool-allowlist.js", () => ({ normalizeAllowedTools: (values: string[] | null | undefined) => values == null ? null : ({ valid: values }) }));
+// Exercise the real alias normalizer against a populated capability catalog.
+vi.mock("../../../shared/agent-capability/index.js", () => {
+  const names = ["files.read", "files.write", "files.list_dir", "files.grep", "admin.bash"];
+  return { agentCapabilityRegistry: {
+    list: () => [{ tools: names.map(name => ({ name })) }],
+    findTool: (name: string) => names.includes(name) ? { tool: { name } } : undefined,
+  } };
+});
 vi.mock("./team-tools.js", () => ({ buildTeamTools: async () => null, TEAM_TOOL_WIRE_NAMES: {} }));
 vi.mock("./agent-messages.service.js", () => ({ buildSendMessageTool: () => null, buildAgentMessagePromptBlock: () => "", SEND_MESSAGE_TOOL_WIRE_NAME: "" }));
 vi.mock("./system-prompt/delegation-tools.js", () => ({ buildDelegateTool: () => null, buildSpawnChatsTool: () => null }));
@@ -65,6 +72,7 @@ vi.mock("./system-prompt/blocks.js", () => ({
 }));
 
 import { agentMarketService } from "./agent-market.service.js";
+import * as agentContext from "./agent-context.service.js";
 import { resolveAgentContext, admitAgentWork, effectiveAssignment, resolveConversationBinding, scopedAgents } from "./agent-context.service.js";
 import { agentAssignments } from "../models/assistant-agent.types.js";
 import { hasAssignmentAdmission } from "./agent-assignment-lock.js";
@@ -434,5 +442,116 @@ describe("Market capability parity and immutable conversation binding", () => {
   it("rejects a different target before attempting to bind conversation history", async () => {
     await expect(resolveConversationBinding({ target: { id: "target-Y" } } as Executor, { conversationId: "loose" }, user))
       .rejects.toMatchObject({ code: "ASSISTANT_PROJECT_FORBIDDEN" });
+  });
+});
+
+
+describe("post-review admission and contextual parity regressions", () => {
+  it("a concurrent first assignment cannot rebind a waiting admission from null", async () => {
+    state.agents.set("a", profile({ projectIds: [] }));
+    state.metas.push({ id: "loose", agentId: "a", projectId: null });
+    const binding = await resolveConversationBinding(executor, { conversationId: "loose" }, user);
+    let release!: () => void, entered!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    state.waitTasks = async () => { entered(); await blocked; };
+    const incorporation = agentMarketService.put(executor, "a", "X", {}, user);
+    await started;
+    const outcome = admitAgentWork(executor, binding.agentId, binding.projectId, user).then(
+      admission => { admission.release(); return { admitted: true }; },
+      error => ({ code: error.code, statusCode: error.statusCode }),
+    );
+    release();
+    await incorporation;
+    expect(await outcome).toEqual({ code: "ASSISTANT_CONTEXT_MISMATCH", statusCode: 409 });
+    expect(hasAssignmentAdmission(executor, "a", new Set(["X"]))).toBe(false);
+    expect(state.metas[0].projectId).toBeNull();
+  });
+  it("an admitted null context blocks incorporation until its work releases", async () => {
+    state.agents.set("a", profile({ projectIds: [] }));
+    const run = await admitAgentWork(executor, "a", null, user);
+    try {
+      expect(run.projectId).toBeNull();
+      await expect(agentMarketService.put(executor, "a", "X", {}, user))
+        .rejects.toMatchObject({ code: "ASSISTANT_ASSIGNMENT_BUSY" });
+      expect(agentAssignments(state.agents.get("a"))).toEqual([]);
+    } finally { run.release(); }
+    await agentMarketService.put(executor, "a", "X", {}, user);
+  });
+  it("enqueue refuses a first assignment committed after binding a persisted null chat", async () => {
+    state.agents.set("a", profile({ projectIds: [] }));
+    state.metas.push({ id: "loose", agentId: "a", projectId: null });
+    const resolveBinding = agentContext.resolveConversationBinding;
+    const bindingSpy = vi.spyOn(agentContext, "resolveConversationBinding").mockImplementationOnce(async (...args) => {
+      const binding = await resolveBinding(...args);
+      await agentMarketService.put(executor, "a", "X", {}, user);
+      return binding;
+    });
+    try {
+      await expect(enqueueAgentTurn(executor, { conversationId: "loose", userText: "go", withContext: true, user }))
+        .rejects.toMatchObject({ code: "ASSISTANT_CONTEXT_MISMATCH" });
+      expect(state.queue).toEqual([]);
+      expect(state.metas[0].projectId).toBeNull();
+      expect(hasAssignmentAdmission(executor, "a", new Set(["X"]))).toBe(false);
+    } finally { bindingSpy.mockRestore(); }
+  });
+  it.each([
+    { role: ["files.list"], agent: ["files.list_dir"], expected: ["files.list_dir"] },
+    { role: ["terminal.run"], agent: ["admin.bash"], expected: ["admin.bash"] },
+    { role: ["files.list"], agent: ["files.read"], expected: [] },
+    { role: ["files.list"], agent: [], expected: [] },
+    { role: null, agent: null, expected: null },
+  ])("DTO tools match admission with legacy role $role and profile $agent", async ({ role, agent, expected }) => {
+    state.agents.set("a", profile({ roleId: "base", allowedTools: agent }));
+    state.roles.set("base", { id: "base", allowedTools: role });
+    const shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "X" });
+    const run = await admitAgentWork(executor, "a", "X", user);
+    try {
+      expect(shown.context?.effectiveConfig?.allowedTools).toEqual(expected);
+      expect(run.agent?.allowedTools).toEqual(expected);
+      expect(shown.context?.effectiveConfig?.allowedTools).toEqual(run.agent?.allowedTools);
+      expect(state.roles.get("base").allowedTools).toEqual(role);
+    } finally { run.release(); }
+  });
+  it.each(["legacy", "explicit", "inherited"])("filters %s hierarchy to executable peers in the selected context", async source => {
+    const projectId = source === "inherited" ? "child" : "X";
+    const excluded = ["only-Y", "other-owner", "removed", "missing-role", "missing", "a"];
+    const peers = ["peer-X", ...excluded, "peer-X"];
+    state.agents.set("peer-X", profile({ id: "peer-X", projectIds: ["X"] }));
+    state.agents.set("only-Y", profile({ id: "only-Y", projectIds: ["Y"] }));
+    state.agents.set("other-owner", profile({ id: "other-owner", ownerId: 99, projectIds: ["X"] }));
+    state.agents.set("removed", profile({ id: "removed", projectIds: [], assignments: [{ projectId: "X", status: "removed" }] }));
+    state.agents.set("missing-role", profile({ id: "missing-role", projectIds: ["X"], roleId: "absent" }));
+    state.agents.set("a", profile({ parentAgentId: "only-Y", connections: peers,
+      ...(source !== "legacy" ? { assignments: [{ projectId: "X", status: "active", parentAgentId: "only-Y", connections: peers }] } : {}),
+    }));
+    const saved = JSON.stringify(state.agents.get("a"));
+    const runtime = await resolveAgentContext(executor, "a", projectId, user);
+    const shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: projectId });
+    const roster = await scopedAgents(executor, [...state.agents.values()], projectId, user);
+    expect(runtime.agent).toMatchObject({ parentAgentId: null, connections: ["peer-X"] });
+    expect(shown.context?.effectiveConfig).toMatchObject({ parentAgentId: null, connections: ["peer-X"] });
+    expect(roster.map(agent => agent.id).sort()).toEqual(["a", "peer-X"]);
+    expect(roster.find(agent => agent.id === "a")).toMatchObject({ parentAgentId: null, connections: ["peer-X"] });
+    expect(JSON.stringify(state.agents.get("a"))).toBe(saved);
+    expect((await agentMarketService.present(executor, state.agents.get("other-owner"), user, { contextProjectId: projectId })).capabilities.canExecute).toBe(false);
+  });
+  it("retains a valid inherited superior and excludes the root leader once withdrawn", async () => {
+    state.agents.set("leader", profile({ id: "leader", projectIds: ["X"] }));
+    state.projects.find(p => p.id === "X").leaderAgentId = "leader";
+    state.agents.set("a", profile({ assignments: [{ projectId: "X", status: "active" }] }));
+    expect((await resolveAgentContext(executor, "a", "child", user)).agent?.parentAgentId).toBe("leader");
+    await agentMarketService.remove(executor, "leader", "X", user);
+    const shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "child" });
+    expect(shown.capabilities.canExecute).toBe(true);
+    expect(shown.context?.effectiveConfig?.parentAgentId).toBeNull();
+    expect((await resolveAgentContext(executor, "a", "child", user)).agent?.parentAgentId).toBeNull();
+  });
+  it("a loose chat cannot expose connections assigned to another project", async () => {
+    state.agents.set("a", profile({ projectIds: [], parentAgentId: "scoped", connections: ["scoped", "loose"] }));
+    state.agents.set("scoped", profile({ id: "scoped", projectIds: ["X"] }));
+    state.agents.set("loose", profile({ id: "loose", projectIds: [] }));
+    expect((await resolveAgentContext(executor, "a", null, user)).agent)
+      .toMatchObject({ parentAgentId: null, connections: ["loose"] });
   });
 });
