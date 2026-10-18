@@ -3,7 +3,7 @@
 import type { ChatTurn, TurnAttachment } from "./types";
 import type { ConversationMessage } from "../assistant-api";
 import { attachmentUrl, displayText } from "../assistant-api";
-import { deriveCliSummary, looksLikeCliTranscript, stripLaneTokens } from "./cli-lanes";
+import { stripLaneTokens } from "./cli-lanes";
 import { apiActivityTools } from "./api-activity";
 
 /** History message → renderable turn, resolving attachment refs to URLs. */
@@ -20,23 +20,10 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
     m.role === "user" && m.textOriginal && m.content && m.content !== m.textOriginal
       ? m.content
       : undefined;
-  // Reloaded CLI assistant turn. New turns store the clean answer in `content`
-  // and the verbose log in `cliLog`; pre-split turns put the whole log in
-  // `content`. Either way: rebuild the collapsed console from the log (lane
-  // tokens stripped — the reloaded box is a flat <pre>, not tabbed) and show the
-  // clean answer in the bubble (`content`/`textTranslated` for new turns; derived
-  // from the log for pre-split ones).
-  const isCliAssistant = m.role === "assistant" && !!m.cli && (!!m.content || !!m.cliLog);
-  const hasSplitLog = isCliAssistant && typeof m.cliLog === "string" && m.cliLog.length > 0;
-  const cliRawLog = hasSplitLog ? m.cliLog! : isCliAssistant ? m.content : "";
-  const persistedSummary = displayText(m);
-  const cliSummary = m.pending ? "" : m.error || m.interrupted ? (looksLikeCliTranscript(persistedSummary) ? "" : persistedSummary) : hasSplitLog
-    ? (
-      persistedSummary.trim() && !looksLikeCliTranscript(persistedSummary)
-        ? persistedSummary
-        : deriveCliSummary(m.textTranslated, cliRawLog)
-    )
-    : deriveCliSummary(m.textTranslated, cliRawLog);
+  // Display content is authoritative, including legacy documents with shell
+  // examples. Only an explicitly separated log belongs in the process history.
+  const isCliAssistant = m.role === "assistant" && !!m.cli;
+  const cliRawLog = isCliAssistant ? m.cliLog ?? "" : "";
   const apiActivity = m.role === "assistant" && !m.cli ? m.apiActivity : undefined;
   return {
     role: m.role,
@@ -47,12 +34,7 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
     ...(m.error ? { error: m.error } : {}),
     ...(m.interrupted ? { stopped: true } : {}),
     ...((m.provider ?? fallbackProvider) ? { provider: m.provider ?? fallbackProvider } : {}),
-    // CLI turns: clean answer (split) or summary derived from the log
-    // (pre-split); otherwise the user-facing variant when translation was active.
-    // New contract responses always keep their canonical display body intact.
-    text: isCliAssistant && !m.messageId && !m.presentation
-      && (!persistedSummary.trim() || persistedSummary.trimStart().startsWith("$ ") || looksLikeCliTranscript(persistedSummary))
-      ? cliSummary : displayText(m),
+    text: displayText(m),
     tools: apiActivity ? apiActivityTools(apiActivity) : [],
     ...(apiActivity ? { apiActivity } : {}),
     ...(forwardedEnglish ? { raw: forwardedEnglish } : {}),

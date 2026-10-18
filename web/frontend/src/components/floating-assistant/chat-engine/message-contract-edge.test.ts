@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 it.each([false, true])("preserves legacy CLI documents with console examples, translated=%s", translated => {
-  const document = "Manual solicitado.\n\n```sh\n$ printf ejemplo\n```\n\nÚltimo párrafo del documento.";
+  const document = "Manual solicitado.\n\n● Paso de comprobación solicitado.\n\n```sh\n$ printf ejemplo\n```\n\nÚltimo párrafo del documento.";
   const stored: ConversationMessage = { role: "assistant", cli: true, content: document, ts: "",
     ...(translated ? { textTranslated: document } : {}), displaySummary: "Resumen anterior." };
   expect(historyTurn(stored).text).toBe(document);

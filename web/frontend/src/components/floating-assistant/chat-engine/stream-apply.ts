@@ -78,6 +78,13 @@ export function applyEvent(
   const i = out.length - 1;
   const t = out[i];
   if (!t || t.role !== "assistant") return;
+  // Replaying a response already restored by identity must not append text or
+  // usage again, nor revoke its completion with an older pending terminal.
+  const settledIdentity = !!t.messageId?.trim() && !t.pending && !t.completionPending && !t.interrupted && !t.status;
+  if (settledIdentity && (ctx.replay || (ev.type === "done" && ev.pending && terminalId === t.messageId))) {
+    chats.set(key, { ...chat, ...(seq !== undefined && seq >= 0 ? { lastSeq: seq } : {}) });
+    return;
+  }
   const raw = t.raw ?? "";
   // In CLI mode the live output is the CLI's terminal: index of the last
   // `.cli` tool we should funnel text into.
@@ -226,7 +233,7 @@ export function applyEvent(
       const confirmedCli = isCli && !ev.pending && !t.error && !!t.text.trim() && t.tools[cliIdx]?.result?.success;
       out[i] = { ...t,
         ...(terminalId ? { messageId: terminalId } : {}),
-        presentation: ev.pending || t.error || t.ask?.length ? "full" : ev.presentation ?? t.presentation,
+        presentation: ev.pending || t.error || t.ask?.length ? "full" : ev.presentation ?? "full",
         ...(confirmedCli ? { tools: t.tools.map((tool, index) => index === cliIdx ? settleLanes(tool, "done") : tool) } : {}),
         ...(apiActivity ? { apiActivity } : {}),
         ...(ev.pending ? { text: "", apiTextOffset: undefined, displaySummary: undefined } : { displaySummary: ev.displaySummary }),
