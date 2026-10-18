@@ -20,7 +20,7 @@ const persisted={id:"persisted-id",name:"Revisor",providerId:"claude",model:"",d
 beforeEach(()=>{
  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});vi.clearAllMocks();m.scope=crypto.randomUUID();records=[];
  m.list.mockImplementation(async()=>records);m.update.mockResolvedValue(persisted);
- m.create.mockImplementation(async()=>{records=[persisted];throw new AgentRequestError(0,undefined,"lost response");});
+ m.create.mockImplementation(async()=>{records.push({...persisted,id:records.length?"duplicate-id":"persisted-id"});throw new AgentRequestError(0,undefined,"lost response");});
  vi.stubGlobal("fetch",vi.fn(async()=>new Response(JSON.stringify({ok:true,items:[]}),{headers:{"Content-Type":"application/json"}})));
  host=document.createElement("div");document.body.append(host);root=createRoot(host);
 });

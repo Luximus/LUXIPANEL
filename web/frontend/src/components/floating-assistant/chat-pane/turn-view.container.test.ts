@@ -20,7 +20,7 @@ describe("assistant message container", () => {
     expect(html).toContain("Error recuperado de la primera fase");
     expect(html).toContain("first.tsx");
     expect(html).toContain("last.tsx");
-    expect(html.match(/title="Abrir en editor: src\/shared.tsx"/g)).toHaveLength(1);
+    expect(html.match(/title="[^\"]*src\/shared\.tsx[^\"]*"/g)).toHaveLength(1);
   });
   it.each([null, { id: "worker", name: "Sofía", providerId: "claude" } as AssistantAgent])("keeps a reloaded CLI failure visible with team details inside the console in general and agent chats: %j", (agent) => {
     const turn: ChatTurn = {

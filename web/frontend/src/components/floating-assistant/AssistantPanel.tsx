@@ -221,6 +221,14 @@ export default function AssistantPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null);
   const agentLaunchSequence = useRef(0);
+  const launchNavigation = useRef(tab);
+  launchNavigation.current = tab;
+  useEffect(() => {
+    const invalidate = () => { ++agentLaunchSequence.current; };
+    const events = ["astro:page-load", "popstate", "lxp:internal-modules:route-changed", "luxipanel:permissions-changed"];
+    events.forEach(event => window.addEventListener(event, invalidate));
+    return () => events.forEach(event => window.removeEventListener(event, invalidate));
+  }, []);
   // Lista de proveedores visibles en chat, usada por `openAssistantRequest`.
   // Debe declararse antes del callback que la consume.
   const activeProviders = useMemo<AssistantProviderId[]>(() => {
@@ -288,7 +296,7 @@ export default function AssistantPanel({
     const sourceProvider = chatUiState.getActiveProvider();
     const sourceIdentity = () => {
       const pane = sourceProvider ? chatUiState.getPane(sourceProvider) : null;
-      return JSON.stringify([chatUiState.getActiveProvider(), pane?.activeId, pane?.currentProjectId, pane?.currentAgentId, workspaceState.getSnapshot().project?.id, window.location.href]);
+      return JSON.stringify([chatUiState.getActiveProvider(), pane?.activeId, pane?.currentProjectId, pane?.currentAgentId, workspaceState.getSnapshot().project?.id, window.location.href, launchNavigation.current]);
     };
     const requestIdentity = sourceIdentity();
     const isCurrent = () => sequence === agentLaunchSequence.current

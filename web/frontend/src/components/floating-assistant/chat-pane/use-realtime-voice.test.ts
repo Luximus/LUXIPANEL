@@ -6,11 +6,11 @@ vi.mock("@/lib/api-client",()=>({api:{get:m.get,post:m.post,delete:m.del},unwrap
 import {useRealtimeVoice} from "./use-realtime-voice";
 import {chatInputLocked} from "../chat-engine/input-lock";
 let hook:ReturnType<typeof useRealtimeVoice>,root:Root,host:HTMLDivElement;
-let options={enabled:true,chatKey:"chat",conversationId:"chat",ensureConversation:vi.fn(async()=>"chat"),refresh:vi.fn(async()=>{})};
+let options={enabled:true,canStart:true,chatKey:"chat",conversationId:"chat",ensureConversation:vi.fn(async()=>"chat"),refresh:vi.fn(async()=>{})};
 function Harness(){hook=useRealtimeVoice(options);return createElement("div",null,null);}
 beforeEach(async()=>{
  vi.clearAllMocks();m.scope="host";m.track.enabled=true;
- options={enabled:true,chatKey:"chat",conversationId:"chat",ensureConversation:vi.fn(async()=>"chat"),refresh:vi.fn(async()=>{})};
+ options={enabled:true,canStart:true,chatKey:"chat",conversationId:"chat",ensureConversation:vi.fn(async()=>"chat"),refresh:vi.fn(async()=>{})};
  m.get.mockImplementation(async(path:string)=>path.includes("/conversations/")?{ok:true,activeId:null}:{ok:true,closed:false,events:[]});
  m.post.mockResolvedValue({ok:true,id:"voice",sdp:"answer"});m.del.mockResolvedValue({ok:true});
  m.media.mockResolvedValue({getTracks:()=>[m.track],getAudioTracks:()=>[m.track]});
@@ -87,4 +87,26 @@ it("does not send the old session through a different server",async()=>{
  await act(async()=>hook.toggle());m.scope="other-server";
  await act(async()=>root.render(createElement(Harness)));
  expect(m.del).not.toHaveBeenCalled();expect(m.track.stop).toHaveBeenCalled();expect(hook.active).toBe(false);
+});
+
+it("keeps an active session stoppable after catalog admission is lost and blocks a new start",async()=>{
+ await act(async()=>hook.toggle());expect(hook.active).toBe(true);
+ options={...options,canStart:false};
+ await act(async()=>root.render(createElement(Harness)));
+ expect(hook.active).toBe(true);expect(m.del).not.toHaveBeenCalled();
+ await act(async()=>hook.toggle());expect(m.del).toHaveBeenCalledTimes(1);
+ expect(hook.active).toBe(false);
+ await act(async()=>hook.toggle());
+ expect(m.post).toHaveBeenCalledTimes(1);expect(m.media).toHaveBeenCalledTimes(1);
+});
+it("does not create a voice conversation after admission is lost during microphone access",async()=>{
+ let ready!:(value:{getTracks:()=>typeof m.track[];getAudioTracks:()=>typeof m.track[]})=>void;
+ m.media.mockReturnValueOnce(new Promise(resolve=>{ready=resolve;}));
+ let starting!:Promise<void>;
+ await act(async()=>{starting=hook.toggle();});
+ options={...options,canStart:false};
+ await act(async()=>root.render(createElement(Harness)));
+ await act(async()=>{ready({getTracks:()=>[m.track],getAudioTracks:()=>[m.track]});await starting;});
+ expect(options.ensureConversation).not.toHaveBeenCalled();expect(m.post).not.toHaveBeenCalled();
+ expect(hook.active).toBe(false);expect(m.track.stop).toHaveBeenCalled();
 });

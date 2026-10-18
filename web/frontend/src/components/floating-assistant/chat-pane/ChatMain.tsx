@@ -17,7 +17,7 @@ import { createPortal } from "react-dom";
 import { formatAssistantMessage, useAssistantI18n } from "../i18n";
 import { chatEngine } from "../chat-engine";
 import { resolveTargetScope } from "@/lib/api-client";
-import { availableInProject, legacyHistoryAgentIds } from "../agent-market-state";
+import { legacyHistoryAgentIds } from "../agent-market-state";
 import { groupTeamNotices, isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
 import { groupExecutionTurns } from "./execution-turns";
 import { ExecutionDisclosure } from "./tool-disclosure";
@@ -286,7 +286,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
   // `turns.slice(0,i).reverse().find(...)` made each render O(N²) — and this pane
   // re-renders on every streaming SSE token.
   const lastUserTurnIndex = useMemo(() => {
-    for (let i = turns.length - 1; i >= 0; i--) if (turns[i]?.role === "user" && !isTeamNotice(turns[i]!)) return i;
+    for (let i = turns.length - 1; i >= 0; i--) if (turns[i]?.role === "user") return i;
     return -1;
   }, [turns]);
   const teamNotices = useMemo(() => groupTeamNotices(turns), [turns]);

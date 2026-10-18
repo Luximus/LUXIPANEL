@@ -875,7 +875,13 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
   const agentInputBlocked = (!!activeId && (!activeMeta || (activeMeta.agentId ?? null) !== (currentAgentId ?? null)))
     || (!!boundAgentId && (!agentsLoaded || !boundAgentAvailable));
 
+  const admissionScope = JSON.stringify([resolveTargetScope(), scopeHeaders(true)]);
+  const agentAdmissionRef = useRef({ blocked: agentInputBlocked, scope: admissionScope, binding: "" });
+  agentAdmissionRef.current = { blocked: agentInputBlocked, scope: admissionScope,
+    binding: JSON.stringify([activeId, currentAgentId, effectiveProjectId]) };
+
   return {
+    agentAdmissionRef,
     agentInputBlocked,
     historicalOnly,
     activeChatProject,

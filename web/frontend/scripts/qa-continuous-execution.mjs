@@ -6,6 +6,15 @@ import os from "node:os";
 import { createServer } from "vite";
 import tailwind from "@tailwindcss/vite";
 
+// This fixture renders local data only, including a simulated event transport.
+const transport = `window.WebSocket=class extends EventTarget {
+  static CONNECTING=0; static OPEN=1; static CLOSING=2; static CLOSED=3;
+  readyState=0;
+  constructor(){super();queueMicrotask(()=>{this.readyState=1;this.onopen?.(new Event("open"));});}
+  send(){}
+  close(){this.readyState=3;this.onclose?.(new Event("close"));}
+};`;
+
 const entry = `
 import {createElement,useState} from "react";
 import {createRoot} from "react-dom/client";
@@ -64,8 +73,8 @@ const server = await createServer({
         return;
       }
       if (req.url?.split("?")[0] !== "/") return next();
-      res.setHeader("Content-Type", "text/html");
-      res.end(`<!doctype html><html lang="es" class="${req.url?.includes("light") ? "" : "dark"}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ejecución continua del asistente</title><style id="xterm-css-cdn"></style><style>html,body{margin:0;min-height:100%}#root{min-height:100vh}</style></head><body class="bg-background text-foreground"><main data-workspace-shell><div id="root" class="lxp-workspace-chat flex flex-col"></div></main><script type="module" src="/qa-entry.js"></script></body></html>`);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.end(`<!doctype html><html lang="es" class="${req.url?.includes("light") ? "" : "dark"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ejecución continua del asistente</title><link rel="icon" href="data:,"><style id="xterm-css-cdn"></style><style>html,body{margin:0;min-height:100%}#root{min-height:100vh}</style></head><body class="bg-background text-foreground"><main data-workspace-shell><div id="root" class="lxp-workspace-chat flex flex-col"></div></main><script>${transport}</script><script type="module" src="/qa-entry.js"></script></body></html>`);
     }); },
   }, tailwind()],
   server: { host: "127.0.0.1", port: Number(process.env.LXP_QA_PORT) || 0, strictPort: true, hmr: false, watch: null },

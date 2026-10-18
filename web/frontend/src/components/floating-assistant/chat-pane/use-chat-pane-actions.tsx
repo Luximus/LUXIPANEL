@@ -6,6 +6,7 @@
  * hooks, so it does not affect the flattened hook sequence; receives all state/
  * derived via `s`/`d` and returns the real handlers.
  */
+import { resolveTargetScope, scopeHeaders } from "@/lib/api-client";
 import { chatInputLocked } from "../chat-engine/input-lock";
 import {
   assistantConversationsApi,
@@ -295,11 +296,21 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
     // All entry points (suggestions, answers, retry, composer and queue) pass
     // this guard before options, drafts or persisted history can be changed.
     // Only the explicit external "new assistant" flow may leave this binding.
-    const freshAssistant = opts?.forceNew && opts.agentIdOverride === null;
-    if (d.agentInputBlocked && !freshAssistant) return;
+    const freshAssistant = opts?.agentIdOverride === null && opts.projectIdOverride === null
+      && (opts.forceNew || (!!opts.conversationIdOverride && opts.conversationIdOverride !== activeId));
+    const admitted = d.agentAdmissionRef?.current;
+    const canSend = () => {
+      const latest = d.agentAdmissionRef?.current;
+      return !(latest?.blocked ?? d.agentInputBlocked) || freshAssistant;
+    };
+    const stillCurrent = () => canSend() && (!admitted || (
+      d.agentAdmissionRef.current.binding === admitted.binding
+      && admitted.scope === JSON.stringify([resolveTargetScope(), scopeHeaders(true)])
+    ));
+    if (!stillCurrent()) return;
     const voiceInput = !!opts?.attachmentsOverride?.some(a => a.voice);
     if (chatInputLocked(chatKey) && !voiceInput && !opts?.planDecision) return;
-    if (!await s.conversationOptions.beforeSend()) return;
+    if (!await s.conversationOptions.beforeSend() || !stillCurrent()) return;
     const text = (explicitText ?? draft).trim();
     // No `streaming` guard: if a run is in flight the engine appends this as an
     // ADDENDUM to the active bubble (default) or QUEUES it as a separate turn
@@ -308,7 +319,6 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
     void preloadMonaco().catch(() => {});
     // Subtle haptic confirmation on touch devices (no-op on desktop).
     try { navigator.vibrate?.(8); } catch { /* unsupported */ }
-    if (!voiceInput) setDraft("");
 
     // Replace (not combine) when the last turn was STOPPED by the user: the next
     // message redoes the stopped one, so trim the stopped user+assistant pair
@@ -318,7 +328,6 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
     const lastWasStopped = lastLiveTurn?.role === "assistant" && lastLiveTurn.stopped === true;
     // Capture and clear the edit flag before any async work so it's atomic.
     const willTrim = (editPendingTrim || lastWasStopped) && !opts?.forceNew;
-    if (editPendingTrim) setEditPendingTrim(false);
 
     let convId: string | null;
     let key: string;
@@ -346,6 +355,7 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
       const createProjectId = opts && "projectIdOverride" in opts ? opts.projectIdOverride ?? null : effectiveProjectId;
       try {
         const meta = await assistantConversationsApi.create(provider, text || "(adjunto)", createProjectId, createAgentId, s.conversationOptions.snapshot());
+        if (!stillCurrent()) return;
         convId = meta.id;
         key = meta.id;
         chatUiState.moveNewConversationChoice(provider, meta.id);
@@ -357,6 +367,10 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
         return;
       }
     }
+
+    if (!stillCurrent()) return;
+    if (!voiceInput) setDraft("");
+    if (editPendingTrim) setEditPendingTrim(false);
 
     // Edit mode: drop the stopped user turn + assistant turn before resending.
     if (willTrim) chatEngine.popTurns(key, 2);

@@ -86,7 +86,7 @@ it.each(["removed","loading","error","null-history"])("blocks every send path wi
  await act(async()=>suggestion.click());
  await act(async()=>vm.send("envío directo"));
  await act(async()=>vm.send(undefined,{queue:true}));
- await act(async()=>vm.send("",{attachmentsOverride:[{...attachment,voice:true}]}));
+ await act(async()=>vm.send("",{attachmentsOverride:[{...attachment,voice:{transcript:"nota"}}]}));
  expect(m.create).not.toHaveBeenCalled();
  expect(send).not.toHaveBeenCalled();
  expect(vm.draft).toBe("Conservar borrador");expect(vm.attachments).toEqual([attachment]);
@@ -104,4 +104,27 @@ it.each(["removed","loading","error","null-history"])("blocks every send path wi
  expect(m.create).not.toHaveBeenCalled();
  expect(vm.draft).toBe("Conservar borrador");expect(vm.attachments).toEqual([attachment]);
  expect(chatEngine.get(vm.chatKey)?.turns.map(turn=>turn.text)).toEqual(["Pregunta","Respuesta previa"]);
+});
+
+it("rechecks admission after pending conversation options without clearing the draft",async()=>{
+ const send=vi.spyOn(chatEngine,"send").mockResolvedValue(undefined);
+ await mount();
+ let release!:(value:boolean)=>void;
+ vi.spyOn(vm.conversationOptions,"beforeSend").mockReturnValue(new Promise<boolean>(yes=>{release=yes;}));
+ let sending!:Promise<void>;
+ await act(async()=>{sending=vm.send("Esperando opciones");});
+ m.list.mockResolvedValue([{...agent,capabilities:{canExecute:false}}]);
+ await act(async()=>window.dispatchEvent(new Event("lxp:assistant:agents-updated")));
+ await act(async()=>{release(true);await sending;});
+ expect(send).not.toHaveBeenCalled();expect(m.create).not.toHaveBeenCalled();
+ expect(vm.draft).toBe("Conservar borrador");expect(vm.attachments).toEqual([attachment]);
+});
+
+it("allows an explicit new general assistant request without rebinding the historical chat",async()=>{
+ m.list.mockResolvedValue([{...agent,capabilities:{canExecute:false}}]);
+ const send=vi.spyOn(chatEngine,"send").mockResolvedValue(undefined);
+ await mount();
+ await act(async()=>vm.send("Nueva consulta general",{conversationIdOverride:"new-general",agentIdOverride:null,projectIdOverride:null}));
+ expect(m.create).not.toHaveBeenCalled();
+ expect(send).toHaveBeenCalledWith(expect.objectContaining({conversationId:"new-general",agentId:null,projectId:null,userText:"Nueva consulta general"}));
 });
