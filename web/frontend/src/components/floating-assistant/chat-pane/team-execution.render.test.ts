@@ -912,3 +912,55 @@ it("replaces the preview when expanding full text and never changes the saved an
   expect(container.querySelector("[data-visible-summary]")).not.toBeNull();
   expect(container.querySelector("[data-answer-detail]")).toBeNull();
 });
+
+it.each(["document", "code"] as const)("preserves complete requested %s content and exact copy through history reload", async kind => {
+  const body = kind === "code"
+    ? Array.from({ length: 40 }, (_, index) => `const value${index} = ${index};`).join("\n")
+    : Array.from({ length: 12 }, (_, index) => `Apartado ${index + 1}: contenido íntegro y verificable del documento.`).join("\n\n");
+  const text = kind === "code" ? "```ts\n" + body + "\n```" : "Documento solicitado.\n\n" + body;
+  const live: ChatTurn = { role: "assistant", text, tools: [] };
+  const restored = historyTurn({ role: "assistant", content: text, ts: "", textTranslated: text });
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  for (const response of [live, restored]) {
+    await act(async () => root.render(null));
+    await renderThread({ mode: "api", turns: [{ ...user, text: `Entrega el ${kind} completo.` }, response] });
+    const answer = host.querySelector<HTMLElement>('[data-message-section="answer"]')!;
+    const detail = answer.querySelector<HTMLDetailsElement>("[data-compact-answer] > details")!;
+    expect(detail).not.toBeNull();
+    if (kind === "code") {
+      expect(answer.querySelector("[data-visible-summary]")).toBeNull();
+      expect(detail.querySelector("summary")?.textContent).toBe("Ver detalle");
+    }
+    await toggle(detail);
+    const full = detail.querySelector<HTMLElement>("[data-answer-detail]")!;
+    if (kind === "code") expect(full.querySelector("pre")?.textContent).toBe(body);
+    else for (const paragraph of body.split("\n\n")) expect(full.textContent).toContain(paragraph);
+    const copy = [...answer.querySelectorAll<HTMLButtonElement>('button[title="Copiar"]')].at(-1)!;
+    await act(async () => copy.click());
+    expect(clipboard).toHaveBeenLastCalledWith(text);
+    expect(response.text).toBe(text);
+    await toggle(detail);
+    await toggle(detail);
+    expect(detail.querySelector("[data-answer-detail]")?.textContent).toContain(
+      kind === "code" ? "const value39 = 39;" : "Apartado 12: contenido íntegro",
+    );
+  }
+});
+
+it("retains all requested plan steps and its approval after history reload", async () => {
+  const steps = Array.from({ length: 12 }, (_, index) => `${index + 1}. Paso verificable ${index + 1} del plan solicitado.`);
+  const text = "Resumen: Preparar y verificar el cambio.\n\nPlan completo:\n" + steps.join("\n");
+  const response = historyTurn({
+    role: "assistant", content: text, ts: "", askKind: "plan-approval",
+    ask: [{ id: "plan", type: "single", text: "¿Apruebas el plan?", options: ["Aprobar plan", "Pedir cambios"] }],
+  });
+  await renderThread({ mode: "api", turns: [user, response] });
+  const plan = [...host.querySelectorAll<HTMLDetailsElement>("details")]
+    .find(details => details.querySelector(":scope > summary")?.textContent?.includes("Ver plan completo"))!;
+  expect(plan).not.toBeNull();
+  await toggle(plan);
+  for (let index = 1; index <= 12; index++) expect(visibleText(plan)).toContain(`Paso verificable ${index} del plan solicitado.`);
+  expect(button("Aprobar plan").closest("details")).toBeNull();
+  expect(button("Aprobar plan").disabled).toBe(false);
+  expect(response.text).toBe(text);
+});
