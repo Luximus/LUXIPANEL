@@ -532,6 +532,8 @@ const assistantPart3 = {
     "attachFailed": "ファイルをチャットに添付できませんでした。"
   },
   "teamBoard": {
+    "showMoreTasks": "さらに{count}件のタスクを表示",
+    "showFewerTasks": "表示するタスクを減らす",
     "title": "チーム作業中",
     "progressOf": "{total}件中{done}件のタスクが完了",
     "statusPending": "保留中",

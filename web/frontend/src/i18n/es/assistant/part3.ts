@@ -534,6 +534,8 @@ const assistantPart3 = {
     "attachFailed": "No se pudo adjuntar el archivo al chat."
   },
   "teamBoard": {
+    "showMoreTasks": "Ver {count} tareas más",
+    "showFewerTasks": "Mostrar menos tareas",
     "title": "Equipo trabajando",
     "progressOf": "{done} de {total} tareas completadas",
     "statusPending": "Pendiente",

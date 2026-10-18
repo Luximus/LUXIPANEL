@@ -532,6 +532,8 @@ const assistantPart3 = {
     "attachFailed": "تعذّر إرفاق الملف بالمحادثة."
   },
   "teamBoard": {
+    "showMoreTasks": "عرض {count} مهام إضافية",
+    "showFewerTasks": "عرض مهام أقل",
     "title": "الفريق يعمل",
     "progressOf": "اكتملت {done} من {total} مهام",
     "statusPending": "قيد الانتظار",

@@ -16,7 +16,7 @@ import { ChevronRight } from "lucide-react";
 import { apiToolStatus } from "./api-activity";
 import type { ThoughtLineEntryStatus } from "./reactbits/ThoughtLine";
 
-type ExecutionContentProps = { children?: ReactNode; attention?: ReactNode };
+type ExecutionContentProps = { children?: ReactNode; attention?: ReactNode; contentOnly?: boolean };
 
 /**
  * One tool trace rendered as a collapsible `<details>`. For a CLI tool (the
@@ -24,7 +24,7 @@ type ExecutionContentProps = { children?: ReactNode; attention?: ReactNode };
  * is working. The user can expand it whenever they want to watch the process.
  * Non-CLI tool traces stay collapsed by default and retain manual toggles.
  */
-export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, attention }: { t: ToolTraceLite; turn: ChatTurn; uiMode: "simple" | "advanced"; embedded?: boolean } & ExecutionContentProps) {
+export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, attention, contentOnly = false }: { t: ToolTraceLite; turn: ChatTurn; uiMode: "simple" | "advanced"; embedded?: boolean } & ExecutionContentProps) {
   const tt = useAssistantI18n().chatTab.toolTrace;
   const isCliTool = t.name.endsWith(".cli");
   const cliStartedAt = isCliTool && typeof (t.input as Record<string, unknown>).startedAt === "number"
@@ -48,6 +48,16 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
   // collapsible (the <details> carries the terminal chrome, mirroring
   // CliHistoryView), with NO generic "Procesando" wrapper around it.
   if (isCliTool) {
+    const content = <>
+      <div id={toolContentId} className={`border-t border-border/60 p-1 ${embedded ? "bg-gray-200 dark:bg-black/95" : ""}`}>
+        <CliTerminalView bare output={t.terminal ?? ""} lanes={t.lanes} laneOrder={t.laneOrder} running={running} />
+        {t.result && !t.result.success && (
+          <p className="mt-1 px-1 text-[10px] text-amber-500">{t.result.output}</p>
+        )}
+      </div>
+      {children}
+    </>;
+    if (contentOnly) return content;
     return (
       <details
         open={consoleOpen}
@@ -55,20 +65,14 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
         className={`group overflow-hidden text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-gray-200 dark:bg-black/95"}`}
       >
         <summary aria-expanded={consoleOpen} aria-controls={toolContentId} className={`flex min-h-11 flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden ${embedded ? "px-3" : "px-2"}`}>
-          <CallChip icon="terminal" name="CLI" argument={(tt as Record<string, any>).serverConsole ?? "Consola del servidor"} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
+          <CallChip icon="terminal" name="CLI" argument={tt.serverConsole} status={status} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
           <span className="ml-auto flex items-center gap-1.5 text-[10px] opacity-80">
             {running && cliStartedAt ? <CliTimer startedAt={cliStartedAt} /> : toolState === "done" ? tt.viewHistory : statusLabel}
             <ChevronRight className={`size-3 transition-transform duration-200 ${consoleOpen ? "rotate-90" : ""}`} aria-hidden />
           </span>
           {attention}
         </summary>
-        <div id={toolContentId} className={`border-t border-border/60 p-1 ${embedded ? "bg-gray-200 dark:bg-black/95" : ""}`}>
-          <CliTerminalView bare output={t.terminal ?? ""} lanes={t.lanes} laneOrder={t.laneOrder} running={running} />
-          {t.result && !t.result.success && (
-            <p className="mt-1 px-1 text-[10px] text-amber-500">{t.result.output}</p>
-          )}
-        </div>
-        {children}
+        {content}
       </details>
     );
   }
@@ -102,7 +106,7 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
  * stays compact; the user expands it to read the full execution history. A
  * maximize button (and clicking the box) opens a full-screen scrollable modal.
  */
-export function CliHistoryView({ text, embedded = false, children, attention, activityStatus = "done" }: { text: string; embedded?: boolean; activityStatus?: ThoughtLineEntryStatus } & ExecutionContentProps) {
+export function CliHistoryView({ text, embedded = false, children, attention, activityStatus = "done", contentOnly = false }: { text: string; embedded?: boolean; activityStatus?: ThoughtLineEntryStatus } & ExecutionContentProps) {
   const tt = useAssistantI18n().chatTab.toolTrace;
   const ct = useAssistantI18n().chatTab as Record<string, any>;
   const [expanded, setExpanded] = useState(false);
@@ -111,16 +115,7 @@ export function CliHistoryView({ text, embedded = false, children, attention, ac
   const statusLabel = activityStatus === "failed" ? tt.error : activityStatus === "stopped" ? tt.stopped
     : activityStatus === "waiting" ? tt.waiting : activityStatus === "unconfirmed" ? tt.unconfirmed
       : activityStatus === "running" ? tt.running : tt.viewHistory;
-  return (
-    <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-black/95"}`}>
-      <summary aria-expanded={open} aria-controls={contentId} className={`flex min-h-11 flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden ${embedded ? "px-3 text-foreground" : "px-2 text-zinc-300"}`}>
-        <CallChip icon="terminal" name="CLI" argument={ct.toolTrace?.serverConsole ?? "Consola del servidor"} status={activityStatus === "failed" ? "error" : activityStatus === "running" ? "running" : activityStatus === "done" ? "done" : "idle"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
-        <span className="ml-auto flex items-center gap-1 text-[10px]">
-          {statusLabel}
-          <i className="ti ti-chevron-right transition-transform group-open:rotate-90" aria-hidden></i>
-        </span>
-        {attention}
-      </summary>
+  const content = <>
       <div id={contentId} className={`relative border-t border-border/60 p-1 ${embedded ? "bg-black/95" : ""}`}>
         <button
           type="button"
@@ -148,12 +143,25 @@ export function CliHistoryView({ text, embedded = false, children, attention, ac
           </pre>
         </CliFullscreenModal>
       )}
+  </>;
+  if (contentOnly) return content;
+  return (
+    <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className={`group text-xs ${embedded ? "bg-background/20" : "rounded-md border border-border/60 bg-black/95"}`}>
+      <summary aria-expanded={open} aria-controls={contentId} className={`flex min-h-11 flex-wrap cursor-pointer list-none items-center gap-1.5 py-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden ${embedded ? "px-3 text-foreground" : "px-2 text-zinc-300"}`}>
+        <CallChip icon="terminal" name="CLI" argument={ct.toolTrace?.serverConsole ?? "Consola del servidor"} status={activityStatus === "failed" ? "error" : activityStatus === "running" ? "running" : activityStatus === "done" ? "done" : "idle"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
+        <span className="ml-auto flex items-center gap-1 text-[10px]">
+          {statusLabel}
+          <i className="ti ti-chevron-right transition-transform group-open:rotate-90" aria-hidden></i>
+        </span>
+        {attention}
+      </summary>
+      {content}
     </details>
   );
 }
 
 /** Standard execution disclosure when a task/notice precedes its tool trace. */
-export function ExecutionDisclosure({ children, attention, running = false, failed = false, stopped = false, source, activityStatus }: ExecutionContentProps & { running?: boolean; failed?: boolean; stopped?: boolean; source?: "API"; activityStatus?: ThoughtLineEntryStatus }) {
+export function ExecutionDisclosure({ children, attention, running = false, failed = false, stopped = false, source, activityStatus, startedAt }: ExecutionContentProps & { running?: boolean; failed?: boolean; stopped?: boolean; source?: "API" | "CLI"; activityStatus?: ThoughtLineEntryStatus; startedAt?: number }) {
   const tt = useAssistantI18n().chatTab.toolTrace;
   const [open, setOpen] = useState(false);
   const contentId = useId();
@@ -162,12 +170,12 @@ export function ExecutionDisclosure({ children, attention, running = false, fail
     : state === "unconfirmed" ? tt.unconfirmed : state === "waiting" ? tt.waiting
       : state === "running" ? tt.running : tt.done;
   return (
-    <details data-execution-source={source} open={open} onToggle={event => setOpen(event.currentTarget.open)} className="group bg-background/20 text-xs">
+    <details data-execution-history data-execution-source={source} open={open} onToggle={event => setOpen(event.currentTarget.open)} className="group bg-background/20 text-xs">
       <summary aria-expanded={open} aria-controls={contentId} className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-1.5 px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <CallChip icon="terminal" name={source ?? tt.viewHistory} argument={source ? tt.serverConsole : statusLabel} status={state === "failed" ? "error" : state === "running" ? "running" : state === "done" ? "done" : "idle"} showTimer={false} size={27} surfaceColor="var(--muted)" color="var(--foreground)" className="lxp-tool-call-chip" />
         {source && <span className="ml-auto flex flex-wrap items-center gap-1.5 text-[10px]">
           {state !== "done" && <span role="status">{statusLabel}</span>}
-          <span>{tt.viewHistory}</span>
+          {state === "running" && startedAt ? <CliTimer startedAt={startedAt} /> : <span>{tt.viewHistory}</span>}
         </span>}
         <ChevronRight className={`${source ? "" : "ml-auto "}size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`} aria-hidden />
         {attention}

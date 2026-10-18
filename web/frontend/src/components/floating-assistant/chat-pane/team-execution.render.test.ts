@@ -807,3 +807,101 @@ it("keeps internal JSON hidden in the team preview and uses the same persisted s
   expect(visibleText(host)).not.toContain("lxp.agent.v1");
   expect(visibleText(host)).not.toContain("HTTP 503");
 });
+
+it.each([0, 1, 3, 4, 27])("keeps one task list with three initial rows and an accessible remainder: %s tasks", async count => {
+  const tasks = Array.from({ length: count }, (_, index) => task({
+    id: `task-${index}`, title: `Tarea ${index + 1}`, workerAgentId: `worker-${index}`,
+    status: "done",
+  }));
+  await renderThread({ mode: "api", turns: [user, reply(false, true)], tasks });
+  if (!count) {
+    expect(host.querySelector('[data-testid="team-task-board"]')).toBeNull();
+    return;
+  }
+  const history = boardDisclosure();
+  await toggle(history);
+  const board = host.querySelector<HTMLElement>('[data-testid="team-task-board"]')!;
+  expect(board.querySelectorAll("[data-team-task-id]")).toHaveLength(Math.min(3, count));
+  expect(board.textContent).toContain(`${count} de ${count} tareas completadas`);
+  const expand = board.querySelector<HTMLButtonElement>("[data-team-tasks-toggle]");
+  if (count <= 3) { expect(expand).toBeNull(); return; }
+  expect(expand!.textContent).toContain(`Ver ${count - 3} tareas más`);
+  expect(expand!.getAttribute("aria-expanded")).toBe("false");
+  expect(document.getElementById(expand!.getAttribute("aria-controls")!)).toBe(board.querySelector("ul"));
+  expand!.focus();
+  expect(document.activeElement).toBe(expand);
+  await act(async () => expand!.click());
+  expect(expand!.getAttribute("aria-expanded")).toBe("true");
+  expect(board.querySelectorAll("[data-team-task-id]")).toHaveLength(count);
+  await renderThread({ mode: "api", turns: [user, { ...reply(false, true), text: "Actualización final." }], tasks: JSON.parse(JSON.stringify(tasks)) });
+  expect(host.querySelector('[data-testid="team-task-board"]')).toBe(board);
+  expect(board.querySelectorAll("[data-team-task-id]")).toHaveLength(count);
+  await act(async () => expand!.click());
+  expect(expand!.getAttribute("aria-expanded")).toBe("false");
+  expect(board.querySelectorAll("[data-team-task-id]")).toHaveLength(3);
+  // A fresh mount/rehydrated history starts compact, without changing task identity.
+  await act(async () => root.render(null));
+  await renderThread({ mode: "api", turns: [user, historyTurn({ role: "assistant", content: "Actualización final.", ts: "" })], tasks });
+  expect(host.querySelectorAll("[data-team-task-id]")).toHaveLength(3);
+});
+
+it.each([false, true])("retains a single open history through continuation, error and reload: cli=%s", async cli => {
+  const mode = cli ? "cli" : "api";
+  const first = { ...reply(cli, true), completionPending: true, text: "Primera fase conservada." };
+  await renderThread({ mode, turns: [user, first] });
+  const history = host.querySelector<HTMLDetailsElement>("[data-execution-history]")!;
+  await toggle(history);
+  const final = { ...reply(cli, true), text: "", error: "Resultado no confirmado de la última fase." };
+  await renderThread({ mode, turns: [user, first, notice, final] });
+  expect(host.querySelectorAll("[data-execution-history]")).toHaveLength(1);
+  expect(host.querySelector("[data-execution-history]")).toBe(history);
+  expect(history.open).toBe(true);
+  expect([...host.querySelectorAll("summary")].filter(el => el.textContent?.includes("Consola del servidor"))).toHaveLength(1);
+  expect(visibleText(host)).toContain("Primera fase conservada.");
+  expect(visibleText(host)).toContain(final.error);
+  await toggle(history);
+  expect(visibleText(host)).toContain(final.error);
+  await renderThread({ mode, turns: JSON.parse(JSON.stringify([user, first, notice, final])) });
+  expect(host.querySelectorAll("[data-execution-history]")).toHaveLength(1);
+  expect(history.open).toBe(false);
+});
+
+it("keeps the attention of a hidden fourth task visible without opening the history", async () => {
+  const tasks = Array.from({ length: 5 }, (_, index) => task({ id: `task-${index}`, title: `Tarea ${index}`, status: "done" }));
+  tasks[3] = task({ id: "task-3", workerAgentName: "Agente con error", status: "failed", error: "No se confirmó la operación." });
+  tasks[4] = task({ id: "task-4", workerAgentName: "Agente con permiso", status: "running", pendingPermission: true });
+  await renderThread({ mode: "api", turns: [user, reply(false, true)], tasks });
+  expect(boardDisclosure().open).toBe(false);
+  expect(visibleText(host)).toContain("No se confirmó la operación.");
+  expect(visibleText(host)).toContain("Esperando tu aprobación");
+});
+
+it("does not echo settled CLI narration above its final answer", async () => {
+  const answer = "Validación completada.";
+  await renderThread({ mode: "cli", turns: [user, {
+    role: "assistant", text: answer, tools: [{
+      id: "cli", name: "codex.cli", input: {}, terminal: "Primer avance.\n\n" + answer,
+      result: { success: true, output: answer },
+    }],
+  }] });
+  expect(host.querySelector('[data-message-section="reasoning"]')?.textContent).not.toContain(answer);
+  expect(visibleText(host).split(answer)).toHaveLength(2);
+  expect(host.querySelector('[data-compact-answer] details')).toBeNull();
+});
+
+it("replaces the preview when expanding full text and never changes the saved answer", async () => {
+  const text = "Resumen único.\n\n" + "Detalle conservado. ".repeat(40);
+  const response: ChatTurn = { role: "assistant", text, tools: [] };
+  await renderThread({ mode: "api", turns: [user, response] });
+  const container = host.querySelector<HTMLElement>("[data-compact-answer]")!;
+  const detail = container.querySelector<HTMLDetailsElement>("details")!;
+  expect(container.querySelector("[data-answer-detail]")).toBeNull();
+  await toggle(detail);
+  expect(container.querySelector("[data-visible-summary]")).toBeNull();
+  expect(visibleText(container).split("Resumen único.")).toHaveLength(2);
+  expect(container.querySelector("[data-answer-detail]")?.textContent).toContain("Detalle conservado.");
+  expect(response.text).toBe(text);
+  await toggle(detail);
+  expect(container.querySelector("[data-visible-summary]")).not.toBeNull();
+  expect(container.querySelector("[data-answer-detail]")).toBeNull();
+});

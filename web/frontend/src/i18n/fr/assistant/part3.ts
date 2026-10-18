@@ -532,6 +532,8 @@ const assistantPart3 = {
     "attachFailed": "Impossible de joindre le fichier à la conversation."
   },
   "teamBoard": {
+    "showMoreTasks": "Afficher {count} tâches de plus",
+    "showFewerTasks": "Afficher moins de tâches",
     "title": "Équipe au travail",
     "progressOf": "{done} sur {total} tâches terminées",
     "statusPending": "En attente",

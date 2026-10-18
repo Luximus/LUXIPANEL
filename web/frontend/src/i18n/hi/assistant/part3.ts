@@ -532,6 +532,8 @@ const assistantPart3 = {
     "attachFailed": "फ़ाइल को चैट में संलग्न नहीं किया जा सका।"
   },
   "teamBoard": {
+    "showMoreTasks": "{count} और कार्य देखें",
+    "showFewerTasks": "कम कार्य दिखाएँ",
     "title": "टीम काम कर रही है",
     "progressOf": "{total} में से {done} कार्य पूर्ण",
     "statusPending": "लंबित",
