@@ -62,6 +62,10 @@ export interface MessageAttachmentRef {
 }
 
 export interface ConversationMessage {
+  /** Stable logical response identity, shared with SSE terminal events. Legacy rows may omit it. */
+  messageId?: string;
+  /** Only explicitly validated internal responses may use summary presentation. */
+  presentation?: "full" | "summary";
   /** Bounded display text, independent of canonical model context. */
   displaySummary?: string;
   /** The stream ended, but this turn still awaits background work/collection. */

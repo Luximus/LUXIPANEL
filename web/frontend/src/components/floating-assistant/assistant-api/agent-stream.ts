@@ -64,8 +64,8 @@ export type AgentEvent = (
   // chat renders live progress cards; the board also rehydrates via
   // `teamApi.listTasks` after a reload.
   | { type: "team_task_update"; task: TeamTaskView }
-  | { type: "done"; pending?: true; displaySummary?: string }
-  | { type: "error"; message: string; code?: "AGENT_STREAM_RECONCILE_REQUIRED"; recovery?: AgentStreamRecovery }
+  | { type: "done"; pending?: true; displaySummary?: string; messageId?: string; presentation?: "full" | "summary" }
+  | { type: "error"; message: string; messageId?: string; presentation?: "full" | "summary"; code?: "AGENT_STREAM_RECONCILE_REQUIRED"; recovery?: AgentStreamRecovery }
 ) & { runId?: string };
 
 export interface AgentMessage {
