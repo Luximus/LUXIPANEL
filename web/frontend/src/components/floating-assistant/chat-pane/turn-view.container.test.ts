@@ -7,6 +7,21 @@ import type { ChatTurn } from "../chat-engine";
 import type { AssistantAgent } from "../assistant-api";
 
 describe("assistant message container", () => {
+  it("retains files and failed tool output from earlier phases without duplicating the bubble", () => {
+    const first: ChatTurn = { role: "assistant", text: "", tools: [
+      { id: "first", name: "codex.cli", input: {}, terminal: "⏺ Write src/first.tsx\n⏺ Write src/shared.tsx",
+        result: { success: false, output: "Error recuperado de la primera fase" } },
+    ] };
+    const turn: ChatTurn = { role: "assistant", text: "Respuesta final", tools: [
+      { id: "last", name: "codex.cli", input: {}, terminal: "⏺ Write src/shared.tsx\n⏺ Write src/last.tsx", result: { success: true, output: "Respuesta final" } },
+    ] };
+    const html = renderToStaticMarkup(createElement(TurnView, { turn, executionPhases: [first], provider: "codex", projectPath: "/tmp/project", onOpenFile: () => {} }));
+    expect(html.match(/data-assistant-message=""/g)).toHaveLength(1);
+    expect(html).toContain("Error recuperado de la primera fase");
+    expect(html).toContain("first.tsx");
+    expect(html).toContain("last.tsx");
+    expect(html.match(/title="Abrir en editor: src\/shared.tsx"/g)).toHaveLength(1);
+  });
   it.each([null, { id: "worker", name: "Sofía", providerId: "claude" } as AssistantAgent])("keeps a reloaded CLI failure visible with team details inside the console in general and agent chats: %j", (agent) => {
     const turn: ChatTurn = {
       role: "assistant", text: "", cli: true, tools: [],

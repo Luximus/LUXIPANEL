@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
-import { type ReactNode, type Ref } from "react";
+import { useId, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { useEscapeToClose } from "@/lib/use-escape-to-close";
 import { useBodyPointerEventsWhileOpen } from "@/lib/body-pointer-events";
@@ -23,6 +23,10 @@ export type ModalShellProps = {
   cardClassName?: string;
   /** Disable the Escape-to-close handler (e.g. while saving). */
   closeOnEscape?: boolean;
+  /** Prevent dismissal before any exit animation, including nested close controls. */
+  closeDisabled?: boolean;
+  ariaLabel?: string;
+  ariaLabelledBy?: string;
   /**
    * Presentation:
    *   * `"drawer"` (default) — anchored to the RIGHT edge, full height, slides
@@ -145,6 +149,9 @@ export function ModalShell({
   backdropClass = "bg-black/50 backdrop-blur-sm",
   cardClassName,
   closeOnEscape = true,
+  closeDisabled = false,
+  ariaLabel,
+  ariaLabelledBy,
   variant = "drawer",
   title,
   icon,
@@ -160,14 +167,19 @@ export function ModalShell({
   closeController,
   children,
 }: ModalShellProps) {
+  const titleId = useId();
   useBodyPointerEventsWhileOpen(true);
   // Exit animation: backdrop click / Escape / header ✕ mark the shell as
   // `closing`, play the 200ms ease-out exit, then run the consumer's onClose.
   // (Hook always runs; an external controller simply takes precedence.)
   const ownDeferred = useDeferredClose(onClose);
   const deferred = closeController ?? ownDeferred;
-  const { closing, requestClose } = deferred;
-  const handleClose = () => requestClose();
+  const { closing } = deferred;
+  const guardedClose: DeferredClose = {
+    closing,
+    requestClose: (fn) => { if (!closeDisabled) deferred.requestClose(fn); },
+  };
+  const handleClose = () => guardedClose.requestClose();
   useEscapeToClose(handleClose, closeOnEscape);
 
   if (typeof document === "undefined") {
@@ -184,11 +196,13 @@ export function ModalShell({
       {title != null && (
         <ModalNavbar
           title={title}
+          titleId={titleId}
           icon={icon}
           description={description}
           onBack={onBack}
           backLabel={backLabel}
-          onClose={handleClose}
+          onClose={onClose}
+          closeDisabled={closeDisabled}
           closeLabel={closeLabel}
           hideClose={hideClose}
           actions={headerActions}
@@ -207,7 +221,7 @@ export function ModalShell({
   );
 
   return createPortal(
-    <ModalCloseContext.Provider value={deferred}>
+    <ModalCloseContext.Provider value={guardedClose}>
     <div
       ref={overlayRef}
       className={cn(
@@ -225,6 +239,8 @@ export function ModalShell({
       onMouseDown={(e) => e.stopPropagation()}
       role="dialog"
       aria-modal="true"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy ?? (title != null ? titleId : undefined)}
     >
       <div
         className={

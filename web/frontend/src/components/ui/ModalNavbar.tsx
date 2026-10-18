@@ -32,6 +32,8 @@ import { useModalClose } from "@/components/ui/use-deferred-close";
  */
 export type ModalNavbarProps = {
   title: ReactNode;
+  titleId?: string;
+  closeDisabled?: boolean;
   description?: string;
   icon?: string;
   onBack?: () => void;
@@ -46,6 +48,8 @@ export type ModalNavbarProps = {
 
 export function ModalNavbar({
   title,
+  titleId,
+  closeDisabled,
   description,
   icon,
   onBack,
@@ -77,7 +81,7 @@ export function ModalNavbar({
 
       <div className="flex min-w-0 items-center gap-2">
         {leading ?? (icon && <i className={cn("ti shrink-0 text-lg text-primary", icon)} />)}
-        <h3 className="truncate text-base font-semibold" title={description}>
+        <h3 id={titleId} className="truncate text-base font-semibold" title={description}>
           {title}
         </h3>
       </div>
@@ -88,6 +92,7 @@ export function ModalNavbar({
           <button
             type="button"
             onClick={handleClose}
+            disabled={closeDisabled}
             className="shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
             aria-label={closeLabel}
           >

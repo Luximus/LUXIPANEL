@@ -85,6 +85,8 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     projectTeam,
     projectTeamAgents,
     agentCatalogReady,
+    agentInputBlocked,
+    historicalOnly,
     handleNewAgentChat,
     currentProject,
     currentProjectId,
@@ -168,9 +170,10 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
   } = vm;
 
   const realtime = useRealtimeVoice({
-    enabled: voiceEnabled && !!voice?.realtimeEnabled, chatKey, conversationId: activeId,
+    enabled: voiceEnabled && !!voice?.realtimeEnabled, canStart: !agentInputBlocked, chatKey, conversationId: activeId,
     refresh: (key, id) => chatEngine.refreshVoiceHistory(key, id),
     ensureConversation: async (accept) => {
+      if (agentInputBlocked) throw new Error(marketMessages.historical);
       if (activeId) return activeId;
       const meta = await assistantConversationsApi.create(provider, "Conversación por voz", currentProjectId, currentAgent?.id ?? null, { approvalMode });
       if (accept(meta.id)) await openConversation(meta.id);
@@ -224,11 +227,6 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     if (key) handleNewAgentChat(key, true);
     else { newConversation(); setDraft(draft); setAttachments(attachments); }
   };
-  const boundProjectId = activeId ? vm.activeMeta?.projectId ?? null : currentProjectId;
-  const boundAgentAvailable = !!currentAgent && (boundProjectId ? availableInProject(currentAgent, boundProjectId)
-    : currentAgent.capabilities?.canExecute === true && currentAgent.execution?.projectId === null);
-  const historicalOnly = !!currentAgentId && agentCatalogReady && !boundAgentAvailable;
-  const agentInputBlocked = !!currentAgentId && (!agentCatalogReady || historicalOnly);
   // An open conversation owns its project; sidebar navigation is only the
   // draft scope when no conversation is open.
   const locationNames = useMemo(() => projectLocation(
@@ -357,8 +355,8 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                             <button
                               key={`${i}-${s}`}
                               type="button"
-                              onClick={() => void send(s)}
-                              disabled={streaming}
+                              onClick={() => { if (!agentInputBlocked) void send(s); }}
+                              disabled={streaming || agentInputBlocked}
                               className="group inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-2 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-accent disabled:opacity-50"
                             >
                               <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${tile.color} text-white`}>
@@ -401,16 +399,17 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                       uiMode={uiMode}
                       isLast={i === lastVisibleTurnIndex}
                       onAnswer={async (text, opts) => {
+                        if (agentInputBlocked) return;
                         if (opts?.planDecision === "approve") {
                           const changed = await onApprovalModeChange?.("auto");
                           if (!changed) throw new Error("Failed to enable automatic approval");
                         }
                         await send(text, opts?.planDecision ? { planDecision: opts.planDecision } : undefined);
                       }}
-                      onPermission={(requestId, decision, tool) => chatEngine.respondPermission(chatKey, requestId, decision, tool)}
+                      onPermission={(requestId, decision, tool) => { if (!agentInputBlocked) chatEngine.respondPermission(chatKey, requestId, decision, tool); }}
                       onNewChat={newConversation}
-                      onRetry={retryText && !streaming ? () => void send(retryText) : undefined}
-                      onEditMessage={isLastUserTurn ? editMessage : undefined}
+                      onRetry={retryText && !streaming && !agentInputBlocked ? () => void send(retryText) : undefined}
+                      onEditMessage={isLastUserTurn && !agentInputBlocked ? editMessage : undefined}
                       onImageClick={openImageByUrl}
                       attachmentImageUrls={attachmentImages}
                       onOpenFile={(p) => setEditorPath(p)}
@@ -674,7 +673,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               setSelectedEffort(value);
               chatUiState.patchConversationChoice(provider, activeId, { effort: value });
             }}
-            realtime={!agentInputBlocked && voiceEnabled && voice?.realtimeEnabled ? realtime : undefined}
+            realtime={realtime.active || (!agentInputBlocked && voiceEnabled && voice?.realtimeEnabled) ? realtime : undefined}
             onAudioPhaseChange={onAudioPhaseChange}
             onDictate={!agentInputBlocked && voiceEnabled && !voice?.realtimeEnabled && canHoldRecord ? promptDictation.dictate : undefined}
             onStopDictation={promptDictation.stop}

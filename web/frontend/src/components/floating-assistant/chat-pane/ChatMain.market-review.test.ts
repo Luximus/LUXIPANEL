@@ -91,7 +91,7 @@ it.each(["removed","loading","error","null-history"])("blocks every send path wi
  expect(send).not.toHaveBeenCalled();
  expect(vm.draft).toBe("Conservar borrador");expect(vm.attachments).toEqual([attachment]);
  await act(async()=>chatEngine.seed(vm.chatKey,"claude",vm.activeId,[
-   {role:"user",text:"Pregunta",ts:1},{role:"assistant",text:"Respuesta previa",stopped:true,ts:2},
+   {role:"user",text:"Pregunta",tools:[],createdAt:1},{role:"assistant",text:"Respuesta previa",stopped:true,tools:[],createdAt:2},
  ]));
  await vi.waitFor(()=>expect(m.turn).not.toBeNull());
  await act(async()=>{

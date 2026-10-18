@@ -288,7 +288,7 @@ export default function AssistantPanel({
     const sourceProvider = chatUiState.getActiveProvider();
     const sourceIdentity = () => {
       const pane = sourceProvider ? chatUiState.getPane(sourceProvider) : null;
-      return JSON.stringify([chatUiState.getActiveProvider(), pane?.activeId, pane?.currentProjectId, pane?.currentAgentId]);
+      return JSON.stringify([chatUiState.getActiveProvider(), pane?.activeId, pane?.currentProjectId, pane?.currentAgentId, workspaceState.getSnapshot().project?.id, window.location.href]);
     };
     const requestIdentity = sourceIdentity();
     const isCurrent = () => sequence === agentLaunchSequence.current
@@ -315,11 +315,13 @@ export default function AssistantPanel({
           throw new Error(messages.assistantErrorBoundary.errorMessage);
         }
         setConfig(next);
-        // Keep any edits made while provider activation was pending.
-        if (draft && sourceProvider) {
-          const source = chatUiState.getPane(sourceProvider);
-          draft = { text: source.draft, attachments: source.attachments };
-        }
+      }
+      // Catalog and provider activation can both outlive composer edits.
+      // Read the current source only after every asynchronous check succeeds.
+      if (!isCurrent()) return;
+      if (draft && sourceProvider) {
+        const source = chatUiState.getPane(sourceProvider);
+        draft = { text: source.draft, attachments: source.attachments };
       }
       setOpenReq({ kind: "agent", draft, provider: agent.providerId, agentId: agent.id, projectId: selectedProjectId ?? null, nonce: Date.now() });
       setTab("chat");

@@ -142,7 +142,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
         </article>;
       })}
     </div>}
-    {editor && <ModalShell onClose={() => { if (!pending) setEditor(null); }} title={`${t.configure} · ${editor.name}`} description={t.assignmentHint} closeLabel={i18n.drawer.close}>
+    {editor && <ModalShell closeDisabled={!!pending} onClose={() => { if (!busy.current) setEditor(null); }} title={`${t.configure} · ${editor.name}`} description={t.assignmentHint} closeLabel={i18n.drawer.close}>
       {error && <div role="alert" className="flex flex-wrap items-center gap-2 px-4 pt-4 text-sm text-destructive"><p>{error}</p><button type="button" className={marketControl} disabled={!!pending} onClick={() => { setEditor(null); void reload(); }}>{t.retry}</button></div>}
       <AgentAssignmentEditor agent={editor} agents={agents} projects={projects} roles={roles} pending={!!pending} blocked={!!error} onSave={data => void mutate(editor, editor.capabilities?.canUpdateAssignment ? "configure" : "add", data)} />
     </ModalShell>}

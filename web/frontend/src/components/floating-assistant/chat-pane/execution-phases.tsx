@@ -41,11 +41,13 @@ export function ExecutionPhases({ phases, showTerminal, uiMode }: {
           {phase.apiActivity?.truncated && <p className="text-xs text-muted-foreground">{ct.toolTrace.historyTruncated}</p>}
         </>}
         {text && <MessageContent text={text} />}
+        {isCli && showTerminal && cliTools.filter(tool => tool.result?.success === false).map((tool, toolIndex) =>
+          <p key={toolIndex} className="break-words text-destructive">{tool.result!.output}</p>)}
         {phase.error && <p className="break-words text-destructive">{phase.error}</p>}
-        {phase.interrupted && <p>{ct.connectionInterrupted}</p>}
-        {phase.stopped && <p>{ct.processStopped}</p>}
+        {phase.interrupted && <p>{labels.unconfirmed}</p>}
+        {phase.stopped && <p>{labels.stopped}</p>}
         {phase.translationError && <p>{phase.translationError}</p>}
-        {phase.ask?.map(question => <p key={question.id}>{question.text}</p>)}
+        {phase.ask?.map(question => <p key={question.id}>{[question.text, ...(question.options ?? [])].join(" · ")}</p>)}
         {phase.permission && <p>{phase.permission.title}</p>}
         {phase.attachments?.map((attachment, attachmentIndex) => <a key={attachmentIndex} href={attachment.url} target="_blank" rel="noreferrer" className="block break-words underline">{attachment.name}</a>)}
       </li>;

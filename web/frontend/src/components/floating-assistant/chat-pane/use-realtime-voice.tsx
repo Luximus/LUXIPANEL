@@ -6,7 +6,7 @@ export type VoiceEvent = { seq: number; type: string; [key: string]: any };
 type Session = { id?: string; key: string; draft: boolean; scope: string; conversationId: string | null;
   peer?: RTCPeerConnection; stream?: MediaStream; audio?: HTMLAudioElement;
   timer?: ReturnType<typeof setTimeout>; release: () => void; canceled: boolean; seq: number };
-type Options = { enabled: boolean; chatKey: string; conversationId: string | null;
+type Options = { enabled: boolean; canStart?: boolean; chatKey: string; conversationId: string | null;
   ensureConversation: (accept: (id: string) => boolean) => Promise<string>;
   refresh: (key: string, id: string) => Promise<void> };
 export function useRealtimeVoice(opts: Options) {
@@ -89,7 +89,7 @@ export function useRealtimeVoice(opts: Options) {
     if (valid(s)) s.timer = setTimeout(() => void poll(s), 1500);
   }
   async function start() {
-    if (current.current || !latest.current.enabled) return;
+    if (current.current || !latest.current.enabled || latest.current.canStart === false) return;
     const options = latest.current;
     const s: Session = { key: options.chatKey, draft: !options.conversationId, scope: resolveTargetScope(), conversationId: options.conversationId,
       canceled: false, seq: 0, release: lockChatInput(options.chatKey, "realtime") };
