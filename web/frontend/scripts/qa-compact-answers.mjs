@@ -9,6 +9,8 @@ import { chromium, expect } from "@playwright/test";
 const base = path.join(".cache/compact-answers-qa", new Date().toISOString().replace(/[:.]/g, "-"));
 fs.mkdirSync(base, { recursive: true });
 const longText = "La revisión terminó y se conservaron los cambios solicitados con todas las comprobaciones disponibles. La publicación sigue pendiente de verificación antes de confirmar el resultado al usuario.\n\n" + "Evidencia completa: no reiniciar otros servicios y conservar el historial. ".repeat(60);
+const codeBody = Array.from({ length: 32 }, (_, index) => `export const resultado${index} = "conservado-${index}";`).join("\n");
+const codeText = "Documento solicitado.\n\n```ts\n" + codeBody + "\n```\n\nÚltima sección del documento conservada.";
 const overflowText = "La revisión del servidor terminó correctamente y confirmó que todas las aplicaciones responden aunque todavía quedan tareas menores de documentación que pueden completarse durante la siguiente sesión.";
 const packet = 'protocol: lxp.agent.v1\nkind: result\nsummary: El agente terminó la revisión.\ndata:\n  verified: true\n  checks[1]: Pruebas locales completadas\n  constraints[1]: No borrar datos';
 const entry = `
@@ -28,7 +30,7 @@ window.qaRender=(mode="api")=>root.render(createElement("div",{className:"space-
  createElement("section",{className:"border border-border rounded-lg p-3"},
    createElement("h2",{className:"text-sm mb-3"},"Coordinación del equipo"),
    createElement(TeamExecutionContent,{notices:[{role:"user",auto:true,text:packet,tools:[],presentation:"summary"}]}))));
-window.qaRenderAnswer=(props)=>root.render(createElement("div",{ "data-qa-answer":true,style:{width:240,fontFamily:"Arial",fontSize:14,lineHeight:"20px"} },createElement(CompactAnswer,props)));
+window.qaRenderAnswer=(props,width=240)=>root.render(createElement("div",{ "data-qa-answer":true,style:{width,fontFamily:"Arial",fontSize:14,lineHeight:"20px"} },createElement(CompactAnswer,props)));
 window.qaRender(new URLSearchParams(location.search).get("mode")||"api"); window.qaReady=true;
 `;
 const server = await createServer({ configFile: false, envDir: false, root: process.cwd(), publicDir: "public", cacheDir: base + "/vite",
@@ -127,6 +129,68 @@ if(process.env.LXP_QA_SERVE_ONLY === "1") {
     await expect(page.locator("[data-qa-answer]")).toContainText(overflowText);
    }
    report.overflowCases.push({theme,clipped,fitting,keyboard:true,resize:true,updatedText:true,fullBody:true});
+  }
+  // Exercise the complete-body contract in Chromium, including Markdown code.
+  // A supplied projection never authorizes compaction without presentation=summary.
+  report.presentationCases=[];
+  for (const width of [375,1280]) for (const theme of ["light","dark"]) {
+   await page.setViewportSize({width,height:900});
+   await page.evaluate(theme=>document.documentElement.classList.toggle("dark",theme==="dark"),theme);
+   for (const fixture of [
+    {name:"ordinary",text:overflowText},
+    {name:"long",text:longText},
+    {name:"code",text:codeText},
+   ]) for (const presentation of ["absent","full","summary"]) {
+    const props={text:fixture.text,summary:"Proyección breve."};
+    if (presentation!=="absent") props.presentation=presentation;
+    await page.evaluate(({props,width})=>window.qaRenderAnswer(props,width),{props,width:width===375?240:900});
+    const root=page.locator("[data-qa-answer]");
+    const compact=root.locator("[data-compact-answer]");
+    let content=root;
+    if (presentation==="summary") {
+     await expect(compact).toHaveCount(1);
+     await expect(compact.locator("[data-visible-summary]")).toHaveText(props.summary);
+     const control=compact.locator("details > summary");
+     await expect(control).toHaveAttribute("aria-expanded","false");
+     await control.focus();
+     await expect(control).toBeFocused();
+     await page.keyboard.press("Enter");
+     await expect(control).toHaveAttribute("aria-expanded","true");
+     await expect(compact.locator("[data-visible-summary]")).toHaveCount(0);
+     content=compact.locator("[data-answer-detail]");
+    } else {
+     await expect(compact).toHaveCount(0);
+     await expect(root).not.toContainText(props.summary);
+    }
+    if (fixture.name==="code") {
+     // The isolated fixture blocks CDN requests, so CodeBlock's real fallback
+     // must expose every line without relying on the external editor.
+     await expect(content.locator("pre")).toHaveText(codeBody);
+     await expect(content).toContainText("Documento solicitado.");
+     await expect(content).toContainText("Última sección del documento conservada.");
+     await expect(content.locator("p").last()).toBeVisible();
+    } else {
+     await expect(content).toHaveText(fixture.text.replace(/\s+/g," ").trim());
+    }
+    const geometry=await content.evaluate(el=>({
+     clientHeight:el.clientHeight,scrollHeight:el.scrollHeight,
+     overflow:getComputedStyle(el).overflowY,
+     clamped:!!el.querySelector("[data-visible-summary]"),
+    }));
+    expect(geometry.clamped).toBe(false);
+    if (presentation==="summary") {
+     expect(geometry.overflow).toBe("auto");
+     await content.evaluate(el=>{el.scrollTop=el.scrollHeight;});
+     const end=await content.evaluate(el=>({scrollTop:el.scrollTop,remaining:el.scrollHeight-el.clientHeight}));
+     expect(end.scrollTop).toBeGreaterThanOrEqual(end.remaining-1);
+     const control=compact.locator("details > summary");
+     await control.focus(); await page.keyboard.press("Space");
+     await expect(control).toHaveAttribute("aria-expanded","false");
+    } else {
+     expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight+1);
+    }
+    report.presentationCases.push({width,theme,fixture:fixture.name,presentation,complete:true,geometry});
+   }
   }
   expect(report.pageErrors).toEqual([]);report.success=true;
  } catch(error){report.error=String(error.stack??error);process.exitCode=1;}
