@@ -418,6 +418,8 @@ export type AssistantMessages = {
   /** Team delegation board: live progress cards of tasks a leader agent
    *  assigned to its subordinates (team.assign). */
   teamBoard: {
+    showMoreTasks: string;
+    showFewerTasks: string;
     title: string;
     /** "{done} de {total} tareas completadas" */
     progressOf: string;

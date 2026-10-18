@@ -20,6 +20,10 @@ export interface MessageAttachmentRef {
 }
 
 export interface ConversationMessage {
+  /** Durable logical message identity; absent on legacy records. Never a stream cursor. */
+  messageId?: string;
+  /** Unknown/absent means render textTranslated ?? content in full. */
+  presentation?: "full" | "summary";
   /** Bounded display text, independent of canonical model context. */
   displaySummary?: string;
   error?: string;

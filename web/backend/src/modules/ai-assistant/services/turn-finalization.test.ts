@@ -45,7 +45,7 @@ describe("turn finalization", () => {
       { type: "text", phase: "commentary", delta: "Ya localicé ambos formatos. " },
       { ...tool, id: "second" }, { ...result, id: "second" },
     ] });
-    expect(state.events.at(-1)).toEqual({ type: "done", displaySummary: translated ? "ES:Ajuste verificado." : "Ajuste verificado." });
+    expect(state.events.at(-1)).toEqual({ type: "done", displaySummary: translated ? "ES:Ajuste verificado." : "Ajuste verificado.", messageId: state.messageId, presentation: "full" });
   });
 
   it.each([false, true])("does not publish a final while delegated tasks need collection, cli=%s", async cli => {
@@ -57,7 +57,7 @@ describe("turn finalization", () => {
     const { state, onComplete, translateText } = await run([...items, { type: "done" }], true, true);
     expect(onComplete.mock.calls[0][0]).toBe("");
     expect(onComplete.mock.calls[0][7]).toEqual({ pending: true });
-    expect(state.events.at(-1)).toEqual({ type: "done", pending: true });
+    expect(state.events.at(-1)).toEqual({ type: "done", pending: true, messageId: state.messageId, presentation: "full" });
     expect(JSON.stringify(state.events)).not.toContain("Todo terminado");
     expect(translateText).not.toHaveBeenCalled();
     if (cli) expect(onComplete.mock.calls[0][5]).toContain("Trabajando");
@@ -81,7 +81,7 @@ describe("turn finalization", () => {
     expect(onComplete.mock.calls[0][0]).toBe("");
     expect(onComplete.mock.calls[0][1]).toBe(false);
     expect(onComplete.mock.calls[0][7]).toEqual({ pending: true });
-    expect(state.events.at(-1)).toEqual({ type: "done", pending: true });
+    expect(state.events.at(-1)).toEqual({ type: "done", pending: true, messageId: state.messageId, presentation: "full" });
   });
 
   it("fails an EOF without claiming that changes failed or retrying them", async () => {
@@ -144,8 +144,8 @@ describe("turn finalization", () => {
       { ...result, output: '{"private_key":"private-test-value","ok":true}' },
       { type: "text", delta: "Verificado" }, { type: "done" },
     ], pending);
-    const [answer, , ask, translation, duration, cliLog, askKind, outcome, activity] = onComplete.mock.calls[0];
-    await persistAssistantMessage(executor, "history", answer, "codex", false, ask, translation, undefined, duration, cliLog, askKind, outcome, activity);
+    const [answer, , ask, translation, duration, cliLog, askKind, outcome, activity, messageId] = onComplete.mock.calls[0];
+    await persistAssistantMessage(executor, "history", answer, "codex", false, ask, translation, undefined, duration, cliLog, askKind, outcome, activity, messageId);
     const call = board.append.mock.calls.at(-1)!;
     expect(call[0]).toBe(executor);
     expect(call[1]).toBe("history");
@@ -162,6 +162,8 @@ describe("turn finalization", () => {
     ]);
     expect(JSON.stringify(reloaded)).not.toContain("private-test-value");
     expect(reloaded.ts).toBe(saved.ts);
+    expect(reloaded.messageId).toBe(messageId);
+    expect(reloaded.presentation).toBe("full");
   });
 
   it("retains provisional text as activity when the team is still pending", async () => {
@@ -202,7 +204,7 @@ describe("turn finalization", () => {
       await vi.waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
       expect(state.events.some(event => event.type === "done")).toBe(false);
     } finally { saved(); await state.completion; }
-    expect(state.events.at(-1)).toEqual({ type: "done", displaySummary: "Resultado verificado." });
+    expect(state.events.at(-1)).toEqual({ type: "done", displaySummary: "Resultado verificado.", messageId: state.messageId, presentation: "full" });
   });
 
   it("surfaces a history failure without publishing a successful terminal frame", async () => {
@@ -251,4 +253,39 @@ it.each([false, true])("rejects a successful API close without final-answer evid
   expect(state.events.at(-1)?.type).toBe("error");
   expect(onComplete.mock.calls[0][0]).toBe("");
   expect(onComplete.mock.calls[0][1]).toBe(true);
+});
+
+it.each([false, true])("preserves the whole final document and its translated variant, cli=%s", async cli => {
+  const answer = "Documento completo.\n\n" + "Detalle verificado. ".repeat(2200) + "\n\n```sh\n$ codex exec\n⏺ ejemplo literal\n  ⎿ salida literal\n```";
+  const translation = { text: "文書全体\n\n" + answer, lang: "ja" };
+  await persistAssistantMessage(executor, "whole-document", answer, "codex", cli,
+    undefined, translation, undefined, 10, "$ codex\nTrabajando", undefined, undefined, undefined, "document-answer");
+  const saved = JSON.parse(JSON.stringify(board.append.mock.calls.at(-1)![2]))[0];
+  const reloaded = normalizeConversationMessage(saved);
+  expect(reloaded.content).toBe(answer);
+  expect(reloaded.textTranslated).toBe(translation.text);
+  expect(reloaded.presentation).toBe("full");
+  expect(reloaded.displaySummary!.length).toBeLessThanOrEqual(240);
+  expect(reloaded.messageId).toBe("document-answer");
+});
+
+it("retains one logical CLI identity across a replacement replay buffer", async () => {
+  const first = await run([
+    { type: "tool_use", name: "codex.cli", id: "durable-job", input: {} },
+    { type: "tool_result", id: "durable-job", success: true, output: "Resultado completo." }, { type: "done" },
+  ]);
+  const replayed = await run([
+    { type: "tool_use", name: "codex.cli", id: "durable-job", input: { recovered: true } },
+    { type: "tool_result", id: "durable-job", success: true, output: "Resultado completo." }, { type: "done" },
+  ]);
+  expect(first.state.runId).not.toBe(replayed.state.runId);
+  expect(first.state.messageId).toBe("cli:durable-job");
+  expect(replayed.onComplete.mock.calls[0][9]).toBe(first.state.messageId);
+  expect(replayed.state.events.at(-1)).toMatchObject({ messageId: first.state.messageId });
+});
+
+it("keeps distinct identities for separate answers with identical text", async () => {
+  const first = await run([{ type: "text", delta: "Verificado." }, { type: "done" }]);
+  const second = await run([{ type: "text", delta: "Verificado." }, { type: "done" }]);
+  expect(first.state.messageId).not.toBe(second.state.messageId);
 });

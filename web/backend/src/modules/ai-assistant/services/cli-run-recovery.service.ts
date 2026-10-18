@@ -68,6 +68,7 @@ function resumeCliRun(
 
   agentRunRegistry.start({
     key: conversationId,
+    messageId: `cli:${desc.jobId}`,
     provider: desc.provider,
     // A second restart can happen while the generator is still restoring its
     // scope. Protect the live CLI and descriptor before any replayed event.
@@ -88,9 +89,8 @@ function resumeCliRun(
       finally { release(); if (task) workerRunEnded(task.userId, conversationId); }
     },
     onEvent: recordUsage,
-    onComplete: async (assistantText, errored, ask, _translation, durationMs, cliLog, askKind, outcome) => {
-      const contributionId=await finishOwnerContribution(contribution,!errored && !ask?.length && !outcome?.interrupted && !outcome?.error);
-      if(contributionId && !outcome?.pending)assistantText+="\n\nEl aporte quedó registrado para envío automático a developer; su estado está en la conexión GitHub.";
+    onComplete: async (assistantText, errored, ask, _translation, durationMs, cliLog, askKind, outcome, apiActivity, messageId) => {
+      await finishOwnerContribution(contribution,!errored && !ask?.length && !outcome?.interrupted && !outcome?.error);
       const tokens =
         tokensHolder.input + tokensHolder.output > 0
           ? {
@@ -102,7 +102,7 @@ function resumeCliRun(
           : undefined;
       // A recovered run is always a CLI answer → persist with cli=true; the
       // verbose terminal log rides along as `cliLog` for the console box.
-      await persistAssistantMessage(executor, conversationId, assistantText, desc.provider, true, ask, undefined, tokens, durationMs, cliLog, askKind, outcome);
+      await persistAssistantMessage(executor, conversationId, assistantText, desc.provider, true, ask, undefined, tokens, durationMs, cliLog, askKind, outcome, apiActivity, messageId);
       await cliJobsRepository.delete(executor, conversationId).catch(() => undefined);
       if (!outcome?.interrupted) await drainConversationQueue(executor, conversationId);
     },

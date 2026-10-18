@@ -238,7 +238,7 @@ export function startConversationRun(args: {
     },
     translate: args.translate,
     onEvent: recordUsage,
-    onComplete: async (assistantText, errored, ask, translation, durationMs, cliLog, askKind, outcome, apiActivity) => {
+    onComplete: async (assistantText, errored, ask, translation, durationMs, cliLog, askKind, outcome, apiActivity, messageId) => {
       if (args.isWorker) workerRunEnded(args.userId, args.conversationId);
       const tokens =
         tokensHolder.input + tokensHolder.output > 0
@@ -249,7 +249,7 @@ export function startConversationRun(args: {
               ...(tokensHolder.estimated ? { estimated: true } : {}),
             }
           : undefined;
-      await persistAssistantMessage(args.executor, args.conversationId, assistantText, args.provider, cliHolder.value, ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity);
+      await persistAssistantMessage(args.executor, args.conversationId, assistantText, args.provider, cliHolder.value, ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity, messageId);
       // B2 — auto-captura opt-in: avisa al módulo Obsidian que un turno OK
       // terminó (él decide si el proyecto la tiene habilitada). Captura al vault
       // del proyecto del chat (args.projectId) O, en chats ligados a un agente con

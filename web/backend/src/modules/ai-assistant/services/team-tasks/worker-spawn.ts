@@ -193,7 +193,7 @@ export function startWorkerRun(args: {
         signal: undefined,
       }),
     onEvent: recordUsage,
-    onComplete: async (assistantText: string, errored: boolean, ask, translation, durationMs, cliLog, askKind, outcome, apiActivity) => {
+    onComplete: async (assistantText: string, errored: boolean, ask, translation, durationMs, cliLog, askKind, outcome, apiActivity, messageId) => {
       workerRunEnded(userId, convId);
       const content = (assistantText ?? "").trim();
       const total = tokensHolder.input + tokensHolder.output;
@@ -202,7 +202,7 @@ export function startWorkerRun(args: {
         ...(tokensHolder.estimated ? { estimated: true } : {}),
       } : undefined;
       await persistAssistantMessage(executor, convId, content, provider, cliHolder.value,
-        ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity);
+        ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity, messageId);
       // Retain recovery evidence until the answer has actually been saved.
       if (cliHolder.value) {
         await cliJobsRepository.delete(executor, convId).catch(() => undefined);

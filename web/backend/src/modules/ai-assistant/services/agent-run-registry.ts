@@ -1,4 +1,3 @@
-import { visibleSummary } from "../models/visible-summary.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -27,6 +26,7 @@ import { visibleSummary } from "../models/visible-summary.js";
  */
 
 import { randomUUID } from "node:crypto";
+import { messagePresentation } from "../models/message-presentation.js";
 import type { Executor } from "../../../shared/executor/index.js";
 import { runWithExecutor } from "../../../shared/executor/index.js";
 import type { SessionUser } from "../../../shared/types/index.js";
@@ -77,6 +77,8 @@ interface AgentRun {
   key: string;
   /** Identity of this in-memory replay buffer, never reused by a successor. */
   runId: string;
+  /** Logical answer identity, shared with persistence and terminal replay. */
+  messageId: string;
   /** Provider that owns this run (claude/codex/…), for the active-runs feed. */
   provider?: string;
   /** Project the conversation belongs to, carried for the active-runs feed. */
@@ -145,6 +147,8 @@ interface AgentRun {
 
 export interface StartRunParams {
   key: string;
+  /** Trusted recovery can restore the logical answer identity before replay. */
+  messageId?: string;
   /** Provider owning the run (surfaced by the active-runs feed). */
   provider?: string;
   /** Trusted recovery callers know the CLI exists before its first replayed
@@ -192,6 +196,8 @@ export interface StartRunParams {
     askKind?: "plan-approval",
     outcome?: { error?: string; interrupted?: boolean; pending?: boolean },
     apiActivity?: ApiActivity,
+    /** Durable logical identity; stable for a recovered CLI job. */
+    messageId?: string,
   ) => Promise<void> | void;
   /**
    * Background translation. When set, an API-mode run suppresses live English
@@ -366,6 +372,7 @@ export const agentRunRegistry = {
     const run: AgentRun = {
       key: params.key,
       runId: randomUUID(),
+      messageId: params.messageId ?? `assistant:${randomUUID()}`,
       provider: params.provider,
       projectId: params.projectId ?? null,
       userId: params.user?.userId,
@@ -417,6 +424,8 @@ export const agentRunRegistry = {
           if (event.type === "tool_use" && event.name.endsWith(".cli")) {
             run.cli = true;
             run.cliToolId = event.id;
+            // CLI tool ids are persisted job ids and replay unchanged on recovery.
+            run.messageId = `cli:${event.id}`;
           } else if (event.type === "usage" && (event.model.endsWith("-cli") || event.estimated)) run.cli = true;
           if (!run.cli) apiActivity.record(event);
           // CLI runs persist the clean final answer from the provider's
@@ -546,6 +555,7 @@ export const agentRunRegistry = {
             run.askKind,
             terminalError || run.ac.signal.aborted || pending ? { ...(terminalError ? { error: terminalError } : {}), ...(run.ac.signal.aborted ? { interrupted: true } : {}), ...(pending ? { pending: true } : {}) } : undefined,
             run.cli ? undefined : apiActivity.snapshot(),
+            run.messageId,
           );
           persisted = true;
         } catch (err) {
@@ -556,7 +566,14 @@ export const agentRunRegistry = {
         // No await between release and terminal delivery: reconnects either
         // subscribe to the closing run or replay its one settled terminal.
         run.done = true;
-        if (!hasTerminal(run)) push(run, errored ? { type: "error", message: terminalError || "La ejecución no terminó correctamente." } : { type: "done", ...(pending ? { pending: true } : cleanAnswer && !run.ac.signal.aborted ? { displaySummary: visibleSummary(run.translatedText ?? cleanAnswer) } : {}) });
+        if (!hasTerminal(run)) push(run, errored
+          ? { type: "error", message: terminalError || "La ejecución no terminó correctamente.", messageId: run.messageId, presentation: "full" }
+          : { type: "done", messageId: run.messageId,
+              ...messagePresentation(run.translatedText ?? cleanAnswer, {
+                pending, interrupted: run.ac.signal.aborted, awaitingInput: !!run.ask?.length,
+              }),
+              ...(pending ? { pending: true } : {}),
+            });
         const drain = run.deferredQueueDrain;
         run.deferredQueueDrain = undefined;
         if (persisted && !run.ac.signal.aborted && !run.shutdownRequested && drain) {

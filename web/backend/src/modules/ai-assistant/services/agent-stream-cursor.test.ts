@@ -67,7 +67,7 @@ const userMessage = (content: string): ConversationMessage => ({ role: "user", c
 function save(key: string) {
   return vi.fn(async (...args: Parameters<NonNullable<StartRunParams["onComplete"]>>) =>
     persistAssistantMessage(executor, key, args[0], "openai", false,
-      args[2], args[3], undefined, args[4], args[5], args[6], args[7], args[8]));
+      args[2], args[3], undefined, args[4], args[5], args[6], args[7], args[8], args[9]));
 }
 async function firstTurn() {
   const key = "cursor-" + ++count, entered = deferred(), release = deferred();
@@ -158,7 +158,9 @@ describe("run-scoped replay across persistence and successors", () => {
       expect(replay.states).toEqual([{ type: "stream_state", runId: first.run.runId, nextSeq: 13, replayFromSeq: 13, done: false }]);
       expect(agentRunRegistry.start({ key: first.key, executor, makeGen: async function* () { throw new Error("must not start"); } })).toBe(first.run);
       first.release.resolve(); await first.run.completion;
-      expect(replay.frames).toEqual([{ event: { type: "done" }, seq: 13, runId: first.run.runId }]);
+      expect(replay.frames).toEqual([{ event: { type: "done", messageId: first.run.messageId, presentation: "full", displaySummary: "Respuesta A" }, seq: 13, runId: first.run.runId }]);
+      expect(io.history.get(first.key)?.at(-1)?.messageId).toBe(first.run.messageId);
+      expect(first.run.messageId).not.toBe(first.run.runId);
       expect(first.mutate).toHaveBeenCalledTimes(1);
       expect(first.persist).toHaveBeenCalledTimes(1);
       const consumed = collect(first.key, 14, first.run.runId);
@@ -189,11 +191,13 @@ describe("run-scoped replay across persistence and successors", () => {
       fixture.release.resolve(); await fixture.run.completion;
       expect(adopted.frames.map(frame => frame.seq)).toEqual([0, 1, 2, 3]);
       expect(adopted.frames.every(frame => frame.runId === fixture.run.runId)).toBe(true);
-      expect(adopted.frames.at(-1)?.event).toEqual({ type: "done" });
+      expect(adopted.frames.at(-1)?.event).toEqual({ type: "done", messageId: fixture.run.messageId, presentation: "full", displaySummary: "Respuesta B" });
       expect(fixture.first.mutate).toHaveBeenCalledTimes(1); expect(fixture.mutate).toHaveBeenCalledTimes(1);
       expect(fixture.first.persist).toHaveBeenCalledTimes(1); expect(fixture.persist).toHaveBeenCalledTimes(1);
       expect(io.history.get(fixture.first.key)?.map(message => message.content)).toEqual(["Primera solicitud", "Respuesta A", "Segunda solicitud", "Respuesta B"]);
       const saved = io.history.get(fixture.first.key)!.filter(message => message.role === "assistant");
+      expect(saved.map(message => message.messageId)).toEqual([fixture.first.run.messageId, fixture.run.messageId]);
+      expect(saved[0]?.messageId).not.toBe(saved[1]?.messageId);
       expect(saved.map(message => message.apiActivity?.events.filter(event => event.type === "tool_use"))).toEqual([
         [{ type: "tool_use", id: "write-A", name: "files.write", input: { path: "a.txt" } }],
         [{ type: "tool_use", id: "write-B", name: "files.write", input: { path: "b.txt" } }],

@@ -490,14 +490,38 @@ export const conversationsRepository = {
     // index loss be reconstructed WITHOUT dropping the chat's agent binding.
     let nextLen = 0;
     let appendedReplies = 0;
+    let completedPendingReply = false;
     let indexedMessages: ConversationMessage[] = [];
     await store.transaction(async (current) => {
       const curMap = current as Record<string, ConversationDoc & Record<string, unknown>>;
       const prev = (curMap[MSG_DOC_ID]?.messages ?? []) as ConversationMessage[];
       const alreadySaved = opts.queueTurnId !== undefined &&
         curMap[QUEUE_RECEIPT_DOC_ID]?.["queueTurnId"] === opts.queueTurnId;
-      const nextMessages = alreadySaved ? prev : [...prev, ...normalizedBatch];
-      appendedReplies = alreadySaved ? 0 : normalizedBatch.filter(m => m.role === "assistant" && !m.compacted).length;
+      const nextMessages = [...prev];
+      // Identity is scoped by this conversation's target/user store and role.
+      // Legacy rows without ids append normally, including identical text.
+      const positions = new Map<string, number>();
+      nextMessages.forEach((message, index) => {
+        if (message.messageId) positions.set(`${message.role}:${message.messageId}`, index);
+      });
+      appendedReplies = 0;
+      completedPendingReply = false;
+      for (const message of alreadySaved ? [] : normalizedBatch) {
+        const identity = message.messageId ? `${message.role}:${message.messageId}` : undefined;
+        const index = identity === undefined ? undefined : positions.get(identity);
+        if (index !== undefined) {
+          // A detached CLI can settle after a restart. Replace its provisional
+          // row in place; a replay can never downgrade a settled answer.
+          if (nextMessages[index]?.pending && !message.pending) {
+            nextMessages[index] = { ...message, ts: nextMessages[index]!.ts };
+            completedPendingReply ||= message.role === "assistant" && !message.compacted;
+          }
+          continue;
+        }
+        if (identity !== undefined) positions.set(identity, nextMessages.length);
+        nextMessages.push(message);
+        if (message.role === "assistant" && !message.compacted) appendedReplies++;
+      }
       last = nextMessages.at(-1) ?? last;
       nextLen = nextMessages.length;
       indexedMessages = nextMessages;
@@ -526,8 +550,8 @@ export const conversationsRepository = {
     // Flag the conversation as needing review when an answer just landed (set
     // by the run-completion path). Omitted for the user turn so a fresh send
     // doesn't mark its own conversation unreviewed.
-    if (appendedReplies > 0) {
-      const reply = normalizedBatch.filter(m => m.role === "assistant" && !m.compacted).at(-1)!;
+    if (appendedReplies > 0 || completedPendingReply) {
+      const reply = indexedMessages.filter(m => m.role === "assistant" && !m.compacted).at(-1)!;
       patch.lastReplyState = reply.error || reply.interrupted ? "failed" : reply.ask?.length || reply.pending ? "waiting" : "done";
     }
     // If the conversation had no title yet, derive it from the first user msg.
@@ -539,10 +563,11 @@ export const conversationsRepository = {
     const updated = await storeForScope(executor, scope).transaction(async current => {
       const meta = current[id];
       if (!meta) return { next: current, result: null };
-      const unreadCount = opts.unreviewed === false ? 0 : opts.unreviewed && appendedReplies > 0
-        ? (meta.unreadCount ?? (meta.unreviewed ? 1 : 0)) + appendedReplies : meta.unreadCount;
+      const priorUnread = meta.unreadCount ?? (meta.unreviewed ? 1 : 0);
+      const unreadCount = opts.unreviewed === false ? 0 : opts.unreviewed && (appendedReplies > 0 || completedPendingReply)
+        ? priorUnread + appendedReplies + (completedPendingReply && priorUnread === 0 ? 1 : 0) : meta.unreadCount;
       const next = { ...meta, ...patch, unreadCount,
-        ...(opts.unreviewed === false ? { unreviewed: false } : opts.unreviewed && appendedReplies > 0 ? { unreviewed: true } : {}),
+        ...(opts.unreviewed === false ? { unreviewed: false } : opts.unreviewed && (appendedReplies > 0 || completedPendingReply) ? { unreviewed: true } : {}),
         updatedAt: new Date().toISOString() };
       return { next: { ...current, [id]: next }, result: { ...next, id } };
     });

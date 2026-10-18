@@ -846,6 +846,13 @@ it.each([0, 1, 3, 4, 27])("keeps one task list with three initial rows and an ac
 });
 
 it.each([false, true])("retains a single open history through continuation, error and reload: cli=%s", async cli => {
+  // happy-dom lacks Web Animations; keep the production reduced-motion path.
+  const matchMedia = window.matchMedia.bind(window);
+  vi.spyOn(window, "matchMedia").mockImplementation(query => {
+    const media = matchMedia(query);
+    if (query === "(prefers-reduced-motion: reduce)") Object.defineProperty(media, "matches", { value: true });
+    return media;
+  });
   const mode = cli ? "cli" : "api";
   const first = { ...reply(cli, true), completionPending: true, text: "Primera fase conservada." };
   await renderThread({ mode, turns: [user, first] });

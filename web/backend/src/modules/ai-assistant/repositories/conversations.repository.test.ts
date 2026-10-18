@@ -811,3 +811,53 @@ describe("agent shortcut notifications", () => {
     expect(result.activity?.every(row => !('preview' in row) && !('title' in row))).toBe(true);
   });
 });
+
+describe("durable logical message identities", () => {
+  it("deduplicates a replay after intervening messages without merging equal text", async () => {
+    const executor = makeExecutor([]);
+    const conversation = await conversationsRepository.create(executor, "codex");
+    const id = String(conversation.id);
+    const first = { ...msg("assistant", "Mismo resultado", "1"), messageId: "answer-1", presentation: "full" as const };
+    const second = { ...first, messageId: "answer-2", ts: "2" };
+    await conversationsRepository.appendMessages(executor, id, [first], { unreviewed: true });
+    await conversationsRepository.appendMessages(executor, id, [second], { unreviewed: true });
+    await conversationsRepository.appendMessages(executor, id, [first], { unreviewed: true });
+    expect(await conversationsRepository.allMessages(executor, id)).toEqual([first, second]);
+    expect(await conversationsRepository.getMeta(executor, id)).toMatchObject({ messageCount: 2, unreadCount: 2 });
+  });
+
+  it("settles a provisional row in place and never downgrades it on stale replay", async () => {
+    const executor = makeExecutor([]);
+    const conversation = await conversationsRepository.create(executor, "codex");
+    const id = String(conversation.id);
+    const pending = { ...msg("assistant", "", "1"), messageId: "cli:job", pending: true };
+    const finished = { ...msg("assistant", "Resultado íntegro", "2"), messageId: "cli:job", presentation: "full" as const };
+    await conversationsRepository.appendMessages(executor, id, [pending], { unreviewed: true });
+    await conversationsRepository.appendMessages(executor, id, [finished], { unreviewed: true });
+    await conversationsRepository.appendMessages(executor, id, [pending, finished], { unreviewed: true });
+    expect(await conversationsRepository.allMessages(executor, id)).toEqual([{ ...finished, ts: "1" }]);
+    expect(await conversationsRepository.getMeta(executor, id)).toMatchObject({ messageCount: 1, unreadCount: 1, lastReplyState: "done" });
+  });
+
+  it("keeps legacy rows and separate conversation/role identities", async () => {
+    const executor = makeExecutor([]);
+    const left = String((await conversationsRepository.create(executor, "codex")).id);
+    const right = String((await conversationsRepository.create(executor, "codex")).id);
+    const legacy = msg("assistant", "Repetido", "1");
+    const identified = { ...legacy, messageId: "same-id" };
+    await conversationsRepository.appendMessages(executor, left, [legacy, legacy, identified, { ...identified, role: "user" }]);
+    await conversationsRepository.appendMessages(executor, right, [identified]);
+    expect(await conversationsRepository.allMessages(executor, left)).toHaveLength(4);
+    expect(await conversationsRepository.allMessages(executor, right)).toEqual([identified]);
+  });
+
+  it("keeps canonical and translated documents byte-for-byte through reload", async () => {
+    const executor = makeExecutor([]);
+    const id = String((await conversationsRepository.create(executor, "codex")).id);
+    const document = "# Plan\n\n" + "Paso y evidencia. ".repeat(2000) + "\n\n```sh\n$ codex exec\n⏺ salida de ejemplo\n```";
+    const answer = { ...msg("assistant", document, "1"), messageId: "document", presentation: "full" as const,
+      textTranslated: "翻訳\n" + document, displaySummary: "Resumen.", cli: true, cliLog: "$ codex\nProgreso" };
+    await conversationsRepository.appendMessages(executor, id, [answer]);
+    expect(await conversationsRepository.allMessages(executor, id)).toEqual([answer]);
+  });
+});

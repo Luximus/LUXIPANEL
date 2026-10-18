@@ -43,6 +43,7 @@ import { captureModuleRunRecovery, readModuleRunRecovery } from "./module-run-re
 import { ensureModuleToolRun, recoverConversation } from "./cli-run-recovery.service.js";
 import { cliJobsRepository } from "../repositories/cli-jobs.repository.js";
 import { finishOwnerContribution } from "../../../shared/github/owner-contributions.js";
+import { persistAssistantMessage } from "./turn-queue.service.js";
 const user = { userId: 7, username: "test", kind: "admin", role: "admin", modules: ["assistant"] } as SessionUser;
 const token = "original-token-never-persisted";
 const executor = { target: { id: "recovery-test", name: "Test" }, exec: vi.fn() } as unknown as Executor;
@@ -131,4 +132,13 @@ describe("module channel after a backend restart", () => {
     const body = Buffer.from(state.desc!.moduleRecovery!.split(".")[0]!, "base64url").toString();
     expect(body).not.toContain(token); expect(JSON.parse(body)).toMatchObject({ owner: 7, targetId: "recovery-test" });
   });
+});
+
+it("persists the recovered answer with its identity and without an extra automatic result", async () => {
+  vi.mocked(finishOwnerContribution).mockResolvedValueOnce("registered-contribution");
+  expect(await recover()).toBe(true);
+  await state.complete!("Respuesta completa.", false, undefined, undefined, 1, "Consola", undefined, undefined, undefined, "cli:lxp-cli-123-abcdef");
+  const call = vi.mocked(persistAssistantMessage).mock.calls.at(-1)!;
+  expect(call[2]).toBe("Respuesta completa.");
+  expect(call[13]).toBe("cli:lxp-cli-123-abcdef");
 });

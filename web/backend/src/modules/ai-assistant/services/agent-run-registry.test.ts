@@ -415,7 +415,7 @@ describe("CLI terminal outcomes", () => {
       ]),
     });
     await run.completion;
-    expect(run.events.at(-1)).toEqual({ type: "error", message: "Inactividad" });
+    expect(run.events.at(-1)).toEqual({ type: "error", message: "Inactividad", messageId: run.messageId, presentation: "full" });
     expect(onComplete.mock.calls[0][1]).toBe(true);
     expect(onComplete.mock.calls[0][7]).toEqual({ error: "Inactividad" });
     expect(run.events.some(e => e.type === "tool_result" && e.success)).toBe(false);
@@ -432,7 +432,7 @@ describe("CLI terminal outcomes", () => {
     });
     await run.completion;
     expect(onComplete.mock.calls[0].slice(0, 2)).toEqual(["Hecho", false]);
-    expect(run.events.at(-1)).toEqual({ type: "done", displaySummary: "Hecho" });
+    expect(run.events.at(-1)).toEqual({ type: "done", displaySummary: "Hecho", messageId: run.messageId, presentation: "full" });
   });
   it("persists errors with no final text and keeps manual stop distinct", async () => {
     const onComplete = vi.fn();

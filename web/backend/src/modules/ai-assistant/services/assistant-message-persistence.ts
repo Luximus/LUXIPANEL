@@ -1,6 +1,7 @@
-import { visibleSummary } from "../models/visible-summary.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { randomUUID } from "node:crypto";
+import { messagePresentation } from "../models/message-presentation.js";
 import type { Executor } from "../../../shared/executor/index.js";
 import type { AskQuestion } from "../models/ask.types.js";
 import type { ApiActivity } from "../models/api-activity.types.js";
@@ -30,6 +31,7 @@ export async function persistAssistantMessage(
   askKind?: "plan-approval",
   outcome?: { error?: string; interrupted?: boolean; pending?: boolean },
   apiActivity?: ApiActivity,
+  messageId?: string,
 ): Promise<void> {
   // Drop the raw ask sentinel block from the persisted text — the question is
   // stored structurally in `ask` and re-rendered as controls on reload.
@@ -51,13 +53,14 @@ export async function persistAssistantMessage(
           // `content` stays English (cheap context replay); `textTranslated` is
           // the user-language answer the chat renders when translation was active.
           role: "assistant",
+          messageId: messageId ?? `assistant:${randomUUID()}`,
           ...(outcome?.error ? { error: outcome.error } : {}),
           ...(outcome?.interrupted ? { interrupted: true } : {}),
           ...(outcome?.pending ? { pending: true } : {}),
           ...(!cli && apiActivity ? { apiActivity } : {}),
           ...(provider ? { provider } : {}),
           content,
-          ...(!outcome?.pending ? { displaySummary: visibleSummary(translation?.text ?? content) } : {}),
+          ...messagePresentation(translation?.text ?? content, { ...outcome, awaitingInput: !!ask?.length }),
           ts: new Date().toISOString(),
           ...(cli ? { cli: true } : {}),
           ...(cliLogField ? { cliLog: cliLogField } : {}),

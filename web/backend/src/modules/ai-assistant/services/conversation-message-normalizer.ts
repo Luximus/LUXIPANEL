@@ -103,6 +103,9 @@ function looksLikeCliTranscript(text: string): boolean {
 }
 
 function normalizeCliAssistantMessage(message: ConversationMessage): ConversationMessage {
+  // Identified answers already come from the structured final event. A code
+  // sample or document may itself contain CLI markers: never parse it as a log.
+  if (message.messageId) return message;
   const content = String(message.content ?? "");
   const cliLog = typeof message.cliLog === "string" ? message.cliLog : "";
   const rawTranscript = cliLog || content;

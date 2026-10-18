@@ -878,3 +878,28 @@ When the user selects `plan`, the agent should:
 - **Ephemeral / project-less chats** (no `conversationId`): the broker
   falls safe to deny for any tool routed through it. The CLI provider
   itself runs with whatever mode the user has set globally.
+
+### Identidad y presentación de las respuestas
+
+Los mensajes nuevos del asistente añaden `messageId?: string`, compartido por
+la persistencia, el cierre SSE (`done` o `error`) y el historial. Es distinto
+de `runId` y `seq`: una respuesta API recibe su propia identidad y un CLI
+usa el identificador durable de su trabajo, también al recuperarlo. El
+repositorio reconcilia la misma identidad dentro de la conversación y rol;
+una fila pendiente puede completarse en su posición original. No compara el
+texto ni reasigna identidades a filas antiguas.
+
+`presentation?: "full" | "summary"` es una indicación opcional. La ausencia
+significa contenido completo (`textTranslated ?? content`).
+`displaySummary` sigue siendo solo una proyección: nunca sustituye ni recorta
+el contenido canónico o traducido. Solo un paquete de coordinación validado
+de resultado permite `summary`; documentos, código, prosa y formatos no
+reconocidos usan `full`. Preguntas, errores, interrupciones y resultados
+pendientes conservan su presentación completa. Las respuestas estructuradas
+con identidad ya no se reinterpretan como consola por incluir ejemplos de CLI.
+No se migran historiales existentes.
+
+Verificación focalizada: `npm run typecheck` y Vitest de
+`message-presentation`, `turn-finalization`, `agent-run-registry`,
+`agent-stream-cursor`, `conversations.repository`,
+`conversation-message-normalizer` y `cli-run-recovery.service`.
