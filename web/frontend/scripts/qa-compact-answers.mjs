@@ -170,7 +170,7 @@ if(process.env.LXP_QA_SERVE_ONLY === "1") {
      await expect(content).toContainText("Última sección del documento conservada.");
      await expect(content.locator("p").last()).toBeVisible();
     } else {
-     await expect(content).toHaveText(fixture.text.replace(/\s+/g," ").trim());
+     await expect(content).toHaveText(fixture.text.replace(/\s+/g," ").trim(), {useInnerText:true});
     }
     const geometry=await content.evaluate(el=>({
      clientHeight:el.clientHeight,scrollHeight:el.scrollHeight,
