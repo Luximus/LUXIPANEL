@@ -15,7 +15,7 @@ import {createRoot} from "react-dom/client";
 import {useChatPane} from "/src/components/floating-assistant/chat-pane/use-chat-pane.tsx";
 import {ChatMain} from "/src/components/floating-assistant/chat-pane/ChatMain.tsx";
 import {ChatSidebar} from "/src/components/floating-assistant/chat-pane/ChatSidebar.tsx";
-import {assistantProjectsApi,assistantAgentsApi,assistantAgentRolesApi,assistantConversationsApi} from "/src/components/floating-assistant/assistant-api.ts";
+import {assistantProjectsApi,assistantAgentsApi,assistantAgentRolesApi,assistantConversationsApi,teamApi} from "/src/components/floating-assistant/assistant-api.ts";
 import {chatUiState} from "/src/components/floating-assistant/chat-ui-state.ts";
 import "/src/styles/starwind.css";
 import "/src/styles/panel-workspace.css";
@@ -27,6 +27,8 @@ assistantAgentsApi.list=async(query={})=>names.map((name,index)=>({id:"agent-"+i
   capabilities:{canExecute:true},context:{projectId:query.contextProjectId??query.projectId??"project",membership:"direct"}}));
 assistantAgentRolesApi.list=async()=>roles.map((name,index)=>({id:"role-"+index,name}));
 const conversations=${JSON.stringify(conversations)};
+assistantConversationsApi.get=async(id)=>conversations.find(chat=>chat.id===id)??null;
+teamApi.byWorker=async(id)=>id==="c-1"?{leaderConversationId:"c-0",leaderAgentId:"agent-0",workerAgentName:"Sofía"}:null;
 assistantConversationsApi.list=async(...args)=>{
   const items=conversations.filter(chat=>chat.agentId===args[6]?.agentId);
   return {items,total:items.length};
@@ -42,7 +44,7 @@ const query=new URLSearchParams(location.search);
 const selectedAgent=query.get("agent");
 chatUiState.patchPane("claude",{activeId:null,currentAgentId:selectedAgent,currentProjectId:"project"});
 function App(){
-  const vm=useChatPane({provider:"claude",mode:"api",active:true,openProjectId:"project",openAgentId:selectedAgent,openNonce:1});
+  const vm=useChatPane({provider:"claude",mode:"api",active:true,openProjectId:"project",openAgentId:selectedAgent,openConversationId:query.get("chat")??undefined,openNonce:1});
   useEffect(()=>{if(query.has("history"))vm.setListOpen(true);},[]);
   return createElement("div",{className:"flex flex-1 min-w-0"},
     query.has("history")&&createElement(ChatSidebar,{vm}),

@@ -1,0 +1,8 @@
+{
+  "title": "Volver a los agentes del proyecto desde el líder",
+  "changes": [
+    "El chat del líder incluye un acceso a «Todos los agentes» junto a su nombre para volver a las tarjetas del proyecto.",
+    "El regreso conserva el proyecto seleccionado, el borrador y los adjuntos, incluso mientras carga el historial.",
+    "Los accesos para volver al líder y a todos los agentes también están visibles en móvil."
+  ]
+}

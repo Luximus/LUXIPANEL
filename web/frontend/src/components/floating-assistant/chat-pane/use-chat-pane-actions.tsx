@@ -200,6 +200,9 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
     chatEngine.discardEphemeral(newKeyRef.current);
     newKeyRef.current = `new:${provider}:${Math.random().toString(36).slice(2)}`;
     setActiveId(null);
+    // The previous history request no longer owns this view. Its guarded
+    // finally cannot clear loading after resetNew invalidates that selection.
+    setChatLoading(false);
     setCurrentAgentId(opts?.preserveAgent ? currentAgentId : null);
     // A new agent chat starts on its configured model. Loose/project chats
     // retain the per-server default as their initial composer choice.

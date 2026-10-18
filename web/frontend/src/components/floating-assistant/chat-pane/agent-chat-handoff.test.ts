@@ -138,6 +138,45 @@ it("opens an existing chat from the sidebar and keeps its messages and team visi
   } finally { await act(async () => root.unmount()); }
 });
 
+it("returns from a leader while its history is loading and ignores the late result", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
+  const host = document.createElement("div"), root = createRoot(host);
+  let vm!: ChatPaneVM;
+  let resolveHistory!: (value: Awaited<ReturnType<typeof conversationApi.messages>>) => void;
+  const history = new Promise<Awaited<ReturnType<typeof conversationApi.messages>>>(resolve => { resolveHistory = resolve; });
+  let opening!: Promise<void>;
+  function Probe() {
+    vm = useChatPane({ provider: "claude", mode: "api", active: true });
+    return createElement(ChatMain, { vm, attachmentImages: new Map() });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    conversationApi.messages.mockImplementationOnce(() => history);
+    await act(async () => { opening = vm.openConversation(legacy.id); });
+    expect(vm.chatLoading).toBe(true);
+    await act(async () => { vm.setDraft("Seguir después"); vm.setAttachments([staged]); });
+    const back = host.querySelector<HTMLButtonElement>('[data-search-target="chat-all-agents"]');
+    expect(back).not.toBeNull();
+    await act(async () => back!.click());
+    expect(vm.chatLoading).toBe(false);
+    expect(vm.activeId).toBeNull();
+    expect(host.querySelectorAll('[data-agent-shortcut]')).toHaveLength(3);
+    await act(async () => {
+      resolveHistory({ items: [{ role: "assistant", content: "Respuesta tardía", ts: "2026-10-18" }], total: 1, hasMore: false });
+      await opening;
+    });
+    expect(vm.activeId).toBeNull();
+    expect(vm.currentAgentId).toBeNull();
+    expect(vm.currentProjectId).toBe("child");
+    expect(vm.chatLoading).toBe(false);
+    expect(vm.draft).toBe("Seguir después");
+    expect(vm.attachments).toEqual([staged]);
+    expect(host.querySelectorAll('[data-agent-shortcut]')).toHaveLength(3);
+    expect(host.textContent).not.toContain("Respuesta tardía");
+  } finally { resolveHistory?.({ items: [], total: 0, hasMore: false }); await act(async () => root.unmount()); }
+});
+
 it("does not insert an open agent mailbox or stale project rows into loose chats", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
@@ -258,7 +297,20 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     await act(async () => { await vm.openConversation(legacy.id); });
     expect(vm.activeMeta?.agentId).toBe("agent");
     await act(async () => { vm.setDraft("Revisar con el equipo"); vm.setAttachments([staged]); });
+    const backToAgents = host.querySelector<HTMLButtonElement>('[data-search-target="chat-all-agents"]');
+    expect(backToAgents?.textContent).toContain("Todos los agentes");
+    await act(async () => backToAgents!.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    expect(vm.activeId).toBeNull();
+    expect(vm.currentAgentId).toBeNull();
+    expect(vm.currentProjectId).toBe("child");
+    expect(vm.draft).toBe("Revisar con el equipo");
+    expect(vm.attachments).toEqual([staged]);
+    expect(chatUiState.getPane("claude")).toMatchObject({ activeId: null, currentAgentId: null, currentProjectId: "child" });
+    expect(host.querySelectorAll('[data-agent-shortcut]')).toHaveLength(3);
+    expect(host.querySelector('[data-search-target="chat-all-agents"]')).toBeNull();
     await choose("[Desarrollo] Sofía");
+    expect(host.querySelector('[data-search-target="chat-all-agents"]')).toBeNull();
     expect(vm.draft).toBe("Revisar con el equipo");
     expect(vm.attachments).toEqual([staged]);
     expect(vm.activeId).toBeNull();

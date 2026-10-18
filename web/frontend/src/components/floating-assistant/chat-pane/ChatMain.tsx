@@ -548,10 +548,22 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   type="button"
                   onClick={() => void openConversation(leaderConv.conversationId)}
                   title={leaderAgent ? formatAssistantMessage(ct.backToLeaderNamed ?? "Volver al chat de {name}", { name: leaderAgent.name }) : (ct.backToLeader ?? "Volver al chat del líder")}
-                  className="inline-flex h-6 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 text-primary hover:bg-primary/20"
+                  className="lxp-chat-agent-back inline-flex h-6 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 text-primary hover:bg-primary/20"
                 >
                   <i className="ti ti-arrow-back-up text-xs" aria-hidden />
                   {ct.backToLeader ?? "Volver al chat del líder"}
+                </button>
+              )}
+              {!(activeId && leaderConv) && currentProject && currentAgentId && currentAgentId === projectTeam?.root.leaderAgentId && (
+                <button
+                  type="button"
+                  data-search-target="chat-all-agents"
+                  onClick={() => selectProjectAgent("")}
+                  title={ct.agentHistoryAll ?? "Todos los agentes"}
+                  className="lxp-chat-agent-back inline-flex h-6 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 text-primary hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                >
+                  <i className="ti ti-arrow-back-up text-xs" aria-hidden />
+                  {ct.agentHistoryAll ?? "Todos los agentes"}
                 </button>
               )}
               {chatTokens.total > 0 && (

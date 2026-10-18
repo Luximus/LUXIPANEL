@@ -707,8 +707,8 @@ body:has([data-assistant-topbar][data-release-update]) .lxp-chat-composer-naviga
   }
   .lxp-chat-composer-navigation :is(.lxp-chat-plus-control,.lxp-chat-navbar-controls) { display:contents; }
   [data-workspace-shell] .lxp-chat-composer-navigation:empty { display:none; }
-  [data-workspace-shell] .lxp-chat-composer-meta > :not(.lxp-chat-token-counter):not(.lxp-chat-staged-attachments):not(.lxp-chat-project-path) { display:none; }
-  [data-workspace-shell] .lxp-chat-composer-meta:not(:has(> .lxp-chat-token-counter, > .lxp-chat-staged-attachments, > .lxp-chat-project-path)) { display:none; }
+  [data-workspace-shell] .lxp-chat-composer-meta > :not(.lxp-chat-token-counter):not(.lxp-chat-staged-attachments):not(.lxp-chat-project-path):not(.lxp-chat-agent-back) { display:none; }
+  [data-workspace-shell] .lxp-chat-composer-meta:not(:has(> .lxp-chat-token-counter, > .lxp-chat-staged-attachments, > .lxp-chat-project-path, > .lxp-chat-agent-back)) { display:none; }
   .lxp-chat-project-path { max-width:min(65%,18rem); }
   .lxp-chat-composer-navigation :is(.lxp-chat-plus-button,#workspace-history-toggle,.lxp-navbar-tool,#sidebar-toggle) {
     display:flex; align-items:center; justify-content:center; width:36px; height:36px;
