@@ -869,6 +869,27 @@ it.each([false, true])("retains a single open history through continuation, erro
   expect(history.open).toBe(false);
 });
 
+it.each([false, true])("preserves the chosen console when a history refresh prepends older messages: cli=%s", async cli => {
+  const mode = cli ? "cli" : "api";
+  const request = { ...user, messageId: "current-request" };
+  const first = { ...reply(cli, true), messageId: "current-answer", completionPending: true };
+  await renderThread({ mode, turns: [request, first] });
+  const history = host.querySelector<HTMLDetailsElement>("[data-execution-history]")!;
+  await toggle(history);
+  const older = [{ ...user, messageId: "older-request" }, { ...reply(cli, true), messageId: "older-answer" }];
+  await renderThread({ mode, turns: JSON.parse(JSON.stringify([...older, request, first])) });
+  const consoles = host.querySelectorAll<HTMLDetailsElement>("[data-execution-history]");
+  expect(consoles).toHaveLength(2);
+  expect(consoles[1]).toBe(history);
+  expect(consoles[1]!.open).toBe(true);
+  expect(consoles[0]!.open).toBe(false);
+  await toggle(history);
+  await renderThread({ mode, turns: [request, { ...first, text: "Otro avance del equipo." }, notice,
+    { ...reply(cli, true), messageId: "next-phase", text: "La misma ejecución continúa." }] });
+  expect(host.querySelector("[data-execution-history]")).toBe(history);
+  expect(history.open).toBe(false);
+});
+
 it("keeps the attention of a hidden fourth task visible without opening the history", async () => {
   const tasks = Array.from({ length: 5 }, (_, index) => task({ id: `task-${index}`, title: `Tarea ${index}`, status: "done" }));
   tasks[3] = task({ id: "task-3", workerAgentName: "Agente con error", status: "failed", error: "No se confirmó la operación." });

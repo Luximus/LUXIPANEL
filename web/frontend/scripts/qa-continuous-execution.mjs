@@ -31,16 +31,22 @@ function App(){
   const [phase,setPhase]=useState(Number(query.get("phases"))||1);
   const [done,setDone]=useState(query.has("done"));
   const [next,setNext]=useState(false);
+  const [older,setOlder]=useState(false);
+  const [refresh,setRefresh]=useState(0);
   const [draft,setDraft]=useState("");
-  const turns=[{role:"user",text:"Completa la revisión del proyecto y comprueba los resultados.",tools:[]}];
+  const identity=id=>query.has("legacy")?{}:{messageId:id};
+  const turns=[{role:"user",text:"Completa la revisión del proyecto y comprueba los resultados.",tools:[],createdAt:1792231199000,...identity("current-request")}];
   for(let index=0;index<phase;index++){
     if(index)turns.push({role:"user",text:"Informe automático del equipo "+index,tools:[],auto:true});
     const latest=index===phase-1;
     turns.push({role:"assistant",provider:"codex",text:latest&&done?"Revisión terminada. Los cambios y sus comprobaciones están consolidados en esta respuesta.":"",
-      pending:latest&&!done,completionPending:!latest,cli,createdAt:1792231200000+index*60000,
-      ...(cli?{cliHistoryLog:"Revisando la fase "+(index+1)+".\\nComprobando los resultados del equipo."}:{}),
+      pending:latest&&!done,completionPending:!latest,cli,createdAt:1792231200000+index*60000,...identity("phase-"+index),
+      ...(cli?{cliHistoryLog:"Revisando la fase "+(index+1)+".\\nComprobando los resultados del equipo. Actualización "+refresh+"."}:{}),
       tools:cli?[]:[{id:"read-"+index,name:"files.read",input:{path:"ejemplo.txt"},result:{success:true,output:"Comprobación de fase "+(index+1)}}]});
   }
+  if(older)turns.unshift(
+    {role:"user",text:"Consulta anterior",tools:[],createdAt:1792230000000,...identity("older-request")},
+    {role:"assistant",text:"Resultado anterior independiente.",tools:[],cli:true,cliHistoryLog:"Historial anterior.",createdAt:1792230060000,...identity("older-answer")});
   if(next)turns.push({role:"user",text:"Una nueva petición independiente",tools:[]},{role:"assistant",text:"Esta respuesta pertenece a la nueva petición.",tools:[]});
   const vm={active:false,activeId:"qa-execution",chatKey:"qa-execution",provider:"codex",mode:cli?"cli":"api",uiMode:"advanced",
     turns,streaming:!done&&!next,chatLoading:false,ct,projects:[],projectTeamAgents:[],historicalProjectAgents:[],rolesById:new Map(),
@@ -53,6 +59,8 @@ function App(){
     createElement("nav",{"aria-label":"Controles de prueba",className:"flex flex-wrap gap-2 border-b border-border p-3 text-sm"},
       createElement("button",{onClick:()=>{setPhase(value=>value+1);setDone(false);},className:"rounded border border-border px-3 py-2"},"Siguiente fase"),
       createElement("button",{onClick:()=>setDone(true),className:"rounded border border-border px-3 py-2"},"Finalizar"),
+      createElement("button",{onClick:()=>setOlder(value=>!value),className:"rounded border border-border px-3 py-2"},"Alternar mensajes anteriores"),
+      createElement("button",{onClick:()=>setRefresh(value=>value+1),className:"rounded border border-border px-3 py-2"},"Actualizar historial"),
       createElement("button",{onClick:()=>{setDone(true);setNext(true);},className:"rounded border border-border px-3 py-2"},"Nueva petición")),
     createElement(ChatMain,{vm,attachmentImages:new Map()}));
 }

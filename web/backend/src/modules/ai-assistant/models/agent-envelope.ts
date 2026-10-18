@@ -5,9 +5,10 @@ import { decode, encode } from "@toon-format/toon";
 import { visibleSummary } from "./visible-summary.js";
 
 export const AGENT_PROTOCOL = "lxp.agent.v1" as const;
+export const AGENT_PACKET_MAX = 2000;
 export const agentPacketSchema = z.object({
   kind: z.enum(["request", "progress", "result", "blocked", "question"]),
-  summary: z.string().trim().min(1).max(240),
+  summary: z.string().trim().min(1).max(240).transform(value => value.replace(/\s+/gu, " ")),
   data: z.record(z.unknown()).optional(),
   refs: z.array(z.string().min(1).max(500)).max(12).optional(),
 }).strict();
@@ -23,7 +24,7 @@ const legacyPacketInputSchema = {
 };
 export const agentPacketInputSchema = {
   anyOf: [
-    { type: "string", maxLength: 16000, description: "TOON message with kind, summary (<=240 chars), optional data and refs. Example: kind: result\nsummary: Tests passed; deployment pending.\ndata:\n  deployed: false" },
+    { type: "string", maxLength: AGENT_PACKET_MAX, description: "Compact TOON (<=2000 chars): kind=request|progress|result|blocked|question, summary (one paragraph <=240 chars), optional data with new facts only, refs as an array of evidence references. Example: kind: result\nsummary: Tests passed; deployment pending.\ndata:\n  deployed: false" },
     { ...legacyPacketInputSchema, description: "Legacy structured packet; delivered as TOON." },
   ],
 };
@@ -40,8 +41,41 @@ export function decodeCoordination(text: string): unknown {
 export function parseAgentPacket(input: unknown): AgentPacket {
   if (typeof input === "string" && input.length > 16000) throw new Error("El mensaje supera el límite permitido.");
   const packet = agentPacketSchema.parse(typeof input === "string" ? decodeCoordination(input) : input);
-  if (encodeCoordination(packet).length > 4000) throw new Error("El mensaje TOON supera 4000 caracteres; usa un resumen y referencias a la evidencia.");
+  assertCompact(encodeCoordination(packet));
   return packet;
+}
+
+function assertCompact(text: string): void {
+  if (text.length > AGENT_PACKET_MAX) throw new Error(`El mensaje TOON supera ${AGENT_PACKET_MAX} caracteres. Envía solo la tarea o novedad, restricciones y referencias a la evidencia; no repitas notas ni historial. La operación no se ha iniciado.`);
+}
+
+/** Validate NEW author input before any persistence, admission or dispatch.
+ * Legacy prose is accepted only when compact; a broken packet must never fall
+ * back to prose and bypass the schema or the size limit. */
+export function compactAgentInput(text: string, kind: AgentPacket["kind"] = "request"): AgentPacket {
+  const clean = text.trim();
+  if (!clean) throw new Error("Falta el mensaje o tarea.");
+  if (/^(?:```|\{|(?:protocol|kind|summary|data|refs)(?:\[|:))/u.test(clean)) {
+    try { return parseAgentPacket(clean); }
+    catch (error) {
+      if (error instanceof Error && error.message.includes("supera")) throw error;
+      throw new Error("TOON inválido: usa kind=request|progress|result|blocked|question, summary de un párrafo (≤240 caracteres), data opcional y refs como lista. No añadas protocol, metadatos de transporte ni texto fuera del paquete.");
+    }
+  }
+  return parseAgentPacket({ kind, summary: visibleSummary(clean), data: { text: clean } });
+}
+
+/** One bounded packet for both immediate and queued workers. Shared notes are
+ * structured once, with their complete constraints; never prefix or slice them. */
+export function prepareCoordinationTask(text: string, notes?: string): string {
+  const packet = compactAgentInput(text);
+  if (notes?.trim()) {
+    const sharedNotes = compactAgentInput(notes, "progress");
+    packet.data = { ...(packet.data ? { task: packet.data } : {}), sharedNotes };
+  }
+  const wire = encodeCoordination({ protocol: AGENT_PROTOCOL, ...packet });
+  assertCompact(wire);
+  return wire;
 }
 
 /** Legacy text is retained in storage; only its preview is sent by default.

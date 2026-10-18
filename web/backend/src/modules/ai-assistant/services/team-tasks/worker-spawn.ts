@@ -1,4 +1,4 @@
-import { coordinationTask } from "../../models/agent-envelope.js";
+import { coordinationTask, prepareCoordinationTask } from "../../models/agent-envelope.js";
 import { visibleSummary } from "../../models/visible-summary.js";
 import { resolveAgentContext, admitAgentWork } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -226,7 +226,8 @@ export function startWorkerRun(args: {
  * `assignTask`'s own composition of the same pieces — `team.assign`.
  */
 export async function spawnWorker(input: SpawnWorkerInput): Promise<{ conversationId: string }> {
-  const { executor, user, userId, worker, task, projectId, depth, runAgent, panelOrigin, beforeStart, onDone } = input;
+  const { executor, user, userId, worker, projectId, depth, runAgent, panelOrigin, beforeStart, onDone } = input;
+  const task = prepareCoordinationTask(input.task);
   const admission = await admitAgentWork(executor, worker.id, projectId, user);
   try {
   const convId = await createWorkerConversation(executor, worker, task, admission.projectId, { appendUserMessage: true });

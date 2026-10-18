@@ -1,4 +1,4 @@
-import { agentPacketInputSchema, parseAgentPacket, encodeCoordination } from "../models/agent-envelope.js";
+import { agentPacketInputSchema, parseAgentPacket, compactAgentInput, encodeCoordination } from "../models/agent-envelope.js";
 import { admitAgentWork, resolveConversationBinding, resolveAgentContext, scopedAgents } from "./agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -33,7 +33,6 @@ import { ValidationError } from "../../../shared/errors/index.js";
 import type { AssistantAgent } from "../models/assistant-agent.types.js";
 import {
   AGENT_MESSAGE_MAILBOX_CAP,
-  clampMessageText,
   type AgentMessage,
 } from "../models/agent-message.types.js";
 import { reconcileAgentMessageReceipts } from "./agent-message-receipts.js";
@@ -91,7 +90,7 @@ export const agentMessagesService = {
     const { fromAgent, depth, user, userId, senderConversationId } = input;
     const fromId = fromAgent.id ?? "";
     const toAgentId = (input.toAgentId ?? "").trim();
-    const text = input.packet !== undefined ? encodeCoordination(parseAgentPacket(input.packet)) : clampMessageText(input.text ?? "");
+    const text = encodeCoordination(input.packet !== undefined ? parseAgentPacket(input.packet) : compactAgentInput(input.text ?? ""));
 
     if (!fromId) throw new ValidationError("El agente emisor no tiene id.");
     if (!toAgentId) throw new ValidationError("Falta el agente destinatario (campo 'agentId').");
@@ -280,7 +279,7 @@ export function buildSendMessageTool(ctx: {
         text: {
           type: "string",
           description:
-            "Legacy text (≤8000 chars). Prefer message TOON with only new facts, constraints and evidence references.",
+            "Legacy compact text, normalized to TOON; the entire packet must fit 2000 chars. Prefer message TOON with only new facts, constraints and evidence references. Oversized text is rejected, never truncated.",
         },
       },
       required: ["agentId"],

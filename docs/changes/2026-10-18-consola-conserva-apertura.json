@@ -1,0 +1,7 @@
+{
+  "title": "La consola del chat conserva su apertura",
+  "changes": [
+    "La consola permanece abierta o cerrada según tu elección al actualizarse el historial, cargar mensajes anteriores o continuar una ejecución.",
+    "El estado del desplegable permanece asociado a su respuesta y no se transfiere a otro mensaje al cambiar el orden del historial."
+  ]
+}

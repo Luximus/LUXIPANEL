@@ -1,4 +1,6 @@
 import { enqueueAgentTurn } from "../queued-turn-admission.js";
+import { compactAgentInput, encodeCoordination, prepareCoordinationTask } from "../../models/agent-envelope.js";
+import { visibleSummary } from "../../models/visible-summary.js";
 import { admitAgentWork, resolveConversationBinding } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -29,7 +31,6 @@ import { teamTasksRepository } from "../../repositories/team-tasks.repository.js
 import { agentQueueRepository } from "../../repositories/agent-queue.repository.js";
 import { usageRepository } from "../../repositories/usage.repository.js";
 import {
-  clampSharedNotes,
   isTerminalTaskStatus,
   type TeamTask,
 } from "../../models/team-task.types.js";
@@ -190,6 +191,8 @@ export const teamTasksService = {
   },
   async assignAdmittedTask(input: AssignTaskInput): Promise<TeamTask> {
     const { executor, user, userId, leaderConversationId, leaderAgentId, worker, title, task, projectId, planId, stepIndex, depth, runAgent, verifyCommands, budgetTokens } = input;
+    // Reject invalid/verbose author input before creating a chat or reserving work.
+    let workText = prepareCoordinationTask(task);
     // Origen del panel para el canal MCP del worker: el explícito del caller o,
     // en su defecto, el meta del LÍDER (cada run vivo lo persiste ahí). Sin
     // esto los subordinados arrancan sin `servers.*`/`permissions.approve`.
@@ -268,19 +271,13 @@ export const teamTasksService = {
     const project = projectId ? await projectsRepository.get(executor, projectId).catch(() => null) : null;
     const effectiveVerify = verifyCommands?.length ? verifyCommands : project?.verify?.commands ?? [];
 
-    // Notas compartidas del plan (escritas por el líder con team.plan/team.note):
-    // se prependan SOLO-LECTURA al texto de trabajo del worker. El board guarda
-    // la tarea original tal como la escribió el líder.
-    let workText = task;
+    // Notes and task share ONE TOON budget. Preserve every constraint or reject
+    // the assignment before dispatch; markdown prefixes used to bypass validation.
     if (planId) {
       const plan = await teamTasksRepository.getPlan(executor, planId).catch(() => null);
       const notes = plan?.sharedNotes?.trim();
       if (plan && plan.leaderConversationId === leaderConversationId && notes) {
-        workText =
-          "## Notas compartidas del plan (del líder, solo lectura)\n" +
-          notes.slice(0, 2000) +
-          "\n---\n" +
-          task;
+        workText = prepareCoordinationTask(task, notes);
       }
     }
 
@@ -376,7 +373,7 @@ export const teamTasksService = {
         })) ?? record;
       await conversationsRepository
         .appendMessages(executor, convId, [
-          { role: "user", provider: worker.providerId, content: workText, ts: new Date().toISOString() },
+          { role: "user", provider: worker.providerId, content: workText, displaySummary: visibleSummary(workText), auto: true, ts: new Date().toISOString() },
         ])
         .catch(() => undefined);
       startWorkerRun({
@@ -458,7 +455,7 @@ export const teamTasksService = {
         ...(s.workerAgentId ? { workerAgentId: s.workerAgentId } : {}),
         status: "pending" as const,
       })),
-      ...(input.sharedNotes?.trim() ? { sharedNotes: clampSharedNotes(input.sharedNotes) } : {}),
+      ...(input.sharedNotes?.trim() ? { sharedNotes: encodeCoordination(compactAgentInput(input.sharedNotes, "progress")) } : {}),
       status: "active",
     });
   },
@@ -475,7 +472,7 @@ export const teamTasksService = {
     if (plan.leaderConversationId !== leaderConversationId) {
       return { ok: false, message: "El plan no pertenece a esta conversación." };
     }
-    await teamTasksRepository.patchPlan(executor, plan.id, { sharedNotes: clampSharedNotes(notes) });
+    await teamTasksRepository.patchPlan(executor, plan.id, { sharedNotes: encodeCoordination(compactAgentInput(notes, "progress")) });
     return { ok: true, message: "Notas del plan actualizadas (los próximos workers las recibirán)." };
   },
 

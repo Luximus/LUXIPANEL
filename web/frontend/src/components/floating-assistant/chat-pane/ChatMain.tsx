@@ -20,6 +20,7 @@ import { resolveTargetScope } from "@/lib/api-client";
 import { legacyHistoryAgentIds } from "../agent-market-state";
 import { groupTeamNotices, isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
 import { groupExecutionTurns } from "./execution-turns";
+import { useExecutionRenderKeys } from "./execution-render-keys";
 import { ExecutionDisclosure } from "./tool-disclosure";
 import { assistantConversationsApi, type ConversationMeta } from "../assistant-api";
 import { PROVIDER_META, SLASH_COMMANDS, type AssistantProviderId, type ApprovalMode } from "../assistant-api";
@@ -302,6 +303,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
   const { lastAssistantTurnIndex, lastVisibleTurnIndex } = teamNotices;
   // Native disclosures and board state belong to this target and conversation.
   const executionScope = `${resolveTargetScope()}:${chatKey}`;
+  const renderedExecutions = useExecutionRenderKeys(executionTurns, executionScope);
   const precedingUserText = useMemo(() => {
     const out: (string | null)[] = new Array(turns.length).fill(null);
     let lastText: string | null = null;
@@ -379,11 +381,11 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                    </div>
                   </div>
               )}
-              {executionTurns.map(({ turn: t, index: i, firstIndex, indices, phases }) => {
+              {renderedExecutions.map(({ turn: t, index: i, firstIndex, indices, phases, renderKey }) => {
                 // Compaction summary: render a divider, not a chat bubble — it's
                 // a synthetic note that replaced the older turns it folded.
                 if (t.compacted) {
-                  return <Suspense key={i} fallback={null}><CompactionDivider turn={t} /></Suspense>;
+                  return <Suspense key={`${executionScope}:${renderKey}`} fallback={null}><CompactionDivider turn={t} /></Suspense>;
                 }
                 // Edit button: only on the last user turn, only while the AI is running.
                 const isLastUserTurn = streaming && t.role === "user" && i === lastUserTurnIndex;
@@ -397,9 +399,9 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   ...indices.flatMap(index => teamBoardGroups.byTurn.get(index) ?? []),
                   ...(i === lastAssistantTurnIndex ? teamBoardGroups.unanchored : []),
                 ].map(task => [task.id, task])).values()] : [];
-                const teamBoards = [renderTeamBoard(turnTeamTasks, `team-board-turn-${firstIndex}`, true)].filter(Boolean);
+                const teamBoards = [renderTeamBoard(turnTeamTasks, `team-board-turn-${renderKey}`, true)].filter(Boolean);
                 return (
-                  <Fragment key={`${executionScope}:${firstIndex}`}>
+                  <Fragment key={`${executionScope}:${renderKey}`}>
                     <Suspense fallback={<div aria-busy="true" className="min-h-12" />}><TurnView
                       turn={t}
                       executionPhases={phases}
