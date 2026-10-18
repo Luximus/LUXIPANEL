@@ -10,8 +10,10 @@ vi.mock("../../repositories/team-tasks.repository.js", () => ({ teamTasksReposit
 vi.mock("../../repositories/conversations.repository.js", () => ({ conversationsRepository: {
   messages: vi.fn(async () => ({ items: [{ role: "assistant", messageId: state.failureId, ts: "old", error: "exit 1", interrupted: state.interrupted }] })),
 } }));
-vi.mock("../../repositories/agent-queue.repository.js", () => ({ agentQueueRepository: { listFor: vi.fn(async () => state.queue) } }));
-vi.mock("../queued-turn-admission.js", () => ({ enqueueAgentTurn: vi.fn(async (_e, item) => { state.queue.push(item); return item; }) }));
+vi.mock("../../repositories/agent-queue.repository.js", () => ({ agentQueueRepository: {
+  listFor: vi.fn(async () => state.queue),
+  enqueue: vi.fn(async (_e, item) => { state.queue.push(item); return item; }),
+} }));
 vi.mock("../../repositories/assistant-audit.repository.js", () => ({ assistantAuditRepository: { append: vi.fn(async () => undefined) } }));
 vi.mock("./task-events.js", () => ({ injectTaskUpdate: vi.fn() }));
 import { scheduleExecutionRetry, ensureExecutionRetryQueued, validExecutionRetry, retryableExecutionError } from "./execution-retry.js";

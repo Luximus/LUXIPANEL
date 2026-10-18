@@ -5,6 +5,7 @@ import { LOCAL_TARGET_ID, type Executor } from "../../../shared/executor/index.j
 import type { AgentEvent } from "./providers/provider.types.js";
 import type { StartRunParams } from "./agent-run-registry.js";
 import { preserveWorkerExecution } from "./team-tasks/worker-recovery.js";
+import { finalizeTask } from "./team-tasks/lifecycle.js";
 vi.mock("./team-tasks/worker-recovery.js", () => ({ preserveWorkerExecution: vi.fn(async () => false) }));
 
 // ── Mocks (before importing the service) ────────────────────────────────────
@@ -423,6 +424,25 @@ describe("teamTasksService.assignTask", () => {
 });
 
 describe("teamTasksService.waitForTasks", () => {
+  it("returns to the leader immediately when a worker needs approval", async () => {
+    registryState.has.mockReturnValue(true);
+    const a = await assign();
+    const stored = board.get(a.id!)!;
+    stored["pendingPermission"] = true;
+    const { tasks, timedOut } = await teamTasksService.waitForTasks(executor, "conv-leader", [a.id!], 60_000);
+    expect(timedOut).toBe(false);
+    expect(tasks[0]?.pendingPermission).toBe(true);
+    expect(tasks[0]?.status).toBe("running");
+  });
+  it("reports a failed worker while its peers are still running", async () => {
+    registryState.has.mockReturnValue(true);
+    const a = await assign();
+    const b = await assign();
+    board.get(a.id!)!.status = "failed";
+    const { tasks, timedOut } = await teamTasksService.waitForTasks(executor, "conv-leader", [a.id!, b.id!], 60_000);
+    expect(timedOut).toBe(false);
+    expect(tasks.map(t => t.status)).toEqual(["failed", "running"]);
+  });
   it("resolves as soon as every listed task reaches a terminal state (waiter ping)", async () => {
     registryState.has.mockReturnValue(true); // workers alive → no reconciliation
     const a = await assign();
@@ -515,6 +535,20 @@ describe("teamTasksService reconciliation", () => {
 });
 
 describe("leader nudge watcher (AI_TEAM_LEADER_NUDGE)", () => {
+  it("notifies an idle leader about a failure without waiting for other workers", async () => {
+    const deliveries: Array<{ taskIds: string[]; onSettled: () => void }> = [];
+    const listener = (payload: unknown) => deliveries.push(payload as typeof deliveries[number]);
+    eventBus.on(Events.AI_TEAM_LEADER_NUDGE, listener);
+    try {
+      const a = await assign();
+      const b = await assign();
+      await finalizeTask(executor, a.id!, { status: "failed", error: "Reintentos agotados" });
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0]?.taskIds).toEqual([a.id]);
+      expect(board.get(b.id!)?.status).toBe("running");
+      deliveries[0]!.onSettled();
+    } finally { eventBus.off(Events.AI_TEAM_LEADER_NUDGE, listener); }
+  });
   it("recovers a missed delivery without restarting workers", async () => {
     const deliveries: Array<{ onSettled: () => void }> = [];
     const listener = (payload: unknown) => deliveries.push(payload as { onSettled: () => void });

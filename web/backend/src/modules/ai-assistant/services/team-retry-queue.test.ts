@@ -36,6 +36,8 @@ vi.mock("./mcp-run-tokens.js", () => ({ mintCrossMcpToken: vi.fn(), mintGraphMcp
 import { drainConversationQueue } from "./turn-queue.service.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { runWithExecutor } from "../../../shared/executor/index.js";
+import { admitAgentWork } from "./agent-context.service.js";
+import { finalizeTask } from "./team-tasks/lifecycle.js";
 const executor = { target: { id: "retry-server" } } as Executor;
 const user = { userId: 7, role: "admin" } as SessionUser;
 const drain = () => runWithExecutor(executor, () => drainConversationQueue(executor, "worker-chat"), 7, user);
@@ -78,5 +80,21 @@ describe("durable retry queue", () => {
     await drain(); state.task!.status = "canceled";
     await vi.advanceTimersByTimeAsync(30_000);
     expect(agentRunRegistry.start).not.toHaveBeenCalled(); expect(state.queue).toHaveLength(0);
+  });
+  it("records an admission failure as the scheduled attempt instead of leaving it queued forever", async () => {
+    vi.mocked(admitAgentWork).mockRejectedValueOnce(new Error("Provider temporarily unavailable"));
+    await drain(); await vi.advanceTimersByTimeAsync(30_000);
+    expect(agentRunRegistry.start).not.toHaveBeenCalled();
+    expect(state.task!.retry?.attempts).toBe(1);
+    expect(state.queue).toHaveLength(0);
+    expect(finalizeTask).toHaveBeenCalledWith(executor, "t", expect.objectContaining({ status: "failed" }), { retryExecution: true, dispatchFailureId: "dispatch:q" });
+  });
+  it("records a launch failure after consuming the queued receipt", async () => {
+    vi.mocked(agentRunRegistry.start).mockImplementationOnce(() => { throw new Error("Launch failed"); });
+    await drain(); await vi.advanceTimersByTimeAsync(30_000);
+    expect(agentRunRegistry.start).toHaveBeenCalledOnce();
+    expect(state.task!.retry?.attempts).toBe(1);
+    expect(finalizeTask).toHaveBeenCalledWith(executor, "t", expect.objectContaining({ error: "Error: Launch failed" }), { retryExecution: true, dispatchFailureId: "dispatch:q" });
+    expect(state.queue).toHaveLength(0);
   });
 });

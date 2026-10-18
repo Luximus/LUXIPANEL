@@ -35,6 +35,7 @@ vi.mock("./team-tasks/task-events.js", () => ({ injectTaskUpdate: vi.fn() }));
 import { permissionBroker } from "./permission-broker.js";
 import { listTeamApprovals, reviewTeamApproval, planRequestId, validTeamReview, initTeamApprovalDelivery } from "./team-approvals.js";
 import { coordinationTask } from "../models/agent-envelope.js";
+import { conversationsRepository } from "../repositories/conversations.repository.js";
 const executor = { target: { id: "server-a" } } as Executor;
 const user = { userId: 7, username: "test", role: "admin", kind: "admin" } as SessionUser;
 const scope = <T>(fn: () => T) => runWithExecutor(executor, fn, 7, user);
@@ -103,5 +104,21 @@ describe("leader approval authority", () => {
     expect(state.queue[0]?.userText).toContain("team.approvals");
     expect(drain).toHaveBeenCalledWith(executor, "leader-chat");
     scope(() => permissionBroker.cancelConversation("worker-chat")); expect(await promise).toBe("deny");
+  });
+  it("recovers a persisted plan answer only when it matches the exact queue receipt", async () => {
+    const proposal: ConversationMessage = { role: "assistant", content: "Plan", ts: "t1", askKind: "plan-approval", ask: [{ id: "plan", type: "single", text: "¿Apruebas?", options: ["Sí", "No"] }] };
+    state.last = proposal;
+    await scope(() => decide(planRequestId(proposal)));
+    const turn = state.queue[0]!;
+    const answer: ConversationMessage = { role: "user", auto: true, content: coordinationTask(turn.userText), ts: "t2" };
+    const messages = vi.mocked(conversationsRepository.messages);
+    messages.mockImplementation(async () => ({ items: [proposal, answer], total: 2, hasMore: false }));
+    try {
+      expect(await scope(() => validTeamReview(executor, turn as never))).toBe(true);
+      answer.auto = false;
+      expect(await scope(() => validTeamReview(executor, turn as never))).toBe(false);
+      answer.auto = true; proposal.interrupted = true;
+      expect(await scope(() => validTeamReview(executor, turn as never))).toBe(false);
+    } finally { messages.mockImplementation(async () => ({ items: state.last ? [state.last] : [], total: 1, hasMore: false })); }
   });
 });

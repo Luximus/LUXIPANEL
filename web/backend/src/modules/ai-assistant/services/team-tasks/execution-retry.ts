@@ -8,7 +8,6 @@ import { agentQueueRepository, type QueuedTurn } from "../../repositories/agent-
 import { assistantAuditRepository } from "../../repositories/assistant-audit.repository.js";
 import { encodeCoordination } from "../../models/agent-envelope.js";
 import { isTerminalTaskStatus, type TeamTask, type TeamTaskRetry } from "../../models/team-task.types.js";
-import { enqueueAgentTurn } from "../queued-turn-admission.js";
 import { injectTaskUpdate } from "./task-events.js";
 import { sanitizeText } from "../../../../shared/diagnostics/sanitize.js";
 
@@ -63,8 +62,11 @@ export async function ensureExecutionRetryQueued(executor: Executor, task: TeamT
   const retry = task.retry;
   if (!task.id || isTerminalTaskStatus(task.status) || retry?.state !== "waiting") return;
   const queued = await agentQueueRepository.listFor(executor, task.workerConversationId);
-  if (!queued.some(q => q.teamRetry?.taskId === task.id && q.teamRetry.failureId === retry.failureId)) {
-    await enqueueAgentTurn(executor, {
+  if (!queued.some(q => q.teamRetry?.taskId === task.id && q.teamRetry?.failureId === retry.failureId)) {
+    // Persist the scheduled attempt before admission. Live authorization is
+    // checked by the drainer when it is due; admission failures must also
+    // consume a bounded attempt instead of losing the retry notification.
+    await agentQueueRepository.enqueue(executor, {
       conversationId: task.workerConversationId, agentId: task.workerAgentId, projectId: task.projectId ?? null,
       user: task.user ?? null, userId: task.userId ?? null, withContext: true, auto: true, isWorker: true,
       forcedCwd: task.isolation?.cwd ?? null, notBefore: retry.nextAttemptAt,

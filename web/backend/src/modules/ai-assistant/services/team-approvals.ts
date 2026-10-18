@@ -51,6 +51,7 @@ async function authorizeLeader(executor: Executor, conversationId: string, task:
   if (!user || task.leaderConversationId !== conversationId || isTerminalTaskStatus(task.status)
     || String(task.user?.userId ?? task.userId ?? "") !== String(user.userId)) throw new Error("La tarea no pertenece a este líder y usuario.");
   const live = await resolveLiveAuthorization(user, executor);
+  if (live.kind === "mfa_pending" || live.kind === "external-guest") throw new Error("Esta sesión no puede supervisar aprobaciones.");
   const binding = await resolveConversationBinding(executor, { conversationId, agentId: task.leaderAgentId, projectId: task.projectId }, live);
   const leader = await resolveAgentContext(executor, binding.agentId, binding.projectId, live, false);
   const worker = await resolveAgentContext(executor, task.workerAgentId, task.projectId, live, false);
@@ -79,7 +80,7 @@ export async function reviewTeamApproval(args: { executor: Executor; conversatio
     const task = await teamTasksRepository.getTask(executor, taskId);
     if (!task) throw new Error("Tarea no encontrada.");
     const live = await authorizeLeader(executor, conversationId, task, args.user);
-    if (agentRunRegistry.getApproval(conversationId)?.mode === "plan") throw new Error("El líder está en modo Plan; todavía no puede autorizar ejecución.");
+    if (agentRunRegistry.getApproval(conversationId, executor.target.id)?.mode === "plan") throw new Error("El líder está en modo Plan; todavía no puede autorizar ejecución.");
     const request = (await requestsForTask(executor, task)).find(r => r.requestId === requestId);
     if (!request) throw new Error("La solicitud ya se resolvió o cambió; consulta team.approvals.");
     if (request.kind === "permission") {
@@ -118,7 +119,7 @@ export async function validTeamReview(executor: Executor, turn: QueuedTurn): Pro
   const { items } = await conversationsRepository.messages(executor, task.workerConversationId, { limit: 2 });
   const last = items.at(-1), proposal = items.at(-2);
   return Boolean(last?.role === "user" && last.auto && last.content === coordinationTask(turn.userText)
-    && proposal?.role === "assistant" && proposal.askKind === "plan-approval" && proposal.ask?.length
+    && proposal?.role === "assistant" && !proposal.interrupted && !proposal.error && proposal.askKind === "plan-approval" && proposal.ask?.length
     && planRequestId(proposal) === turn.teamReview.requestId);
 }
 

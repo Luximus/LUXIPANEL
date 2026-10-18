@@ -1,0 +1,9 @@
+{
+  "title": "Supervisión y recuperación de trabajadores IA",
+  "changes": [
+    "El agente líder puede revisar y aprobar o rechazar las solicitudes de sus trabajadores dentro de los permisos del usuario.",
+    "Los fallos transitorios de ejecución se registran y tienen hasta tres reintentos, separados por treinta segundos, conservando la conversación y comprobando el trabajo pendiente.",
+    "Cuando los reintentos se agotan, el líder recibe el fallo sin esperar a que terminen los demás trabajadores.",
+    "Las cancelaciones, las credenciales rechazadas y la falta de permisos no provocan nuevos intentos automáticos."
+  ]
+}

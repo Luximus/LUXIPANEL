@@ -377,6 +377,20 @@ describe("mcpServerService", () => {
       expect(payload.behavior).toBe("allow");
       expect(mockBrokerRequest).toHaveBeenCalledOnce();
     });
+    it.each([
+      [true, "manual", "allow"],
+      [true, "plan", "deny"],
+      [false, "manual", "deny"],
+    ])("leader decision permission: leader=%s mode=%s → %s without recursive human approval", async (leader, mode, expected) => {
+      mockBuildTeamTools.mockResolvedValueOnce(leader ? { tools: [], promptBlock: "" } : null);
+      mockGetApproval.mockReturnValue({ mode, autoApprove: new Set<string>() });
+      const r = await mcpServerService.handle({ jsonrpc: "2.0", id: 202, method: "tools/call", params: {
+        name: "permissions__approve", arguments: { tool_name: "mcp__luxipanel-servers__team__review", input: {} },
+      } }, crossCtx);
+      const payload = JSON.parse((r?.result as { content: Array<{ text: string }> }).content[0]!.text);
+      expect(payload.behavior).toBe(expected);
+      expect(mockBrokerRequest).not.toHaveBeenCalled();
+    });
   });
 
   // ── team toolkit diagnostic on the cross channel ───────────────────────

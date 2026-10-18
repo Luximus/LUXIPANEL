@@ -34,7 +34,7 @@ import type { MessageAttachmentRef } from "../repositories/conversations.reposit
 import { attachmentsRepository } from "../repositories/attachments.repository.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
 import { agentMessagesRepository } from "../repositories/agent-messages.repository.js";
-import type { QueuedAttachment } from "../repositories/agent-queue.repository.js";
+import type { QueuedAttachment, QueuedTurn } from "../repositories/agent-queue.repository.js";
 import { cliJobsRepository } from "../repositories/cli-jobs.repository.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { teamTasksService } from "./team-tasks.service.js";
@@ -309,16 +309,24 @@ export async function drainConversationQueue(executor: Executor, conversationId:
   try { await current; }
   catch (error) {
     const queued = (await agentQueueRepository.listFor(executor, conversationId))[0];
-    if (!queued?.id || !queued.teamRetry) throw error;
-    const task = await teamTasksRepository.getTask(executor, queued.teamRetry.taskId);
-    if (!validExecutionRetry(task, queued) || !task.retry) throw error;
-    // Admission/preparation failures consume the bounded attempt too. The
-    // queued receipt is removed before scheduling another, never spun forever.
-    await teamTasksRepository.updateTask(executor, task.id!, { retry: { ...task.retry, state: "running", attempts: queued.teamRetry.attempt } });
-    await agentQueueRepository.remove(executor, queued.id);
-    await finalizeTask(executor, task.id!, { status: "failed", error: String(error) }, { retryExecution: true, dispatchFailureId: `dispatch:${queued.id}` });
+    if (!queued || !await recordRetryDispatchFailure(executor, queued, error)) throw error;
   }
   finally { if (drainingConversations.get(key) === current) drainingConversations.delete(key); }
+}
+async function recordRetryDispatchFailure(executor: Executor, turn: QueuedTurn, error: unknown): Promise<boolean> {
+  if (!turn.id || !turn.teamRetry) return false;
+  const task = await teamTasksRepository.getTask(executor, turn.teamRetry.taskId);
+  if (!task?.retry) return false;
+  // A synchronous launch failure can happen after the receipt was consumed.
+  // Accept only this exact claimed attempt; a later failure or cancellation
+  // can never be overwritten by a delayed dispatch callback.
+  const candidate = task.retry.state === "running" && task.retry.attempts === turn.teamRetry.attempt
+    ? { ...task, retry: { ...task.retry, state: "waiting" as const, attempts: task.retry.attempts - 1 } } : task;
+  if (!validExecutionRetry(candidate, turn)) return false;
+  await teamTasksRepository.updateTask(executor, task.id!, { retry: { ...task.retry, state: "running", attempts: turn.teamRetry.attempt } });
+  await agentQueueRepository.remove(executor, turn.id);
+  await finalizeTask(executor, task.id!, { status: "failed", error: String(error) }, { retryExecution: true, dispatchFailureId: `dispatch:${turn.id}` });
+  return true;
 }
 async function drainNextTurn(executor: Executor, conversationId: string): Promise<void> {
   if (liveVoiceSession(conversationId, executor.target.id) || agentRunRegistry.isActive(conversationId, executor.target.id)) return;
@@ -413,9 +421,11 @@ async function drainNextTurn(executor: Executor, conversationId: string): Promis
   try {
     if (!await agentQueueRepository.takeNext(executor, conversationId, next.id)) return;
   } catch (err) {
+    if (retry && await recordRetryDispatchFailure(executor, candidate, err)) return;
     log.warn({ err: (err as Error).message }, "agent: queue takeNext failed");
     return;
   }
+  try {
   if (retry && retryTask?.retry && candidate.teamRetry) {
     await teamTasksRepository.updateTask(executor, retryTask.id!, {
       retry: { ...retryTask.retry, state: "running", attempts: candidate.teamRetry.attempt, nextAttemptAt: undefined },
@@ -446,6 +456,9 @@ async function drainNextTurn(executor: Executor, conversationId: string): Promis
     ...(crossMcpToken ? { crossMcpToken } : {}),
     ...(graphMcpToken ? { graphMcpToken } : {}),
   });
+  } catch (error) {
+    if (!retry || !await recordRetryDispatchFailure(executor, candidate, error)) throw error;
+  }
   } finally { admission.release(); }
   }, queuedIdentity?.userId, queuedIdentity);
 }
