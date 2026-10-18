@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { AgentRequestError } from "../assistant-api/agents";
-import { profileCreationKey, hasUnconfirmedCreation, markUnconfirmedCreation } from "./profile-create-recovery";
+import { profileCreationScope, profileCreationKey, hasUnconfirmedCreation, markUnconfirmedCreation } from "./profile-create-recovery";
 import { useModuleCatalog } from "../use-module-catalog";
 /**
  * AgentsTab orchestrator hook. Holds the ENTIRE stateful body of the original
@@ -13,7 +13,6 @@ import { useModuleCatalog } from "../use-module-catalog";
  * read this VM. Public props (`AgentsTabProps`) are unchanged.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { resolveTargetScope, scopeHeaders } from "@/lib/api-client";
 import {
   agentGroupBucket,
   assistantAgentsApi,
@@ -60,11 +59,10 @@ export type AgentsTabProps = {
 };
 
 export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, initialAgent }: AgentsTabProps) {
-  const requestScope = () => JSON.stringify([resolveTargetScope(), scopeHeaders(true)]);
-  const initialScope = useRef(requestScope());
+  const initialScope = useRef(profileCreationScope());
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  const isCurrent = () => alive.current && initialScope.current === requestScope();
+  const isCurrent = () => alive.current && initialScope.current === profileCreationScope();
   const _i18n = useAssistantI18n() as ReturnType<typeof useAssistantI18n> & { agentsTab?: Partial<AgentsTabMessages> };
   const _over = _i18n.agentsTab ?? {};
   const t: AgentsTabMessages = {
@@ -90,8 +88,18 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   const [editorTab, setEditorTab] = useState<"general" | "model" | "hierarchy" | "tools" | "resources" | "access">("general");
   const [saving, setSaving] = useState(false);
   const savingProfile = useRef(false);
-  const creationKey = useRef(profileCreationKey());
-  const [creationUncertain, setCreationUncertain] = useState(() => hasUnconfirmedCreation(creationKey.current));
+  const [creationKey] = useState(() => profileCreationKey(initialScope.current));
+  const [creationReady, setCreationReady] = useState(false);
+  const [creationUncertain, setCreationUncertain] = useState(false);
+  useEffect(() => {
+    let current = true;
+    void creationKey.then(key => {
+      if (!current || !isCurrent()) return;
+      setCreationUncertain(hasUnconfirmedCreation(key));
+      setCreationReady(true);
+    });
+    return () => { current = false; };
+  }, [creationKey]);
   const [modules, setModules] = useState<ResolvedModule[]>([]);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestArchetype, setSuggestArchetype] = useState("");
@@ -335,10 +343,6 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
 
   async function save() {
     if (!draft || !draft.name.trim() || saving || savingProfile.current || !isCurrent()) return;
-    if (!draft.id && hasUnconfirmedCreation(creationKey.current)) {
-      setCreationUncertain(true);
-      return;
-    }
     // Group (team) is now mandatory: bounce to the Hierarchy tab if missing so
     // the required selector is in view. (UI-only guard — programmatic agent
     // creation paths still allow a null teamId; see the multi-agent/template flows.)
@@ -350,7 +354,14 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     const creating = !draft.id;
     savingProfile.current = true;
     setSaving(true);
+    let key: string | undefined;
     try {
+      key = await creationKey;
+      if (!isCurrent()) return;
+      if (creating && hasUnconfirmedCreation(key)) {
+        setCreationUncertain(true);
+        return;
+      }
       const payload = toPayload(draft);
       if (editorOnly) { delete payload.projectIds; delete payload.teamId; }
       if (projectScope && !draft.id) {
@@ -358,9 +369,9 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       }
       if (draft.id) await assistantAgentsApi.update(draft.id, payload);
       else {
-        markUnconfirmedCreation(creationKey.current, true);
+        markUnconfirmedCreation(key, true);
         await assistantAgentsApi.create(payload);
-        markUnconfirmedCreation(creationKey.current, false);
+        markUnconfirmedCreation(key, false);
       }
       if (!isCurrent()) return;
       setDraft(null);
@@ -373,7 +384,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       // contract has no operation identity with which to safely replay it.
       const rejected = e instanceof AgentRequestError && e.status >= 400 && e.status < 500
         && e.status !== 408 && e.code !== "TARGET_SCOPE_CHANGED";
-      if (creating && rejected) markUnconfirmedCreation(creationKey.current, false);
+      if (creating && rejected && key) markUnconfirmedCreation(key, false);
       if (isCurrent()) {
         setCreationUncertain(creating && !rejected);
         setError(creating && !rejected ? null : (e as Error).message);
@@ -388,6 +399,8 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     if (!id || !creationUncertain || savingProfile.current || !isCurrent()) return;
     savingProfile.current = true; setSaving(true);
     try {
+      const key = await creationKey;
+      if (!isCurrent()) return;
       // The user chooses a concrete server id. Never infer identity by name,
       // timestamps or catalog differences, which can include concurrent creates.
       const items = await assistantAgentsApi.list();
@@ -395,7 +408,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       const existing = items.find(item => item.id === id && item.capabilities?.canEditProfile === true);
       if (!existing) { setError(_i18n.agentMarket.forbidden); return; }
       setAgents(items); setDraft(toDraft(existing)); setError(null);
-      markUnconfirmedCreation(creationKey.current, false); setCreationUncertain(false);
+      markUnconfirmedCreation(key, false); setCreationUncertain(false);
     } catch { if (isCurrent()) setError(_i18n.agentMarket.error); }
     finally { savingProfile.current = false; if (isCurrent()) setSaving(false); }
   }
@@ -522,10 +535,10 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     }
     setFooterAction({
       label: saving ? t.saving : draft.id ? t.saveChanges : t.editor.createAgent,
-      disabled: saving || (!draft.id && creationUncertain) || !draft.name.trim() || (!editorOnly && !draft.teamId),
+      disabled: saving || (!draft.id && (!creationReady || creationUncertain)) || !draft.name.trim() || (!editorOnly && !draft.teamId),
       onClick: () => { void save(); },
     });
-  }, [setFooterAction, draft, saving, creationUncertain, t.saving, t.saveChanges, t.editor.createAgent]);
+  }, [setFooterAction, draft, saving, creationReady, creationUncertain, t.saving, t.saveChanges, t.editor.createAgent]);
   useEffect(() => () => setFooterAction?.(null), [setFooterAction]);
 
   // While the agent editor is open, take over the settings-modal header: the
@@ -551,7 +564,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   return {
     onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, newAgent, t, _i18n,
     agents, setAgents, loading, setLoading, error, setError, draft, setDraft,
-    editorTab, setEditorTab, saving, setSaving, creationUncertain, recoverProfile, modules, setModules,
+    editorTab, setEditorTab, saving, setSaving, creationReady, creationUncertain, recoverProfile, modules, setModules,
     suggesting, setSuggesting, suggestArchetype, setSuggestArchetype,
     projects, setProjects, conns, setConns, snippetOpts, setSnippetOpts,
     roles, setRoles, teams, setTeams, teamDraft, setTeamDraft,
