@@ -215,8 +215,10 @@ it("delivers verification retries as compact TOON pointing to complete scoped ev
   const logTail = "diagnóstico ".repeat(500);
   teamState.byWorkerConv = { id: "verify-task", status: "running", workerConversationId: "verify-worker",
     leaderConversationId: "leader", verify: { state: "failed", attempts: 1, logTail } };
-  eventBus.emit(Events.AI_TEAM_TASK_VERIFY_RETRY, { executor: localExecutor, taskId: "verify-task", workerConversationId: "verify-worker",
-    workerAgentId: "a-mateo", user: sender, userId: "7", logTail, failedCommand: "pnpm test", exitCode: 1, attempt: 1, maxAttempts: 2 });
+  await runWithExecutor(localExecutor, async () => {
+    eventBus.emit(Events.AI_TEAM_TASK_VERIFY_RETRY, { executor: localExecutor, taskId: "verify-task", workerConversationId: "verify-worker",
+      workerAgentId: "a-mateo", user: sender, userId: "7", logTail, failedCommand: "pnpm test", exitCode: 1, attempt: 1, maxAttempts: 2 });
+  }, 7, sender);
   await vi.waitFor(() => expect(queue.items).toHaveLength(1));
   const wire = queue.items[0]!.userText;
   expect(wire.length).toBeLessThanOrEqual(2000);

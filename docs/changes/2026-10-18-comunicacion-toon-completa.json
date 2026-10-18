@@ -1,0 +1,9 @@
+{
+  "title": "Comunicación breve y uniforme entre agentes",
+  "changes": [
+    "Las tareas, notas y mensajes entre agentes se validan en TOON y comparten un límite de extensión para evitar instrucciones repetidas y conversaciones innecesariamente largas.",
+    "Los mensajes inválidos o demasiado extensos se rechazan antes de iniciar trabajo, sin recortar restricciones importantes.",
+    "Los informes largos y los errores de verificación conservan su evidencia completa para consultarla mediante referencias con acceso limitado a sus participantes.",
+    "La instrucción de respuesta final al usuario pide un solo párrafo de hasta 250 caracteres."
+  ]
+}
