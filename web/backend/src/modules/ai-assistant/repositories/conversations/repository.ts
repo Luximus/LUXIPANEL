@@ -42,6 +42,7 @@ import { foldSearchText, searchConversationMessages, conversationSearchStatus, u
 import { getContextUserId } from "../../../../shared/executor/context.js";
 import { assessContext } from "../../services/context-window.service.js";
 import { pageConversations } from "./list-pages.js";
+import { notificationActivity } from "./notification-activity.js";
 
 const log = createModuleLogger("assistant-conversations");
 // Internal receipt in the same atomic sidecar write as the queued user turn.
@@ -157,8 +158,7 @@ export const conversationsRepository = {
     const searchStatus = q && opts.paged ? conversationSearchStatus(executor, all) : undefined;
     const total = items.length;
     // Notifications cover the whole filtered scope, independent of history pagination.
-    const activity = opts.includeActivity ? items.map(({ id, agentId, unreviewed, unreadCount, lastReplyState, updatedAt }) =>
-      ({ id, agentId, unreviewed, unreadCount, lastReplyState, updatedAt })) : undefined;
+    const activity = opts.includeActivity ? await notificationActivity(executor, items) : undefined;
     const extra = { ...(summary ? { summary } : {}), ...(activity ? { activity } : {}) };
     const offset = Number.isFinite(opts.offset) ? Math.max(0, Math.trunc(opts.offset!)) : 0;
     const limit = Number.isFinite(opts.limit) ? Math.max(1, Math.min(200, Math.trunc(opts.limit!))) : 50;

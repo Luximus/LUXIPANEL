@@ -468,6 +468,22 @@ describe("initAgentMessageListener — destino: chat de equipo / run activo (sin
 });
 
 describe("drainConversationQueue — isWorker (cap por usuario)", () => {
+  it.each([
+    { name: "human request", auto: false, expected: "user" },
+    { name: "leader continuation", auto: true, expected: "user" },
+    { name: "mailbox reply", auto: true, agentMessageId: "internal-message", expected: "agent" },
+    { name: "worker reply", auto: true, isWorker: true, expected: "agent" },
+  ])("records the notification audience for $name", async ({ name: _name, expected, ...flags }) => {
+    queue.items.push({ id: "audience-turn", conversationId: "audience-chat", user: sender,
+      userText: "Continuar", withContext: true, ts: "2026-10-18", ...flags } as QueuedTurn);
+    await runWithExecutor(localExecutor, () => drainConversationQueue(localExecutor, "audience-chat"), 7, sender);
+    const run = vi.mocked(agentRunRegistry.start).mock.calls.at(-1)?.[0];
+    expect(run).toBeDefined();
+    await run!.onComplete?.("Resultado", false);
+    expect(conversationsRepository.appendMessages).toHaveBeenLastCalledWith(localExecutor, "audience-chat",
+      [expect.objectContaining({ role: "assistant", replyAudience: expected })], expect.anything());
+  });
+
   it("propaga isWorker del QueuedTurn hasta agentRunRegistry.start", async () => {
     queue.items.push({
       id: "q-w1",

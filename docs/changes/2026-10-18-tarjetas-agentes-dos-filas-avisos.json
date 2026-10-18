@@ -1,0 +1,7 @@
+{
+  "title": "Tarjetas de agentes en dos filas y avisos de respuestas al usuario",
+  "changes": [
+    "Los agentes del proyecto se muestran en dos filas con desplazamiento horizontal para acceder a todo el equipo sin ocupar más espacio vertical.",
+    "Los contadores de las tarjetas muestran las respuestas pendientes de leer dirigidas al usuario y excluyen las respuestas internas entre agentes, incluidas las enviadas al líder del grupo."
+  ]
+}

@@ -23,7 +23,7 @@ export function ProjectAgentShortcuts({ agents, selectedId, roleLabel, onSelect,
   labels: AgentShortcutLabels;
 }) {
   if (!agents.length) return <p className="mt-4 text-sm text-muted-foreground" role="status">{loading ? labels.loading : labels.empty}</p>;
-  return <div className="lxp-project-agent-shortcuts" role="group" aria-label={labels.heading}>
+  return <div className="lxp-project-agent-shortcuts" role="group" aria-label={labels.heading} tabIndex={0}>
     {agents.map(agent => {
       const value = activity.get(agent.id!) ?? { state: "available", unreadCount: 0 };
       const state = error ? "unavailable" : loading ? "loading" : value.state;

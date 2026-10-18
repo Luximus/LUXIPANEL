@@ -32,6 +32,7 @@ export async function persistAssistantMessage(
   outcome?: { error?: string; interrupted?: boolean; pending?: boolean },
   apiActivity?: ApiActivity,
   messageId?: string,
+  replyAudience?: "user" | "agent",
 ): Promise<void> {
   // Drop the raw ask sentinel block from the persisted text — the question is
   // stored structurally in `ask` and re-rendered as controls on reload.
@@ -53,6 +54,7 @@ export async function persistAssistantMessage(
           // `content` stays English (cheap context replay); `textTranslated` is
           // the user-language answer the chat renders when translation was active.
           role: "assistant",
+          ...(replyAudience ? { replyAudience } : {}),
           messageId: messageId ?? `assistant:${randomUUID()}`,
           ...(outcome?.error ? { error: outcome.error } : {}),
           ...(outcome?.interrupted ? { interrupted: true } : {}),

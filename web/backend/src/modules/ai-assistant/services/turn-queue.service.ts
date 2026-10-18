@@ -168,6 +168,8 @@ export function startConversationRun(args: {
   /** Turno inicial de un worker de equipo diferido: el run se registra con
    *  `isWorker` para no consumir el cap HTTP por usuario. */
   isWorker?: boolean;
+  /** Mailbox replies are internal; leader continuations still answer the user. */
+  replyAudience?: "user" | "agent";
   /** Cross-server MCP inputs (captured from the request that started the run). */
   panelOrigin?: string;
   crossMcpToken?: string;
@@ -255,7 +257,7 @@ export function startConversationRun(args: {
               ...(tokensHolder.estimated ? { estimated: true } : {}),
             }
           : undefined;
-      await persistAssistantMessage(args.executor, args.conversationId, assistantText, args.provider, cliHolder.value, ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity, messageId);
+      await persistAssistantMessage(args.executor, args.conversationId, assistantText, args.provider, cliHolder.value, ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity, messageId, args.isWorker ? "agent" : args.replyAudience ?? "user");
       // B2 — auto-captura opt-in: avisa al módulo Obsidian que un turno OK
       // terminó (él decide si el proyecto la tiene habilitada). Captura al vault
       // del proyecto del chat (args.projectId) O, en chats ligados a un agente con
@@ -375,7 +377,8 @@ async function drainNextTurn(executor: Executor, conversationId: string): Promis
   if (next.auto || next.isWorker) {
     await conversationsRepository
       .appendMessages(executor, conversationId, [
-        { role: "user", provider: next.provider, content: next.isWorker ? coordinationTask(next.userText) : next.userText, displaySummary: visibleSummary(next.userText), ts: new Date().toISOString(), auto: true },
+        { role: "user", provider: next.provider, content: next.isWorker ? coordinationTask(next.userText) : next.userText, displaySummary: visibleSummary(next.userText), ts: new Date().toISOString(), auto: true,
+          ...(next.isWorker || next.agentMessageId ? { replyAudience: "agent" as const } : {}) },
       ], { queueTurnId: next.id });
   } else {
     await persistUserMessage(executor, conversationId, next.userText, next.provider, next.attachments, undefined, next.id);
@@ -450,6 +453,7 @@ async function drainNextTurn(executor: Executor, conversationId: string): Promis
     userId: next.userId ?? undefined,
     forcedCwd: next.forcedCwd ?? null,
     ...(next.isWorker ? { isWorker: true } : {}),
+    ...(next.agentMessageId ? { replyAudience: "agent" as const } : {}),
     ...(typeof next.delegationDepth === "number" ? { delegationDepth: next.delegationDepth } : {}),
     ...(approvalModeOverride ? { approvalModeOverride } : {}),
     ...(panelOrigin ? { panelOrigin } : {}),

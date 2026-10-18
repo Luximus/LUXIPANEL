@@ -23,7 +23,8 @@ import "/src/styles/reactbits-kit.css";
 const names=["Óscar","Sofía","Mateo","Valentina","Andrés","Lucía","Camila","Daniel"];
 const roles=["Coordinación","Desarrollo","Pruebas","Diseño","Seguridad","Documentación","Infraestructura","Accesibilidad"];
 assistantProjectsApi.list=async()=>[{id:"project",title:"Mi proyecto",teamId:"team",leaderAgentId:"agent-0"}];
-assistantAgentsApi.list=async()=>names.map((name,index)=>({id:"agent-"+index,name,roleId:"role-"+index,providerId:"claude",teamId:"team"}));
+assistantAgentsApi.list=async(query={})=>names.map((name,index)=>({id:"agent-"+index,name,roleId:"role-"+index,providerId:"claude",teamId:"team",
+  capabilities:{canExecute:true},context:{projectId:query.contextProjectId??query.projectId??"project",membership:"direct"}}));
 assistantAgentRolesApi.list=async()=>roles.map((name,index)=>({id:"role-"+index,name}));
 const conversations=${JSON.stringify(conversations)};
 assistantConversationsApi.list=async(...args)=>{
@@ -34,7 +35,8 @@ assistantConversationsApi.activity=async()=>[
   {id:"c-0",agentId:"agent-0",running:true,unreviewed:true,unreadCount:2},
   {id:"c-1",agentId:"agent-1",running:true,pendingPermission:true},
   {id:"c-2",agentId:"agent-2",unreviewed:true,unreadCount:5,lastReplyState:"done"},
-  {id:"c-3",agentId:"agent-3",unreviewed:true,unreadCount:1,lastReplyState:"failed"}
+  {id:"c-3",agentId:"agent-3",unreviewed:true,unreadCount:1,lastReplyState:"failed"},
+  {id:"internal-worker",agentId:"agent-4",unreviewed:false,unreadCount:0}
 ];
 const query=new URLSearchParams(location.search);
 const selectedAgent=query.get("agent");

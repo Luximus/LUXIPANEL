@@ -800,7 +800,10 @@ describe("agent shortcut notifications", () => {
 
   it("returns all scoped notification rows beyond pagination, without message content or other users", async () => {
     const executor = makeExecutor([], "agent-notifications");
-    for (let i = 0; i < 205; i++) seedMeta("conversations-u1", `c-${i}`, { title: "Private title", preview: "Private preview", projectId: i % 2 ? "child" : "root", agentId: "a", unreadCount: 2, unreviewed: true });
+    for (let i = 0; i < 205; i++) {
+      seedMeta("conversations-u1", `c-${i}`, { title: "Private title", preview: "Private preview", projectId: i % 2 ? "child" : "root", agentId: "a", unreadCount: 2, unreviewed: true });
+      col("assistant", `conv-u1-c-${i}`).set("messages", { messages: [msg("user", "Consulta", "0"), msg("assistant", "Respuesta", "1"), msg("assistant", "Seguimiento", "2")] });
+    }
     seedMeta("conversations-u1", "elsewhere", { projectId: "other", agentId: "a" });
     seedMeta("conversations-u1", "other-agent", { projectId: "root", agentId: "b" });
     seedMeta("conversations-u2", "other-user", { projectId: "root", agentId: "a" });

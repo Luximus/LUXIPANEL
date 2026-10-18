@@ -202,7 +202,7 @@ export function startWorkerRun(args: {
         ...(tokensHolder.estimated ? { estimated: true } : {}),
       } : undefined;
       await persistAssistantMessage(executor, convId, content, provider, cliHolder.value,
-        ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity, messageId);
+        ask, translation, tokens, durationMs, cliLog, askKind, outcome, apiActivity, messageId, "agent");
       // Retain recovery evidence until the answer has actually been saved.
       if (cliHolder.value) {
         await cliJobsRepository.delete(executor, convId).catch(() => undefined);

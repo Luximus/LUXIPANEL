@@ -11,6 +11,16 @@ vi.mock("../chat-engine", () => ({ chatEngine: { subscribe: () => () => {}, getV
   get: () => undefined, isBackgroundRunning: () => false, isWorkerTaskRunning: () => false, hasPendingPermission: () => false } }));
 afterEach(() => { vi.restoreAllMocks(); target.id = "first"; });
 
+it("shows internal execution status without counting reports to the leader as user replies", () => {
+  const result = summarizeAgentActivity([
+    { id: "worker", agentId: "a", running: true, unreviewed: false, unreadCount: 0 },
+    { id: "direct", agentId: "a", unreviewed: true, unreadCount: 2, lastReplyState: "done" },
+    { id: "finished-worker", agentId: "b", unreviewed: false, unreadCount: 0 },
+  ]);
+  expect(result.get("a")).toEqual({ state: "running", unreadCount: 2 });
+  expect(result.get("b")).toEqual({ state: "available", unreadCount: 0 });
+});
+
 it("refreshes unread counts after review only while the shortcuts are visible", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const api = vi.spyOn(assistantConversationsApi, "activity")

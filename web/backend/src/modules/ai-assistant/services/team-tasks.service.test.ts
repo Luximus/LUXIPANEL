@@ -346,7 +346,7 @@ describe("teamTasksService.assignTask", () => {
     expect(stored?.resultSummary).toBe("respuesta del worker");
     // The answer was persisted to the worker chat too.
     const msgs = conversationMessages.get(task.workerConversationId) ?? [];
-    expect(msgs.at(-1)?.role).toBe("assistant");
+    expect(msgs.at(-1)).toMatchObject({ role: "assistant", replyAudience: "agent" });
   });
 
   it("keeps the task alive with a delayed retry when the worker run errors", async () => {
