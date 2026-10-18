@@ -6,10 +6,11 @@ import { createServer } from "vite";
 import tailwind from "@tailwindcss/vite";
 import { chromium, expect } from "@playwright/test";
 
-const base = ".cache/compact-answers-qa";
+const base = path.join(".cache/compact-answers-qa", new Date().toISOString().replace(/[:.]/g, "-"));
 fs.mkdirSync(base, { recursive: true });
 const longText = "La revisión terminó y se conservaron los cambios solicitados con todas las comprobaciones disponibles. La publicación sigue pendiente de verificación antes de confirmar el resultado al usuario.\n\n" + "Evidencia completa: no reiniciar otros servicios y conservar el historial. ".repeat(60);
-const packet = 'protocol: lxp.agent.v1\nkind: blocked\nsummary: El agente terminó la revisión. Falta verificar la publicación.\ndata:\n  verified: false\n  checks[1]: Pruebas locales completadas\n  constraints[1]: No borrar datos';
+const overflowText = "La revisión del servidor terminó correctamente y confirmó que todas las aplicaciones responden aunque todavía quedan tareas menores de documentación que pueden completarse durante la siguiente sesión.";
+const packet = 'protocol: lxp.agent.v1\nkind: result\nsummary: El agente terminó la revisión.\ndata:\n  verified: true\n  checks[1]: Pruebas locales completadas\n  constraints[1]: No borrar datos';
 const entry = `
 import {createElement} from "react";
 import {createRoot} from "react-dom/client";
@@ -23,10 +24,11 @@ const packet=${JSON.stringify(packet)};
 const root=createRoot(document.getElementById("root"));
 window.qaRender=(mode="api")=>root.render(createElement("div",{className:"space-y-6"},
  createElement("h1",{className:"text-lg font-semibold"},"Resumen del chat"),
- createElement(CompactAnswer,{text:answer}),
+ createElement(CompactAnswer,{text:answer,presentation:"summary"}),
  createElement("section",{className:"border border-border rounded-lg p-3"},
    createElement("h2",{className:"text-sm mb-3"},"Coordinación del equipo"),
-   createElement(TeamExecutionContent,{notices:[{role:"user",auto:true,text:packet,tools:[]}]}))));
+   createElement(TeamExecutionContent,{notices:[{role:"user",auto:true,text:packet,tools:[],presentation:"summary"}]}))));
+window.qaRenderAnswer=(props)=>root.render(createElement("div",{ "data-qa-answer":true,style:{width:240,fontFamily:"Arial",fontSize:14,lineHeight:"20px"} },createElement(CompactAnswer,props)));
 window.qaRender(new URLSearchParams(location.search).get("mode")||"api"); window.qaReady=true;
 `;
 const server = await createServer({ configFile: false, envDir: false, root: process.cwd(), publicDir: "public", cacheDir: base + "/vite",
@@ -44,7 +46,7 @@ console.log(url);
 if(process.env.LXP_QA_SERVE_ONLY === "1") {
  for(const signal of ["SIGTERM","SIGINT"]) process.on(signal,async()=>{await server.close();process.exit(0);});
 } else {
- const report={cases:[],pageErrors:[],production:false}; let browser;
+ const report={cases:[],pageErrors:[],production:false,artifacts:base}; let browser;
  try {
   browser=await chromium.launch({executablePath:"/usr/bin/chromium",headless:true,args:["--no-sandbox","--disable-dev-shm-usage"]});
   const context=await browser.newContext();
@@ -68,6 +70,63 @@ if(process.env.LXP_QA_SERVE_ONLY === "1") {
    expect((await detail.locator("[data-answer-detail]").innerText()).replace(/\s+/g," ").trim()).toBe(longText.replace(/\s+/g," ").trim());
    await page.keyboard.press("Space"); await expect(detail).not.toHaveAttribute("open");
    report.cases.push({width,theme,mode,metrics,detailsPreserved:true,keyboard:true});
+  }
+  // Real layout regression: equal preview/body can still overflow two lines.
+  // Change container width without remounting to exercise ResizeObserver.
+  report.overflowCases=[];
+  for (const theme of ["light","dark"]) {
+   await page.setViewportSize({width:375,height:812});
+   await page.evaluate(({text,theme})=>{
+    document.documentElement.classList.toggle("dark",theme==="dark");
+    window.qaRenderAnswer({text,presentation:"summary"});
+   },{text:overflowText,theme});
+   const preview=page.locator("[data-qa-answer] [data-visible-summary]");
+   const detail=page.locator("[data-qa-answer] > [data-compact-answer] > details");
+   await expect(preview).toHaveText(overflowText);
+   await expect(detail).toHaveCount(1);
+   const clipped=await preview.evaluate(el=>({
+    clientHeight:el.clientHeight,scrollHeight:el.scrollHeight,
+    lineHeight:parseFloat(getComputedStyle(el).lineHeight),lineClamp:getComputedStyle(el).webkitLineClamp,
+   }));
+   expect(clipped.scrollHeight).toBeGreaterThan(clipped.clientHeight);
+   expect(clipped.clientHeight).toBeLessThanOrEqual(2*clipped.lineHeight+1);
+   expect(clipped.lineClamp).toBe("2");
+   await page.screenshot({path:base+"/overflow-"+theme+"-collapsed.png"});
+   const control=detail.locator(":scope > summary");
+   await expect(control).toHaveAttribute("aria-expanded","false");
+   expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
+   await control.focus(); await page.keyboard.press("Enter");
+   await expect(control).toHaveAttribute("aria-expanded","true");
+   await expect(preview).toHaveCount(0);
+   await expect(detail.locator("[data-answer-detail]")).toHaveText(overflowText);
+   expect(await control.evaluate(el=>!!document.getElementById(el.getAttribute("aria-controls")))).toBe(true);
+   await page.screenshot({path:base+"/overflow-"+theme+"-expanded.png"});
+   await page.keyboard.press("Space");
+   await expect(detail).not.toHaveAttribute("open");
+   await expect(preview).toHaveText(overflowText);
+   await page.setViewportSize({width:1280,height:900});
+   await page.locator("[data-qa-answer]").evaluate(el=>el.style.width="900px");
+   await expect(detail).toHaveCount(0);
+   const fitting=await preview.evaluate(el=>({clientHeight:el.clientHeight,scrollHeight:el.scrollHeight}));
+   expect(fitting.scrollHeight).toBeLessThanOrEqual(fitting.clientHeight+1);
+   await page.locator("[data-qa-answer]").evaluate(el=>el.style.width="240px");
+   await expect(detail).toHaveCount(1);
+   await page.evaluate(()=>window.qaRenderAnswer({text:"Listo.",presentation:"summary"}));
+   await expect(preview).toHaveText("Listo.");
+   await expect(detail).toHaveCount(0);
+   await page.evaluate(text=>window.qaRenderAnswer({text,presentation:"summary"}),overflowText);
+   await expect(detail).toHaveCount(1);
+   // Absence of the explicit summary signal always preserves the complete body.
+   for (const props of [
+    {text:overflowText},
+    {text:overflowText,presentation:"full"},
+    {text:overflowText,presentation:"summary",streaming:true},
+   ]) {
+    await page.evaluate(props=>window.qaRenderAnswer(props),props);
+    await expect(page.locator("[data-qa-answer] [data-compact-answer]")).toHaveCount(0);
+    await expect(page.locator("[data-qa-answer]")).toContainText(overflowText);
+   }
+   report.overflowCases.push({theme,clipped,fitting,keyboard:true,resize:true,updatedText:true,fullBody:true});
   }
   expect(report.pageErrors).toEqual([]);report.success=true;
  } catch(error){report.error=String(error.stack??error);process.exitCode=1;}

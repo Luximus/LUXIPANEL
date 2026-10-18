@@ -81,8 +81,8 @@ function replay(runId = runB, name = "B", terminal: AgentEvent = { type: "done" 
 }
 function urls() { return vi.mocked(fetch).mock.calls.map(call => new URL(String(call[0]), "https://fixture.test")); }
 function noPosts() { expect(vi.mocked(fetch).mock.calls.every(call => call[1]?.method === "GET")).toBe(true); }
-function assertBoth() {
-  expect(chats.get(key)?.turns.map(turn => turn.text)).toEqual(b.map(message => message.content));
+function assertBoth(expected: ConversationMessage[] = b) {
+  expect(chats.get(key)?.turns.map(turn => turn.text)).toEqual(expected.map(message => message.content));
   expect(filePaths(chats.get(key)!.turns[1]!)).toEqual(["/project/A.ts"]);
   expect(filePaths(last())).toEqual(["/project/B.ts"]);
   expect(chats.get(key)?.turns[0]?.attachments?.[0]?.name).toBe("A.txt");
@@ -305,6 +305,7 @@ const stubs = new Map<string, unknown>([
 const allowed = new Set([
   ...["agent-run-registry", "conversation-message-normalizer", "api-activity", "execution-scope", "ask-protocol"].map(name => resolve(services, name + ".ts")),
   ...["events/index", "text/humanize-preview", "diagnostics/sanitize"].map(name => resolve(backend, "shared", name + ".ts")),
+  // Registry presentation uses these pure models; keep source loading closed.
   ...["message-presentation", "agent-envelope", "visible-summary"].map(name => resolve(backend, "modules/ai-assistant/models", name + ".ts")),
 ]);
 const nativeRequire = createRequire(import.meta.url);
@@ -325,29 +326,52 @@ function loadRegistrySource(file: string): any {
   return module.exports;
 }
 const { agentRunRegistry: registry } = loadRegistrySource(resolve(services, "agent-run-registry.ts"));
+const { messagePresentation } = loadRegistrySource(resolve(backend, "modules/ai-assistant/models/message-presentation.ts")) as {
+  messagePresentation: (content: string) => Pick<ConversationMessage, "presentation" | "displaySummary">;
+};
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>(done => { resolve = done; });
   return { resolve, promise };
 }
 let registryCounter = 0;
-it.each(["same-run", "finished-B", "live-B"] as const)(
-  "registry → SSE bytes → actual client: %s during A persistence at seq12", async scenario => {
+it.each((["same-run", "finished-B", "live-B"] as const).flatMap(scenario =>
+  (["legacy", "identified"] as const).map(persistence => [scenario, persistence] as const),
+))(
+  "registry → SSE bytes → actual client: %s / %s during A persistence at seq12", async (scenario, persistence) => {
     const registryKey = "cursor-integration-" + ++registryCounter;
     const entered = deferred(), releaseA = deferred(), releaseB = deferred(), attached = deferred();
     const mutateA = vi.fn(), mutateB = vi.fn(), persistA = vi.fn(), persistB = vi.fn();
+    const identified = persistence === "identified";
+    const fixtureAnswer = (name: string): ConversationMessage => {
+      const base = answer(name);
+      return { ...base, content: identified
+        ? base.content + "\n\n```ts\nexport const respuesta = \"" + name + "\";\n```\n\nDetalle final que debe conservarse."
+        : base.content };
+    };
+    const persistedAnswer = (name: string, args: unknown[]): ConversationMessage => ({
+      ...fixtureAnswer(name), content: args[0] as string,
+      // onComplete passes the durable identity after apiActivity (argument 10).
+      ...(identified ? { messageId: args[9] as string, ...messagePresentation(args[0] as string) } : {}),
+    });
     const saved: ConversationMessage[] = [request("A")];
     io.history.mockImplementation(async () => ({ items: [...saved] }));
     const first = registry.start({ key: registryKey, executor, makeGen: async function* () {
       mutateA();
       yield* answer("A").apiActivity!.events;
       for (let i = 0; i < 10; i++) yield { type: "text", phase: "commentary", delta: "Avance " + i };
-      yield { type: "text", phase: "final_answer", delta: "Respuesta A" };
+      yield { type: "text", phase: "final_answer", delta: fixtureAnswer("A").content };
       yield { type: "done" };
-    }, onComplete: async () => { entered.resolve(); await releaseA.promise; persistA(); saved.push(answer("A")); } });
+    }, onComplete: async (...args: unknown[]) => {
+      entered.resolve(); await releaseA.promise; persistA(...args); saved.push(persistedAnswer("A", args));
+    } });
     await entered.promise;
     expect(first.events.length - 1).toBe(12);
-    chats.set(key, { ...chats.get(key)!, runId: first.runId });
+    const current = chats.get(key)!;
+    chats.set(key, { ...current, runId: first.runId, turns: [current.turns[0]!, {
+      ...current.turns[1]!, text: fixtureAnswer("A").content,
+      ...(identified ? { messageId: first.messageId } : {}),
+    }] });
     let next: typeof first;
     if (scenario !== "same-run") {
       registry.deferQueueDrain(registryKey, async () => {
@@ -355,9 +379,9 @@ it.each(["same-run", "finished-B", "live-B"] as const)(
         next = registry.start({ key: registryKey, executor, makeGen: async function* () {
           if (scenario === "live-B") await releaseB.promise;
           mutateB(); yield* answer("B").apiActivity!.events;
-          yield { type: "text", phase: "final_answer", delta: "Respuesta B" };
+          yield { type: "text", phase: "final_answer", delta: fixtureAnswer("B").content };
           yield { type: "done" };
-        }, onComplete: async () => { persistB(); saved.push(answer("B")); } });
+        }, onComplete: async (...args: unknown[]) => { persistB(...args); saved.push(persistedAnswer("B", args)); } });
       }, executor.target.id);
       releaseA.resolve(); await first.completion;
       if (scenario === "finished-B") await next.completion;
@@ -403,14 +427,35 @@ it.each(["same-run", "finished-B", "live-B"] as const)(
     expect(mutateA).toHaveBeenCalledTimes(1); expect(persistA).toHaveBeenCalledTimes(1);
     if (scenario === "same-run") {
       expect(received.filter(event => event.type === "done")).toHaveLength(1);
-      expect(last()).toMatchObject({ text: "Respuesta A", interrupted: false });
+      expect(last()).toMatchObject({ text: fixtureAnswer("A").content, interrupted: false });
       expect(io.history).not.toHaveBeenCalled();
     } else {
-      assertBoth();
+      assertBoth(saved);
       expect(mutateB).toHaveBeenCalledTimes(1); expect(persistB).toHaveBeenCalledTimes(1);
       expect(received.filter(event => event.type === "error")).toMatchObject([{ code: "AGENT_STREAM_RECONCILE_REQUIRED" }]);
       expect(last().interrupted).not.toBe(true);
     }
+    const completedRuns = scenario === "same-run" ? [first] : [first, next!];
+    const persisted = saved.filter(message => message.role === "assistant");
+    const displayed = chats.get(key)!.turns.filter(turn => turn.role === "assistant");
+    expect(displayed).toHaveLength(completedRuns.length);
+    completedRuns.forEach((run, index) => {
+      const terminal = run.events.find((event: AgentEvent) => event.type === "done");
+      expect(terminal).toMatchObject({ messageId: run.messageId, presentation: "full" });
+      expect(run.messageId).not.toBe(run.runId);
+      const calls = index === 0 ? persistA.mock.calls : persistB.mock.calls;
+      expect(calls[0]?.[9]).toBe(run.messageId);
+      expect(calls[0]?.[0]).toBe(persisted[index]!.content);
+      if (identified) {
+        expect(persisted[index]).toMatchObject({ messageId: run.messageId, presentation: "full" });
+        expect(persisted[index]!.displaySummary).not.toBe(persisted[index]!.content);
+        expect(displayed[index]).toMatchObject({
+          messageId: run.messageId, text: persisted[index]!.content, presentation: "full",
+          displaySummary: persisted[index]!.displaySummary,
+        });
+      }
+    });
+    expect(new Set(completedRuns.map(run => run.messageId)).size).toBe(completedRuns.length);
     expect(queues.get(key)).toHaveLength(1); expect(pendingAddenda.has(key)).toBe(true);
     noPosts();
   },
