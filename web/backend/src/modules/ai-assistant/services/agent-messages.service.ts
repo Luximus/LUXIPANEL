@@ -36,7 +36,7 @@ import {
   clampMessageText,
   type AgentMessage,
 } from "../models/agent-message.types.js";
-import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
+import { reconcileAgentMessageReceipts } from "./agent-message-receipts.js";
 import { agentMessagesRepository } from "../repositories/agent-messages.repository.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
@@ -118,11 +118,23 @@ export const agentMessagesService = {
     // Mailbox cap + dedupe over the SAME ordered pair. Both read the pair's
     // non-terminal messages: a recipient that isn't draining must not be
     // flooded, and a model that retries the same handoff must not duplicate it.
-    const pair = (await agentMessagesRepository.listForPair(executor, fromId, toAgentId)).filter(m => (m.projectId ?? null) === binding.projectId);
+    const inScope = (m: AgentMessage) => (m.projectId ?? null) === binding.projectId
+      || (m.projectId === undefined && !!senderConversationId && m.senderConversationId === senderConversationId);
+    let pair = (await agentMessagesRepository.listForPair(executor, fromId, toAgentId)).filter(inScope);
+    if (pair.filter(m => m.status === "pending" || m.status === "delivered").length >= AGENT_MESSAGE_MAILBOX_CAP) {
+      // Recover receipts missed by older runtimes/restarts, without replaying
+      // a message, discarding evidence or lifting the unread-message limit.
+      for (const conversationId of new Set(pair.filter(m => m.status === "delivered").map(m => m.deliveryConversationId).filter((id): id is string => !!id))) {
+        await reconcileAgentMessageReceipts(executor, conversationId).catch(error => {
+          log.warn({ conversationId, err: String(error) }, "agent-message: receipt reconciliation failed");
+        });
+      }
+      pair = (await agentMessagesRepository.listForPair(executor, fromId, toAgentId)).filter(inScope);
+    }
     const open = pair.filter((m) => m.status === "pending" || m.status === "delivered");
-    const duplicate = open.find((m) => m.status === "pending" && m.text === text);
+    const duplicate = open.find((m) => m.text === text);
     if (duplicate?.id) {
-      log.info({ messageId: duplicate.id, fromId, toAgentId }, "agent-message: duplicate pending message deduped");
+      log.info({ messageId: duplicate.id, fromId, toAgentId }, "agent-message: duplicate unread message deduped");
       return { message: duplicate, deduped: true };
     }
     if (open.length >= AGENT_MESSAGE_MAILBOX_CAP) {
@@ -169,15 +181,13 @@ export const agentMessagesService = {
   },
 
   /**
-   * Close the messages a mailbox chat just answered. Wired once from
-   * `registerAiModule`: when the recipient's turn finishes, every message
-   * delivered into that conversation moves `delivered → read` (idempotent —
-   * the repository drops competing terminal transitions).
+   * A settled phase can consume notices before the overall team task ends.
+   * Persisted receipts keep this safe across queue races and backend restarts.
    */
   init(): void {
     if (listenerWired) return;
     listenerWired = true;
-    eventBus.on(Events.AI_CHAT_FINISHED, (payload: { conversationId: string; errored?: boolean }) => {
+    const acknowledge = (payload: { conversationId: string; errored?: boolean }) => {
       // The registry emits inside the run's executor scope — capture it NOW
       // (fail-closed: no context executor → not a per-server run → skip).
       let executor: Executor | null = null;
@@ -188,28 +198,16 @@ export const agentMessagesService = {
       }
       if (!executor) return;
       const exec = executor;
-      void (async () => {
-        const delivered = await agentMessagesRepository.listByDeliveryConversation(exec, payload.conversationId);
-        if (!delivered.some((m) => m.status === "delivered")) return;
-        // A message delivered into a chat that was ALREADY running (team chat /
-        // active run) waits in that chat's queue as an auto turn; the run that
-        // just finished did not read it yet → leave it `delivered` until the
-        // queued turn drains and its own run finishes.
-        const queued = await agentQueueRepository.listFor(exec, payload.conversationId).catch(() => []);
-        const queuedTexts = queued.map((q) => q.userText ?? "");
-        const now = new Date().toISOString();
-        for (const m of delivered) {
-          if (!m.id || m.status !== "delivered") continue;
-          if (queued.some(q => q.agentMessageId === m.id) || queuedTexts.some((t) => t.includes(m.text))) continue;
-          await agentMessagesRepository.update(exec, m.id, { status: "read", readAt: now });
-        }
-      })().catch((err) =>
+      void reconcileAgentMessageReceipts(exec, payload.conversationId).catch((err) =>
         log.warn(
           { err: (err as Error).message, conversationId: payload.conversationId },
           "agent-message: read marking failed",
         ),
       );
-    });
+    };
+    eventBus.on(Events.AI_TURN_SETTLED, acknowledge);
+    // Compatibility with other producers that only publish a final event.
+    eventBus.on(Events.AI_CHAT_FINISHED, acknowledge);
   },
 };
 
