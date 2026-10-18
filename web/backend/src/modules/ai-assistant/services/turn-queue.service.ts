@@ -834,14 +834,15 @@ export function initTeamVerifyRetryListener(): void {
       const { executor, workerConversationId } = payload;
       void (async () => {
         const cwdNote = payload.forcedCwd ? `EN ${payload.forcedCwd}` : "en el directorio del proyecto";
-        const userText =
-          `[VERIFICACIÓN AUTOMÁTICA] Tu trabajo no pasó la verificación (intento ${payload.attempt} de ${payload.maxAttempts}).\n` +
-          `Comando fallido: ${payload.failedCommand || "?"}${payload.exitCode !== undefined ? ` (exit ${payload.exitCode})` : ""}\n` +
-          "--- salida (final) ---\n" +
-          payload.logTail +
-          "\n--- fin ---\n" +
-          `Corrige el problema ${cwdNote} y deja el proyecto pasando esos comandos. No repitas trabajo ya hecho; ` +
-          "haz commit de tus correcciones al terminar.";
+        const task = await teamTasksRepository.getTask(executor, payload.taskId);
+        if (!task || task.workerConversationId !== workerConversationId || isTerminalTaskStatus(task.status)) return;
+        const userText = encodeCoordination(coordinationEnvelope(encodeCoordination({
+          kind: "request",
+          summary: `Verificación fallida (intento ${payload.attempt} de ${payload.maxAttempts}).`,
+          data: { command: payload.failedCommand, exitCode: payload.exitCode, log: payload.logTail,
+            action: `Corrige el problema ${cwdNote}; conserva restricciones y permisos. No repitas trabajo ni hagas commit o push manuales.` },
+          refs: [`task:${payload.taskId}`],
+        }), "request", {}, { taskId: payload.taskId, tool: "agents.read_message" }));
         await enqueueAgentTurn(executor, {
           conversationId: workerConversationId,
           userText,

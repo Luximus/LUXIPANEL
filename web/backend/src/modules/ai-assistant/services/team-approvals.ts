@@ -152,7 +152,7 @@ export function initTeamApprovalDelivery(drain: (executor: Executor, conversatio
         if (queue.some(q => q.teamReviewNotice === notice)) continue;
         const text = encodeCoordination({ kind: "request", summary: "Un trabajador necesita una decisión del líder.",
           data: { taskId: task.id, requestId: request.requestId, kind: request.kind, action: "Consulta team.approvals para leer la solicitud completa y usa team.review para aprobar o rechazar con un motivo. Decide según el pedido y permisos del usuario; no autorices alcance adicional." },
-          refs: { conversationId: task.workerConversationId } });
+          refs: [`conversation:${task.workerConversationId}`] });
         if (agentRunRegistry.isActive(task.leaderConversationId, executor.target.id)
           && await cliJobTracker.steerConversation(task.leaderConversationId, text).catch(() => false)) continue;
         await enqueueAgentTurn(executor, { conversationId: task.leaderConversationId, agentId: task.leaderAgentId,

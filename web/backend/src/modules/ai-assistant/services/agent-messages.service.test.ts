@@ -6,6 +6,7 @@ import type { AssistantAgent } from "../models/assistant-agent.types.js";
 import type { AgentMessage } from "../models/agent-message.types.js";
 import type { SessionUser } from "../../../shared/types/index.js";
 import type { ConversationMessage } from "../repositories/conversations.repository.js";
+import type { TeamTask } from "../models/team-task.types.js";
 
 // These unit calls run on the explicitly selected test target.
 vi.mock("../../../shared/executor/index.js", async importOriginal => {
@@ -48,6 +49,7 @@ vi.mock("../repositories/conversations.repository.js", () => ({
   conversationsRepository: { getMeta: vi.fn(async () => null), allMessages: vi.fn(async () => [] as ConversationMessage[]) },
 }));
 vi.mock("../repositories/agent-queue.repository.js", () => ({ agentQueueRepository: { listFor: vi.fn(async () => []) } }));
+vi.mock("../repositories/team-tasks.repository.js", () => ({ teamTasksRepository: { getTask: vi.fn(async () => null as TeamTask | null) } }));
 
 import { eventBus, Events } from "../../../shared/events/index.js";
 import { localExecutor } from "../../../shared/executor/index.js";
@@ -55,6 +57,7 @@ import { agentMessagesService, buildSendMessageTool } from "./agent-messages.ser
 import { agentMessagesRepository } from "../repositories/agent-messages.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
+import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 
 function consumedHistory(items: AgentMessage[]): ConversationMessage[] {
   const ts = new Date(Date.now() + 60_000).toISOString();
@@ -100,6 +103,7 @@ beforeEach(() => {
   vi.mocked(agentMessagesRepository.update).mockClear();
   vi.mocked(conversationsRepository.allMessages).mockReset().mockResolvedValue([]);
   vi.mocked(agentQueueRepository.listFor).mockReset().mockResolvedValue([]);
+  vi.mocked(teamTasksRepository.getTask).mockReset().mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -218,10 +222,9 @@ describe("agentMessagesService.send", () => {
     expect(messages.every(m => m.status === "delivered")).toBe(true);
   });
 
-  it("clamps the text to 8000 chars", async () => {
-    const { message } = await agentMessagesService.send(localExecutor, { ...baseInput, text: "x".repeat(9000) });
-    expect(message.text.length).toBeLessThanOrEqual(8000);
-    expect(message.text).toMatch(/recortado/);
+  it("rejects oversized legacy text without persisting or silently losing constraints", async () => {
+    await expect(agentMessagesService.send(localExecutor, { ...baseInput, text: "x".repeat(9000) + "No reiniciar." })).rejects.toThrow(/2000/);
+    expect(messages).toHaveLength(0);
   });
 
   it("acknowledges an attended phase on AI_TURN_SETTLED while the team is still pending", async () => {
@@ -303,5 +306,20 @@ describe("buildSendMessageTool", () => {
     stored.fromAgentId = "a-ajeno";
     expect((await built.readTool.handler({ messageId: stored.id })).ok).toBe(false);
     expect((await built.readTool.handler({ messageId: "unknown" })).ok).toBe(false);
+  });
+  it("reads full verification evidence only in the task participant's conversation and scope", async () => {
+    const built = buildSendMessageTool(ctx)!;
+    const task = { id: "task", workerAgentId: "a-santiago", workerConversationId: "conv-santiago", leaderAgentId: "a-martin",
+      leaderConversationId: "leader", projectId: null, userId: "7", task: "No reiniciar.",
+      verify: { state: "failed", attempts: 1, logTail: "evidence ".repeat(500) },
+    } as TeamTask;
+    vi.mocked(teamTasksRepository.getTask).mockResolvedValue(task);
+    expect(await built.readTool.handler({ taskId: "task" })).toMatchObject({ ok: true, output: { task: "No reiniciar.", verify: task.verify } });
+    expect(vi.mocked(teamTasksRepository.getTask).mock.calls.at(-1)![0]).toBe(localExecutor);
+    for (const patch of [{ userId: "8" }, { projectId: "other" }, { workerAgentId: "other" }, { workerConversationId: "other" }]) {
+      vi.mocked(teamTasksRepository.getTask).mockResolvedValue({ ...task, ...patch });
+      expect((await built.readTool.handler({ taskId: "task" })).ok).toBe(false);
+    }
+    expect((await built.readTool.handler({ messageId: "msg", taskId: "task" })).ok).toBe(false);
   });
 });

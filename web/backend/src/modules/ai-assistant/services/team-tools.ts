@@ -159,7 +159,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
       type: "object",
       properties: {
         agentId: { type: "string", description: "Id of the subordinate agent (from the roster in your prompt)." },
-        task: { type: "string", description: "Compact TOON with kind, summary, data and refs with the complete task constraints. Legacy prose is accepted; do not repeat history." },
+        task: { type: "string", maxLength: 2000, description: "Compact TOON: kind=request, summary, essential data and refs as a list. Task plus shared notes must fit 2000 chars. Reference existing evidence; never repeat history or drop constraints. Compact legacy prose is normalized." },
         title: { type: "string", description: "Short card title for the progress board (≤120 chars). Optional." },
         projectId: { type: "string", description: "Optional project id belonging to that subordinate. Omit for a loose chat." },
         planId: { type: "string", description: "Optional plan id (from team.plan) this task belongs to." },
@@ -311,7 +311,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
           type: "string",
           description:
             "Optional SHARED NOTES for the whole plan (contracts, decisions, conventions every worker must know). " +
-            "Prepended read-only to each worker's task. Update later with team.note.",
+            "Compact TOON, included as structured data in each task within the same 2000-character budget. Update later with team.note.",
         },
       },
       required: ["title", "goal", "steps"],
@@ -542,7 +542,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
       type: "object",
       properties: {
         planId: { type: "string", description: "Plan id (from team.plan)." },
-        notes: { type: "string", description: "Full new shared-notes text (≤4000 chars; replaces the previous)." },
+        notes: { type: "string", description: "Compact TOON notes (≤2000 chars; replaces the previous). Notes plus each task share a 2000-character budget; keep common constraints brief and reference evidence." },
       },
       required: ["planId", "notes"],
     },
@@ -565,7 +565,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
     description: "Read the exact pending tool requests and complete plans from YOUR workers in THIS conversation. Use team.review to allow or deny with a reason; do not guess request ids.",
     inputSchema: { type: "object", properties: {} },
     handler: async () => {
-      try { return { ok: true, output: encodeCoordination({ kind: "request", summary: "Solicitudes pendientes del equipo.", data: { requests: await listTeamApprovals(executor, conversationId, user) }, refs: { conversationId } }) }; }
+      try { return { ok: true, output: encodeCoordination({ kind: "request", summary: "Solicitudes pendientes del equipo.", data: { requests: await listTeamApprovals(executor, conversationId, user) }, refs: [`conversation:${conversationId}`] }) }; }
       catch (err) { return { ok: false, output: (err as Error).message }; }
     },
   };

@@ -37,6 +37,7 @@ import {
 } from "../models/agent-message.types.js";
 import { reconcileAgentMessageReceipts } from "./agent-message-receipts.js";
 import { agentMessagesRepository } from "../repositories/agent-messages.repository.js";
+import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { computeAgentTargets, relationLabel, MAX_DELEGATION_DEPTH } from "./agent-targets.js";
@@ -326,17 +327,32 @@ export function buildSendMessageTool(ctx: {
   };
   const readTool: AgentTool = {
     name: READ_MESSAGE_TOOL, title: "Leer detalle de un mensaje del equipo", kind: "read", dangerous: false,
-    description: "Read the complete evidence referenced by an internal messageId. Only messages sent or received by this agent in the current project and user scope are readable. Read only when the compact TOON does not contain the needed detail.",
-    inputSchema: { type: "object", properties: { messageId: { type: "string" } }, required: ["messageId"] },
+    description: "Read complete evidence by messageId, or taskId for a verification report. Supply exactly one. Restricted to the same target, user, project and participating agent; task evidence also requires its bound conversation. Read when detail.required is true or specific evidence is needed.",
+    inputSchema: { type: "object", additionalProperties: false, properties: { messageId: { type: "string" }, taskId: { type: "string" } }, oneOf: [{ required: ["messageId"] }, { required: ["taskId"] }] },
     handler: async input => {
       if (!executor) return { ok: false, output: "No hay servidor conectado." };
       try {
-        const id = (input as { messageId?: unknown })?.messageId;
-        if (typeof id !== "string" || !id.trim()) throw new Error("Falta messageId.");
+        const args = input as { messageId?: unknown; taskId?: unknown };
+        const id = args?.messageId;
+        const taskId = args?.taskId;
+        if ((id !== undefined) === (taskId !== undefined)) throw new Error("Envía solo messageId o taskId.");
         const binding = await resolveConversationBinding(executor, { conversationId, agentId: agent.id }, user);
         const current = await resolveAgentContext(executor, agent.id, binding.projectId, user);
-        const message = await agentMessagesRepository.get(executor, id);
         const principal = userId ?? user?.userId;
+        if (taskId !== undefined) {
+          if (typeof taskId !== "string" || !taskId.trim()) throw new Error("Falta taskId.");
+          const task = await teamTasksRepository.getTask(executor, taskId);
+          const taskPrincipal = task?.userId ?? task?.user?.userId;
+          if (!current.agent || !task || (task.projectId ?? null) !== binding.projectId
+            || principal == null || taskPrincipal == null || String(taskPrincipal) !== String(principal)
+            || !((task.workerAgentId === current.agent.id && task.workerConversationId === conversationId)
+              || (task.leaderAgentId === current.agent.id && task.leaderConversationId === conversationId))) {
+            return { ok: false, output: "Tarea no disponible en este contexto." };
+          }
+          return { ok: true, output: { taskId, task: task.task, verify: task.verify ?? null } };
+        }
+        if (typeof id !== "string" || !id.trim()) throw new Error("Falta messageId.");
+        const message = await agentMessagesRepository.get(executor, id);
         const messagePrincipal = message?.userId ?? message?.user?.userId;
         if (!current.agent || !message || (message.projectId ?? null) !== binding.projectId
           || principal == null || messagePrincipal == null || String(messagePrincipal) !== String(principal)

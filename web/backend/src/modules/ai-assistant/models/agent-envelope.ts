@@ -83,14 +83,22 @@ export function prepareCoordinationTask(text: string, notes?: string): string {
 export function coordinationEnvelope(text: string, kind: AgentPacket["kind"],
   source: Record<string, unknown> = {}, reference?: Record<string, unknown>): Record<string, unknown> {
   let packet: AgentPacket | undefined;
-  try { packet = parseAgentPacket(text); } catch { /* legacy prose or oversized report: preserved below */ }
+  // Decode the shape before budgeting so an oversized blocked result keeps
+  // its actual kind/status when only a reference can be delivered.
+  try { packet = agentPacketSchema.parse(decodeCoordination(text)); } catch { /* legacy evidence: preserved below */ }
   const omitLegacy = !packet && !!reference && text.length > 240;
-  return {
+  const envelope: Record<string, unknown> = {
     protocol: AGENT_PROTOCOL,
     ...(packet ?? { kind, summary: visibleSummary(text), ...(!omitLegacy ? { data: { text } } : {}) }),
     ...source,
     ...(reference ? { detail: { ...reference, required: omitLegacy } } : {}),
   };
+  if (reference && encodeCoordination(envelope).length > AGENT_PACKET_MAX) {
+    delete envelope.data;
+    delete envelope.refs;
+    envelope.detail = { ...reference, required: true };
+  }
+  return envelope;
 }
 
 /** Cap optional evidence as whole TOON values. The summary/status/reference of

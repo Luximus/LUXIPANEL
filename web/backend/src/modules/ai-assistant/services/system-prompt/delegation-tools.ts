@@ -1,4 +1,4 @@
-import { coordinationEnvelope, coordinationTask, encodeCoordination } from "../../models/agent-envelope.js";
+import { AGENT_PACKET_MAX, coordinationEnvelope, prepareCoordinationTask, encodeCoordination } from "../../models/agent-envelope.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -13,21 +13,16 @@ import type { Executor } from "../../../../shared/executor/index.js";
 import type { SessionUser } from "../../../../shared/types/index.js";
 import type { AssistantAgent } from "../../models/assistant-agent.types.js";
 import { assistantConfigRepository } from "../../repositories/assistant-config.repository.js";
+import { conversationsRepository } from "../../repositories/conversations.repository.js";
 import type { AgentTool } from "../../../../shared/agent-capability/index.js";
 import { MAX_DELEGATION_DEPTH } from "../agent-targets.js";
 import { spawnWorker, validateWorkerProject } from "../team-tasks.service.js";
-import { capText } from "./blocks.js";
 import type { RunAgent } from "./types.js";
 
 /** Hard wall-clock limit for a synchronous `agents.delegate` sub-run — it blocks
  *  the superior's turn, so a hung delegate must not hang the chain forever.
  *  Mirrors the team.collect default wait. */
 const DELEGATE_TIMEOUT_MS = 300_000;
-
-/** Cap on the delegate's answer relayed back as the tool result (same budget as
- *  the team nudge per-task inline results); the full text is not persisted
- *  anywhere else, so keep head+tail instead of head-only. */
-const DELEGATE_OUTPUT_MAX_CHARS = 12_000;
 
 /**
  * Build the `agents.delegate` tool for a run driven by `agent`: lets the agent
@@ -77,7 +72,7 @@ export function buildDelegateTool(ctx: {
       type: "object",
       properties: {
         agentId: { type: "string", description: "Id of the subordinate/connected agent to delegate to (from the allowed list)." },
-        task: { type: "string", description: "Compact TOON with kind, summary, data and refs with complete instructions and constraints. Legacy prose is accepted." },
+        task: { type: "string", maxLength: AGENT_PACKET_MAX, description: "Compact TOON (<=2000 chars): kind=request, summary, data with essential instructions/constraints, refs as a list. No history or repeated reports. Compact legacy prose is normalized." },
       },
       required: ["agentId", "task"],
     },
@@ -94,6 +89,7 @@ export function buildDelegateTool(ctx: {
       }
       const target = byId.get(targetId);
       try {
+        const taskText = prepareCoordinationTask(task);
         const config = await assistantConfigRepository.load(executor);
         // The sub-run blocks the superior's turn: bound it by the leader's own
         // abort AND a hard timeout so a hung delegate can't hang the chain.
@@ -102,7 +98,7 @@ export function buildDelegateTool(ctx: {
           AbortSignal.timeout(DELEGATE_TIMEOUT_MS),
         ]);
         let text = "";
-        for await (const ev of runAgent([{ role: "user", content: coordinationTask(task) }], {
+        for await (const ev of runAgent([{ role: "user", content: taskText }], {
           executor,
           user,
           ...(userId ? { userId } : {}),
@@ -118,8 +114,21 @@ export function buildDelegateTool(ctx: {
           if (ev.type === "text") text += ev.delta;
           else if (ev.type === "error") return { ok: false, output: `El agente "${target?.name ?? targetId}" falló: ${ev.message}` };
         }
-        const answer = capText(text.trim(), DELEGATE_OUTPUT_MAX_CHARS);
-        return { ok: true, output: encodeCoordination(coordinationEnvelope(answer || `El agente "${target?.name ?? targetId}" no devolvió respuesta.`, "result", { from: targetId })) };
+        const answer = text.trim() || `El agente "${target?.name ?? targetId}" no devolvió respuesta.`;
+        let report = coordinationEnvelope(answer, "result", { from: targetId });
+        if (encodeCoordination(report).length > AGENT_PACKET_MAX) {
+          if (!executor || !target) throw new Error("El agente ya terminó, pero no se pudo guardar su informe extenso. No repitas la tarea; verifica el resultado antes de continuar.");
+          // Save complete evidence BEFORE emitting a compact reference. No AI
+          // summarizer, silent slicing, extra execution or background delivery.
+          const meta = await conversationsRepository.create(executor, target.providerId, task, ctx.projectId ?? null, targetId);
+          const conversationId = String(meta.id);
+          await conversationsRepository.appendMessages(executor, conversationId, [
+            { role: "user", content: taskText, provider: target.providerId, auto: true, ts: new Date().toISOString() },
+            { role: "assistant", content: answer, provider: target.providerId, ts: new Date().toISOString() },
+          ]);
+          report = coordinationEnvelope(answer, "result", { from: targetId }, { conversationId });
+        }
+        return { ok: true, output: encodeCoordination(report) };
       } catch (err) {
         return { ok: false, output: `Error al delegar en "${target?.name ?? targetId}": ${(err as Error).message}` };
       }
@@ -170,7 +179,7 @@ export function buildSpawnChatsTool(ctx: {
       type: "object",
       properties: {
         agentId: { type: "string", description: "Id of the subordinate agent that will work in the chat (from the allowed list)." },
-        task: { type: "string", description: "Self-contained instruction the subordinate must carry out in the new chat." },
+        task: { type: "string", maxLength: AGENT_PACKET_MAX, description: "Compact TOON (<=2000 chars) with kind=request, summary, essential data and refs as a list. Compact legacy prose is normalized." },
         projectId: { type: "string", description: "Optional project/subproject id (must belong to that subordinate). Omit → loose chat." },
       },
       required: ["agentId", "task"],

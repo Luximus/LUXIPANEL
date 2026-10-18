@@ -1,11 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { coordinationEnvelope, coordinationTask, budgetCoordinationReports, parseAgentPacket, encodeCoordination, decodeCoordination } from "./agent-envelope.js";
+import { AGENT_PACKET_MAX, compactAgentInput, prepareCoordinationTask, coordinationEnvelope, coordinationTask, budgetCoordinationReports, parseAgentPacket, encodeCoordination, decodeCoordination } from "./agent-envelope.js";
 import { visibleSummary } from "./visible-summary.js";
 
 describe("compact coordination contract", () => {
   const packet = { kind: "result", summary: "Revisión terminada. Falta desplegar.", data: { verified: false, constraints: ["No reiniciar"], evidence: "line 12\n\"quoted\"\\path" }, refs: ["report.txt"] };
+  it("rejects the screenshot's oversized task and notes before creating work", () => {
+    expect(() => prepareCoordinationTask('kind: task\nsummary: Deploy\ndata:\n  text: "' + "x".repeat(8500) + '"', "notes".repeat(400))).toThrow();
+    expect(() => prepareCoordinationTask("instrucción ".repeat(800))).toThrow(/2000/);
+    expect(() => compactAgentInput('protocol: lxp.agent.v1\nkind: request\nsummary: Bypass\ndata:\n  text: long')).toThrow(/inválido/);
+    expect(() => compactAgentInput('kind: request\nsummary: Test\nrefs:\n  report: file')).toThrow(/inválido/);
+    expect(() => prepareCoordinationTask("a".repeat(1000), "b".repeat(1000))).toThrow(/2000/);
+  });
+  it("sends one valid bounded packet including complete task and shared constraints", () => {
+    const wire = prepareCoordinationTask('kind: request\nsummary: Revisar.\ndata:\n  constraint: No reiniciar\nrefs[1]: report.txt', "Mantener los permisos.");
+    expect(wire.length).toBeLessThanOrEqual(AGENT_PACKET_MAX);
+    expect(decodeCoordination(wire)).toMatchObject({ protocol: "lxp.agent.v1", kind: "request", data: {
+      task: { constraint: "No reiniciar" }, sharedNotes: { data: { text: "Mantener los permisos." } },
+    }, refs: ["report.txt"] });
+    expect(coordinationTask(wire)).toBe(wire);
+    expect(compactAgentInput('kind: result\nsummary: "Primero.\\n\\nSegundo."').summary).toBe("Primero. Segundo.");
+  });
+  it("keeps an oversized blocked report's status and makes full evidence mandatory", () => {
+    const report = coordinationEnvelope(encodeCoordination({ kind: "blocked", summary: "Despliegue sin confirmar.", data: { evidence: "x".repeat(10000) } }), "result", {}, { conversationId: "worker" });
+    expect(report).toMatchObject({ kind: "blocked", summary: "Despliegue sin confirmar.", detail: { required: true, conversationId: "worker" } });
+    expect(report.data).toBeUndefined();
+    expect(encodeCoordination(report).length).toBeLessThanOrEqual(AGENT_PACKET_MAX);
+  });
   it("preserves structured evidence, Unicode and escaping without copying prior context", () => {
     expect(parseAgentPacket(encodeCoordination(packet))).toEqual(packet);
     const wire = coordinationEnvelope(JSON.stringify(packet), "result", { from: "worker" }, { conversationId: "worker-chat" });

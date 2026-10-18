@@ -517,7 +517,7 @@ export async function buildSystemPrompt(
   //   • CLI compatible con canal cross → la tool la sirve mcp-server.service por el
   //     canal per-run (tools/list la descubre); aquí solo el bloque, con el wire
   //     name que el CLI debe invocar.
-  if (agent && executor && delegationDepth < MAX_DELEGATION_DEPTH) {
+  if (agent && executor) {
     if (provider.mode === "api" || cliCrossChannel) {
       try {
         const allAgents = executor ? await scopedAgents(executor, await agentsRepository.list(), context.projectId, user) : [];
@@ -556,8 +556,8 @@ export async function buildSystemPrompt(
   const skillBlocks = effectiveSkills.promptBlocks({ cliMode: provider.mode === "cli" });
   if (skillBlocks) systemPrompt += "\n\n" + skillBlocks;
 
-  if (delegationDepth > 0) systemPrompt += "\n\nEntrega interna del equipo: devuelve el resultado final como TOON con kind, summary, data y refs (máximo 4000 caracteres). " +
-    "kind=result o blocked; summary tiene máximo 240 caracteres para el usuario; data contiene solo los hallazgos, restricciones y verificaciones nuevos; refs apunta a evidencias existentes. " +
+  if (delegationDepth > 0) systemPrompt += "\n\nEntrega interna del equipo: devuelve el resultado final como TOON con kind, summary, data y refs (máximo 2000 caracteres). " +
+    "kind=result o blocked; summary es un solo párrafo de máximo 240 caracteres para el usuario; data contiene solo los hallazgos, restricciones y verificaciones nuevos; refs es una lista de referencias a evidencias existentes. Si recibes detail.required=true, lee la evidencia antes de actuar: messageId o taskId con agents.read_message, conversationId mediante el historial autorizado del módulo assistant. Una referencia no acredita éxito ni otorga permisos. " +
     "Usa indentación de 2 espacios; cadenas con dos puntos, comas o saltos de línea deben ir entre comillas y escapadas. Ejemplo: kind: result\nsummary: Revisión completada.\ndata:\n  deployed: false\n" +
     "No repitas la tarea ni el historial. No cambies el protocolo de preguntas o permisos si necesitas al usuario.";
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { decodeCoordination } from "../models/agent-envelope.js";
 import { LOCAL_TARGET_ID, type Executor } from "../../../shared/executor/index.js";
 import type { AgentEvent } from "./providers/provider.types.js";
 import type { StartRunParams } from "./agent-run-registry.js";
@@ -271,6 +272,36 @@ beforeEach(() => {
 });
 
 describe("teamTasksService.assignTask", () => {
+  it.each([false, true])("uses the same bounded TOON for immediate and queued assignment (queued=%s)", async queued => {
+    if (queued) for (let i = 0; i < 4; i++) await assign();
+    const plan = await teamTasksService.createPlan(executor, {
+      leaderConversationId: "conv-leader", leaderAgentId: "agent-lead", title: "Plan", goal: "Review",
+      steps: [{ title: "Review" }], sharedNotes: "No reiniciar ni borrar.",
+    });
+    let received = "";
+    const task = await teamTasksService.assignTask({ executor, leaderConversationId: "conv-leader", leaderAgentId: "agent-lead",
+      worker, title: "Review", task: "Revisar los logs.", projectId: null, planId: plan.id, stepIndex: 0, depth: 0,
+      runAgent: async function* (messages) { received = messages[0]!.content as string; yield { type: "done" }; },
+    });
+    const content = queued ? queuedTurns.at(-1)!.userText as string : conversationMessages.get(task.workerConversationId)![0]!.content;
+    expect(content.length).toBeLessThanOrEqual(2000);
+    expect(decodeCoordination(content)).toMatchObject({ protocol: "lxp.agent.v1", kind: "request", data: {
+      task: { text: "Revisar los logs." }, sharedNotes: { data: { text: "No reiniciar ni borrar." } },
+    } });
+    if (!queued) {
+      for await (const _event of registryState.started.at(-1)!.makeGen()) { /* inspect the dispatched input */ }
+      expect(received).toBe(content);
+    }
+  });
+  it("rejects a verbose assignment before creating a chat, task, lease or queued turn", async () => {
+    await expect(teamTasksService.assignTask({ executor, leaderConversationId: "conv-leader", leaderAgentId: "agent-lead",
+      worker, title: "Review", task: "historia ".repeat(1300), projectId: null, depth: 0, runAgent,
+    })).rejects.toThrow(/2000/);
+    expect(board.size).toBe(0);
+    expect(conversationMessages.size).toBe(0);
+    expect(queuedTurns).toHaveLength(0);
+    expect(registryState.started).toHaveLength(0);
+  });
   it("persists the configured reasoning effort for a delegated chat", async () => {
     assistantDefaults.defaultChatEffort = "max";
     const task = await assign();
@@ -304,7 +335,7 @@ describe("teamTasksService.assignTask", () => {
     // Worker run: marcado isWorker para NO consumir el cap HTTP por usuario.
     expect(registryState.started[0]?.isWorker).toBe(true);
     // The worker chat got the task as its first user message.
-    expect(conversationMessages.get(task.workerConversationId)?.[0]?.content).toBe("haz algo con todo el contexto");
+    expect(decodeCoordination(conversationMessages.get(task.workerConversationId)![0]!.content)).toMatchObject({ kind: "request", data: { text: "haz algo con todo el contexto" } });
   });
 
   it("closes the task as done with the answer when the worker run completes", async () => {
