@@ -1,0 +1,7 @@
+{
+  "title": "Recuperación automática de bloqueos de actualización",
+  "changes": [
+    "El panel comprueba periódicamente los registros de tareas completadas y los revisa de nuevo antes de actualizar, sin necesitar un reinicio para liberar registros obsoletos.",
+    "La recuperación exige una entrega confirmada y comprobar que la ejecución terminó; los trabajos activos y los estados que no se pueden confirmar conservan su protección."
+  ]
+}

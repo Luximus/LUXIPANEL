@@ -122,6 +122,7 @@ export async function assertCoreDeveloper(user:SessionUser|undefined,cwd:string,
 }
 let initialized:Promise<ContributionJob[]>|undefined, timer:ReturnType<typeof setInterval>|undefined, draining=false, drainAgain=false;
 let authorize:((user:SessionUser)=>Promise<SessionUser>)|undefined;
+let recoverableCli:((job:ContributionJob)=>Promise<boolean>)|undefined;
 // Serialize only bookkeeping/snapshots, never the lifetime of an assistant turn.
 // The backend owns one registry; durable job records restore signed CLI runs.
 const activeContributions=new Map<string,ContributionJob>();
@@ -135,6 +136,7 @@ function withContributionState<T>(update:()=>Promise<T>):Promise<T>{
 export function initializeOwnerContributions(check:(user:SessionUser)=>Promise<SessionUser>,canRecover?:(job:ContributionJob)=>Promise<boolean>,options:{publishCompletedTurns?:boolean}={}) {
  publishCompletedTurns=options.publishCompletedTurns??true;
  authorize=check;
+ recoverableCli=canRecover;
  if(!initialized)initialized=(async()=>{
   await fs.mkdir(outbox(),{recursive:true,mode:0o700});
   const recovered:ContributionJob[]=[],tracked=await readContributionJobs();
@@ -316,6 +318,7 @@ export function reviewedContribution(job:ContributionJob,jobs:ContributionJob[])
 export async function contributionUpdateBlocker(root:string,changedFiles:string[]):Promise<ContributionUpdateBlocker|undefined>{
  if(initialized)await initialized;
  return withContributionState(async()=>{
+  await reconcileCompletedTeamContributions(root);
   if([...activeContributions.values()].some(j=>j.root===root))return "assistant-active";
   if(!changedFiles.length)return undefined;
   const changed=new Set(changedFiles),jobs=(await readContributionJobs()).filter(j=>j.root===root&&!j.isolated&&!j.includedIn);
@@ -562,7 +565,10 @@ async function drain():Promise<void>{
  try{
   unlock=await publisherLock();
   if(!unlock)return;
-  await withContributionState(recoverClosedContributionBatches);
+  await withContributionState(async()=>{
+   await reconcileCompletedTeamContributions();
+   await recoverClosedContributionBatches();
+  });
   const rows=await fs.readdir(outbox(),{withFileTypes:true});
   const ordered:ContributionJob[]=[];
   for(const row of rows){
@@ -673,28 +679,49 @@ export async function refreshContributionChecks(job:ContributionJob,authorizeUse
  await saveContribution(job);
 }
 
-/** Restore only a finished worker already covered by an immutable delivery.
- * The caller has ruled out a recoverable live CLI. Never recapture today's
- * workspace or reinterpret an interrupted/failed task as successful.
- */
-async function restoreCompletedTeamContribution(job:ContributionJob,jobs:ContributionJob[]):Promise<boolean>{
- if(job.status!=="capturing"||!job.teamTaskId||!job.batchId||job.isolated||job.completedAt||job.after)return false;
+/** Find a verified task boundary in an existing immutable delivery. */
+function completedTeamContributionEvidence(job:ContributionJob,jobs:ContributionJob[]):{peer:ContributionJob;delivery:ContributionJob}|undefined{
+ if(job.status!=="capturing"||!job.teamTaskId||!job.batchId||job.isolated||job.completedAt||job.after)return undefined;
  const createdAt=Date.parse(job.createdAt);
- if(!Number.isFinite(createdAt))return false;
+ if(!Number.isFinite(createdAt))return undefined;
  for(const peer of jobs){
   if(peer.id===job.id||peer.teamTaskId!==job.teamTaskId||peer.conversationId!==job.conversationId||peer.batchId!==job.batchId||peer.root!==job.root||peer.isolated||!sameContributionPrincipal(peer,job))continue;
   if(peer.succeeded!==true||!peer.completedAt||!peer.after||!/^[a-f0-9]{40}$/.test(peer.after)||!Number.isFinite(Date.parse(peer.completedAt))||Date.parse(peer.completedAt)<createdAt)continue;
   const delivery=jobs.find(row=>row.id===peer.includedIn);
   if(!delivery||delivery.root!==job.root||!sameContributionPrincipal(delivery,job)||delivery.after!==peer.after||delivery.checkpoint?.batchId!==job.batchId||!delivery.checkpoint.members.includes(peer.id))continue;
   if(delivery.status!=="empty"&&!(delivery.status==="pushed"&&delivery.commit))continue;
-  try{await contributionGit(job.root,["cat-file","-e",peer.after+"^{tree}"]);}catch{continue;}
-  job.status=delivery.status;job.succeeded=true;job.completedAt=peer.completedAt;job.after=peer.after;
-  job.includedIn=delivery.id;job.commit=delivery.commit;job.integratedBy=delivery.commit;
-  job.ci=delivery.ci;job.checksUrl=delivery.checksUrl;job.error=undefined;
-  await saveContribution(job);
-  return true;
+  return {peer,delivery};
  }
- return false;
+ return undefined;
+}
+/** The caller has ruled out a recoverable live CLI. Never recapture today's
+ * workspace or reinterpret an interrupted/failed task as successful. */
+async function restoreCompletedTeamContribution(job:ContributionJob,jobs:ContributionJob[]):Promise<boolean>{
+ const evidence=completedTeamContributionEvidence(job,jobs);
+ if(!evidence)return false;
+ const {peer,delivery}=evidence;
+ try{await contributionGit(job.root,["cat-file","-e",peer.after+"^{tree}"]);}catch{return false;}
+ const restored:ContributionJob={...job,status:delivery.status,succeeded:true,completedAt:peer.completedAt,after:peer.after,
+  includedIn:delivery.id,commit:delivery.commit,integratedBy:delivery.commit,ci:delivery.ci,checksUrl:delivery.checksUrl,error:undefined};
+ // Keep the active object intact if persistence fails; another check can retry.
+ await saveContribution(restored);Object.assign(job,restored);
+ return true;
+}
+/** Called with the state lock, at preflight and by the periodic outbox sweep.
+ * A failed liveness check is uncertainty, never permission to release a task.
+ */
+async function reconcileCompletedTeamContributions(root?:string):Promise<void>{
+ if(!recoverableCli)return;
+ const candidates=[...activeContributions.values()].filter(job=>job.teamTaskId&&job.cliBinding&&(!root||job.root===root));
+ if(!candidates.length)return;
+ const jobs=await readContributionJobs();
+ for(const job of candidates){
+  if(!completedTeamContributionEvidence(job,jobs))continue;
+  try{
+   if(await recoverableCli(job))continue;
+   if(await restoreCompletedTeamContribution(job,jobs))activeContributions.delete(job.id);
+  }catch{log.warn({contributionId:job.id},"No se pudo confirmar el cierre del registro; se mantiene la protección.");}
+ }
 }
 
 /** Team verification closes every provider turn waiting for that task's result. */

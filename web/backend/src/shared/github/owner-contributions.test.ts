@@ -219,8 +219,8 @@ describe("durable CLI contribution recovery",()=>{
   await api.finishOwnerTeamContribution("worker","worker-task",success);
   expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
  });
- async function completedWorkerFixture(status:"pushed"|"empty"="pushed"){
-  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+ async function completedWorkerFixture(status:"pushed"|"empty"="pushed",canRecover?:(job:ContributionJob)=>Promise<boolean>){
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery,canRecover);
   const turn=(await api.beginOwnerContribution(user,"worker",root,"local",true))!;
   turn.job.teamTaskId="worker-task";await api.saveContribution(turn.job);
   const peer:ContributionJob={...turn.job,id:randomUUID(),status,succeeded:true,completedAt:new Date(Date.now()+1000).toISOString(),after:turn.job.before};
@@ -231,6 +231,46 @@ describe("durable CLI contribution recovery",()=>{
   await api.saveContribution(peer);await api.saveContribution(delivery);
   return {api,turn,peer,delivery};
  }
+ it("reconciles a completed worker at preflight without restarting or releasing a live CLI",async()=>{
+  let live=true;
+  const probe=vi.fn(async()=>live);
+  const {api,turn,delivery}=await completedWorkerFixture("pushed",probe);
+  await api.bindOwnerContributionCli(user,{conversationId:"worker",jobId:"cli",startedAt:Date.now(),moduleRecovery:"scope"},"local");
+  expect(await api.contributionUpdateBlocker(root+"-other",[])).toBeUndefined();expect(probe).not.toHaveBeenCalled();
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  expect((await api.readContributionJobs()).find(j=>j.id===turn.job.id)?.status).toBe("capturing");
+  live=false;
+  expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
+  expect((await api.readContributionJobs()).find(j=>j.id===turn.job.id)).toMatchObject({status:"pushed",includedIn:delivery.id});
+ });
+ it("periodically reconciles finished records while an unrelated task remains active",async()=>{
+  const {api,turn}=await completedWorkerFixture("empty",async()=>false);
+  await api.bindOwnerContributionCli(user,{conversationId:"worker",jobId:"cli",startedAt:Date.now(),moduleRecovery:"scope"},"local");
+  const unrelated=await api.beginOwnerContribution(user,"unrelated",root,"local",true);
+  api.requestContributionDelivery();
+  await vi.waitFor(async()=>expect((await api.readContributionJobs()).find(j=>j.id===turn.job.id)?.status).toBe("empty"));
+  expect((await api.readContributionJobs()).find(j=>j.id===unrelated!.job.id)?.status).toBe("capturing");
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  await api.finishOwnerContribution(unrelated,false);
+ });
+ it("keeps the protection when observing the CLI fails and reconciles on a later successful check",async()=>{
+  let uncertain=true;
+  const {api,turn}=await completedWorkerFixture("empty",async()=>{if(uncertain)throw new Error("unavailable");return false;});
+  await api.bindOwnerContributionCli(user,{conversationId:"worker",jobId:"cli",startedAt:Date.now(),moduleRecovery:"scope"},"local");
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  expect((await api.readContributionJobs()).find(j=>j.id===turn.job.id)?.status).toBe("capturing");
+  uncertain=false;
+  expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
+ });
+ it("does not release an API turn or a worker with an unconfirmed delivery",async()=>{
+  const probe=vi.fn(async()=>false);
+  const {api,turn,delivery}=await completedWorkerFixture("empty",probe);
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");expect(probe).not.toHaveBeenCalled();
+  delivery.status="pending";await api.saveContribution(delivery);
+  await api.bindOwnerContributionCli(user,{conversationId:"worker",jobId:"cli",startedAt:Date.now(),moduleRecovery:"scope"},"local");
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");expect(probe).not.toHaveBeenCalled();
+  await api.finishOwnerContribution(turn,false);
+ });
  it.each(["pushed","empty"] as const)("restores a stale continuation from its verified %s snapshot without capturing current edits",async status=>{
   const {turn,peer,delivery}=await completedWorkerFixture(status);
   const index=await fs.readFile(path.join(root,".git/index"));
