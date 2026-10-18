@@ -1,0 +1,8 @@
+{
+  "title": "Estado del chat actualizado durante la recuperación",
+  "changes": [
+    "El indicador del agente y la consola reflejan la ejecución actual cuando el asistente continúa después de un fallo de herramienta.",
+    "Los errores anteriores se conservan en el historial sin mantener el chat en error tras una respuesta final confirmada.",
+    "Las ejecuciones fallidas, interrumpidas o pendientes conservan su estado correspondiente."
+  ]
+}

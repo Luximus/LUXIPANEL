@@ -289,12 +289,12 @@ it.each([{ stopped: true }, { error: "Fallo que requiere atención" }, { interru
   expect(host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')?.open).toBe(false);
 });
 
-it("signals an API tool failure in the closed console and preserves its details", async () => {
+it("keeps a failed API call in the history after the execution returns its final answer", async () => {
   const response = { ...reply(false, true), tools: [{ id: "failed-tool", name: "files.read", input: {}, result: { success: false, output: "El archivo solicitado no existe" } }] };
   await renderThread({ mode: "api", turns: [user, response], agent });
   const group = host.querySelector<HTMLDetailsElement>('[data-execution-source="API"]')!;
   expect(group.open).toBe(false);
-  expect(group.querySelector('summary')?.textContent).toContain("Error");
+  expect(group.querySelector('summary')?.textContent).toContain("Ver historial");
   await toggle(group);
   await toggle(group.querySelector('details')!);
   expect(visibleText(host)).toContain("El archivo solicitado no existe");
@@ -535,8 +535,9 @@ it("keeps confirmed API calls collapsed under Listo and the full trace behind on
 
 it.each([
   { name: "confirmed", pending: false, result: { success: true, output: "Salida completa" }, expected: "done", label: "Ver historial" },
-  { name: "failure while streaming", pending: true, result: { success: false, output: "Fallo de la llamada" }, expected: "failed", label: "Error" },
+  { name: "failure while streaming", pending: true, result: { success: false, output: "Fallo de la llamada" }, expected: "failed", label: "ejecutando" },
   { name: "failure at rest", pending: false, result: { success: false, output: "Fallo de la llamada" }, expected: "failed", label: "Error" },
+  { name: "final answer after recovery", pending: false, result: { success: false, output: "Fallo conservado" }, expected: "failed", label: "Ver historial" },
   { name: "running", pending: true, expected: "running", label: "ejecutando" },
   { name: "no result at rest", pending: false, expected: "unconfirmed", label: "Resultado no confirmado" },
   { name: "interrupted", pending: true, interrupted: true, expected: "unconfirmed", label: "Resultado no confirmado" },
@@ -546,7 +547,7 @@ it.each([
   { name: "question", pending: true, ask: [{ id: "question", type: "text" as const, text: "Pregunta conservada" }], expected: "waiting", label: "En espera" },
 ])("shows the actual API state with history closed: $name", async scenario => {
   const response: ChatTurn = {
-    role: "assistant", text: "Texto conservado", pending: scenario.pending,
+    role: "assistant", text: scenario.name === "failure at rest" ? "" : "Texto conservado", pending: scenario.pending,
     interrupted: scenario.interrupted, stopped: scenario.stopped, error: scenario.error,
     permission: scenario.permission, ask: scenario.ask,
     tools: [{ id: "actual-call", name: "files.write", input: { path: "example.txt" }, result: scenario.result }],

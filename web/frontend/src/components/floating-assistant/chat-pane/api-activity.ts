@@ -22,18 +22,25 @@ export function apiToolStatus(tool: ChatTurn["tools"][number], turn: ChatTurn): 
 }
 
 export function apiExecutionStatus(turn: ChatTurn, tasks: TeamTaskView[] = []): ThoughtLineEntryStatus {
-  if (turn.error || turn.tools.some(tool => tool.result?.success === false)
-    || tasks.some(task => task.status === "failed" || task.verify?.state === "failed")) return "failed";
+  if (turn.error) return "failed";
   if (turn.stopped) return "stopped";
-  if (turn.interrupted || turn.tools.some(tool => apiToolStatus(tool, turn) === "unconfirmed")) return "unconfirmed";
+  if (turn.interrupted) return "unconfirmed";
+  const cli = turn.tools.findLast(tool => tool.name.endsWith(".cli"));
+  // The CLI wrapper reports the execution outcome. Nested calls can fail and
+  // recover while it is still running; their errors belong to their history.
+  if (cli?.result?.success === false) return "failed";
   const activeTasks = tasks.filter(task => task.status === "running" || task.status === "pending");
   if (turn.permission || turn.ask?.length || activeTasks.some(task => task.pendingPermission)) return "waiting";
   if (turn.pending || turn.status || tasks.some(task => task.status === "running" || task.verify?.state === "running")) return "running";
   if (activeTasks.length) return "waiting";
+  if (tasks.some(task => task.status === "failed" || task.verify?.state === "failed")) return "failed";
   if (tasks.some(task => task.status === "canceled")) return "stopped";
   if (turn.completionPending) return "waiting";
+  if (cli) return cli.result ? "done" : "unconfirmed";
+  const hasFinalAnswer = Boolean(turn.text.slice(turn.apiTextOffset ?? 0).trim());
+  if (!hasFinalAnswer && turn.tools.some(tool => tool.result?.success === false)) return "failed";
+  if (turn.tools.some(tool => apiToolStatus(tool, turn) === "unconfirmed")) return "unconfirmed";
   // Successful calls do not constitute a final answer by themselves.
-  if ((turn.tools.length || turn.apiActivity) && !turn.cli && !turn.tools.some(tool => tool.name.endsWith(".cli"))
-    && !turn.text.slice(turn.apiTextOffset ?? 0).trim()) return "unconfirmed";
+  if ((turn.tools.length || turn.apiActivity) && !turn.cli && !hasFinalAnswer) return "unconfirmed";
   return "done";
 }

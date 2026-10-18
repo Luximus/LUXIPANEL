@@ -52,7 +52,9 @@ describe("API process contract", () => {
     expect(restored.apiActivity).toEqual({ events: events.slice(0, 7) });
     expect(restored.tools).toEqual(turn().tools);
     expect(restored.tools.map(tool => tool.id)).toEqual(["one", "two"]);
-    expect(apiExecutionStatus(restored)).toBe("failed");
+    expect(apiExecutionStatus(turn())).toBe("done");
+    expect(apiExecutionStatus(restored)).toBe("done");
+    expect(apiToolStatus(restored.tools[1]!, restored)).toBe("failed");
     expect(restored.apiTextOffset).toBeUndefined();
   });
 
@@ -118,6 +120,50 @@ describe("API process contract", () => {
     apply({ type: "done" }, 2, true);
     expect(turn().tools[0]?.lanes?.main?.status).toBe("done");
     expect(apiExecutionStatus(turn())).toBe("done");
+  });
+
+  it.each([false, true])("tracks recovery after a failed nested call without erasing it: cli=%s", isCli => {
+    let seq = 0;
+    const emit = (event: AgentEvent) => apply(event, seq++, isCli);
+    if (isCli) emit({ type: "tool_use", id: "cli", name: "codex.cli", input: {} });
+    emit({ type: "tool_use", id: "failed-read", name: "files.read", input: {} });
+    emit({ type: "tool_result", id: "failed-read", success: false, output: "Lectura fallida" });
+    expect(apiExecutionStatus(turn())).toBe("running");
+    const failed = turn().tools.find(tool => tool.id === "failed-read")!;
+    expect(apiToolStatus(failed, turn())).toBe("failed");
+    expect(apiExecutionStatus({ ...turn(), permission: { id: "approval", tool: "files.read", title: "Permiso" } })).toBe("waiting");
+    expect(apiExecutionStatus({ ...turn(), pending: false, stopped: true })).toBe("stopped");
+    expect(apiExecutionStatus({ ...turn(), pending: false, interrupted: true })).toBe("unconfirmed");
+    emit({ type: "tool_use", id: "retry", name: "files.read", input: {} });
+    emit({ type: "tool_result", id: "retry", success: true, output: "Lectura recuperada" });
+    expect(apiExecutionStatus(turn())).toBe("running");
+    if (isCli) emit({ type: "tool_result", id: "cli", success: true, output: "Archivo revisado" });
+    else emit({ type: "text", phase: "final_answer", delta: "Archivo revisado" });
+    expect(apiExecutionStatus(turn())).toBe("running");
+    emit({ type: "done" });
+    expect(apiExecutionStatus(turn())).toBe("done");
+    expect(turn().tools.find(tool => tool.id === "failed-read")?.result).toEqual(failed.result);
+    const restored = historyTurn({ role: "assistant", content: turn().text, ts: "",
+      ...(isCli ? { cli: true, cliLog: "Lectura fallida\nLectura recuperada" } : { apiActivity: turn().apiActivity }) });
+    expect(apiExecutionStatus(restored)).toBe("done");
+  });
+
+  it("keeps genuine terminal failures after successful calls", () => {
+    apply({ type: "tool_use", id: "cli", name: "codex.cli", input: {} }, 0, true);
+    apply({ type: "tool_use", id: "read", name: "files.read", input: {} }, 1, true);
+    apply({ type: "tool_result", id: "read", success: true, output: "Leído" }, 2, true);
+    apply({ type: "tool_result", id: "cli", success: false, output: "Ejecución fallida" }, 3, true);
+    apply({ type: "done" }, 4, true);
+    expect(apiExecutionStatus(turn())).toBe("failed");
+    expect(apiExecutionStatus({ ...turn(), tools: [], error: "Fallo terminal" })).toBe("failed");
+  });
+
+  it("does not complete a failed call without a final answer or an unresolved call with one", () => {
+    apply({ type: "tool_use", id: "read", name: "files.read", input: {} });
+    apply({ type: "tool_result", id: "read", success: false, output: "Error" });
+    apply({ type: "done" });
+    expect(apiExecutionStatus(turn())).toBe("failed");
+    expect(apiExecutionStatus({ ...turn(), text: "Respuesta", tools: [{ id: "unknown", name: "files.read", input: {} }] })).toBe("unconfirmed");
   });
 
   it("routes an explicitly translated CLI answer outside the terminal", () => {
@@ -198,4 +244,17 @@ it("shows a canceled worker instead of a stale pending outcome when no work rema
   expect(apiExecutionStatus(response, [canceled])).toBe("stopped");
   expect(apiExecutionStatus(response, [canceled, { ...canceled, id: "active", status: "running" }])).toBe("running");
   expect(apiExecutionStatus(response, [canceled, { ...canceled, id: "pending", status: "pending" }])).toBe("waiting");
+});
+
+it("updates the execution as failed worker verification is retried and resolved", () => {
+  const response = historyTurn({ role: "assistant", content: "Respuesta guardada", ts: "" });
+  const worker = { id: "task", title: "Tarea", status: "done" as const, workerAgentId: "worker",
+    workerAgentName: "Agente", workerConversationId: "worker-chat", createdAt: "" };
+  const failed = { ...worker, verify: { state: "failed" as const, attempts: 1 } };
+  expect(apiExecutionStatus(response, [failed])).toBe("failed");
+  expect(apiExecutionStatus(response, [{ ...failed, status: "pending", pendingPermission: true }])).toBe("waiting");
+  expect(apiExecutionStatus(response, [{ ...failed, status: "running" }])).toBe("running");
+  expect(apiExecutionStatus(response, [{ ...worker, verify: { state: "running", attempts: 2 } }])).toBe("running");
+  expect(apiExecutionStatus(response, [{ ...worker, verify: { state: "passed", attempts: 2 } }])).toBe("done");
+  expect(apiExecutionStatus(response, [{ ...worker, status: "failed" }])).toBe("failed");
 });
