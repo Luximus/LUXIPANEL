@@ -1,0 +1,7 @@
+{
+  "title": "Actualizaciones sin bloqueos de tareas ya terminadas",
+  "changes": [
+    "Al finalizar una tarea del asistente se cierran los registros de todos sus turnos, evitando que una tarea completada siga bloqueando las actualizaciones.",
+    "Los registros antiguos cubiertos por entregas ya confirmadas se recuperan al iniciar el panel, conservando los cambios y las protecciones de los trabajos que siguen activos."
+  ]
+}

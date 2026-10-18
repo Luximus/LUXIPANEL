@@ -195,6 +195,80 @@ describe("durable CLI contribution recovery",()=>{
   expect(await fs.readFile(path.join(dir,"change.patch"),"utf8")).toContain("+export const a=5;");
   expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
  });
+ it.each([true,false])("closes every continuation of a verified worker, success=%s, without closing other tasks",async success=>{
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery,undefined,{publishCompletedTurns:false});
+  const turns=[];
+  for(let i=0;i<3;i++){
+   const turn=await api.beginOwnerContribution(user,"worker",root,"local",true);
+   turn!.job.teamTaskId="worker-task";await api.saveContribution(turn!.job);
+   await fs.writeFile(path.join(root,"web/src/a.ts"),`export const a=${i+2};\n`);
+   expect(await api.finishOwnerContribution(turn,true)).toBeNull();turns.push(turn!);
+  }
+  const other=await api.beginOwnerContribution(user,"other-worker",root,"local",true);
+  other!.job.teamTaskId="other-task";await api.saveContribution(other!.job);
+  await api.finishOwnerTeamContribution("worker","worker-task",success);
+  const jobs=await api.readContributionJobs();
+  for(const turn of turns){
+   const saved=jobs.find(j=>j.id===turn.job.id)!;
+   expect(saved.status).not.toBe("capturing");expect(saved.succeeded).toBe(success);expect(saved.completedAt).toBeTruthy();
+  }
+  expect(jobs.find(j=>j.id===other!.job.id)?.status).toBe("capturing");
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  await api.finishOwnerTeamContribution("other-worker","other-task",false);
+  expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
+  await api.finishOwnerTeamContribution("worker","worker-task",success);
+  expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
+ });
+ async function completedWorkerFixture(status:"pushed"|"empty"="pushed"){
+  const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
+  const turn=(await api.beginOwnerContribution(user,"worker",root,"local",true))!;
+  turn.job.teamTaskId="worker-task";await api.saveContribution(turn.job);
+  const peer:ContributionJob={...turn.job,id:randomUUID(),status,succeeded:true,completedAt:new Date(Date.now()+1000).toISOString(),after:turn.job.before};
+  const delivery:ContributionJob={...peer,id:randomUUID(),teamTaskId:undefined,batchId:undefined,
+   ...(status==="pushed"?{commit:turn.job.head,ci:"success" as const}:{}),
+   checkpoint:{batchId:turn.job.batchId!,sourceId:peer.id,through:peer.completedAt!,members:[peer.id]}};
+  peer.includedIn=delivery.id;
+  await api.saveContribution(peer);await api.saveContribution(delivery);
+  return {api,turn,peer,delivery};
+ }
+ it.each(["pushed","empty"] as const)("restores a stale continuation from its verified %s snapshot without capturing current edits",async status=>{
+  const {turn,peer,delivery}=await completedWorkerFixture(status);
+  const index=await fs.readFile(path.join(root,".git/index"));
+  await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=99;\n");
+  vi.resetModules();const api=await import("./owner-contributions.js");
+  expect(await api.initializeOwnerContributions(noDelivery,async()=>false)).toEqual([]);
+  const saved=(await api.readContributionJobs()).find(j=>j.id===turn.job.id)!;
+  expect(saved).toMatchObject({status,succeeded:true,after:peer.after,completedAt:peer.completedAt,includedIn:delivery.id});
+  expect(saved.patchHash).toBeUndefined();
+  expect(await api.contributionUpdateBlocker(root,[])).toBeUndefined();
+  expect(await fs.readFile(path.join(root,"web/src/a.ts"),"utf8")).toBe("export const a=99;\n");
+  expect(await fs.readFile(path.join(root,".git/index"))).toEqual(index);
+  await expect(fs.stat(path.join(root,"github-users/contributions",turn.job.id,"after.index"))).rejects.toThrow();
+ });
+ it.each(["identity","late-turn","failed-peer","pending-delivery","wrong-tree","missing-tree"])("does not restore a finished worker without matching immutable evidence: %s",async mismatch=>{
+  const {api:old,turn,peer,delivery}=await completedWorkerFixture();
+  if(mismatch==="identity")peer.user={...user,userId:2};
+  if(mismatch==="late-turn")peer.completedAt=new Date(Date.parse(turn.job.createdAt)-1).toISOString();
+  if(mismatch==="failed-peer")peer.succeeded=false;
+  if(mismatch==="pending-delivery")delivery.status="pending";
+  if(mismatch==="wrong-tree")delivery.after="0".repeat(40);
+  if(mismatch==="missing-tree")peer.after=delivery.after="0".repeat(40);
+  await old.saveContribution(peer);await old.saveContribution(delivery);
+  vi.resetModules();const api=await import("./owner-contributions.js");
+  await api.initializeOwnerContributions(noDelivery,async()=>false);
+  const saved=(await api.readContributionJobs()).find(j=>j.id===turn.job.id)!;
+  expect(saved).toMatchObject({status:"interrupted",succeeded:false});expect(saved.includedIn).toBeUndefined();
+ });
+ it("keeps a recoverable CLI active even when a completed peer exists",async()=>{
+  const {api:old,turn}=await completedWorkerFixture();
+  const desc={conversationId:"worker",jobId:"still-live",startedAt:Date.now(),moduleRecovery:"signed-scope"};
+  await old.bindOwnerContributionCli(user,desc,"local");
+  vi.resetModules();const api=await import("./owner-contributions.js");
+  const recovered=await api.initializeOwnerContributions(noDelivery,async j=>j.cliBinding===api.contributionCliBinding(desc));
+  expect(recovered.map(j=>j.id)).toEqual([turn.job.id]);
+  expect(await api.contributionUpdateBlocker(root,[])).toBe("assistant-active");
+  await api.finishOwnerContribution({job:recovered[0]!},false);
+ });
  it("recovers explicitly reviewed later edits and missing dependencies only when the continuation succeeds",async()=>{
   const api=await import("./owner-contributions.js");await api.initializeOwnerContributions(noDelivery);
   const review=await import("./contribution-continuation.js");

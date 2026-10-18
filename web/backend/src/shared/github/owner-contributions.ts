@@ -137,13 +137,11 @@ export function initializeOwnerContributions(check:(user:SessionUser)=>Promise<S
  authorize=check;
  if(!initialized)initialized=(async()=>{
   await fs.mkdir(outbox(),{recursive:true,mode:0o700});
-  const recovered:ContributionJob[]=[],tracked:ContributionJob[]=[];
-  for(const entry of await fs.readdir(outbox(),{withFileTypes:true})){
-   if(!entry.isDirectory() || !/^[a-f0-9-]{36}$/.test(entry.name))continue;
-   const job=JSON.parse(await fs.readFile(path.join(outbox(),entry.name,"job.json"),"utf8")) as ContributionJob;
-   tracked.push(job);
+  const recovered:ContributionJob[]=[],tracked=await readContributionJobs();
+  for(const job of tracked){
    if(job.status==="capturing"){
     if(job.cliBinding && await canRecover?.(job)){recovered.push(job);continue;}
+    if(await restoreCompletedTeamContribution(job,tracked))continue;
     job.status="interrupted";job.succeeded=false;job.completedAt=new Date().toISOString();job.error="La tarea terminó sin un resultado confirmado.";await saveContribution(job);
    }
   }
@@ -675,8 +673,32 @@ export async function refreshContributionChecks(job:ContributionJob,authorizeUse
  await saveContribution(job);
 }
 
-/** Team verification is the publication boundary, including recovered workers. */
+/** Restore only a finished worker already covered by an immutable delivery.
+ * The caller has ruled out a recoverable live CLI. Never recapture today's
+ * workspace or reinterpret an interrupted/failed task as successful.
+ */
+async function restoreCompletedTeamContribution(job:ContributionJob,jobs:ContributionJob[]):Promise<boolean>{
+ if(job.status!=="capturing"||!job.teamTaskId||!job.batchId||job.isolated||job.completedAt||job.after)return false;
+ const createdAt=Date.parse(job.createdAt);
+ if(!Number.isFinite(createdAt))return false;
+ for(const peer of jobs){
+  if(peer.id===job.id||peer.teamTaskId!==job.teamTaskId||peer.conversationId!==job.conversationId||peer.batchId!==job.batchId||peer.root!==job.root||peer.isolated||!sameContributionPrincipal(peer,job))continue;
+  if(peer.succeeded!==true||!peer.completedAt||!peer.after||!/^[a-f0-9]{40}$/.test(peer.after)||!Number.isFinite(Date.parse(peer.completedAt))||Date.parse(peer.completedAt)<createdAt)continue;
+  const delivery=jobs.find(row=>row.id===peer.includedIn);
+  if(!delivery||delivery.root!==job.root||!sameContributionPrincipal(delivery,job)||delivery.after!==peer.after||delivery.checkpoint?.batchId!==job.batchId||!delivery.checkpoint.members.includes(peer.id))continue;
+  if(delivery.status!=="empty"&&!(delivery.status==="pushed"&&delivery.commit))continue;
+  try{await contributionGit(job.root,["cat-file","-e",peer.after+"^{tree}"]);}catch{continue;}
+  job.status=delivery.status;job.succeeded=true;job.completedAt=peer.completedAt;job.after=peer.after;
+  job.includedIn=delivery.id;job.commit=delivery.commit;job.integratedBy=delivery.commit;
+  job.ci=delivery.ci;job.checksUrl=delivery.checksUrl;job.error=undefined;
+  await saveContribution(job);
+  return true;
+ }
+ return false;
+}
+
+/** Team verification closes every provider turn waiting for that task's result. */
 export async function finishOwnerTeamContribution(conversationId:string,taskId:string,success:boolean):Promise<void>{
- const job=[...activeContributions.values()].find(j=>j.conversationId===conversationId&&j.teamTaskId===taskId);
- if(job)await finishOwnerContribution({job},success,true);
+ const jobs=[...activeContributions.values()].filter(j=>j.conversationId===conversationId&&j.teamTaskId===taskId);
+ for(const job of jobs)await finishOwnerContribution({job},success,true);
 }
