@@ -1,3 +1,5 @@
+import { coordinationTask } from "../../models/agent-envelope.js";
+import { visibleSummary } from "../../models/visible-summary.js";
 import { resolveAgentContext, admitAgentWork } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -110,7 +112,7 @@ export async function createWorkerConversation(
   const convId = String(meta.id);
   if (opts.appendUserMessage) {
     await conversationsRepository
-      .appendMessages(executor, convId, [{ role: "user", provider, content: task, ts: new Date().toISOString() }])
+      .appendMessages(executor, convId, [{ role: "user", provider, content: coordinationTask(task), displaySummary: visibleSummary(task), auto: true, ts: new Date().toISOString() }])
       .catch(() => undefined);
   }
   return convId;
@@ -174,7 +176,7 @@ export function startWorkerRun(args: {
     isWorker: true,
     ...(user ? { user } : {}),
     makeGen: () =>
-      runAgent([{ role: "user", content: task }], {
+      runAgent([{ role: "user", content: coordinationTask(task) }], {
         executor,
         ...(user ? { user } : {}),
         ...(userId ? { userId } : {}),

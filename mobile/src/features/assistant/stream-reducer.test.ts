@@ -16,6 +16,14 @@ function pendingTurn(extra?: Partial<ChatMsg>): ChatMsg[] {
 }
 const last = (msgs: ChatMsg[]) => msgs[msgs.length - 1]!;
 
+it("stores a live summary without replacing the full answer and clears it for pending work", () => {
+  const content = "Respuesta íntegra. ".repeat(100);
+  const saved = applyAssistantEvent(pendingTurn({ content }), { type: "done", displaySummary: "Resultado breve." }).msgs;
+  expect(last(saved)).toMatchObject({ content, displaySummary: "Resultado breve." });
+  const pending = applyAssistantEvent(pendingTurn({ content, displaySummary: "anterior" }), { type: "done", pending: true }).msgs;
+  expect(last(pending).displaySummary).toBeUndefined();
+});
+
 describe("applyAssistantEvent — deltas de texto", () => {
   it("acumula deltas sucesivos en el contenido del turno vivo", () => {
     let msgs = pendingTurn();

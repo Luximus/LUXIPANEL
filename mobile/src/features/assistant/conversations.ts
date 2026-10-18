@@ -13,6 +13,7 @@ import { stripAnsi } from "../../lib/strip-ansi";
 
 /** Forma cruda de un mensaje persistido tal como lo devuelve LUXIPANEL. */
 export type StoredMsg = {
+  displaySummary?: string;
   error?: string; interrupted?: boolean;
   role?: string; content?: string; text?: string; ts?: string;
   textOriginal?: string; textTranslated?: string;
@@ -73,6 +74,7 @@ export function mapStoredMessages(res: StoredMessagesResponse): ChatMsg[] {
         ...(m.error ? { error: m.error } : {}),
         ...(m.interrupted ? { stopped: true } : {}),
         content,
+        ...(m.displaySummary ? { displaySummary: m.displaySummary } : {}),
         ...(currentProvider ? { provider: currentProvider } : {}),
         ...(role === "user" && m.textOriginal && persisted !== m.textOriginal ? { raw: persisted } : {}),
         ...(m.auto ? { auto: true } : {}),

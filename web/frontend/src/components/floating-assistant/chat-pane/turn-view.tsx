@@ -1,3 +1,4 @@
+import { CompactAnswer } from "./CompactAnswer";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -465,7 +466,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
           : answerText
           ? planPreview
             ? <>
-                <MessageContent text={planPreview[1]!} scrollContainerRef={scrollContainerRef} />
+                <CompactAnswer text={planPreview[1]!} summary={turn.displaySummary} />
                 <details className="group mt-2 rounded-lg border border-border/60 bg-background/40 px-2.5 py-2">
                   <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-primary [&::-webkit-details-marker]:hidden">
                     <i className="ti ti-list-details" aria-hidden />
@@ -477,7 +478,8 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
                   </div>
                 </details>
               </>
-            : <MessageContent text={answerText} scrollContainerRef={scrollContainerRef} streaming={turn.pending} />
+            : isUser ? <MessageContent text={answerText} scrollContainerRef={scrollContainerRef} streaming={turn.pending} />
+            : <CompactAnswer text={answerText} summary={turn.displaySummary} streaming={turn.pending} />
           : turn.status
             ? <TranslatingShimmer state={turn.status} />
             : turn.pending && !visibleTools.length && !cliRunningHidden

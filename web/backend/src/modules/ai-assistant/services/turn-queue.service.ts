@@ -1,3 +1,5 @@
+import { coordinationEnvelope, coordinationTask, budgetCoordinationReports, encodeCoordination } from "../models/agent-envelope.js";
+import { visibleSummary } from "../models/visible-summary.js";
 import { admitAgentWork, resolveConversationBinding, resolveAgentContext } from "./agent-context.service.js";
 import { enqueueAgentTurn } from "./queued-turn-admission.js";
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -320,10 +322,10 @@ async function drainNextTurn(executor: Executor, conversationId: string): Promis
   const next = candidate;
 
   // Persist queued turns exactly as entered; the agent receives the same text.
-  if (next.auto) {
+  if (next.auto || next.isWorker) {
     await conversationsRepository
       .appendMessages(executor, conversationId, [
-        { role: "user", provider: next.provider, content: next.userText, ts: new Date().toISOString(), auto: true },
+        { role: "user", provider: next.provider, content: next.isWorker ? coordinationTask(next.userText) : next.userText, displaySummary: visibleSummary(next.userText), ts: new Date().toISOString(), auto: true },
       ], { queueTurnId: next.id });
   } else {
     await persistUserMessage(executor, conversationId, next.userText, next.provider, next.attachments, undefined, next.id);
@@ -445,21 +447,17 @@ export function initTeamNudgeListener(): void {
           (t) => t.id && wanted.has(t.id),
         );
         if (!tasks.length || tasks.some(task => !isTerminalTaskStatus(task.status))) return;
-        const PER_TASK = 3_000;
-        const TOTAL = 12_000;
-        let spent = 0;
-        const lines = tasks.map((t, i) => {
-          const raw = ((t.status === "done" ? t.resultSummary : t.error) ?? "").trim() || "(sin detalle)";
-          const room = Math.max(0, Math.min(PER_TASK, TOTAL - spent));
-          const text = raw.length > room ? raw.slice(0, room) + "…[recortado — detalle completo en el chat del agente]" : raw;
-          spent += text.length;
-          const outcome = t.status === "done" ? "OK" : t.status === "canceled" ? "CANCELADA" : "FALLÓ";
-          return `${i + 1}. «${t.title}» (${t.workerAgentName}) — ${outcome}:\n${text}`;
-        });
-        const userText =
-          "[EQUIPO] Tus subordinados terminaron las tareas delegadas. Resultados:\n\n" +
-          lines.join("\n\n") +
-          "\n\nSintetiza y entrega al usuario la respuesta final consolidada (breve y accionable; NO pegues la salida cruda).";
+        const results = budgetCoordinationReports(tasks.map(t => coordinationEnvelope(
+          (t.status === "done" ? t.resultSummary : t.error) ?? "",
+          t.status === "done" ? "result" : "blocked",
+          { taskId: t.id, status: t.status, agent: t.workerAgentName, title: t.title,
+            ...(t.verify ? { verify: t.verify.state } : {}),
+            ...(t.pendingPermission ? { pendingPermission: true } : {}) },
+          { conversationId: t.workerConversationId, taskId: t.id },
+        )), 12000);
+        const userText = encodeCoordination({ protocol: "lxp.agent.v1", kind: "result",
+          summary: `${tasks.length} tareas del equipo actualizaron su resultado.`, results,
+          action: "Consolidate verified results for the user in at most two short sentences (240 characters). Read referenced worker messages before acting when detail.required=true or evidence is missing. Do not repeat raw results or assume deployment success." });
         const queued = await agentQueueRepository.listFor(executor, leaderConversationId);
         const alreadyQueued = queued.some(turn => tasks.every(task => turn.teamTaskIds?.includes(task.id ?? "")));
         if (!alreadyQueued) await enqueueAgentTurn(executor, {
@@ -637,15 +635,10 @@ export function initAgentMessageListener(): void {
         const isTeamChat = target.kind === "team-leader" || target.kind === "team-worker";
 
         // 2. Texto del turno para el destinatario (snapshot de usuario del EMISOR).
-        const userText =
-          `[MENSAJE DE ${message.fromAgentName} (agente ${message.fromAgentId})]\n` +
-          `${message.text}\n\n` +
-          (isTeamChat
-            ? `Este mensaje llega a tu chat de equipo; contesta aquí o con ` +
-              `\`agents.send_message\` hacia ${message.fromAgentName} (agentId ${message.fromAgentId}).`
-            : `Atiende este requerimiento en este chat. Si necesitas responderle, usa ` +
-              `\`agents.send_message\` hacia ${message.fromAgentName} (agentId ` +
-              `${message.fromAgentId}) — no asumas que puede ver este chat.`);
+        const userText = encodeCoordination(coordinationEnvelope(message.text, "request",
+          { from: message.fromAgentId, fromName: message.fromAgentName, to: message.toAgentId,
+            replyTool: "agents.send_message", team: isTeamChat },
+          { messageId: storedMessageId, tool: "agents.read_message" }));
         const provider = (PROVIDER_IDS as readonly string[]).includes(target.provider ?? "")
           ? (target.provider as AssistantProviderId)
           : recipient.providerId;
@@ -660,7 +653,7 @@ export function initAgentMessageListener(): void {
           if (steered) {
             await conversationsRepository
               .appendMessages(executor, target.conversationId, [
-                { role: "user", provider, content: userText, ts: new Date().toISOString(), auto: true },
+                { role: "user", provider, content: userText, displaySummary: visibleSummary(userText), ts: new Date().toISOString(), auto: true },
               ])
               .catch(() => undefined);
             await agentMessagesRepository.update(executor, storedMessageId, {
@@ -690,6 +683,7 @@ export function initAgentMessageListener(): void {
           user: message.user ?? payload.user ?? null,
           auto: true,
           delegationDepth: message.hops,
+          agentMessageId: storedMessageId,
         });
 
         // 5. Mark delivered BEFORE the drain (the drain can close it as `read`).

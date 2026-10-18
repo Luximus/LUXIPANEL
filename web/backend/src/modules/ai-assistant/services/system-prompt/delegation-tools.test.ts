@@ -1,3 +1,4 @@
+import { encodeCoordination } from "../../models/agent-envelope.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,7 +33,7 @@ describe("synchronous delegation scope", () => {
         yield { type: "text", delta: "done" };
       },
     })!;
-    expect(await built.tool.handler({ agentId: "worker", task: "Inspect the project" })).toEqual({ ok: true, output: "done" });
+    expect(await built.tool.handler({ agentId: "worker", task: "Inspect the project" })).toEqual({ ok: true, output: encodeCoordination({ protocol: "lxp.agent.v1", kind: "result", summary: "done", data: { text: "done" }, from: "worker" }) });
     expect(received?.effort).toBe(effort || undefined);
   });
 
@@ -48,7 +49,7 @@ describe("synchronous delegation scope", () => {
         yield { type: "text", delta: "done" };
       },
     })!;
-    expect(await built.tool.handler({ agentId: "worker", task: "Fix the task" })).toEqual({ ok: true, output: "done" });
+    expect(await built.tool.handler({ agentId: "worker", task: "Fix the task" })).toEqual({ ok: true, output: encodeCoordination({ protocol: "lxp.agent.v1", kind: "result", summary: "done", data: { text: "done" }, from: "worker" }) });
     expect(received?.forcedCwd).toBe("/var/www/LUXIPANEL/.lxp/owner-workspaces/task-one");
     expect(received?.approvalModeOverride).toBe(mode);
     expect(received?.conversationId).toBeUndefined();

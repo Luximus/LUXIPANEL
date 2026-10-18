@@ -268,6 +268,7 @@ const assistantPart1 = {
       "unconfirmed": "Результат не подтверждён",
       "running": "выполняется…",
       "stopped": "остановлено",
+      "viewDetails": "Показать подробности",
       "viewHistory": "Просмотр истории",
       "done": "Готово",
       "withWarnings": "Готово с предупреждениями",

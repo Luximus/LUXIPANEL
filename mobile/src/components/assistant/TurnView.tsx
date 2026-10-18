@@ -1,3 +1,4 @@
+import { CompactAnswer } from "./CompactAnswer";
 import { nativeText } from '../../i18n/native-text';
 import { localizeServerError } from '../../lib/server-error-localization';
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -115,11 +116,9 @@ export const TurnView = React.memo(function TurnView({
   }
   const meta = PROVIDER_META[bubbleProvider] ?? null;
   if (msg.role === "user" && msg.auto) {
-    return <View style={{ alignItems: "center", marginVertical: 4 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderColor: tokens.border, backgroundColor: tokens.bgInput, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-        <Users size={12} color={tokens.textMuted} />
-        <Text style={{ color: tokens.textMuted, fontSize: 10 }}>{(lang ?? "es").startsWith("es") ? "Aviso automático del equipo" : "Automatic team notice"}</Text>
-      </View>
+    return <View style={{ marginVertical: 4 }}>
+      <Text style={{ color: tokens.textMuted, fontSize: 10 }}>{(lang ?? "es").startsWith("es") ? "Aviso automático del equipo" : "Automatic team notice"}</Text>
+      <CompactAnswer text={msg.content} summary={msg.displaySummary} tokens={tokens} t={t} lang={lang} />
     </View>;
   }
   if (msg.role === "user") {
@@ -234,13 +233,7 @@ export const TurnView = React.memo(function TurnView({
         {planPreview ? (
           <PlanPreview summary={planPreview[1]!} detail={planPreview[2]!} tokens={tokens} lang={lang} t={t} />
         ) : msg.content ? (
-          <MarkdownView
-            text={stripAnsi(msg.content)}
-            tokens={tokens}
-            textColor={tokens.textPrimary}
-            copyLabel={t.copy}
-            copiedLabel={t.copied}
-          />
+          <CompactAnswer text={stripAnsi(msg.content)} summary={msg.displaySummary} tokens={tokens} t={t} lang={lang} />
         ) : msg.status && msg.pending ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <ActivityIndicator size="small" color={tokens.textMuted} />
@@ -357,7 +350,7 @@ function RawDisclosure({ label, text, tokens }: { label: string; text: string; t
 function PlanPreview({ summary, detail, tokens, lang, t }: { summary: string; detail: string; tokens: ThemeTokens; lang?: string; t: AssistantStrings }) {
   const [open, setOpen] = useState(false);
   return <View style={{ gap: 8 }}>
-    <MarkdownView text={summary} tokens={tokens} textColor={tokens.textPrimary} copyLabel={t.copy} copiedLabel={t.copied} />
+    <CompactAnswer text={summary} tokens={tokens} t={t} lang={lang} />
     <View style={{ borderWidth: 1, borderColor: tokens.border, borderRadius: 10, backgroundColor: tokens.bgInput, padding: 9 }}>
       <Pressable onPress={() => setOpen((value) => !value)} accessibilityRole="button"
         accessibilityLabel={nativeText("Ver plan completo", undefined, lang)}

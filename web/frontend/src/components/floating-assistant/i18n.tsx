@@ -115,6 +115,7 @@ export type AssistantMessages = {
       running: string;
       stopped: string;
       viewHistory: string;
+      viewDetails: string;
       done: string;
       withWarnings: string;
       ok: string;

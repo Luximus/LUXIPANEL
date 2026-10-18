@@ -30,3 +30,7 @@ La voz también está disponible en chats generales sin proyecto: el backend man
 
 ### Historial y controles de voz (2026-10-15)
 ChatComposer ya no monta un panel independiente de voz. El botón original y su placeholder reflejan el estado; silenciar está en el menú de audio. RealtimeActivity muestra únicamente trabajo real y solicitudes de aprobación dentro del historial, recupera las tareas persistidas y actualiza los mensajes al recibir transcripciones guardadas. Al cerrar el micrófono quedan accesibles tareas y botones del trabajador. La sesión visual exige panelId y conversationId, y las respuestas de preparación tardías no pueden abrir otro chat. Navegar explícitamente cierra la captura; pasar a segundo plano o bloquear la pantalla conserva el audio nativo. Se usa el dev-client y QR existente, sin generar APK.
+
+### Resúmenes del asistente (2026-10-17)
+
+El historial y el reductor SSE conservan displaySummary como dato opcional, separado del contenido completo. CompactAnswer presenta un Text de dos líneas y un control accesible para desplegar el detalle; la misma proyección portable de la web admite mensajes anteriores y el resumen raíz de TOON. Las preguntas y aprobaciones siguen usando sus componentes habituales. Este cambio de código requiere una futura entrega del cliente nativo para llegar a instalaciones móviles existentes.

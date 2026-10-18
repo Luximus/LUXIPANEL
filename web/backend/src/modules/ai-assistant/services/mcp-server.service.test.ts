@@ -46,6 +46,12 @@ vi.mock("./team-tools.js", () => ({
   buildTeamToolsForConversation: (...args: unknown[]) => mockBuildTeamTools(...args),
 }));
 
+const mockBuildMessages = vi.hoisted(() => vi.fn(async (_args: any): Promise<any> => null));
+vi.mock("./agent-messages.service.js", () => ({
+  SEND_MESSAGE_TOOL: "agents.send_message", READ_MESSAGE_TOOL: "agents.read_message",
+  buildSendMessageToolForConversation: (args: unknown) => mockBuildMessages(args),
+}));
+
 import { mcpServerService as rawMcpServerService } from "./mcp-server.service.js";
 
 const mcpServerService = {
@@ -121,6 +127,7 @@ function registerPreviewCap(ownerUserId: string): void {
 
 describe("mcpServerService", () => {
   beforeEach(() => {
+    mockBuildMessages.mockReset().mockResolvedValue(null);
     agentCapabilityRegistry._resetForTest();
     communityPreviewRegistry._resetForTest();
     agentCapabilityRegistry.register(mkCap());
@@ -147,6 +154,24 @@ describe("mcpServerService", () => {
       ctx,
     );
     expect(r).toBeNull();
+  });
+
+  it("exposes and dispatches JSON message details through CLI without sharing cached authority", async () => {
+    mockBuildMessages.mockImplementation(async ({ executor, userId }) => ({
+      tool: { name: "agents.send_message", description: "send", inputSchema: { type: "object" }, handler: async () => ({ ok: true, output: "sent" }) },
+      readTool: { name: "agents.read_message", description: "read", inputSchema: { type: "object" }, handler: async () => ({ ok: true, output: { target: executor.target.id, userId } }) },
+    }));
+    const channel = { ...ctx, user: mkUser(1), toolNamePrefix: "servers.", permissionConversationId: "json-details-scope" };
+    const list = await mcpServerService.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" }, channel);
+    expect((list?.result as any).tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: "agents__read_message" })]));
+    for (const context of [channel, { ...channel, userId: "2", user: mkUser(2) },
+      { ...channel, executor: { ...localExecutor, target: { ...localExecutor.target, id: "other-target" } } }]) {
+      const result = await mcpServerService.handle({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "agents__read_message", arguments: { messageId: "message" } } }, context);
+      const payload = result?.result as any;
+      expect(payload.isError).not.toBe(true);
+      expect(JSON.parse(payload.content[0].text)).toEqual({ target: context.executor.target.id, userId: context.userId });
+    }
+    expect(mockBuildMessages).toHaveBeenCalledTimes(3);
   });
 
   it("tools/list maps capability names with `.` → `__`", async () => {

@@ -528,7 +528,10 @@ it("keeps confirmed API calls collapsed under Listo and the full trace behind on
   expect(header.getAttribute("aria-expanded")).toBe("false");
   await act(async () => header.click());
   expect(header.getAttribute("aria-expanded")).toBe("true");
-  expect([...host.querySelectorAll('[data-message-section="answer"] p')].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+  expect(host.querySelector('[data-visible-summary]')?.textContent).toBe(response.text.replace(/\s+/g, " "));
+  const detail = host.querySelector<HTMLDetailsElement>('[data-compact-answer] > details')!;
+  await toggle(detail);
+  expect([...detail.querySelectorAll("p")].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
 });
 
 it.each([
@@ -600,7 +603,10 @@ it("does not reconstruct API calls from historical answer paragraphs", async () 
   await renderThread({ mode: "api", turns: [user, response] });
   expect(host.querySelector("[data-entry-id]")).toBeNull();
   expect(host.querySelector('[data-execution-source="API"]')).toBeNull();
-  expect([...host.querySelectorAll('[data-message-section="answer"] p')].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+  expect(host.querySelector('[data-visible-summary]')?.textContent).toBe(response.text.replace(/\s+/g, " "));
+  const detail = host.querySelector<HTMLDetailsElement>('[data-compact-answer] > details')!;
+  await toggle(detail);
+  expect([...detail.querySelectorAll("p")].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
 });
 
 it("separates observed API narration from the final answer and copy action", async () => {
@@ -610,7 +616,10 @@ it("separates observed API narration from the final answer and copy action", asy
   const saved = JSON.stringify(response);
   await renderThread({ mode: "api", turns: [user, response] });
   const bubble = host.querySelector('[data-message-section="answer"]')!;
-  expect([...bubble.querySelectorAll("p")].map(el => el.textContent)).toEqual(answer.split("\n\n"));
+  expect(bubble.querySelector('[data-visible-summary]')?.textContent).toBe(answer.replace(/\s+/g, " "));
+  const detail = bubble.querySelector<HTMLDetailsElement>('[data-compact-answer] > details')!;
+  await toggle(detail);
+  expect([...detail.querySelectorAll("p")].map(el => el.textContent)).toEqual(answer.split("\n\n"));
   expect(visibleText(host)).not.toContain(narration.trim());
   const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
   const copy = [...bubble.querySelectorAll<HTMLButtonElement>("button")].find(el => el.textContent?.trim() === "Copiar")!;
@@ -771,4 +780,30 @@ it("keeps truncated and orphaned historical API details reachable, without dupli
   expect(visibleText(history)).toContain("Salida histórica sin llamada");
   expect(history.querySelector("[data-api-truncated]")?.textContent).toBe("Parte del detalle no se conservó por el límite del historial.");
   expect(history.querySelector("[data-api-result]")?.textContent).toContain("Error");
+});
+
+it.each([false, true])("shows a bounded preview with full expandable details for ordinary and agent chats: cli=%s", async cli => {
+  const content = "Revisión completada. Falta desplegar.\n\n" + "Evidencia completa y restricciones conservadas. ".repeat(100);
+  for (const selected of [null, agent]) {
+    const response = historyTurn({ role: "assistant", content, ts: "", cli });
+    const canonicalContent = response.text;
+    await renderThread({ mode: cli ? "cli" : "api", turns: [user, response], agent: selected });
+    const preview = host.querySelector<HTMLElement>('[data-visible-summary]')!;
+    expect(preview.textContent).toBe("Revisión completada. Falta desplegar.");
+    expect(visibleText(host)).not.toContain("Evidencia completa");
+    const detail = host.querySelector<HTMLDetailsElement>('[data-compact-answer] > details')!;
+    if (!detail.open) await toggle(detail);
+    expect(detail.textContent).toContain("Evidencia completa y restricciones conservadas.");
+    expect(response.text).toBe(canonicalContent);
+    await toggle(detail);
+  }
+});
+
+it("keeps internal JSON hidden in the team preview and uses the same persisted summary after reconnect", async () => {
+  const content = JSON.stringify({ protocol: "lxp.agent.v1", kind: "blocked", summary: "Falta verificar el servicio.", data: { failure: "HTTP 503" } });
+  const response = historyTurn({ role: "assistant", content: "Resultado pendiente.\n\nDetalle extenso.", displaySummary: "Falta verificar el servicio.", ts: "" });
+  await renderThread({ mode: "api", turns: [user, { role: "user", auto: true, text: content, tools: [] }, response] });
+  expect(host.querySelector('[data-message-section="answer"] [data-visible-summary]')?.textContent).toBe("Falta verificar el servicio.");
+  expect(visibleText(host)).not.toContain("lxp.agent.v1");
+  expect(visibleText(host)).not.toContain("HTTP 503");
 });

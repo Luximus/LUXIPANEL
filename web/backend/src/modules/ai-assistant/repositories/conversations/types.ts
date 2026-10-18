@@ -20,6 +20,8 @@ export interface MessageAttachmentRef {
 }
 
 export interface ConversationMessage {
+  /** Bounded display text, independent of canonical model context. */
+  displaySummary?: string;
   error?: string;
   interrupted?: boolean;
   /** Delegated tasks still require completion/collection; content is not a final answer. */

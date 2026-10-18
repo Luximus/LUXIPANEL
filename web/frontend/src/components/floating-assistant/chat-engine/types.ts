@@ -54,6 +54,7 @@ export interface TurnAttachment {
 }
 
 export interface ChatTurn {
+  displaySummary?: string;
   role: "user" | "assistant";
   provider?: string;
   text: string;

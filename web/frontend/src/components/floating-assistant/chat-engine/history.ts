@@ -40,6 +40,7 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
   const apiActivity = m.role === "assistant" && !m.cli ? m.apiActivity : undefined;
   return {
     role: m.role,
+    ...(m.displaySummary ? { displaySummary: m.displaySummary } : {}),
     ...(m.role === "assistant" && m.pending ? { completionPending: true } : {}),
     ...(m.error ? { error: m.error } : {}),
     ...(m.interrupted ? { stopped: true } : {}),

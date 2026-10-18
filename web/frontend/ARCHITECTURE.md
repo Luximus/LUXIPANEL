@@ -496,3 +496,7 @@ altas; elimina listeners al cerrar el módulo. La tabla declara `data-infinite-f
 para excluirse del paginador de tablas heredadas. Orden y ocultos se aplican en el
 servidor antes de dividir el directorio; los resultados de búsqueda ya recibidos
 se incorporan por bloques al mismo scroll.
+
+### Respuestas compactas (2026-10-17)
+
+`CompactAnswer` limita la presentación del resumen a dos líneas con un máximo de 240 caracteres. El contenido original solo se monta en «Ver detalle» al abrirlo; copiar, el contexto del modelo, errores, permisos y preguntas conservan sus contratos. La proyección funciona en respuestas API/CLI, avisos de equipo, fases anteriores e historial sin displaySummary. Los mensajes TOON muestran su summary raíz, no los datos internos; la validación completa pertenece al backend. El escritorio activo carga este frontend. `scripts/qa-compact-answers.mjs` comprueba geometría y expansión con Chromium y datos simulados, sin invocar proveedores ni conversaciones reales.

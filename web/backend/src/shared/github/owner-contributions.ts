@@ -17,6 +17,7 @@ import { githubStatus, githubToken } from "./user-connection.js";
 import { assertPublishableSource } from "../diagnostics/publication-check.js";
 import { collectChangeNotes, contributionMessage, type PublicChangeNote } from "./change-notes.js";
 import { applyContributionContinuation, type ContributionContinuationReview } from "./contribution-continuation.js";
+import { applyContributionResumption, resumedContribution, type ContributionResumption } from "./contribution-resumption.js";
 import { checkpointCompletedContribution, checkpointDependencyReady, type ContributionCheckpoint } from "./contribution-checkpoints.js";
 import { ForbiddenError } from "../errors/index.js";
 import type { SessionUser } from "../types/index.js";
@@ -51,6 +52,7 @@ export interface ContributionJob {
  /** A separate, explicitly reviewed delivery never changes the failed task's outcome. */
  recoveryOf?:string; recoveredBy?:string; reviewedAt?:string;
  continuationReview?:ContributionContinuationReview;
+ resumption?:ContributionResumption;
  checkpoint?:ContributionCheckpoint;
  publishCompletedTurns?:boolean;
  legacyRecovery?:{members:string[];after:string};
@@ -307,7 +309,7 @@ async function preserveInterruptedContribution(job:ContributionJob):Promise<void
 
 export type ContributionUpdateBlocker="assistant-active"|"publication-pending"|"contribution-review"|"checkout-sync";
 export function reviewedContribution(job:ContributionJob,jobs:ContributionJob[]):ContributionJob|undefined{
- return jobs.find(next=>sameContributionPrincipal(next,job) && !!next.patchHash && !!next.reviewedAt && (
+ return resumedContribution(job,jobs)??jobs.find(next=>sameContributionPrincipal(next,job) && !!next.patchHash && !!next.reviewedAt && (
   (next.recoveryOf===job.id && next.before===job.before && next.after===job.after) ||
   (next.succeeded===true && !!next.completedAt && !!job.interruption?.patchHash &&
    next.continuationReview?.sources?.some(source=>source.id===job.id&&source.snapshotHash===job.interruption?.patchHash) &&
@@ -343,11 +345,13 @@ export async function contributionUpdateBlocker(root:string,changedFiles:string[
  });
 }
 export async function prepareContribution(job:ContributionJob,after:string):Promise<boolean>{
-   const before=job.continuationReview?.before??job.before;
+   await applyContributionResumption(job,after);
+   const before=job.continuationReview?.before??job.resumption?.before??job.before;
    const files=(await contributionGit(job.root,["diff","--name-only","-z",before,after])).split("\0").filter(Boolean);
    if(!files.length){job.status="empty";await saveContribution(job);return false;}
-   const patch=await contributionGit(job.root,["diff","--no-ext-diff",...(job.continuationReview?["--full-index"]:[]),"--binary",before,after,"--",...files]);
+   const patch=await contributionGit(job.root,["diff","--no-ext-diff","--full-index","--binary",before,after]);
    validateContributionPatch(patch);
+   if(job.resumption&&(job.resumption.after!==after||job.resumption.patchHash!==createHash("sha256").update(patch).digest("hex")))throw new Error("La integridad de la continuación cambió; los archivos siguen conservados.");
    job.notes=await collectChangeNotes(files, async file => {
     const exists=(await contributionGit(job.root,["ls-tree","--name-only",after,"--",file])).trim();
     return exists ? contributionGit(job.root,["show",after+":"+file]) : "";
@@ -450,6 +454,7 @@ export async function retryOwnerContribution(user:SessionUser,id:string):Promise
  if(!/^[a-f0-9-]{36}$/.test(id)||!(await githubStatus(user)).canEditCore)throw new ForbiddenError();
  const job=JSON.parse(await fs.readFile(path.join(outbox(),id,"job.json"),"utf8")) as ContributionJob;
  if(job.user.userId!==user.userId||job.user.username!==user.username||!["blocked","pending"].includes(job.status)||!job.patchHash)throw new ForbiddenError();
+ if(reviewedContribution(job,await readContributionJobs()))throw new ForbiddenError("Este aporte ya está incluido en una continuación. Reintenta su envío desde el aporte más reciente.");
  job.status="pending";job.nextAttempt=0;job.error=undefined;await saveContribution(job);void drain();
 }
 export async function deliverContribution(job:ContributionJob, remoteUrl = REMOTE, authorizeUser = authorize):Promise<void>{
@@ -578,6 +583,7 @@ async function drain():Promise<void>{
   }
   ordered.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   for(const job of ordered){
+   if(reviewedContribution(job,await readContributionJobs()))continue;
    if((job.nextAttempt||0)>Date.now())continue;
    if(job.checkpoint?.parentId){
     if(!checkpointDependencyReady(job,await readContributionJobs()))continue;

@@ -1,0 +1,8 @@
+{
+  "title": "Resúmenes breves y coordinación interna en TOON",
+  "changes": [
+    "Los chats muestran resúmenes de hasta dos líneas y permiten desplegar el contenido completo, tanto con agentes como sin ellos.",
+    "La coordinación entre agentes utiliza TOON para transmitir novedades y referencias sin repetir informes extensos.",
+    "Los mensajes antiguos siguen siendo consultables y se conservan los controles de aprobación, interrupción y errores."
+  ]
+}

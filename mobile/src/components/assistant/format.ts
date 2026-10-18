@@ -196,6 +196,7 @@ export function turnRevision(m: ChatMsg): string {
   }
   return [
     m.content.length,
+    m.displaySummary ?? "",
     m.pending ? 1 : 0,
     m.stopped ? 1 : 0,
     m.interrupted ? 1 : 0,

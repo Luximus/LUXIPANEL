@@ -268,6 +268,7 @@ const assistantPart1 = {
       "unconfirmed": "결과 미확인",
       "running": "실행 중…",
       "stopped": "중지됨",
+      "viewDetails": "세부 정보 보기",
       "viewHistory": "기록 보기",
       "done": "완료",
       "withWarnings": "경고와 함께 완료",

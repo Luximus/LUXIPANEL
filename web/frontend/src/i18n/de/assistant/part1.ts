@@ -270,6 +270,7 @@ const assistantPart1 = {
       "unconfirmed": "Ergebnis unbestätigt",
       "running": "läuft…",
       "stopped": "gestoppt",
+      "viewDetails": "Details anzeigen",
       "viewHistory": "Verlauf anzeigen",
       "done": "Fertig",
       "withWarnings": "Fertig mit Warnungen",

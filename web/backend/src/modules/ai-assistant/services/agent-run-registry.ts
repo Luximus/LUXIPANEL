@@ -1,3 +1,4 @@
+import { visibleSummary } from "../models/visible-summary.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -555,7 +556,7 @@ export const agentRunRegistry = {
         // No await between release and terminal delivery: reconnects either
         // subscribe to the closing run or replay its one settled terminal.
         run.done = true;
-        if (!hasTerminal(run)) push(run, errored ? { type: "error", message: terminalError || "La ejecución no terminó correctamente." } : { type: "done", ...(pending ? { pending: true } : {}) });
+        if (!hasTerminal(run)) push(run, errored ? { type: "error", message: terminalError || "La ejecución no terminó correctamente." } : { type: "done", ...(pending ? { pending: true } : cleanAnswer && !run.ac.signal.aborted ? { displaySummary: visibleSummary(run.translatedText ?? cleanAnswer) } : {}) });
         const drain = run.deferredQueueDrain;
         run.deferredQueueDrain = undefined;
         if (persisted && !run.ac.signal.aborted && !run.shutdownRequested && drain) {

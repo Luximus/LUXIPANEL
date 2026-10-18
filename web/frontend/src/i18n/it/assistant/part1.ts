@@ -270,6 +270,7 @@ const assistantPart1 = {
       "unconfirmed": "Risultato non confermato",
       "running": "in esecuzione…",
       "stopped": "interrotto",
+      "viewDetails": "Mostra dettagli",
       "viewHistory": "Visualizza cronologia",
       "done": "Fatto",
       "withWarnings": "Fatto con avvisi",

@@ -268,6 +268,7 @@ const assistantPart1 = {
       "unconfirmed": "ফলাফল নিশ্চিত নয়",
       "running": "চলছে…",
       "stopped": "বন্ধ",
+      "viewDetails": "বিস্তারিত দেখুন",
       "viewHistory": "ইতিহাস দেখুন",
       "done": "সম্পন্ন",
       "withWarnings": "সতর্কতাসহ সম্পন্ন",

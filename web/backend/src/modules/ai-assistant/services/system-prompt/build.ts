@@ -531,7 +531,7 @@ export async function buildSystemPrompt(
           conversationId,
         });
         if (built) {
-          if (provider.mode === "api") tools.push(built.tool);
+          if (provider.mode === "api") tools.push(built.tool, built.readTool);
           systemPrompt += buildAgentMessagePromptBlock(
             agent,
             built.targets,
@@ -555,6 +555,11 @@ export async function buildSystemPrompt(
     : skills;
   const skillBlocks = effectiveSkills.promptBlocks({ cliMode: provider.mode === "cli" });
   if (skillBlocks) systemPrompt += "\n\n" + skillBlocks;
+
+  if (delegationDepth > 0) systemPrompt += "\n\nEntrega interna del equipo: devuelve el resultado final como TOON con kind, summary, data y refs (máximo 4000 caracteres). " +
+    "kind=result o blocked; summary tiene máximo 240 caracteres para el usuario; data contiene solo los hallazgos, restricciones y verificaciones nuevos; refs apunta a evidencias existentes. " +
+    "Usa indentación de 2 espacios; cadenas con dos puntos, comas o saltos de línea deben ir entre comillas y escapadas. Ejemplo: kind: result\nsummary: Revisión completada.\ndata:\n  deployed: false\n" +
+    "No repitas la tarea ni el historial. No cambies el protocolo de preguntas o permisos si necesitas al usuario.";
 
   // Background translation: the user's turn arrived already translated to
   // English and the final answer is translated back to their language. Make

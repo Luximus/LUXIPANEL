@@ -33,7 +33,7 @@ import { permissionBroker } from "./permission-broker.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { agentService } from "./agent.service.js";
 import { buildTeamToolsForConversation } from "./team-tools.js";
-import { buildSendMessageToolForConversation, SEND_MESSAGE_TOOL } from "./agent-messages.service.js";
+import { buildSendMessageToolForConversation, SEND_MESSAGE_TOOL, READ_MESSAGE_TOOL } from "./agent-messages.service.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
 import { MCP_INVALID_REQUEST, MCP_METHOD_NOT_FOUND } from "../../../shared/mcp/rpc-codes.js";
 import type { Executor } from "../../../shared/executor/index.js";
@@ -158,19 +158,20 @@ const SEND_MESSAGE_RETRY_DELAY_MS = 250;
  *  - `none`        → ausencia legítima (sin agente ligado / sin relacionados).
  *  - `unavailable` → fallo transitorio; se expone el stub para que reintente. */
 type SendMessageResolution =
-  | { state: "ready"; tool: AgentTool }
+  | { state: "ready"; tool: AgentTool; readTool?: AgentTool }
   | { state: "none" }
   | { state: "unavailable"; reason: string };
 
-const sendMessageCache = new Map<string, { at: number; tool: AgentTool }>();
+const sendMessageCache = new Map<string, { at: number; tool: AgentTool; readTool?: AgentTool }>();
 
 async function resolveSendMessageTool(ctx: McpHandleContext): Promise<SendMessageResolution> {
   const conversationId = ctx.permissionConversationId;
   if (!conversationId) return { state: "none" };
 
-  const cached = sendMessageCache.get(conversationId);
+  const cacheKey = JSON.stringify([ctx.executor.target.id, ctx.userId ?? ctx.user?.userId ?? null, conversationId]);
+  const cached = sendMessageCache.get(cacheKey);
   if (cached && Date.now() - cached.at < SEND_MESSAGE_CACHE_TTL_MS) {
-    return { state: "ready", tool: cached.tool };
+    return { state: "ready", tool: cached.tool, readTool: cached.readTool };
   }
 
   let lastError = "";
@@ -184,11 +185,11 @@ async function resolveSendMessageTool(ctx: McpHandleContext): Promise<SendMessag
       });
       // `null` = ausencia legítima, NO un fallo: ni reintentar ni publicar stub.
       if (!built?.tool) {
-        sendMessageCache.delete(conversationId);
+        sendMessageCache.delete(cacheKey);
         return { state: "none" };
       }
-      sendMessageCache.set(conversationId, { at: Date.now(), tool: built.tool });
-      return { state: "ready", tool: built.tool };
+      sendMessageCache.set(cacheKey, { at: Date.now(), tool: built.tool, readTool: built.readTool });
+      return { state: "ready", tool: built.tool, readTool: built.readTool };
     } catch (err) {
       lastError = (err as Error).message;
       if (attempt < SEND_MESSAGE_RESOLVE_ATTEMPTS) {
@@ -203,15 +204,15 @@ async function resolveSendMessageTool(ctx: McpHandleContext): Promise<SendMessag
   // una entrada CADUCADA rompería el invariante fail-closed de aislamiento
   // (escrituras al servidor previamente conectado). Exigimos frescura y purgamos
   // lo caducado.
-  const stale = sendMessageCache.get(conversationId);
+  const stale = sendMessageCache.get(cacheKey);
   if (stale && Date.now() - stale.at < SEND_MESSAGE_CACHE_TTL_MS) {
     log.warn(
       { err: lastError, conversationId },
       "mcp: agents.send_message resolution failed — serving the cached channel",
     );
-    return { state: "ready", tool: stale.tool };
+    return { state: "ready", tool: stale.tool, readTool: stale.readTool };
   }
-  if (stale) sendMessageCache.delete(conversationId);
+  if (stale) sendMessageCache.delete(cacheKey);
 
   log.warn(
     { err: lastError, conversationId },
@@ -492,6 +493,8 @@ async function listTools(
           required: send.tool.inputSchema.required ?? [],
         } as object,
       });
+      if (send.readTool) tools.push({ name: toOpenAiName(send.readTool.name), description: send.readTool.description,
+        inputSchema: send.readTool.inputSchema as object });
     } else if (send.state === "unavailable") {
       tools.push({
         name: toOpenAiName(SEND_MESSAGE_UNAVAILABLE_TOOL),
@@ -573,7 +576,7 @@ async function callTool(
   // llamada desde la conversación del canal → su agente ligado (el EMISOR). La
   // allowlist de destinatarios la aplican la propia tool y agentMessagesService.
   if (
-    (realName === SEND_MESSAGE_TOOL || realName === SEND_MESSAGE_UNAVAILABLE_TOOL) &&
+    (realName === SEND_MESSAGE_TOOL || realName === READ_MESSAGE_TOOL || realName === SEND_MESSAGE_UNAVAILABLE_TOOL) &&
     ctx.toolNamePrefix === "servers."
   ) {
     const send = await resolveSendMessageTool(ctx);
@@ -605,7 +608,9 @@ async function callTool(
     }
     const startedAt = Date.now();
     try {
-      const result = await send.tool.handler(args);
+      const tool = realName === READ_MESSAGE_TOOL ? send.readTool : send.tool;
+      if (!tool) return { content: [{ type: "text", text: "Herramienta no disponible en este contexto." }], isError: true };
+      const result = await tool.handler(args);
       const text = asText(result.output);
       void assistantAuditRepository.append(
         {

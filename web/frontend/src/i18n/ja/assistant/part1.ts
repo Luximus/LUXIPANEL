@@ -270,6 +270,7 @@ const assistantPart1 = {
       "unconfirmed": "結果未確認",
       "running": "実行中…",
       "stopped": "停止",
+      "viewDetails": "詳細を表示",
       "viewHistory": "履歴を表示",
       "done": "完了",
       "withWarnings": "警告付きで完了",

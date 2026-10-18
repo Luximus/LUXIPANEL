@@ -432,7 +432,7 @@ describe("CLI terminal outcomes", () => {
     });
     await run.completion;
     expect(onComplete.mock.calls[0].slice(0, 2)).toEqual(["Hecho", false]);
-    expect(run.events.at(-1)).toEqual({ type: "done" });
+    expect(run.events.at(-1)).toEqual({ type: "done", displaySummary: "Hecho" });
   });
   it("persists errors with no final text and keeps manual stop distinct", async () => {
     const onComplete = vi.fn();

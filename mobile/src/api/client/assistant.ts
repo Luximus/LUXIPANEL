@@ -157,7 +157,7 @@ export type AssistantEvent =
   // traducir y esto trae el motivo (aviso colapsable, no error duro).
   | { type: "translation_error"; message?: string }
   | { type: "error"; message?: string }
-  | { type: "done" };
+  | { type: "done"; pending?: true; displaySummary?: string };
 
 /** `REJECTED` = el gateway rechazó el POST antes de arrancar el run (p. ej.
  *  413 body demasiado grande, 400 de validación): NO hay run que recuperar,

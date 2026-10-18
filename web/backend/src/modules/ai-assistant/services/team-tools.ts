@@ -1,3 +1,4 @@
+import { coordinationEnvelope, budgetCoordinationReports, encodeCoordination } from "../models/agent-envelope.js";
 import { resolveAgentContext, scopedAgents } from "./agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -155,7 +156,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
       type: "object",
       properties: {
         agentId: { type: "string", description: "Id of the subordinate agent (from the roster in your prompt)." },
-        task: { type: "string", description: "Complete, self-contained instruction for the worker." },
+        task: { type: "string", description: "Compact TOON with kind, summary, data and refs with the complete task constraints. Legacy prose is accepted; do not repeat history." },
         title: { type: "string", description: "Short card title for the progress board (≤120 chars). Optional." },
         projectId: { type: "string", description: "Optional project id belonging to that subordinate. Omit for a loose chat." },
         planId: { type: "string", description: "Optional plan id (from team.plan) this task belongs to." },
@@ -369,6 +370,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
           ok: true,
           output: tasks.map((t) => ({
             taskId: t.id,
+            detail: { conversationId: t.workerConversationId, taskId: t.id },
             title: t.title,
             agent: t.workerAgentName,
             status: statusEs(t),
@@ -393,7 +395,8 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
       "whatever is already finished. Returns each task's result (trimmed). If some tasks are still running when the " +
       "wait expires, you get partial results plus the pending list — in that case inform the user what is still in " +
       "progress and END your turn; you will be woken up automatically when the remaining work finishes. " +
-      "NEVER paste raw worker output to the user: synthesize a consolidated answer.",
+      "Read the referenced worker conversation before acting when detail.required=true. " +
+      "NEVER paste raw worker output to the user: synthesize at most two short sentences.",
     kind: "read",
     dangerous: false,
     inputSchema: {
@@ -423,6 +426,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
         const boardSnapshot = () =>
           all.slice(-12).map((t) => ({
             taskId: t.id,
+            detail: { conversationId: t.workerConversationId, taskId: t.id },
             title: t.title,
             agent: t.workerAgentName,
             status: statusEs(t),
@@ -455,15 +459,14 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
         const finished = tasks.filter((t) => isTerminalTaskStatus(t.status));
         const pending = tasks.filter((t) => !isTerminalTaskStatus(t.status));
 
-        // Budgeted result payload: per-task summaries are ≤4000 chars already;
-        // cap the TOTAL so a big fan-out can't flood the leader's context.
-        let spent = 0;
-        const results = finished.map((t) => {
-          const raw = (t.status === "done" ? t.resultSummary : t.error) ?? "";
-          const room = Math.max(0, COLLECT_TOTAL_BUDGET - spent);
-          const text = raw.length > room ? raw.slice(0, room) + "\n…[truncado — resultado completo en el chat del agente]" : raw;
-          spent += text.length;
+        // Bound evidence without ever cutting serialized TOON or losing the
+        // task's status and reference to the complete persisted worker answer.
+        const results = budgetCoordinationReports(finished.map((t) => {
+          const report = coordinationEnvelope((t.status === "done" ? t.resultSummary : t.error) ?? "",
+            t.status === "done" ? "result" : "blocked", {},
+            { conversationId: t.workerConversationId, taskId: t.id });
           return {
+            ...report,
             taskId: t.id,
             title: t.title,
             agent: t.workerAgentName,
@@ -473,7 +476,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
             // señales dejan distinguir lo viejo sin inflar el resultado.
             ...(t.planId ? { planId: t.planId } : {}),
             assignedAt: t.createdAt,
-            ...(t.status === "done" ? { result: text } : { error: text || "Sin detalle." }),
+            ...(t.status === "done" ? { result: report.summary } : { error: report.summary || "Sin detalle." }),
             // Señales compactas para el paso de integración/qa del líder.
             ...(t.isolation?.branch && !t.isolation.integrated ? { branch: t.isolation.branch } : {}),
             ...(t.artifacts?.filesChangedTotal
@@ -481,12 +484,12 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
               : {}),
             ...(t.verify ? { verify: `${t.verify.state} (intentos: ${t.verify.attempts})` } : {}),
           };
-        });
+        }), COLLECT_TOTAL_BUDGET);
         await teamTasksService.markCollected(
           executor,
           finished.map((t) => t.id ?? "").filter(Boolean),
         );
-        const output: Record<string, unknown> = { results };
+        const output: Record<string, unknown> = { protocol: "lxp.agent.v1", kind: "result", summary: `${finished.length} tareas con resultado; ${pending.length} pendientes.`, results };
         if (unknownIds.length > 0) {
           // Recogida PARCIAL: algunos ids pedidos no existen (uuid mal
           // transcrito). Avisar aunque haya resultados, o el líder asumirá
@@ -498,6 +501,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
         if (pending.length > 0) {
           output["pending"] = pending.map((t) => ({
             taskId: t.id,
+            detail: { conversationId: t.workerConversationId, taskId: t.id },
             title: t.title,
             agent: t.workerAgentName,
             status: statusEs(t),
@@ -508,7 +512,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
             ? "Tareas aún en curso. Puedes terminar tu turno informando al usuario qué sigue pendiente; serás despertado automáticamente cuando terminen."
             : "Espera liberada antes de terminar (stop del usuario). Las tareas siguen corriendo en background.";
         }
-        return { ok: true, output };
+        return { ok: true, output: encodeCoordination(output) };
       } catch (err) {
         log.warn({ err: (err as Error).message }, "team.collect failed");
         return { ok: false, output: `No se pudieron recoger los resultados: ${(err as Error).message}` };

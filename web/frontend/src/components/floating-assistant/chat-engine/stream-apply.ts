@@ -217,7 +217,7 @@ export function applyEvent(
       out[i] = { ...t,
         ...(confirmedCli ? { tools: t.tools.map((tool, index) => index === cliIdx ? settleLanes(tool, "done") : tool) } : {}),
         ...(apiActivity ? { apiActivity } : {}),
-        ...(ev.pending ? { text: "", apiTextOffset: undefined } : {}),
+        ...(ev.pending ? { text: "", apiTextOffset: undefined, displaySummary: undefined } : { displaySummary: ev.displaySummary }),
         completionPending: ev.pending === true && !t.error,
         pending: false, interrupted: false, status: undefined, ...timing,
       };

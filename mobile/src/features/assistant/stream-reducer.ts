@@ -126,6 +126,8 @@ export function applyAssistantEvent(
     last.status = st === "translating" ? "translating" : st === "working" ? "working" : last.status;
   } else if (ev.type === "translation_error" && ev.message) {
     last.translationError = ev.message;
+  } else if (ev.type === "done") {
+    last.displaySummary = ev.pending ? undefined : ev.displaySummary;
   } else if (ev.type === "error" && ev.message) {
     // Error duro del turno → caja roja con Reintentar / Nuevo chat.
     last.error = ev.message;

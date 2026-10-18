@@ -62,6 +62,8 @@ export interface MessageAttachmentRef {
 }
 
 export interface ConversationMessage {
+  /** Bounded display text, independent of canonical model context. */
+  displaySummary?: string;
   /** The stream ended, but this turn still awaits background work/collection. */
   pending?: boolean;
   /** Ordered API process history; content/textTranslated hold only the answer. */

@@ -271,6 +271,7 @@ const assistantPart1 = {
       "unconfirmed": "Result unconfirmed",
       "running": "running…",
       "stopped": "stopped",
+      "viewDetails": "View details",
       "viewHistory": "View history",
       "done": "Done",
       "withWarnings": "Done with warnings",

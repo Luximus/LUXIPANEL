@@ -34,6 +34,7 @@ export type PermissionReq = { id: string; tool: string; title: string; detail?: 
 
 /** Un mensaje del chat (turno de usuario o del asistente). */
 export type ChatMsg = {
+  displaySummary?: string;
   role: "user" | "assistant";
   content: string;
   /** Identidad real del proveedor de este turno, aunque el chat cambie de proveedor. */

@@ -1,0 +1,8 @@
+{
+  "title": "Publicación automática al retomar una tarea",
+  "changes": [
+    "Al completar una continuación del mismo chat, el envío automático incluye los cambios pendientes de los turnos anteriores cuando sus instantáneas coinciden.",
+    "Los archivos creados antes de una interrupción se conservan en el aporte, evitando envíos bloqueados por dependencias ausentes.",
+    "Las consultas sin cambios no publican trabajo interrumpido y los aportes incluidos en una continuación no se vuelven a enviar por separado."
+  ]
+}

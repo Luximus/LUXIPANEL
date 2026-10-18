@@ -1,3 +1,4 @@
+import { decodeCoordination } from "../models/agent-envelope.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -219,7 +220,7 @@ describe("team.collect", () => {
     const collect = tools.find((t) => t.name === "team.collect")!;
     const res = await collect.handler({ waitSeconds: 0 });
     expect(res.ok).toBe(true);
-    const out = res.output as { results: Array<{ taskId?: string; result?: string }>; pending: unknown[]; note: string };
+    const out = (typeof res.output === "string" ? decodeCoordination(res.output) : res.output) as { results: Array<{ taskId?: string; result?: string }>; pending: unknown[]; note: string };
     expect(out.results).toHaveLength(1);
     expect(out.results[0]?.result).toBe("hecho A");
     expect(out.pending).toHaveLength(1);
@@ -236,7 +237,7 @@ describe("team.collect", () => {
     const collect = tools.find((t) => t.name === "team.collect")!;
     const res = await collect.handler({ taskIds: ["18d9f468-f7f2"] });
     expect(res.ok).toBe(false);
-    const out = res.output as { error: string; board: Array<{ taskId?: string; status?: string }> };
+    const out = (typeof res.output === "string" ? decodeCoordination(res.output) : res.output) as { error: string; board: Array<{ taskId?: string; status?: string }> };
     expect(out.error).toContain("18d9f468-f7f2");
     expect(out.error).toContain("desconocidos");
     expect(out.board.some((b) => b.taskId === "18d9f468-f7be")).toBe(true);
@@ -251,7 +252,7 @@ describe("team.collect", () => {
     const collect = tools.find((t) => t.name === "team.collect")!;
     const res = await collect.handler({ taskIds: ["t-ok", "t-typo"] });
     expect(res.ok).toBe(true);
-    const out = res.output as { results: unknown[]; unknownTaskIds?: string[]; unknownNote?: string };
+    const out = (typeof res.output === "string" ? decodeCoordination(res.output) : res.output) as { results: unknown[]; unknownTaskIds?: string[]; unknownNote?: string };
     expect(out.results).toHaveLength(1);
     expect(out.unknownTaskIds).toEqual(["t-typo"]);
     expect(out.unknownNote).toContain("no existen");
@@ -264,7 +265,7 @@ describe("team.collect", () => {
     const { tools } = await build();
     const collect = tools.find((t) => t.name === "team.collect")!;
     const res = await collect.handler({});
-    const out = res.output as { results: Array<{ planId?: string; assignedAt?: string }> };
+    const out = (typeof res.output === "string" ? decodeCoordination(res.output) : res.output) as { results: Array<{ planId?: string; assignedAt?: string }> };
     expect(out.results[0]?.planId).toBe("plan-antiguo");
     expect(out.results[0]?.assignedAt).toBeTruthy();
   });
@@ -277,11 +278,21 @@ describe("team.collect", () => {
     const { tools } = await build();
     const collect = tools.find((t) => t.name === "team.collect")!;
     const res = await collect.handler({});
-    const out = res.output as { results: Array<{ result?: string; error?: string }> };
+    const out = (typeof res.output === "string" ? decodeCoordination(res.output) : res.output) as { results: Array<{ result?: string; error?: string; detail?: { required: boolean; conversationId: string } }> };
     const total = out.results.reduce((n, r) => n + (r.result ?? r.error ?? "").length, 0);
     // 6 × 4000 = 24000 raw → capped near 16000 (+ truncation markers).
     expect(total).toBeLessThan(17_000);
-    expect(out.results.some((r) => (r.result ?? "").includes("…[truncado"))).toBe(true);
+    expect(out.results.every(r => (r.result ?? "").length <= 240 && r.detail?.required === true)).toBe(true);
+  });
+
+  it("collects compact structured findings and keeps blocked verification distinct from success", async () => {
+    const packet = { kind: "result", summary: "Cambio preparado; falta desplegar.", data: { deployed: false, tests: ["unit passed"] }, refs: ["report.txt"] };
+    const done = task("json-result", "done", { resultSummary: JSON.stringify(packet), verify: { state: "failed", attempts: 1 } as never });
+    svc.listForLeaderConversation.mockResolvedValue([done]);
+    svc.waitForTasks.mockResolvedValue({ tasks: [done], timedOut: false });
+    const { tools } = await build();
+    const response = await tools.find(t => t.name === "team.collect")!.handler({});
+    expect(decodeCoordination(String(response.output))).toMatchObject({ protocol: "lxp.agent.v1", results: [{ data: packet.data, refs: packet.refs, detail: { required: false }, verify: "failed (intentos: 1)" }] });
   });
 });
 

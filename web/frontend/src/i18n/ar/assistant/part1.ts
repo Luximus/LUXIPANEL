@@ -268,6 +268,7 @@ const assistantPart1 = {
       "unconfirmed": "النتيجة غير مؤكدة",
       "running": "قيد التشغيل…",
       "stopped": "متوقّف",
+      "viewDetails": "عرض التفاصيل",
       "viewHistory": "عرض السجل",
       "done": "تم",
       "withWarnings": "تم مع تحذيرات",

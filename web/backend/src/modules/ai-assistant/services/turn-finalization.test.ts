@@ -45,7 +45,7 @@ describe("turn finalization", () => {
       { type: "text", phase: "commentary", delta: "Ya localicé ambos formatos. " },
       { ...tool, id: "second" }, { ...result, id: "second" },
     ] });
-    expect(state.events.at(-1)).toEqual({ type: "done" });
+    expect(state.events.at(-1)).toEqual({ type: "done", displaySummary: translated ? "ES:Ajuste verificado." : "Ajuste verificado." });
   });
 
   it.each([false, true])("does not publish a final while delegated tasks need collection, cli=%s", async cli => {
@@ -153,6 +153,7 @@ describe("turn finalization", () => {
     const reloaded = normalizeConversationMessage(saved);
     expect(reloaded.content).toBe(pending ? "" : "Verificado");
     expect(reloaded.pending).toBe(pending ? true : undefined);
+    expect(reloaded.displaySummary).toBe(pending ? undefined : "Verificado");
     expect(reloaded.apiActivity?.events).toEqual([
       { type: "text", phase: "commentary", delta: "Voy a comprobar" },
       { ...tool, input: { path: "example.txt", password: "[redacted]" } },
@@ -201,7 +202,7 @@ describe("turn finalization", () => {
       await vi.waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
       expect(state.events.some(event => event.type === "done")).toBe(false);
     } finally { saved(); await state.completion; }
-    expect(state.events.at(-1)).toEqual({ type: "done" });
+    expect(state.events.at(-1)).toEqual({ type: "done", displaySummary: "Resultado verificado." });
   });
 
   it("surfaces a history failure without publishing a successful terminal frame", async () => {

@@ -1,3 +1,4 @@
+import { visibleSummary } from "../models/visible-summary.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import type { Executor } from "../../../shared/executor/index.js";
@@ -56,6 +57,7 @@ export async function persistAssistantMessage(
           ...(!cli && apiActivity ? { apiActivity } : {}),
           ...(provider ? { provider } : {}),
           content,
+          ...(!outcome?.pending ? { displaySummary: visibleSummary(translation?.text ?? content) } : {}),
           ts: new Date().toISOString(),
           ...(cli ? { cli: true } : {}),
           ...(cliLogField ? { cliLog: cliLogField } : {}),

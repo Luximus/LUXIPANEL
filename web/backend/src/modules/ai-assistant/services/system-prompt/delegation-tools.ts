@@ -1,3 +1,4 @@
+import { coordinationEnvelope, coordinationTask, encodeCoordination } from "../../models/agent-envelope.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -67,8 +68,8 @@ export function buildDelegateTool(ctx: {
     name: "agents.delegate",
     title: "Delegar a otro agente",
     description:
-      "Delegate a self-contained task to one of YOUR subordinate or connected agents and get its full answer back. " +
-      "Use it to coordinate work: each target agent runs with its own role, system prompt, tools and provider, then returns its result as text. " +
+      "Delegate a self-contained task to one of YOUR subordinate or connected agents and get a compact TOON result back. " +
+      "Use it to coordinate work: each target agent runs with its own role, system prompt, tools and provider, then returns TOON with kind, summary, data and refs with only new facts. " +
       "Only the agent ids listed in your system prompt under 'Agentes a los que puedes delegar' are valid. The delegate cannot ask the user interactively.",
     kind: "action",
     dangerous: false,
@@ -76,7 +77,7 @@ export function buildDelegateTool(ctx: {
       type: "object",
       properties: {
         agentId: { type: "string", description: "Id of the subordinate/connected agent to delegate to (from the allowed list)." },
-        task: { type: "string", description: "Clear, self-contained instruction/question for that agent. Include all context it needs." },
+        task: { type: "string", description: "Compact TOON with kind, summary, data and refs with complete instructions and constraints. Legacy prose is accepted." },
       },
       required: ["agentId", "task"],
     },
@@ -101,7 +102,7 @@ export function buildDelegateTool(ctx: {
           AbortSignal.timeout(DELEGATE_TIMEOUT_MS),
         ]);
         let text = "";
-        for await (const ev of runAgent([{ role: "user", content: task }], {
+        for await (const ev of runAgent([{ role: "user", content: coordinationTask(task) }], {
           executor,
           user,
           ...(userId ? { userId } : {}),
@@ -118,7 +119,7 @@ export function buildDelegateTool(ctx: {
           else if (ev.type === "error") return { ok: false, output: `El agente "${target?.name ?? targetId}" falló: ${ev.message}` };
         }
         const answer = capText(text.trim(), DELEGATE_OUTPUT_MAX_CHARS);
-        return { ok: true, output: answer || `El agente "${target?.name ?? targetId}" no devolvió respuesta.` };
+        return { ok: true, output: encodeCoordination(coordinationEnvelope(answer || `El agente "${target?.name ?? targetId}" no devolvió respuesta.`, "result", { from: targetId })) };
       } catch (err) {
         return { ok: false, output: `Error al delegar en "${target?.name ?? targetId}": ${(err as Error).message}` };
       }

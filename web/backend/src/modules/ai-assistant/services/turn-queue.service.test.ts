@@ -1,3 +1,4 @@
+import { decodeCoordination } from "../models/agent-envelope.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -334,7 +335,8 @@ describe("initAgentMessageListener", () => {
     expect(turn.delegationDepth).toBe(2);
     expect(turn.user).toEqual(sender); // SENDER's gating — no escalation
     expect(turn.userId).toBe("7");
-    expect(turn.userText).toContain("[MENSAJE DE Santiago (agente a-santiago)]");
+    expect(decodeCoordination(turn.userText)).toMatchObject({ protocol: "lxp.agent.v1", from: "a-santiago", fromName: "Santiago", detail: { messageId: "msg-1", required: false } });
+    expect(turn.agentMessageId).toBe("msg-1");
     expect(turn.userText).toContain("necesito que expongas GET /api/x");
     expect(turn.userText).toContain("agents.send_message");
   });
@@ -393,7 +395,7 @@ describe("initAgentMessageListener — destino: chat de equipo / run activo (sin
     const q = vi.mocked(agentQueueRepository.enqueue).mock.calls[0]?.[1];
     expect(q?.conversationId).toBe("conv-lider");
     expect(q?.projectId).toBe("p1");
-    expect(q?.userText).toContain("chat de equipo");
+    expect(decodeCoordination(q!.userText)).toMatchObject({ team: true, replyTool: "agents.send_message" });
     expect(messageStore.current?.deliveryConversationId).toBe("conv-lider");
   });
 
@@ -442,7 +444,7 @@ describe("initAgentMessageListener — destino: chat de equipo / run activo (sin
     emit();
     await settle();
     expect(conversationsRepository.create).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(agentQueueRepository.enqueue).mock.calls[0]?.[1]?.userText).toContain("no asumas que puede ver este chat");
+    expect(decodeCoordination(vi.mocked(agentQueueRepository.enqueue).mock.calls[0]![1].userText)).toMatchObject({ team: false, replyTool: "agents.send_message" });
   });
 });
 

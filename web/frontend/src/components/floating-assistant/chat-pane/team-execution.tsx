@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { ChatTurn } from "../chat-engine";
 import type { TeamTaskView } from "../assistant-api";
-import { MessageContent } from "../MessageContent";
+import { CompactAnswer } from "./CompactAnswer";
 import { formatAssistantMessage, useAssistantI18n } from "../i18n";
 
 // Only generated coordination messages move into execution details. Human
@@ -48,7 +48,7 @@ export function TeamExecutionContent({ boards, notices }: { boards?: ReactNode[]
     {notices?.map((notice, index) => (
       <div key={index} data-team-notice className="min-w-0 border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
         <p className="mb-1 font-medium">{t.autoTurn}</p>
-        <MessageContent text={[notice.text, ...(notice.addenda ?? [])].filter(Boolean).join("\n")} />
+        <CompactAnswer text={[notice.text, ...(notice.addenda ?? [])].filter(Boolean).join("\n")} summary={notice.addenda?.length ? undefined : notice.displaySummary} />
       </div>
     ))}
   </>;

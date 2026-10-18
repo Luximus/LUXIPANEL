@@ -268,6 +268,7 @@ const assistantPart1 = {
       "unconfirmed": "परिणाम की पुष्टि नहीं हुई",
       "running": "चल रहा है…",
       "stopped": "रुका हुआ",
+      "viewDetails": "विवरण देखें",
       "viewHistory": "इतिहास देखें",
       "done": "हो गया",
       "withWarnings": "चेतावनियों के साथ हो गया",

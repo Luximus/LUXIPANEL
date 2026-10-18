@@ -68,7 +68,7 @@ export type AgentEvent =
   | { type: "team_task_update"; task: TeamTaskView }
   // The provider stream ended while background/delegated work needs collection.
   // No final answer is published in that case; team cards remain authoritative.
-  | { type: "done"; pending?: true }
+  | { type: "done"; pending?: true; displaySummary?: string }
   | { type: "error"; message: string };
 
 export interface ProviderAttachment {

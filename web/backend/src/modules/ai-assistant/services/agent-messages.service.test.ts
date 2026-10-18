@@ -1,3 +1,4 @@
+import { encodeCoordination, decodeCoordination } from "../models/agent-envelope.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -217,5 +218,33 @@ describe("buildSendMessageTool", () => {
     expect(blocked.ok).toBe(false);
     expect(String((blocked.output as { hint?: string }) ?? blocked.output)).toMatch(/3 mensajes/);
     expect(messages).toHaveLength(3);
+  });
+
+  it("accepts compact TOON, retains evidence and rejects oversized or mixed payloads", async () => {
+    const built = buildSendMessageTool(ctx)!;
+    const message = { kind: "blocked", summary: "Falta revisión.", data: { deploy: false, checks: ["HTTP 503"] } };
+    expect((await built.tool.handler({ agentId: "a-mateo", message: encodeCoordination(message) })).ok).toBe(true);
+    expect(decodeCoordination(messages[0]!.text)).toEqual(message);
+    expect((await built.tool.handler({ agentId: "a-mateo", message, text: "otra instrucción" })).ok).toBe(false);
+    expect((await built.tool.handler({ agentId: "a-mateo", message: { ...message, data: { text: "x".repeat(5000) } } })).ok).toBe(false);
+    expect(messages).toHaveLength(1);
+  });
+
+  it("reads complete referenced evidence only for the same user, project and participating agent", async () => {
+    const built = buildSendMessageTool({ ...ctx, userId: undefined })!;
+    await built.tool.handler({ agentId: "a-mateo", text: "Detalle completo. No reiniciar." });
+    const stored = messages[0]!;
+    // Historical principals may be stored as strings while sessions use numbers.
+    stored.userId = "7";
+    expect(await built.readTool.handler({ messageId: stored.id })).toMatchObject({ ok: true, output: { text: stored.text } });
+    stored.userId = "8";
+    expect((await built.readTool.handler({ messageId: stored.id })).ok).toBe(false);
+    stored.userId = "7";
+    stored.projectId = "different-project";
+    expect((await built.readTool.handler({ messageId: stored.id })).ok).toBe(false);
+    stored.projectId = null;
+    stored.fromAgentId = "a-ajeno";
+    expect((await built.readTool.handler({ messageId: stored.id })).ok).toBe(false);
+    expect((await built.readTool.handler({ messageId: "unknown" })).ok).toBe(false);
   });
 });
