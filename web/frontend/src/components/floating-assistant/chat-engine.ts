@@ -8,7 +8,7 @@
  * `@/components/floating-assistant/chat-engine` unchanged.
  */
 import type { AgentMessage, ChatAttachment, TeamTaskView } from "./assistant-api";
-import { historyTurns } from "./chat-engine/history";
+import { historyTurns, reconcileMessageTurns } from "./chat-engine/history";
 import { resolveTargetScope } from "@/lib/api-client";
 import { chatInputLocked } from "./chat-engine/input-lock";
 import {
@@ -409,8 +409,11 @@ export const chatEngine = {
     if (scope !== resolveTargetScope() || (!current || current.turns !== before.turns) || current.streaming) return;
     const fetched = historyTurns(items, current.provider);
     const first = fetched[0];
-    const overlap = first?.createdAt ? current.turns.findIndex(t => t.createdAt === first.createdAt && t.role === first.role && t.text === first.text) : -1;
-    const turns = overlap > 0 ? [...current.turns.slice(0, overlap), ...fetched] : fetched;
+    const overlap = first ? current.turns.findIndex(t =>
+      first.messageId || t.messageId
+        ? !!first.messageId && t.messageId === first.messageId && t.role === first.role
+        : !!first.createdAt && t.createdAt === first.createdAt && t.role === first.role && t.text === first.text) : -1;
+    const turns = reconcileMessageTurns(overlap > 0 ? [...current.turns.slice(0, overlap), ...fetched] : fetched);
     chats.set(key, { ...current, turns });
     emit();
     await chatEngine.refreshTeamTasks(key);
@@ -427,7 +430,7 @@ export const chatEngine = {
     chats.set(key, {
       provider,
       conversationId,
-      turns,
+      turns: reconcileMessageTurns(turns),
       streaming: false,
       ...(existing?.teamTasks ? { teamTasks: existing.teamTasks } : {}),
     });

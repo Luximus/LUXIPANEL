@@ -6,7 +6,7 @@ import type { ChatTurn, LiveChat } from "./types";
 import { chats, emit, isActivelyViewing, syncReviewedIfViewing, backgroundActive, backgroundPending } from "./state";
 import { applyCliDelta, settleLanes, freshMainLane, stripLaneTokens } from "./cli-lanes";
 import { markAssistantTeamTaskSeen } from "@/lib/assistant-ws";
-import { historyTurns } from "./history";
+import { historyTurns, reconcileMessageTurns } from "./history";
 import { findSavedRequestIndex, hasSavedRequestOutcome } from "./history-identity";
 import { appendApiActivity } from "./api-activity";
 import { resolveTargetScope } from "@/lib/api-client";
@@ -45,6 +45,14 @@ export function applyEvent(
   // A terminal from a foreign buffer must not close or clear this chat.
   if (ev.runId && ev.runId !== chat.runId) return;
   if (seq !== undefined && seq >= 0 && chat.lastSeq !== undefined && seq <= chat.lastSeq) return;
+  const terminalId = (ev.type === "done" || ev.type === "error") && ev.messageId?.trim() ? ev.messageId : undefined;
+  if (terminalId) {
+    const tail = chat.turns.at(-1);
+    // A terminal for another logical response must not settle the current one.
+    if (tail?.messageId && tail.messageId !== terminalId) return;
+    const previousIndex = chat.turns.findIndex(turn => turn.role === "assistant" && turn.messageId === terminalId);
+    if (previousIndex >= 0 && chat.turns.slice(previousIndex + 1).some(turn => turn.role === "user" && !turn.auto)) return;
+  }
   // A local terminal event is newer than the last background poll.
   if (ev.type === "done" || ev.type === "error") {
     backgroundActive.delete(chat.conversationId ?? key);
@@ -193,6 +201,8 @@ export function applyEvent(
       out[i] = {
         ...t,
         error: ev.message,
+        ...(terminalId ? { messageId: terminalId } : {}),
+        presentation: "full",
         status: undefined,
         completionPending: false,
         permission: undefined,
@@ -215,6 +225,8 @@ export function applyEvent(
       }
       const confirmedCli = isCli && !ev.pending && !t.error && !!t.text.trim() && t.tools[cliIdx]?.result?.success;
       out[i] = { ...t,
+        ...(terminalId ? { messageId: terminalId } : {}),
+        presentation: ev.pending || t.error || t.ask?.length ? "full" : ev.presentation ?? t.presentation,
         ...(confirmedCli ? { tools: t.tools.map((tool, index) => index === cliIdx ? settleLanes(tool, "done") : tool) } : {}),
         ...(apiActivity ? { apiActivity } : {}),
         ...(ev.pending ? { text: "", apiTextOffset: undefined, displaySummary: undefined } : { displaySummary: ev.displaySummary }),
@@ -231,7 +243,7 @@ export function applyEvent(
       break;
     }
   }
-  chats.set(key, { ...chat, turns: out, ...(seq !== undefined && seq >= 0 ? { lastSeq: seq } : {}) });
+  chats.set(key, { ...chat, turns: reconcileMessageTurns(out), ...(seq !== undefined && seq >= 0 ? { lastSeq: seq } : {}) });
   emit();
 }
 

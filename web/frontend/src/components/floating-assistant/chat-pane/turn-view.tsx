@@ -1,4 +1,4 @@
-import { CompactAnswer } from "./CompactAnswer";
+import { CompactAnswer, answerPresentation } from "./CompactAnswer";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -187,12 +187,6 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
     done: ct.toolTrace.done, failed: ct.toolTrace.error, running: ct.toolTrace.running,
     waiting: ct.toolTrace.waiting, unconfirmed: ct.toolTrace.unconfirmed, stopped: ct.toolTrace.stopped,
   };
-  // A plan approval keeps the complete plan in the saved message. When the
-  // agent supplies the requested summary + details format, show a short
-  // preview and let the reader expand the exact text being approved.
-  const planPreview = !isUser && turn.askKind === "plan-approval" && !turn.pending
-    ? /^(?:\*\*)?(?:Resumen|Summary)(?:\*\*)?:\s*(.+?)\n\s*\n((?:Plan completo|Full plan):[\s\S]+)$/i.exec(answerText.trim())
-    : null;
   // An execution without a final answer keeps its process available.
   const noFinalAnswer =
     !isUser &&
@@ -447,22 +441,9 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
         {recordings.length > 0
           ? <VoiceMessage recordings={recordings} forwardedText={turn.raw ?? turn.text} />
           : answerText
-          ? planPreview
-            ? <>
-                <CompactAnswer text={planPreview[1]!} summary={turn.displaySummary} />
-                <details className="group mt-2 rounded-lg border border-border/60 bg-background/40 px-2.5 py-2">
-                  <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-primary [&::-webkit-details-marker]:hidden">
-                    <i className="ti ti-list-details" aria-hidden />
-                    <span>{ct.viewFullPlan ?? "Ver plan completo"}</span>
-                    <i className="ti ti-chevron-down ml-auto text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
-                  </summary>
-                  <div className="mt-2 border-t border-border/60 pt-2">
-                    <MessageContent text={planPreview[2]!} scrollContainerRef={scrollContainerRef} />
-                  </div>
-                </details>
-              </>
-            : isUser ? <MessageContent text={answerText} scrollContainerRef={scrollContainerRef} streaming={turn.pending} />
-            : <CompactAnswer text={answerText} summary={turn.displaySummary} streaming={turn.pending} />
+          ? isUser
+            ? <MessageContent text={answerText} scrollContainerRef={scrollContainerRef} streaming={turn.pending} />
+            : <CompactAnswer text={answerText} summary={turn.displaySummary} presentation={answerPresentation(turn)} streaming={turn.pending} scrollContainerRef={scrollContainerRef} />
           : turn.status
             ? <TranslatingShimmer state={turn.status} />
             : turn.pending && !visibleTools.length && !cliRunningHidden

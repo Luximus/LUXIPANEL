@@ -40,6 +40,8 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
   const apiActivity = m.role === "assistant" && !m.cli ? m.apiActivity : undefined;
   return {
     role: m.role,
+    ...(m.messageId ? { messageId: m.messageId } : {}),
+    ...(m.presentation ? { presentation: m.presentation } : {}),
     ...(m.displaySummary ? { displaySummary: m.displaySummary } : {}),
     ...(m.role === "assistant" && m.pending ? { completionPending: true } : {}),
     ...(m.error ? { error: m.error } : {}),
@@ -47,7 +49,8 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
     ...((m.provider ?? fallbackProvider) ? { provider: m.provider ?? fallbackProvider } : {}),
     // CLI turns: clean answer (split) or summary derived from the log
     // (pre-split); otherwise the user-facing variant when translation was active.
-    text: isCliAssistant ? cliSummary : displayText(m),
+    // New contract responses always keep their canonical display body intact.
+    text: isCliAssistant && !m.messageId && !m.presentation ? cliSummary : displayText(m),
     tools: apiActivity ? apiActivityTools(apiActivity) : [],
     ...(apiActivity ? { apiActivity } : {}),
     ...(forwardedEnglish ? { raw: forwardedEnglish } : {}),
@@ -71,10 +74,42 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
  *  branding across legacy rows that were stored without `provider`. */
 export function historyTurns(items: ConversationMessage[], seedProvider?: string): ChatTurn[] {
   let currentProvider = seedProvider;
-  return items.map((m) => {
+  return reconcileMessageTurns(items.map((m) => {
     const turn = historyTurn(m, currentProvider);
     if (m.provider) currentProvider = m.provider;
     else if (turn.provider) currentProvider = turn.provider;
     return turn;
-  });
+  }));
+}
+
+/** Reconcile only explicit response identities within one conversation.
+ * Legacy messages remain separate even when their text and timestamp match. */
+export function reconcileMessageTurns(turns: ChatTurn[]): ChatTurn[] {
+  const positions = new Map<string, number>();
+  const result: ChatTurn[] = [];
+  for (const turn of turns) {
+    const identity = turn.messageId?.trim() ? JSON.stringify([turn.role, turn.messageId]) : undefined;
+    const position = identity ? positions.get(identity) : undefined;
+    if (position === undefined) {
+      if (identity) positions.set(identity, result.length);
+      result.push(turn);
+      continue;
+    }
+    const previous = result[position]!;
+    const awaiting = (value: ChatTurn) => !!(value.pending || value.completionPending || value.interrupted || value.status);
+    // A late pending snapshot cannot undo an already persisted terminal outcome.
+    const keepPrevious = !awaiting(previous) && awaiting(turn);
+    const chosen = keepPrevious ? previous : turn;
+    const other = keepPrevious ? turn : previous;
+    result[position] = { ...chosen,
+      tools: chosen.cliHistoryLog ? chosen.tools : [
+        ...chosen.tools.map(tool => ({ ...tool,
+          result: tool.result ?? other.tools.find(item => item.id === tool.id)?.result })),
+        ...other.tools.filter(tool => !chosen.tools.some(item => item.id === tool.id)),
+      ],
+      ...(chosen.apiActivity || other.apiActivity ? { apiActivity: chosen.apiActivity ?? other.apiActivity } : {}),
+      ...(chosen.addenda || other.addenda ? { addenda: chosen.addenda ?? other.addenda } : {}),
+    };
+  }
+  return result;
 }

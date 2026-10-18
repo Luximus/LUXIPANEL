@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import type { ChatTurn } from "../chat-engine";
-import { CompactAnswer } from "./CompactAnswer";
+import { CompactAnswer, answerPresentation } from "./CompactAnswer";
 import { useAssistantI18n } from "../i18n";
 import { apiExecutionStatus } from "./api-activity";
 import { ToolDisclosure } from "./tool-disclosure";
@@ -40,7 +40,7 @@ export function ExecutionPhases({ phases, showTerminal, uiMode }: {
           }) ?? phase.tools.map((tool, toolIndex) => <ToolDisclosure key={toolIndex} t={tool} turn={phase} uiMode={uiMode} embedded />)}
           {phase.apiActivity?.truncated && <p className="text-xs text-muted-foreground">{ct.toolTrace.historyTruncated}</p>}
         </>}
-        {text && <CompactAnswer text={text} summary={phase.displaySummary} />}
+        {text && <CompactAnswer text={text} summary={phase.displaySummary} presentation={answerPresentation(phase)} />}
         {isCli && showTerminal && cliTools.filter(tool => tool.result?.success === false).map((tool, toolIndex) =>
           <p key={toolIndex} className="break-words text-destructive">{tool.result!.output}</p>)}
         {phase.error && <p className="break-words text-destructive">{phase.error}</p>}

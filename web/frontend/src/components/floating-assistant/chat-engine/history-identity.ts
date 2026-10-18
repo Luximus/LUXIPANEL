@@ -15,6 +15,7 @@ function sameRequest(a: ChatTurn, b: ChatTurn): boolean {
 }
 
 function sameHistoricalTurn(a: ChatTurn, b: ChatTurn): boolean {
+  if (a.messageId || b.messageId) return !!a.messageId && a.messageId === b.messageId && a.role === b.role;
   return Number.isFinite(a.createdAt) && a.createdAt === b.createdAt && sameRequest(a, b);
 }
 
@@ -26,6 +27,17 @@ export function findSavedRequestIndex(local: ChatTurn[], saved: ChatTurn[]): num
   const requestIndex = local.length - 2;
   const request = local[requestIndex];
   if (!request || request.role !== "user") return null;
+  const response = local.at(-1);
+  if (response?.messageId) {
+    const matches = saved.flatMap((turn, i) =>
+      turn.role === "assistant" && turn.messageId === response.messageId ? [i] : []);
+    return matches.length === 1 && saved[matches[0]! - 1]?.role === "user" ? matches[0]! - 1 : null;
+  }
+  if (request.messageId) {
+    const matches = saved.flatMap((turn, i) =>
+      turn.role === "user" && turn.messageId === request.messageId ? [i] : []);
+    return matches.length === 1 ? matches[0]! : null;
+  }
   const previous = local.slice(0, requestIndex);
   if (!previous.length) {
     const matches = saved.flatMap((turn, i) => sameHistoricalTurn(request, turn) ? [i] : []);
@@ -46,6 +58,10 @@ export function findSavedRequestIndex(local: ChatTurn[], saved: ChatTurn[]): num
 
 /** Ordinary reload still requires this request's answer at the END of history. */
 export function hasSavedRequestOutcome(local: ChatTurn[], saved: ChatTurn[]): boolean {
+  const response = local.at(-1);
+  if (response?.role === "assistant" && response.messageId) {
+    return saved.at(-1)?.role === "assistant" && saved.at(-1)?.messageId === response.messageId;
+  }
   return saved.at(-1)?.role === "assistant"
     && findSavedRequestIndex(local, saved) === saved.length - 2;
 }

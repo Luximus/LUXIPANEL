@@ -54,6 +54,9 @@ export interface TurnAttachment {
 }
 
 export interface ChatTurn {
+  /** Durable response identity; never inferred from text, timestamps or SSE cursors. */
+  messageId?: string;
+  presentation?: "full" | "summary";
   displaySummary?: string;
   role: "user" | "assistant";
   provider?: string;

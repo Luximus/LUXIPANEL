@@ -528,10 +528,9 @@ it("keeps confirmed API calls collapsed under Listo and the full trace behind on
   expect(header.getAttribute("aria-expanded")).toBe("false");
   await act(async () => header.click());
   expect(header.getAttribute("aria-expanded")).toBe("true");
-  expect(host.querySelector('[data-visible-summary]')?.textContent).toBe(response.text.replace(/\s+/g, " "));
-  const detail = host.querySelector<HTMLDetailsElement>('[data-compact-answer] > details')!;
-  await toggle(detail);
-  expect([...detail.querySelectorAll("p")].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+  const answer = host.querySelector('[data-message-section="answer"]')!;
+  expect(answer.querySelector("[data-visible-summary]")).toBeNull();
+  expect([...answer.querySelectorAll("p")].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
 });
 
 it.each([
@@ -603,10 +602,9 @@ it("does not reconstruct API calls from historical answer paragraphs", async () 
   await renderThread({ mode: "api", turns: [user, response] });
   expect(host.querySelector("[data-entry-id]")).toBeNull();
   expect(host.querySelector('[data-execution-source="API"]')).toBeNull();
-  expect(host.querySelector('[data-visible-summary]')?.textContent).toBe(response.text.replace(/\s+/g, " "));
-  const detail = host.querySelector<HTMLDetailsElement>('[data-compact-answer] > details')!;
-  await toggle(detail);
-  expect([...detail.querySelectorAll("p")].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
+  const answer = host.querySelector('[data-message-section="answer"]')!;
+  expect(answer.querySelector("[data-visible-summary]")).toBeNull();
+  expect([...answer.querySelectorAll("p")].map(el => el.textContent)).toEqual(response.text.split("\n\n"));
 });
 
 it("separates observed API narration from the final answer and copy action", async () => {
@@ -616,10 +614,8 @@ it("separates observed API narration from the final answer and copy action", asy
   const saved = JSON.stringify(response);
   await renderThread({ mode: "api", turns: [user, response] });
   const bubble = host.querySelector('[data-message-section="answer"]')!;
-  expect(bubble.querySelector('[data-visible-summary]')?.textContent).toBe(answer.replace(/\s+/g, " "));
-  const detail = bubble.querySelector<HTMLDetailsElement>('[data-compact-answer] > details')!;
-  await toggle(detail);
-  expect([...detail.querySelectorAll("p")].map(el => el.textContent)).toEqual(answer.split("\n\n"));
+  expect(bubble.querySelector("[data-visible-summary]")).toBeNull();
+  expect([...bubble.querySelectorAll("p")].map(el => el.textContent)).toEqual(answer.split("\n\n"));
   expect(visibleText(host)).not.toContain(narration.trim());
   const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
   const copy = [...bubble.querySelectorAll<HTMLButtonElement>("button")].find(el => el.textContent?.trim() === "Copiar")!;
@@ -782,10 +778,10 @@ it("keeps truncated and orphaned historical API details reachable, without dupli
   expect(history.querySelector("[data-api-result]")?.textContent).toContain("Error");
 });
 
-it.each([false, true])("shows a bounded preview with full expandable details for ordinary and agent chats: cli=%s", async cli => {
+it.each([false, true])("shows a bounded preview only for explicitly authorized summary presentation: cli=%s", async cli => {
   const content = "Revisión completada. Falta desplegar.\n\n" + "Evidencia completa y restricciones conservadas. ".repeat(100);
   for (const selected of [null, agent]) {
-    const response = historyTurn({ role: "assistant", content, ts: "", cli });
+    const response = historyTurn({ role: "assistant", content, ts: "", cli, presentation: "summary" });
     const canonicalContent = response.text;
     await renderThread({ mode: cli ? "cli" : "api", turns: [user, response], agent: selected });
     const preview = host.querySelector<HTMLElement>('[data-visible-summary]')!;
@@ -800,12 +796,12 @@ it.each([false, true])("shows a bounded preview with full expandable details for
 });
 
 it("keeps internal JSON hidden in the team preview and uses the same persisted summary after reconnect", async () => {
-  const content = JSON.stringify({ protocol: "lxp.agent.v1", kind: "blocked", summary: "Falta verificar el servicio.", data: { failure: "HTTP 503" } });
-  const response = historyTurn({ role: "assistant", content: "Resultado pendiente.\n\nDetalle extenso.", displaySummary: "Falta verificar el servicio.", ts: "" });
+  const content = JSON.stringify({ protocol: "lxp.agent.v1", kind: "result", summary: "Servicio verificado.", data: { check: "HTTP 200" } });
+  const response = historyTurn({ role: "assistant", content: "Servicio verificado.\n\nDetalle extenso.", displaySummary: "Servicio verificado.", presentation: "summary", ts: "" });
   await renderThread({ mode: "api", turns: [user, { role: "user", auto: true, text: content, tools: [] }, response] });
-  expect(host.querySelector('[data-message-section="answer"] [data-visible-summary]')?.textContent).toBe("Falta verificar el servicio.");
+  expect(host.querySelector('[data-message-section="answer"] [data-visible-summary]')?.textContent).toBe("Servicio verificado.");
   expect(visibleText(host)).not.toContain("lxp.agent.v1");
-  expect(visibleText(host)).not.toContain("HTTP 503");
+  expect(visibleText(host)).not.toContain("HTTP 200");
 });
 
 it.each([0, 1, 3, 4, 27])("keeps one task list with three initial rows and an accessible remainder: %s tasks", async count => {
@@ -898,7 +894,7 @@ it("does not echo settled CLI narration above its final answer", async () => {
 
 it("replaces the preview when expanding full text and never changes the saved answer", async () => {
   const text = "Resumen único.\n\n" + "Detalle conservado. ".repeat(40);
-  const response: ChatTurn = { role: "assistant", text, tools: [] };
+  const response: ChatTurn = { role: "assistant", text, tools: [], presentation: "summary" };
   await renderThread({ mode: "api", turns: [user, response] });
   const container = host.querySelector<HTMLElement>("[data-compact-answer]")!;
   const detail = container.querySelector<HTMLDetailsElement>("details")!;
@@ -919,31 +915,21 @@ it.each(["document", "code"] as const)("preserves complete requested %s content 
     : Array.from({ length: 12 }, (_, index) => `Apartado ${index + 1}: contenido íntegro y verificable del documento.`).join("\n\n");
   const text = kind === "code" ? "```ts\n" + body + "\n```" : "Documento solicitado.\n\n" + body;
   const live: ChatTurn = { role: "assistant", text, tools: [] };
-  const restored = historyTurn({ role: "assistant", content: text, ts: "", textTranslated: text });
+  const restored = historyTurn({ role: "assistant", content: text, ts: "", textTranslated: text, presentation: "full" });
   const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
   for (const response of [live, restored]) {
     await act(async () => root.render(null));
     await renderThread({ mode: "api", turns: [{ ...user, text: `Entrega el ${kind} completo.` }, response] });
     const answer = host.querySelector<HTMLElement>('[data-message-section="answer"]')!;
-    const detail = answer.querySelector<HTMLDetailsElement>("[data-compact-answer] > details")!;
-    expect(detail).not.toBeNull();
-    if (kind === "code") {
-      expect(answer.querySelector("[data-visible-summary]")).toBeNull();
-      expect(detail.querySelector("summary")?.textContent).toBe("Ver detalle");
-    }
-    await toggle(detail);
-    const full = detail.querySelector<HTMLElement>("[data-answer-detail]")!;
-    if (kind === "code") expect(full.querySelector("pre")?.textContent).toBe(body);
-    else for (const paragraph of body.split("\n\n")) expect(full.textContent).toContain(paragraph);
+    expect(answer.querySelector("[data-compact-answer]")).toBeNull();
+    expect(answer.querySelector("[data-visible-summary]")).toBeNull();
+    if (kind === "code") expect(answer.querySelector("pre")?.textContent).toBe(body);
+    else for (const paragraph of body.split("\n\n")) expect(visibleText(answer)).toContain(paragraph);
     const copy = [...answer.querySelectorAll<HTMLButtonElement>('button[title="Copiar"]')].at(-1)!;
     await act(async () => copy.click());
     expect(clipboard).toHaveBeenLastCalledWith(text);
     expect(response.text).toBe(text);
-    await toggle(detail);
-    await toggle(detail);
-    expect(detail.querySelector("[data-answer-detail]")?.textContent).toContain(
-      kind === "code" ? "const value39 = 39;" : "Apartado 12: contenido íntegro",
-    );
+    expect(visibleText(answer)).toContain(kind === "code" ? "const value39 = 39;" : "Apartado 12: contenido íntegro");
   }
 });
 
@@ -955,12 +941,31 @@ it("retains all requested plan steps and its approval after history reload", asy
     ask: [{ id: "plan", type: "single", text: "¿Apruebas el plan?", options: ["Aprobar plan", "Pedir cambios"] }],
   });
   await renderThread({ mode: "api", turns: [user, response] });
-  const plan = [...host.querySelectorAll<HTMLDetailsElement>("details")]
-    .find(details => details.querySelector(":scope > summary")?.textContent?.includes("Ver plan completo"))!;
-  expect(plan).not.toBeNull();
-  await toggle(plan);
+  const plan = host.querySelector<HTMLElement>('[data-message-section="answer"]')!;
+  expect(plan.querySelector("[data-compact-answer]")).toBeNull();
   for (let index = 1; index <= 12; index++) expect(visibleText(plan)).toContain(`Paso verificable ${index} del plan solicitado.`);
   expect(button("Aprobar plan").closest("details")).toBeNull();
   expect(button("Aprobar plan").disabled).toBe(false);
   expect(response.text).toBe(text);
+});
+
+it.each([
+  { error: "La operación no está confirmada." },
+  { interrupted: true },
+  { stopped: true },
+  { pending: true },
+  { ask: [{ id: "request", type: "text" as const, text: "Decisión pendiente" }] },
+  { permission: { id: "permission", tool: "files.write", title: "Permiso pendiente" } },
+])("preserves the full body for attention states despite a summary signal: %j", async state => {
+  const text = "Información imprescindible.\n\n" + "Detalle verificable conservado. ".repeat(30);
+  const response: ChatTurn = { role: "assistant", tools: [], text, presentation: "summary", displaySummary: "Síntesis", ...state };
+  await renderThread({ mode: "api", turns: [user, response] });
+  const answer = host.querySelector('[data-message-section="answer"]')!;
+  expect(answer.querySelector("[data-compact-answer]")).toBeNull();
+  expect(visibleText(answer)).toContain("Información imprescindible.");
+  expect(visibleText(answer)).toContain("Detalle verificable conservado.");
+  expect(visibleText(answer)).not.toContain("Síntesis");
+  if ("error" in state) expect(visibleText(answer)).toContain(state.error);
+  if ("permission" in state) expect(visibleText(answer)).toContain(state.permission.title);
+  if ("ask" in state) expect(visibleText(answer)).toContain(state.ask[0]!.text);
 });
