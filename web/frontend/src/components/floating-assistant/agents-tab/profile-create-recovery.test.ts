@@ -5,17 +5,24 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAgentsTab, type AgentsTabVM } from "./use-agents-tab";
 import { AgentEditor } from "./AgentEditor";
 import { AgentRequestError } from "../assistant-api/agents";
-import type { AssistantAgent } from "../assistant-api";
+import type { AssistantAgent, AssistantConfigState } from "../assistant-api";
+import AssistantView from "../AssistantView";
+import { workspaceState } from "../workspace-state";
 
-const m = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), done: vi.fn(), scope: "a", session: "test-session" }));
+const m = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), done: vi.fn(), config: vi.fn(), scope: "a", session: "test-session" }));
 vi.mock("@/lib/api-client", async original => ({
   ...await original<Record<string, unknown>>(),
   resolveTargetScope: () => m.scope,
   scopeHeaders: () => ({ "X-Bridge-Session-Id": m.session, "X-CSRF-Token": `test-csrf-${m.session}` }),
 }));
+vi.mock("astro:transitions/client", () => ({ navigate: vi.fn() }));
+vi.mock("@/i18n/client", () => ({ getClientMessages: async () => ({ assistant: {}, components: {} }) }));
+vi.mock("@/i18n", () => ({ getMessages: async () => ({}) }));
+vi.mock("../ChatTab", () => ({ ChatTab: () => createElement("div", { "data-chat-probe": "" }) }));
 vi.mock("../use-module-catalog", () => ({ useModuleCatalog: () => undefined }));
 vi.mock("../assistant-api", async original => ({
   ...await original<Record<string, unknown>>(),
+  assistantApi: { getConfig: m.config },
   assistantAgentsApi: { list: m.list, create: m.create, update: m.update },
   assistantAgentRolesApi: { list: async () => [] }, assistantAgentTeamsApi: { list: async () => [] },
   assistantProjectsApi: { list: async () => [] }, fetchAssociatableConnections: async () => [],
@@ -35,6 +42,9 @@ function deferred<T>() {
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks(); sessionStorage.clear(); m.scope = crypto.randomUUID(); m.session = crypto.randomUUID(); records = [];
+  m.config.mockResolvedValue({ enabled: true, providers: {} } as AssistantConfigState);
+  workspaceState.setContext(null, null, null);
+  window.history.replaceState({}, "", "/");
   m.list.mockImplementation(async () => records); m.update.mockResolvedValue(persisted);
   m.create.mockImplementation(async () => {
     records.push({ ...persisted, id: records.length ? "duplicate-id" : "persisted-id" });
@@ -45,6 +55,7 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await act(async () => root.unmount()); host.remove(); identity.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
 function Probe() {
@@ -53,6 +64,10 @@ function Probe() {
 }
 async function mount() {
   await act(async () => root.render(createElement(Probe)));
+  await vi.waitFor(async () => {
+    await act(async () => {});
+    expect(vm.creationReady).toBe(true);
+  });
   await act(async () => vm.setDraft(d => d ? { ...d, name: "Revisor" } : d));
 }
 async function close() { await act(async () => root.render(null)); }
@@ -154,4 +169,56 @@ it("never stores session headers or form data in its safety marker", async () =>
   const stored = JSON.stringify(Object.entries(sessionStorage));
   expect(stored).not.toContain(m.session); expect(stored).not.toContain("private draft instructions");
   expect(m.create).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the real Market profile editor blocked through close/reopen and Astro SPA return", async () => {
+  window.history.replaceState({}, "", "/assistant/market");
+  await act(async () => root.render(createElement(AssistantView, { locale: "es" })));
+  const button = (text: string, parent: ParentNode = document) =>
+    Array.from(parent.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent?.trim() === text);
+  const waitForUI = async (assertion: () => void) => {
+    await vi.waitFor(async () => { await act(async () => {}); assertion(); });
+  };
+  const openProfile = async () => {
+    await waitForUI(() => expect(button("Crear perfil")?.disabled).toBe(false));
+    await act(async () => button("Crear perfil")!.click());
+    await waitForUI(() => expect(document.querySelector('[role="dialog"] input[maxlength="120"]')).not.toBeNull());
+  };
+  const nameProfile = async () => {
+    const input = document.querySelector<HTMLInputElement>('[role="dialog"] input[maxlength="120"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Revisor");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  await openProfile(); await nameProfile();
+  await waitForUI(() => expect(button("Crear agente")?.disabled).toBe(false));
+  await act(async () => button("Crear agente")!.click());
+  await waitForUI(() => expect(document.querySelector('[role="dialog"]')?.textContent).toContain("No se pudo confirmar"));
+  expect(records).toHaveLength(1); expect(m.create).toHaveBeenCalledTimes(1);
+  vi.useFakeTimers();
+  await act(async () => document.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Cerrar"]')!.click());
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  vi.useRealTimers();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await openProfile(); await nameProfile();
+  expect(button("Crear agente")?.disabled).toBe(true);
+
+  const chat = host.querySelector("[data-chat-probe]");
+  await act(async () => {
+    window.history.pushState({}, "", "/files");
+    document.dispatchEvent(new Event("astro:page-load"));
+  });
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(host.querySelector("[data-chat-probe]")).toBe(chat);
+  await act(async () => {
+    window.history.pushState({}, "", "/assistant/market");
+    document.dispatchEvent(new Event("astro:page-load"));
+  });
+  await openProfile(); await nameProfile();
+  await waitForUI(() => expect(document.querySelector('[role="dialog"]')?.textContent).toContain("No se pudo confirmar"));
+  expect(button("Crear agente")?.disabled).toBe(true);
+  await act(async () => button("Crear agente")!.click());
+  expect(m.create).toHaveBeenCalledTimes(1); expect(records).toHaveLength(1);
+  expect(m.update).not.toHaveBeenCalled();
 });

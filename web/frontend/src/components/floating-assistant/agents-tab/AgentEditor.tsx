@@ -705,7 +705,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
         {!setFooterAction && (
           <div className="flex items-center gap-2">
             <button
-              type="button" onClick={() => void save()} disabled={saving || (!draft.id && vm.creationUncertain) || !draft.name.trim() || (!vm.editorOnly && !draft.teamId)}
+              type="button" onClick={() => void save()} disabled={saving || (!draft.id && (!vm.creationReady || vm.creationUncertain)) || !draft.name.trim() || (!vm.editorOnly && !draft.teamId)}
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             >
               {saving ? t.saving : draft.id ? t.saveChanges : t.editor.createAgent}
