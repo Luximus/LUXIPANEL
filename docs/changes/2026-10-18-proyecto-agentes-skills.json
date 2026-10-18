@@ -1,0 +1,9 @@
+{
+  "title": "Configuración de proyectos más compacta y organizada",
+  "changes": [
+    "El título, el proveedor de IA y el acceso para editar el documento del proyecto aparecen juntos en la configuración.",
+    "Agentes IA muestra por defecto los agentes del proyecto, incluidos los heredados, y permite cambiar a los disponibles en Market mediante un selector.",
+    "Se retira el acceso a Market del menú lateral del asistente.",
+    "Skills aprovecha el ancho y el alto disponibles y mantiene accesibles la búsqueda y el guardado."
+  ]
+}

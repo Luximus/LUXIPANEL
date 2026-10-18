@@ -34,7 +34,9 @@ const skillsPickerFallback: SkillsPickerMessages = {
 export function SkillsPicker({
   value,
   onChange,
+  fill = false,
 }: {
+  fill?: boolean;
   value: AssistantSkillsMap;
   onChange: (next: AssistantSkillsMap) => void;
 }) {
@@ -87,12 +89,12 @@ export function SkillsPicker({
   const overridden = Object.keys(value).length;
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
+    <div className={`flex min-w-0 flex-col gap-2 ${fill ? "min-h-0 w-full flex-1" : ""}`}>
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <input
           type="text" value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder={tt.searchPlaceholder}
-          className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
+          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none"
         />
         {overridden > 0 && (
           <button type="button" onClick={() => onChange({})} className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground" title={tt.resetTitle}>
@@ -101,9 +103,9 @@ export function SkillsPicker({
         )}
       </div>
       {loading && <p className="text-[11px] text-muted-foreground">{tt.loading}</p>}
-      <div className="flex flex-col gap-1 max-h-56 overflow-y-auto pr-1">
+      <div className={`flex flex-col gap-1 overflow-y-auto pr-1 ${fill ? "min-h-0 flex-1" : "max-h-56"}`}>
         {filtered.map((s) => (
-          <div key={s.id} className="rounded-md bg-muted/30 px-2 py-1.5">
+          <div key={s.id} className="shrink-0 rounded-md bg-muted/30 px-2 py-1.5">
             <label className="flex items-start gap-2 text-[11px]">
               <input type="checkbox" className="mt-0.5" checked={isOn(s)} onChange={() => toggle(s)} />
               <span className="min-w-0 flex-1">
@@ -132,7 +134,7 @@ export function SkillsPicker({
         ))}
         {!loading && filtered.length === 0 && <p className="text-[11px] text-muted-foreground">{tt.empty}</p>}
       </div>
-      <p className="text-[10px] text-muted-foreground/70">
+      <p className="shrink-0 text-[10px] text-muted-foreground/70">
         {tt.globalNote}
       </p>
     </div>

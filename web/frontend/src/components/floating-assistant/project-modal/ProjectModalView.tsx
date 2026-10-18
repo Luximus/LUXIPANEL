@@ -37,6 +37,11 @@ export function ProjectModalView(props: ProjectModalViewProps) {
   const { i18n, project, allProjects, initialParentId, onClose, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, teamName, setTeamName, leaderName, setLeaderName, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, addBusy, removeBusy, selectRef, overlayRef, assignedChildren, parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide } = vm;
   // Dirección de la transición entre secciones (orden del menú lateral).
   const tabDirection = useViewDirection(tab, PROJECT_TAB_ORDER);
+  const [editRootDocument, setEditRootDocument] = useState(false);
+  const rootDoc = STRUCTURE_PROVIDERS.find((item) => item.id === provider)!.rootDoc;
+  const canEditRoot = !!project?.path && path === project.path && provider === project.provider;
+  const { structurePanel } = i18n as typeof i18n & { structurePanel?: { edit: string } };
+  const editRootLabel = `${structurePanel?.edit ?? t.editProject} ${rootDoc}`;
   const [agentFooter, setAgentFooter] = useState<SettingsFooterAction | null>(null);
   const [agentHeader, setAgentHeader] = useState<SettingsHeaderOverride | null>(null);
   const activeAgentHeader = tab === "agents" ? agentHeader : null;
@@ -114,7 +119,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
       ) : undefined) : footer}
     >
       <div className="flex h-full min-h-0">
-        <DrawerSectionNav items={sections} activeId={tab} onSelect={(id) => setTab(id as ProjectTab)} />
+        <DrawerSectionNav items={sections} activeId={tab} onSelect={(id) => { setEditRootDocument(false); setTab(id as ProjectTab); }} />
 
         <div
           className={cn(
@@ -161,15 +166,39 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                 </>
               )}
 
-              <label className="block text-xs">
-                <span className="text-muted-foreground">{t.titleLabel}</span>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={t.titlePlaceholder}
-                  className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
-                />
-              </label>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 @md:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto]" data-project-identity-row>
+                <label className="col-span-2 block min-w-0 text-xs @md:col-span-1">
+                  <span className="text-muted-foreground">{t.titleLabel}</span>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={t.titlePlaceholder}
+                    className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
+                  />
+                </label>
+                <label className="block min-w-0 text-xs">
+                  <span className="text-muted-foreground">{t.providerLabel}</span>
+                  <select
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value as StructureProviderId)}
+                    className="mt-1 w-full h-9 rounded-md border border-input bg-background px-2 text-sm focus:border-primary focus:outline-none"
+                  >
+                    {STRUCTURE_PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>{p.label} · {p.rootDoc}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setEditRootDocument(true); setTab("structure"); }}
+                  disabled={!canEditRoot || busy || loading}
+                  title={canEditRoot ? editRootLabel : `${t.save} · ${rootDoc}`}
+                  aria-label={editRootLabel}
+                  className="flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <i className="ti ti-pencil text-base" aria-hidden />
+                </button>
+              </div>
 
               {!parentProject && !initialParentId && (
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
@@ -181,19 +210,6 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   </div> : <button type="button" onClick={() => setTab("agents")} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"><i className="ti ti-robot" aria-hidden />{t.tabAgents}</button>}
                 </div>
               )}
-
-              <label className="block text-xs">
-                <span className="text-muted-foreground">{t.providerLabel}</span>
-                <select
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value as StructureProviderId)}
-                  className="mt-1 w-full h-9 rounded-md border border-input bg-background px-2 text-sm focus:border-primary focus:outline-none"
-                >
-                  {STRUCTURE_PROVIDERS.map((p) => (
-                    <option key={p.id} value={p.id}>{p.label} · {p.rootDoc}</option>
-                  ))}
-                </select>
-              </label>
 
               <div className="block text-xs">
                 <span className="text-muted-foreground">{t.iconLabel}</span>
@@ -476,9 +492,9 @@ export function ProjectModalView(props: ProjectModalViewProps) {
           {tab === "skills" && (
             <>
               {/* Skills del proyecto (solo en sus chats) */}
-              <div className="space-y-2">
-                <span className="block text-xs font-medium text-muted-foreground">{t.skillsLabel}</span>
-                <SkillsPicker value={skills} onChange={setSkills} />
+              <div className="flex min-h-0 w-full flex-1 flex-col gap-2">
+                <span className="shrink-0 text-xs font-medium text-muted-foreground">{t.skillsLabel}</span>
+                <SkillsPicker value={skills} onChange={setSkills} fill />
               </div>
             </>
           )}
@@ -581,7 +597,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
           )}
 
           {tab === "structure" && project && (
-            <StructurePanel projectId={project.id} />
+            <StructurePanel key={project.id} projectId={project.id} openRootDocument={editRootDocument} />
           )}
           </ViewTransition>
           )}

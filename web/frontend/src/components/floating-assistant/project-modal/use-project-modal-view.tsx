@@ -362,7 +362,7 @@ export function useProjectModalView({
     }
   }
 
-  const wide = tab === "structure";
+  const wide = tab === "structure" || tab === "skills" || tab === "agents";
 
   return {
     project, allProjects, initialParentId, onClose, closing, deferredClose, onSaved, onDeleted, onRefresh,

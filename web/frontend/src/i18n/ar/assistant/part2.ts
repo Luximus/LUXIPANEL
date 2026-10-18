@@ -39,6 +39,10 @@ const assistantPart2 = {
     "minimaxVoiceHint": "صوت MiniMax المستخدم."
   },
   "agentMarket": {
+    "agentSource": "عرض الوكلاء",
+    "projectAgents": "وكلاء المشروع",
+    "marketAgents": "وكلاء Market",
+    "projectAgentsHint": "الوكلاء المعينون لهذا المشروع، بما في ذلك الوكلاء الموروثون.",
     "creationUncertain": "تعذّر تأكيد إنشاء الملف. لن يُرسل الطلب مجددًا لتجنب التكرار. راجع الكتالوج واختر الملف الذي أُنشئ فقط إذا استطعت التعرف عليه؛ وإذا لم يظهر، فستظل النتيجة غير مؤكدة.",
     "reviewProfiles": "مراجعة الكتالوج",
     "recoverProfile": "اختيار الملف الذي أُنشئ",

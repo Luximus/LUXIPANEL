@@ -39,6 +39,10 @@ const assistantPart2 = {
     "minimaxVoiceHint": "Voix MiniMax à utiliser."
   },
   "agentMarket": {
+    "agentSource": "Afficher les agents",
+    "projectAgents": "Agents du projet",
+    "marketAgents": "Agents du Market",
+    "projectAgentsHint": "Agents affectés à ce projet, y compris les agents hérités.",
     "creationUncertain": "La création n’a pas pu être confirmée. Elle ne sera pas renvoyée afin d’éviter les doublons. Consultez le catalogue et sélectionnez le profil créé uniquement si vous pouvez l’identifier ; s’il est absent, le résultat reste incertain.",
     "reviewProfiles": "Consulter le catalogue",
     "recoverProfile": "Sélectionner le profil créé",

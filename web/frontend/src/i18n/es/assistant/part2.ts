@@ -40,6 +40,10 @@ const assistantPart2 = {
     "retry": "Reintentar"
   },
   "agentMarket": {
+    "agentSource": "Mostrar agentes",
+    "projectAgents": "Agentes del proyecto",
+    "marketAgents": "Agentes del Market",
+    "projectAgentsHint": "Agentes asignados a este proyecto, incluidos los heredados.",
     "creationUncertain": "No se pudo confirmar la creación. Para evitar duplicados, no se volverá a enviar. Revisa el catálogo y selecciona el perfil creado solo si puedes identificarlo; si no aparece, el resultado sigue sin confirmar.",
     "reviewProfiles": "Revisar catálogo",
     "recoverProfile": "Seleccionar el perfil creado",

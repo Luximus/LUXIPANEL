@@ -92,13 +92,22 @@ it("does not reroute a profile to its global team or first attached project", ()
   expect(projectForAgent(agents[0], projects, nested.id)).toBeNull();
 });
 
-it("opens the full contextual Market from a child project", async () => {
+it("defaults to project membership, includes inherited agents and separates the Market", async () => {
+  vi.mocked(api.assistantAgentsApi.list).mockResolvedValue([
+    { ...agents[0], context: { projectId: child.id, membership: "direct" } },
+    { ...agents[1], context: { projectId: child.id, membership: "inherited" } },
+    { ...agents[2], context: { projectId: child.id, membership: "none" } },
+  ] as api.AssistantAgent[]);
   await mount(createElement(ProjectModal, { project: child, allProjects: projects, initialTab: "agents", onClose: vi.fn(), onSaved: vi.fn() }));
   expect(api.assistantAgentsApi.list).toHaveBeenCalledWith({ contextProjectId: child.id });
-  expect(document.body.textContent).toContain("Market");
-  expect(document.body.textContent).toContain("Agente worker-a");
-  expect(document.body.textContent).toContain("Agente leader-b");
-  expect(document.body.textContent).not.toContain("Equipo Alpha");
+  const names = () => [...document.querySelectorAll("article h3")].map(el => el.textContent);
+  expect(names()).toEqual(["Agente leader-a", "Agente worker-a"]);
+  const source = [...document.querySelectorAll("select")].find(el => el.value === "project")!;
+  expect(source).toBeDefined();
+  await act(async () => { source.value = "market"; source.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(names()).toEqual(["Agente leader-b"]);
+  await act(async () => { source.value = "project"; source.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(names()).toEqual(["Agente leader-a", "Agente worker-a"]);
 });
 
 it("creates a reusable profile without implicitly assigning it or moving a team", async () => {

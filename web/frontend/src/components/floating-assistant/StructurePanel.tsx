@@ -322,7 +322,7 @@ function downloadTextFile(filename: string, content: string): void {
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export function StructurePanel({ projectId }: { projectId: string }) {
+export function StructurePanel({ projectId, openRootDocument = false }: { projectId: string; openRootDocument?: boolean }) {
   const i18n = useAssistantI18n() as ReturnType<typeof useAssistantI18n> & {
     structurePanel?: Partial<StructurePanelMessages>;
   };
@@ -383,6 +383,16 @@ export function StructurePanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const rootOpened = useRef(false);
+  useEffect(() => {
+    if (!openRootDocument || !structure || rootOpened.current) return;
+    rootOpened.current = true;
+    // Missing documents stay in the existing scaffold flow; never write on open.
+    if (structure.nodes.some((node) => node.rel === structure.rootDoc && node.present && node.editable)) {
+      void openEditor(structure.rootDoc);
+    }
+  }, [openRootDocument, structure]);
 
   const tree = useMemo(() => buildTree(structure?.nodes ?? []), [structure]);
   const missingCount = useMemo(() => (structure?.nodes ?? []).filter((n) => !n.present).length, [structure]);

@@ -39,6 +39,10 @@ const assistantPart2 = {
     "minimaxVoiceHint": "사용할 MiniMax 음성."
   },
   "agentMarket": {
+    "agentSource": "에이전트 표시",
+    "projectAgents": "프로젝트 에이전트",
+    "marketAgents": "Market 에이전트",
+    "projectAgentsHint": "상속된 에이전트를 포함하여 이 프로젝트에 할당된 에이전트입니다.",
     "creationUncertain": "프로필 생성 결과를 확인하지 못했습니다. 중복을 방지하기 위해 다시 전송하지 않습니다. 카탈로그를 확인하고 생성된 프로필을 식별할 수 있을 때만 선택하세요. 보이지 않으면 결과는 여전히 미확인 상태입니다.",
     "reviewProfiles": "카탈로그 확인",
     "recoverProfile": "생성된 프로필 선택",
