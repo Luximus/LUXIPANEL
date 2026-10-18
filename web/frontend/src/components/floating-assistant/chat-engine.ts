@@ -413,7 +413,7 @@ export const chatEngine = {
       first.messageId || t.messageId
         ? !!first.messageId && t.messageId === first.messageId && t.role === first.role
         : !!first.createdAt && t.createdAt === first.createdAt && t.role === first.role && t.text === first.text) : -1;
-    const turns = reconcileMessageTurns(overlap > 0 ? [...current.turns.slice(0, overlap), ...fetched] : fetched);
+    const turns = reconcileMessageTurns(overlap > 0 ? [...current.turns.slice(0, overlap), ...fetched] : fetched, current.turns);
     chats.set(key, { ...current, turns });
     emit();
     await chatEngine.refreshTeamTasks(key);
@@ -430,7 +430,7 @@ export const chatEngine = {
     chats.set(key, {
       provider,
       conversationId,
-      turns: reconcileMessageTurns(turns),
+      turns: reconcileMessageTurns(turns, existing?.conversationId === conversationId ? existing.turns : []),
       streaming: false,
       ...(existing?.teamTasks ? { teamTasks: existing.teamTasks } : {}),
     });

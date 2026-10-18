@@ -142,3 +142,25 @@ it("discards a late response after the target changes even when the message ID m
   expect(await reload).toBe(false);
   expect(chats.get(key)).toBe(before);
 });
+
+it("does not downgrade a terminal response when a later REST refresh still reports pending", async () => {
+  seed([request, historyTurn(saved("logical-a", { content: "Final body", presentation: "full" }))]);
+  io.messages.mockResolvedValue({ items: [
+    { role: "user", content: request.text, ts: "" }, saved("logical-a", { pending: true, content: "" }),
+  ] });
+  expect(await reloadHistory(key, key)).toBe(true);
+  expect(chats.get(key)?.turns.at(-1)).toMatchObject({ messageId: "logical-a", text: "Final body" });
+  expect(chats.get(key)?.turns.at(-1)?.completionPending).not.toBe(true);
+});
+
+it("preserves a legacy CLI document without classifying it as a terminal transcript", () => {
+  const content = "Documento solicitado.\n\n" + Array.from({ length: 60 }, (_, index) => "Apartado " + index + ": texto completo.").join("\n\n");
+  expect(historyTurn(saved(undefined, { content, cli: true })).text).toBe(content);
+});
+
+it("does not carry an ID match from another conversation when seeding a new chat", () => {
+  seed([historyTurn(saved("same-id", { content: "Other conversation body" }))]);
+  chatEngine.seed(key, "openai", "other-conversation", [historyTurn(saved("same-id", { content: "", pending: true }))]);
+  expect(chats.get(key)?.turns[0]?.completionPending).toBe(true);
+  expect(chats.get(key)?.turns[0]?.text).toBe("");
+});

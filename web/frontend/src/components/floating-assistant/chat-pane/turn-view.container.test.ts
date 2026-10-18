@@ -122,10 +122,11 @@ describe("assistant message container", () => {
       ask: [{ id: "plan", type: "single", text: "¿Apruebas este plan?", options: ["Aprobar plan", "Pedir cambios"] }],
     };
     const html = renderToStaticMarkup(createElement(TurnView, { turn, provider: "codex", isLast: true, onAnswer: () => {} }));
-    expect(html).toContain("Ver plan completo");
+    expect(html).not.toContain("Ver plan completo");
+    expect(html).not.toContain("data-compact-answer");
     expect(html).toContain("Implementar controles");
     expect(html).toContain("Aprobar plan");
-    expect(html).not.toContain("Resumen:");
+    expect(html).toContain("Resumen:");
   });
 });
 

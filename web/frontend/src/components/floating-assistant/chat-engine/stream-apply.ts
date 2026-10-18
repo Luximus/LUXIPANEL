@@ -352,7 +352,7 @@ export async function reloadHistory(key: string, conversationId: string): Promis
     if (resolveTargetScope() !== scope || !chat || chat.conversationId !== conversationId) return false;
     if (chat.streaming !== initial.streaming || chat.abort !== initial.abort || chat.turns !== initial.turns) return false;
     const provider = chat.provider;
-    const turns = historyTurns(items, provider);
+    const turns = reconcileMessageTurns(historyTurns(items, provider), initial.turns);
     const last = initial.turns.at(-1);
     if (last?.role === "assistant" && (last.pending || last.interrupted || last.completionPending)) {
       // Neither 204 nor matching prompt text proves this request was admitted.
@@ -394,7 +394,7 @@ export async function reconcileRunHistory(
     const chat = chats.get(key);
     if (scope !== resolveTargetScope() || !chat || chat.conversationId !== conversationId
       || chat.abort !== initial.abort || chat.streaming !== initial.streaming || chat.turns !== initial.turns) return false;
-    const turns = historyTurns(items, chat.provider);
+    const turns = reconcileMessageTurns(historyTurns(items, chat.provider), initial.turns);
     const requestIndex = findSavedRequestIndex(initial.turns, turns);
     if (requestIndex === null) return false;
     const outcomeIndex = requestIndex + 1;

@@ -50,7 +50,9 @@ export function historyTurn(m: ConversationMessage, fallbackProvider?: string): 
     // CLI turns: clean answer (split) or summary derived from the log
     // (pre-split); otherwise the user-facing variant when translation was active.
     // New contract responses always keep their canonical display body intact.
-    text: isCliAssistant && !m.messageId && !m.presentation ? cliSummary : displayText(m),
+    text: isCliAssistant && !m.messageId && !m.presentation
+      && (!persistedSummary.trim() || persistedSummary.trimStart().startsWith("$ ") || looksLikeCliTranscript(persistedSummary))
+      ? cliSummary : displayText(m),
     tools: apiActivity ? apiActivityTools(apiActivity) : [],
     ...(apiActivity ? { apiActivity } : {}),
     ...(forwardedEnglish ? { raw: forwardedEnglish } : {}),
@@ -82,34 +84,48 @@ export function historyTurns(items: ConversationMessage[], seedProvider?: string
   }));
 }
 
+function messageIdentity(turn: ChatTurn): string | undefined {
+  return turn.messageId?.trim() ? JSON.stringify([turn.role, turn.messageId]) : undefined;
+}
+
+function mergeIdentifiedMessage(previous: ChatTurn, next: ChatTurn): ChatTurn {
+  const awaiting = (turn: ChatTurn) => !!(turn.pending || turn.completionPending || turn.interrupted || turn.status);
+  // A late pending snapshot cannot undo an already persisted terminal outcome.
+  const keepPrevious = !awaiting(previous) && awaiting(next);
+  const chosen = keepPrevious ? previous : next;
+  const other = keepPrevious ? next : previous;
+  return { ...chosen,
+    tools: chosen.cliHistoryLog ? chosen.tools : [
+      ...chosen.tools.map(tool => ({ ...tool,
+        result: tool.result ?? other.tools.find(item => item.id === tool.id)?.result })),
+      ...other.tools.filter(tool => !chosen.tools.some(item => item.id === tool.id)),
+    ],
+    ...(chosen.apiActivity || other.apiActivity ? { apiActivity: chosen.apiActivity ?? other.apiActivity } : {}),
+    ...(chosen.addenda || other.addenda ? { addenda: chosen.addenda ?? other.addenda } : {}),
+  };
+}
+
 /** Reconcile only explicit response identities within one conversation.
- * Legacy messages remain separate even when their text and timestamp match. */
-export function reconcileMessageTurns(turns: ChatTurn[]): ChatTurn[] {
+ * Legacy messages remain separate even when their text and timestamp match.
+ * Known messages enrich matching rows, never insert missing rows into a page. */
+export function reconcileMessageTurns(turns: ChatTurn[], known: ChatTurn[] = []): ChatTurn[] {
+  const previous = new Map<string, ChatTurn>();
+  for (const turn of known) {
+    const identity = messageIdentity(turn);
+    if (identity) previous.set(identity, turn);
+  }
   const positions = new Map<string, number>();
   const result: ChatTurn[] = [];
   for (const turn of turns) {
-    const identity = turn.messageId?.trim() ? JSON.stringify([turn.role, turn.messageId]) : undefined;
+    const identity = messageIdentity(turn);
     const position = identity ? positions.get(identity) : undefined;
     if (position === undefined) {
       if (identity) positions.set(identity, result.length);
-      result.push(turn);
-      continue;
+      const existing = identity ? previous.get(identity) : undefined;
+      result.push(existing ? mergeIdentifiedMessage(existing, turn) : turn);
+    } else {
+      result[position] = mergeIdentifiedMessage(result[position]!, turn);
     }
-    const previous = result[position]!;
-    const awaiting = (value: ChatTurn) => !!(value.pending || value.completionPending || value.interrupted || value.status);
-    // A late pending snapshot cannot undo an already persisted terminal outcome.
-    const keepPrevious = !awaiting(previous) && awaiting(turn);
-    const chosen = keepPrevious ? previous : turn;
-    const other = keepPrevious ? turn : previous;
-    result[position] = { ...chosen,
-      tools: chosen.cliHistoryLog ? chosen.tools : [
-        ...chosen.tools.map(tool => ({ ...tool,
-          result: tool.result ?? other.tools.find(item => item.id === tool.id)?.result })),
-        ...other.tools.filter(tool => !chosen.tools.some(item => item.id === tool.id)),
-      ],
-      ...(chosen.apiActivity || other.apiActivity ? { apiActivity: chosen.apiActivity ?? other.apiActivity } : {}),
-      ...(chosen.addenda || other.addenda ? { addenda: chosen.addenda ?? other.addenda } : {}),
-    };
   }
   return result;
 }

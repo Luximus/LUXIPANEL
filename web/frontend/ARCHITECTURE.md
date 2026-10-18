@@ -499,7 +499,7 @@ se incorporan por bloques al mismo scroll.
 
 ### Respuestas compactas (2026-10-17)
 
-`CompactAnswer` limita la presentación del resumen a dos líneas con un máximo de 240 caracteres. El contenido original solo se monta en «Ver detalle» al abrirlo; copiar, el contexto del modelo, errores, permisos y preguntas conservan sus contratos. La proyección funciona en respuestas API/CLI, avisos de equipo, fases anteriores e historial sin displaySummary. Los mensajes TOON muestran su summary raíz, no los datos internos; la validación completa pertenece al backend. El escritorio activo carga este frontend. `scripts/qa-compact-answers.mjs` comprueba geometría y expansión con Chromium y datos simulados, sin invocar proveedores ni conversaciones reales.
+`CompactAnswer` muestra el cuerpo completo por defecto. Solo `presentation: "summary"`, emitido por el backend para paquetes internos validados, habilita una síntesis de dos líneas y 240 caracteres con el cuerpo intacto en «Ver detalle». `displaySummary` es únicamente una proyección: su presencia o el aspecto TOON del texto no autorizan truncar la respuesta. Los estados de error, pregunta, permiso, espera, interrupción o streaming fuerzan contenido completo; los planes para aprobación se muestran íntegros junto a sus controles. Copiar y el contexto del modelo conservan el cuerpo original. La misma regla se aplica a API/CLI, avisos, fases anteriores y mensajes antiguos sin señal de presentación.
 
 
 ### Historial único y lista compacta del turno (2026-10-17)
@@ -508,4 +508,10 @@ se incorporan por bloques al mismo scroll.
 
 `TeamTaskBoard` muestra tres tareas al abrir el proceso y ofrece el resto mediante un botón con contador, `aria-expanded` y `aria-controls`; su estado de apertura pertenece a la conversación. Las alertas del equipo siguen visibles en el resumen del proceso aunque su tarea quede fuera de esas tres filas. Los estados y acciones se asocian al id original de cada tarea.
 
-Al terminar una ejecución CLI, la narración permanece en el historial y deja de repetirse en la fila de progreso. `CompactAnswer` no ofrece un detalle redundante cuando la respuesta ya coincide con la síntesis. Al abrir un contenido extenso, reemplaza la síntesis visible por el texto íntegro y la recupera al cerrar; no modifica el contenido guardado ni el que se copia. Las regresiones de estos comportamientos están en `chat-pane/team-execution.render.test.ts`.
+Al terminar una ejecución CLI, la narración permanece en el historial y deja de repetirse en la fila de progreso. `CompactAnswer`, cuando el backend autoriza una síntesis, no ofrece un detalle redundante si la respuesta ya coincide con ella. Al abrir un contenido extenso, reemplaza la síntesis visible por el texto íntegro y la recupera al cerrar; no modifica el contenido guardado ni el que se copia. Las regresiones de estos comportamientos están en `chat-pane/team-execution.render.test.ts`.
+
+### Identidad de respuestas y presentación conservadora (2026-10-17)
+
+Los tipos de historial, turno y eventos SSE de cierre incorporan `messageId?: string` y `presentation?: "full" | "summary"`, acordados con el backend. `messageId` identifica la respuesta lógica; `runId/seq` siguen identificando únicamente el transporte. Historial, páginas solapadas y cierres repetidos reconcilian solo ids explícitos dentro de la misma conversación. Una respuesta pendiente puede completarse con el mismo id y un snapshot pendiente tardío no revierte el resultado confirmado. Los mensajes sin id o con ids distintos permanecen separados aunque tengan el mismo texto y fecha.
+
+La correlación por id precede a las guardas de contexto del historial legado; no hay migración ni ids inferidos. Se conservan los controles de target, conversación y respuesta tardía. Los cuerpos nuevos mantienen `textTranslated ?? content` sin extraer una síntesis de la consola. Las regresiones de identidad están en `chat-engine/message-identity.test.ts`; el render comprueba documentos, código, planes completos, aprobaciones y apertura/cierre de síntesis explícitas.
