@@ -1,9 +1,11 @@
 import {act,createElement} from "react";
 import {createRoot,type Root} from "react-dom/client";
+import { flushSync } from "react-dom";
 import {beforeEach,afterEach,expect,it,vi} from "vitest";
 const m=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),del:vi.fn(),media:vi.fn(),scope:"host",track:{enabled:true,stop:vi.fn()}}));
 vi.mock("@/lib/api-client",()=>({api:{get:m.get,post:m.post,delete:m.del},unwrap:(v:any)=>v,resolveTargetScope:()=>m.scope}));
 import {useRealtimeVoice} from "./use-realtime-voice";
+import { RealtimeRequests } from "./RealtimeRequests";
 import {chatInputLocked} from "../chat-engine/input-lock";
 let hook:ReturnType<typeof useRealtimeVoice>,root:Root,host:HTMLDivElement;
 let options={enabled:true,canStart:true,chatKey:"chat",conversationId:"chat",ensureConversation:vi.fn(async()=>"chat"),refresh:vi.fn(async()=>{})};
@@ -109,4 +111,114 @@ it("does not create a voice conversation after admission is lost during micropho
  await act(async()=>{ready({getTracks:()=>[m.track],getAudioTracks:()=>[m.track]});await starting;});
  expect(options.ensureConversation).not.toHaveBeenCalled();expect(m.post).not.toHaveBeenCalled();
  expect(hook.active).toBe(false);expect(m.track.stop).toHaveBeenCalled();
+});
+
+function RequestsHarness() {
+  hook = useRealtimeVoice(options);
+  return createElement(RealtimeRequests, { voice: hook });
+}
+async function requests() {
+  m.get.mockImplementation(async (path: string) => path.includes("/conversations/") ? { activeId: null } : {
+    closed: false, events: [
+      { seq: 1, type: "permission_request", conversationId: "worker", event: { id: "request", tool: "files.write", title: "Aplicar cambio" } },
+      { seq: 2, type: "ask", taskId: "task", askedAt: "when", questions: [{ id: "q1", type: "single", text: "¿Continuar?", options: ["Continuar"] }] },
+    ],
+  });
+  await act(async () => root.render(createElement(RequestsHarness)));
+  await act(async () => hook.toggle());
+  expect(hook.permissions).toHaveLength(1); expect(hook.asks).toHaveLength(1);
+  m.post.mockClear();
+}
+function requestButton(text: string) {
+  const button = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent?.trim() === text);
+  expect(button).toBeDefined();
+  return button!;
+}
+async function blockRequests() {
+  options = { ...options, canStart: false };
+  await act(async () => root.render(createElement(RequestsHarness)));
+}
+
+it.each(["createOffer", "setLocalDescription"] as const)("does not POST a new session when admission is lost during %s", async step => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const offered = vi.fn(async () => { if (step === "createOffer") await pending; return { type: "offer" as const, sdp: "offer" }; });
+  const local = vi.fn(async () => { if (step === "setLocalDescription") await pending; });
+  const close = vi.fn();
+  vi.stubGlobal("RTCPeerConnection", class {
+    addTrack() {} createDataChannel() {}
+    createOffer = offered; setLocalDescription = local; close = close;
+    async setRemoteDescription() {}
+  });
+  let starting!: Promise<void>;
+  await act(async () => { starting = hook.toggle(); });
+  expect(step === "createOffer" ? offered : local).toHaveBeenCalledTimes(1);
+  options = { ...options, canStart: false };
+  await act(async () => root.render(createElement(Harness)));
+  await act(async () => { release(); await starting; });
+  expect(m.post).not.toHaveBeenCalled();
+  expect(m.track.stop).toHaveBeenCalled(); expect(close).toHaveBeenCalled();
+  expect(hook.active).toBe(false); expect(chatInputLocked("chat")).toBe(false);
+  if (step === "createOffer") expect(local).not.toHaveBeenCalled();
+});
+it.each(["Aprobar", "Aprobar y no preguntar más"])("blocks the real %s button after admission is lost", async label => {
+  await requests(); await blockRequests();
+  await act(async () => requestButton(label).click());
+  expect(m.post).not.toHaveBeenCalled(); expect(requestButton(label).disabled).toBe(true);
+  expect(hook.permissions).toHaveLength(1); expect(requestButton("Rechazar").disabled).toBe(false);
+});
+it("blocks the real question option after admission is lost", async () => {
+  await requests(); await blockRequests();
+  await act(async () => requestButton("Continuar").click());
+  expect(m.post).not.toHaveBeenCalled(); expect(requestButton("Continuar").disabled).toBe(true);
+  expect(hook.asks).toHaveLength(1); expect(hook.active).toBe(true);
+});
+it("guards retained voice callbacks against new approvals or answers after admission is lost", async () => {
+  await requests();
+  const permission = hook.permission, answer = hook.answer, request = hook.permissions[0], question = hook.asks[0];
+  await blockRequests();
+  await act(async () => {
+    await expect(permission(request, "allow")).rejects.toThrow();
+    await expect(permission(request, "always")).rejects.toThrow();
+    await expect(answer(question, 0)).rejects.toThrow();
+  });
+  expect(m.post).not.toHaveBeenCalled(); expect(hook.permissions).toHaveLength(1); expect(hook.asks).toHaveLength(1);
+});
+it("keeps mute, rejection and stop available without granting actions while blocked", async () => {
+  await requests(); await blockRequests();
+  await act(async () => hook.toggleMuted()); expect(m.track.enabled).toBe(false); expect(hook.muted).toBe(true);
+  await act(async () => requestButton("Rechazar").click());
+  expect(m.post).toHaveBeenCalledTimes(1);
+  expect(m.post).toHaveBeenCalledWith("/api/ai/agent/permission", { conversationId: "worker", requestId: "request", decision: "deny" });
+  expect(hook.permissions).toHaveLength(0); expect(hook.asks).toHaveLength(1);
+  await act(async () => hook.toggle()); expect(m.del).toHaveBeenCalledWith("/api/ai/realtime/sessions/voice");
+  expect(hook.active).toBe(false); expect(chatInputLocked("chat")).toBe(false);
+  await act(async () => requestButton("Continuar").click()); expect(m.post).toHaveBeenCalledTimes(1);
+  await act(async () => hook.toggle()); expect(m.post).toHaveBeenCalledTimes(1);
+});
+it("allows the preserved question after admission is restored", async () => {
+  await requests(); await blockRequests();
+  await act(async () => requestButton("Continuar").click());
+  options = { ...options, canStart: true };
+  await act(async () => root.render(createElement(RequestsHarness)));
+  expect(requestButton("Continuar").disabled).toBe(false);
+  await act(async () => requestButton("Continuar").click());
+  expect(m.post).toHaveBeenCalledTimes(1);
+  expect(m.post).toHaveBeenCalledWith("/api/ai/realtime/sessions/voice/answer", { taskId: "task", askedAt: "when", choice: 0 });
+  expect(hook.asks).toHaveLength(0);
+});
+
+it("rejects a queued approval after admission is revoked and leaves rejection usable", async () => {
+  await requests();
+  act(() => {
+    requestButton("Aprobar").click();
+    options = { ...options, canStart: false };
+    flushSync(() => root.render(createElement(RequestsHarness)));
+  });
+  await act(async () => {});
+  expect(m.post).not.toHaveBeenCalled(); expect(hook.permissions).toHaveLength(1);
+  expect(requestButton("Aprobar").disabled).toBe(true); expect(requestButton("Rechazar").disabled).toBe(false);
+  await act(async () => requestButton("Rechazar").click());
+  expect(m.post).toHaveBeenCalledTimes(1);
+  expect(m.post).toHaveBeenCalledWith("/api/ai/agent/permission", { conversationId: "worker", requestId: "request", decision: "deny" });
 });

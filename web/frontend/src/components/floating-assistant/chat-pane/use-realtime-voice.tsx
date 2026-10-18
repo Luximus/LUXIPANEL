@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, unwrap, resolveTargetScope } from "@/lib/api-client";
 import { lockChatInput } from "../chat-engine/input-lock";
+import { useAssistantI18n } from "../i18n";
 export type VoiceEvent = { seq: number; type: string; [key: string]: any };
 type Session = { id?: string; key: string; draft: boolean; scope: string; conversationId: string | null;
   peer?: RTCPeerConnection; stream?: MediaStream; audio?: HTMLAudioElement;
@@ -10,6 +11,7 @@ type Options = { enabled: boolean; canStart?: boolean; chatKey: string; conversa
   ensureConversation: (accept: (id: string) => boolean) => Promise<string>;
   refresh: (key: string, id: string) => Promise<void> };
 export function useRealtimeVoice(opts: Options) {
+  const readOnlyMessage = useAssistantI18n().agentMarket.readOnly;
   const [phase, setPhase] = useState<"idle" | "connecting" | "live" | "closing">("idle");
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState("");
@@ -88,9 +90,9 @@ export function useRealtimeVoice(opts: Options) {
     } catch { if (valid(s)) showError(s, "No se pudo actualizar la voz. Las tareas pueden seguir ejecutándose."); }
     if (valid(s)) s.timer = setTimeout(() => void poll(s), 1500);
   }
-  const mayStart = () => latest.current.enabled && latest.current.canStart !== false;
+  const hasAdmission = () => latest.current.enabled && latest.current.canStart !== false;
   async function start() {
-    if (current.current || !mayStart()) return;
+    if (current.current || !hasAdmission()) return;
     const options = latest.current;
     const s: Session = { key: options.chatKey, draft: !options.conversationId, scope: resolveTargetScope(), conversationId: options.conversationId,
       canceled: false, seq: 0, release: lockChatInput(options.chatKey, "realtime") };
@@ -99,7 +101,7 @@ export function useRealtimeVoice(opts: Options) {
     try {
       s.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       if (!valid(s)) { s.stream.getTracks().forEach(t => t.stop()); return; }
-      if (!mayStart()) { await stop(s); return; }
+      if (!hasAdmission()) { await stop(s); return; }
       const id = await options.ensureConversation(id => {
         if (!valid(s)) return false;
         s.conversationId = id;
@@ -109,10 +111,10 @@ export function useRealtimeVoice(opts: Options) {
       });
       if (s.canceled || current.current !== s || !mounted.current) return;
       s.conversationId = id;
-      if (!valid(s) || !mayStart()) { await stop(s); return; }
+      if (!valid(s) || !hasAdmission()) { await stop(s); return; }
       const previous = unwrap(await api.get<{ activeId: string | null }>("/api/ai/realtime/conversations/" + id, { fresh: true }), "No se pudo verificar la sesión anterior.");
       if (!valid(s)) return;
-      if (!mayStart()) { await stop(s); return; }
+      if (!hasAdmission()) { await stop(s); return; }
       if (previous.activeId) { setPreviousId(previous.activeId); throw new Error("Hay una sesión anterior activa. Finalízala antes de iniciar otra."); }
       const peer = new RTCPeerConnection(); s.peer = peer;
       const audio = new Audio(); audio.autoplay = true; s.audio = audio;
@@ -131,9 +133,9 @@ export function useRealtimeVoice(opts: Options) {
         }
       };
       const offer = await peer.createOffer();
-      if (!valid(s)) return;
+      if (!valid(s) || !hasAdmission()) { await stop(s); return; }
       await peer.setLocalDescription(offer);
-      if (!valid(s)) return;
+      if (!valid(s) || !hasAdmission()) { await stop(s); return; }
       const data = unwrap(await api.post<{ id: string; sdp: string }>("/api/ai/realtime/sessions", {
         conversationId: id, sdp: offer.sdp,
       }), "No se pudo iniciar la voz.");
@@ -164,7 +166,8 @@ export function useRealtimeVoice(opts: Options) {
   }
   async function permission(e: VoiceEvent, decision: "allow" | "deny" | "always") {
     const s = owner.current;
-    if (!s || !matches(s)) return;
+    if (!s || !mounted.current || !matches(s)) return;
+    if (decision !== "deny" && !hasAdmission()) throw new Error(readOnlyMessage);
     unwrap(await api.post<{ok: boolean}>("/api/ai/agent/permission", { conversationId: e.conversationId, requestId: e.event.id, decision }), "La aprobación ya no está disponible.");
     if (mounted.current && owner.current === s && matches(s))
       setEvents(old => [...old, {seq: -Date.now(), type: "permission_resolved", event: {id: e.event.id}}]);
@@ -172,7 +175,8 @@ export function useRealtimeVoice(opts: Options) {
   }
   async function answer(e: VoiceEvent, choice: number) {
     const s = owner.current;
-    if (!s?.id || !matches(s)) return;
+    if (!s?.id || !mounted.current || !matches(s)) return;
+    if (!hasAdmission()) throw new Error(readOnlyMessage);
     unwrap(await api.post<{ok: boolean}>("/api/ai/realtime/sessions/" + s.id + "/answer", {taskId: e.taskId, askedAt: e.askedAt, choice}), "La solicitud ya no está disponible.");
     if (mounted.current && owner.current === s && matches(s))
       setEvents(old => [...old, {seq: -Date.now(), type: "ask_resolved", taskId: e.taskId}]);
@@ -187,5 +191,6 @@ export function useRealtimeVoice(opts: Options) {
   }
   return { active: visible && phase !== "idle", phase: visible ? phase : "idle", muted: visible && muted,
     error: visible ? error : "", previousId: visible ? previousId : null,
+    canRespond: visible && hasAdmission(),
     toggle, toggleMuted, closePrevious, permissions: [...permissions.values()], asks: [...asks.values()], permission, answer };
 }

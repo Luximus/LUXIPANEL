@@ -43,7 +43,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks(); sessionStorage.clear(); m.scope = crypto.randomUUID(); m.session = crypto.randomUUID(); records = [];
   m.config.mockResolvedValue({ enabled: true, providers: {} } as AssistantConfigState);
-  workspaceState.setContext(null, null, null);
+  workspaceState.setContext("claude", "cli", null);
   window.history.replaceState({}, "", "/");
   m.list.mockImplementation(async () => records); m.update.mockResolvedValue(persisted);
   m.create.mockImplementation(async () => {
@@ -221,4 +221,40 @@ it("keeps the real Market profile editor blocked through close/reopen and Astro 
   await act(async () => button("Crear agente")!.click());
   expect(m.create).toHaveBeenCalledTimes(1); expect(records).toHaveLength(1);
   expect(m.update).not.toHaveBeenCalled();
+});
+
+it("waits for the persisted latch before accepting a create and coalesces simultaneous clicks", async () => {
+  const pending = deferred<ArrayBuffer>();
+  vi.spyOn(crypto.subtle, "digest").mockReturnValueOnce(pending.promise);
+  await act(async () => root.render(createElement(Probe)));
+  await act(async () => vm.setDraft(d => d ? { ...d, name: "Revisor" } : d));
+  expect(vm.creationReady).toBe(false);
+  expect(Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent?.trim() === "Crear agente")?.disabled).toBe(true);
+  let first!: Promise<void>, second!: Promise<void>;
+  await act(async () => { first = vm.save(); second = vm.save(); });
+  expect(m.create).not.toHaveBeenCalled();
+  await act(async () => { pending.resolve(new Uint8Array(32).buffer); await Promise.all([first, second]); });
+  expect(m.create).toHaveBeenCalledTimes(1); expect(vm.creationUncertain).toBe(true);
+});
+it("does not create after the target changes while the latch is loading", async () => {
+  const pending = deferred<ArrayBuffer>();
+  vi.spyOn(crypto.subtle, "digest").mockReturnValueOnce(pending.promise);
+  await act(async () => root.render(createElement(Probe)));
+  await act(async () => vm.setDraft(d => d ? { ...d, name: "Revisor" } : d));
+  let saving!: Promise<void>; await act(async () => { saving = vm.save(); });
+  changeScope("target");
+  await act(async () => { pending.resolve(new Uint8Array(32).fill(1).buffer); await saving; });
+  expect(m.create).not.toHaveBeenCalled(); expect(m.done).not.toHaveBeenCalled();
+});
+it("retains an isolated in-memory latch when Web Crypto is unavailable", async () => {
+  vi.spyOn(crypto.subtle, "digest").mockRejectedValue(new Error("unavailable"));
+  await mount(); await act(async () => vm.save()); await close(); await mount(); await act(async () => vm.save());
+  expect(vm.creationUncertain).toBe(true); expect(m.create).toHaveBeenCalledTimes(1);
+  await close(); changeScope("session"); await mount(); expect(vm.creationUncertain).toBe(false);
+  expect(JSON.stringify(Object.entries(sessionStorage))).not.toContain(m.session);
+});
+it("keeps a lost-response creation blocked when browser storage cannot be written", async () => {
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("storage unavailable"); });
+  await mount(); await act(async () => vm.save()); await close(); await mount(); await act(async () => vm.save());
+  expect(vm.creationUncertain).toBe(true); expect(m.create).toHaveBeenCalledTimes(1);
 });

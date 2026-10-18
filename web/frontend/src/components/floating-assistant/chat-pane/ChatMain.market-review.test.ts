@@ -57,12 +57,15 @@ function Probe(){
 async function mount(){await act(async()=>root.render(createElement(Probe)));}
 it("retains the active voice stop control while catalog reload is loading and fails",async()=>{
  m.voiceActive=true;await mount();
+ expect(m.voiceOptions?.canStart).toBe(true);
  let reject!:(error:unknown)=>void;
  m.list.mockReturnValueOnce(new Promise((_yes,no)=>{reject=no;}));
  await act(async()=>window.dispatchEvent(new Event("lxp:assistant:agents-updated")));
  expect(m.voiceOptions?.enabled).toBe(true);
+ expect(m.voiceOptions?.canStart).toBe(false);
  expect(host.querySelector('[aria-label="Terminar voz en tiempo real"]')).not.toBeNull();
  await act(async()=>reject(new Error("catalog unavailable")));
+ expect(m.voiceOptions?.canStart).toBe(false);
  const stop=host.querySelector<HTMLButtonElement>('[aria-label="Terminar voz en tiempo real"]');
  expect(stop).not.toBeNull();
  await act(async()=>stop!.click());
@@ -81,6 +84,7 @@ it.each(["removed","loading","error","null-history"])("blocks every send path wi
  if(state==="null-history"){
    await act(async()=>{vm.setActiveId("historical");vm.setConvos([{id:"historical",title:"History",provider:"claude",agentId:"worker",projectId:null,messageCount:0,preview:""}]);});
  }
+ expect(m.voiceOptions?.canStart).toBe(false);
  const suggestion=host.querySelector<HTMLButtonElement>(".lxp-chat-start-actions button")!;
  expect(suggestion).not.toBeNull();
  await act(async()=>suggestion.click());

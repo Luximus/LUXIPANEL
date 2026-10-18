@@ -192,10 +192,13 @@ export function AskView({
 export function PermissionView({
   request,
   interactive,
+  canApprove = true,
   onDecide,
 }: {
   request: { id: string; tool: string; title: string; detail?: string };
   interactive: boolean;
+  /** Denial remains available when new authorization is blocked. */
+  canApprove?: boolean;
   onDecide: (decision: "allow" | "deny" | "always") => void | Promise<void>;
 }) {
   const ct = useAssistantI18n().chatTab as Record<string, any>;
@@ -203,7 +206,7 @@ export function PermissionView({
 
   const [error, setError] = useState("");
   function decide(decision: "allow" | "deny" | "always") {
-    if (sent) return;
+    if (!interactive || sent || (decision !== "deny" && !canApprove)) return;
     setSent(decision);
     setError("");
     void Promise.resolve().then(() => onDecide(decision)).catch(() => { setSent(null); setError(ct.answerFailed ?? "No se pudo completar la respuesta"); });
@@ -245,7 +248,7 @@ export function PermissionView({
         <button
           type="button"
           onClick={() => decide("allow")}
-          disabled={!!sent}
+          disabled={!!sent || !canApprove}
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition enabled:hover:opacity-90 disabled:opacity-50"
         >
           <i className={`ti ${sent === "allow" ? "ti-loader-2 animate-spin" : "ti-check"}`} aria-hidden></i>
@@ -254,7 +257,7 @@ export function PermissionView({
         <button
           type="button"
           onClick={() => decide("always")}
-          disabled={!!sent}
+          disabled={!!sent || !canApprove}
           title={formatAssistantMessage(ct.permApproveAlwaysTitle ?? "Aprobar y no volver a preguntar para la herramienta \"{tool}\". Se guardará para futuras tareas.", { tool: request.tool })}
           className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 transition enabled:hover:bg-emerald-500/20 disabled:opacity-50"
         >

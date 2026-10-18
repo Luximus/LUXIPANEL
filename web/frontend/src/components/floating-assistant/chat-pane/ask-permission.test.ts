@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { AskView } from "./ask-permission";
+import { AskView, PermissionView } from "./ask-permission";
 
 afterEach(() => document.body.replaceChildren());
 
@@ -45,4 +45,22 @@ it("permite reintentar si falla el cambio de modo antes del envío", async () =>
   expect(onAnswer).toHaveBeenCalledTimes(2);
   expect(host.querySelector("[role=alert]")).toBeNull();
   await act(async () => root.unmount());
+});
+
+it.each([
+  ["Aprobar", "allow"],
+  ["Aprobar y no preguntar más", "always"],
+  ["Rechazar", "deny"],
+] as const)("conserva %s en consumidores sin restricción de aprobación", async (label, decision) => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host), onDecide = vi.fn(async () => {});
+  try {
+    await act(async () => root.render(createElement(PermissionView, {
+      request: { id: "request", tool: "files.write", title: "Editar archivo" }, interactive: true, onDecide,
+    })));
+    const button = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(item => item.textContent?.trim() === label)!;
+    expect(button.disabled).toBe(false);
+    await act(async () => button.click());
+    expect(onDecide).toHaveBeenCalledExactlyOnceWith(decision);
+  } finally { await act(async () => root.unmount()); }
 });
