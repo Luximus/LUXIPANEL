@@ -773,6 +773,25 @@ describe("queued history receipts", () => {
 });
 
 describe("agent shortcut notifications", () => {
+  it.each(["root", "none"])("filters legacy delegated replies in %s without changing history or hiding direct human replies", async projectId => {
+    const executor = makeExecutor([], `legacy-notifications-${projectId}`);
+    for (const id of ["worker", "human", "worker-with-human"]) {
+      seedMeta("conversations-u1", id, { projectId: projectId === "none" ? null : projectId,
+        agentId: "a", unreadCount: 2, unreviewed: true });
+      seedTranscript(`conv-u1-${id}`, [msg("user", "Solicitud inicial", "1"), msg("assistant", "Respuesta", "2"),
+        { ...msg("user", "Continuar", "3"), ...(id === "worker-with-human" ? {} : { auto: true }) },
+        msg("assistant", "Continuación", "4")]);
+      if (id !== "human") seedTeamTask(id, { workerConversationId: id, workerAgentId: "a", userId: 1, status: "done" });
+    }
+    const histories = ["worker", "human", "worker-with-human"].map(id => structuredClone(col("assistant", `conv-u1-${id}`).get("messages")));
+    const result = await conversationsRepository.list(executor, { projectIds: [projectId], agentIds: ["a"], includeActivity: true, limit: 1 });
+    expect(result.items).toHaveLength(1);
+    expect(Object.fromEntries(result.activity!.map(row => [row.id, row.unreadCount])))
+      .toEqual({ worker: 0, human: 2, "worker-with-human": 1 });
+    expect(["worker", "human", "worker-with-human"].map(id => col("assistant", `conv-u1-${id}`).get("messages"))).toEqual(histories);
+    expect(["worker", "human", "worker-with-human"].map(id => col("assistant", "conversations-u1").get(id)?.unreadCount)).toEqual([2, 2, 2]);
+  });
+
   it("counts assistant replies, preserves them through user turns and compaction, and clears only on review", async () => {
     const executor = makeExecutor([]);
     const conversation = await conversationsRepository.create(executor, "codex", "Inicio", "project", "agent");

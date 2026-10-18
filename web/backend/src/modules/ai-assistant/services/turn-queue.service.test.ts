@@ -444,6 +444,8 @@ describe("initAgentMessageListener — destino: chat de equipo / run activo (sin
     expect(calls).not.toContain("enqueue");
     expect(calls).not.toContain("createConversation");
     expect(messageStore.current?.deliveryConversationId).toBe("conv-run");
+    expect(conversationsRepository.appendMessages).toHaveBeenCalledWith(localExecutor, "conv-run",
+      [expect.objectContaining({ role: "user", auto: true, replyAudience: "agent" })]);
   });
 
   it("destinatario con run activo sin steering: encola en ESA conversación y no drena (run en curso)", async () => {
@@ -535,7 +537,7 @@ it("persists recorded audio with the user turn and keeps only text in model hist
   vi.mocked(attachmentsRepository.storeMany).mockResolvedValueOnce([ref]);
   await persistUserMessage(localExecutor, "voice-conv", "Hello", "codex", [recording], { textOriginal: "Hola", lang: "es" });
   expect(attachmentsRepository.storeMany).toHaveBeenCalledWith(localExecutor, "voice-conv", [recording]);
-  expect(conversationsRepository.appendMessages).toHaveBeenCalledWith(localExecutor, "voice-conv", [expect.objectContaining({ content: "Hello", textOriginal: "Hola", attachments: [ref] })], {});
+  expect(conversationsRepository.appendMessages).toHaveBeenCalledWith(localExecutor, "voice-conv", [expect.objectContaining({ content: "Hello", textOriginal: "Hola", attachments: [ref], replyAudience: "user" })], {});
   vi.mocked(conversationsRepository.messages).mockResolvedValueOnce({ items: [{ role: "user", content: "Hello", ts: "", attachments: [ref] }], total: 1, hasMore: false });
   expect(await buildMessagesFromHistory(localExecutor, "voice-conv")).toEqual([{ role: "user", content: "Hello" }]);
 });

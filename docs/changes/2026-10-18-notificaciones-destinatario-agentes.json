@@ -1,0 +1,8 @@
+{
+  "title": "Notificaciones de agentes dirigidas al usuario",
+  "changes": [
+    "Las tarjetas de agentes dejan de contar como mensajes no leídos las respuestas antiguas de tareas delegadas al líder del grupo.",
+    "Las respuestas a conversaciones directas y a intervenciones del usuario en chats de subagentes conservan sus notificaciones.",
+    "Los mensajes nuevos registran su destinatario para distinguir las conversaciones del usuario de la coordinación interna del equipo."
+  ]
+}

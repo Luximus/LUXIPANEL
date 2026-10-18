@@ -336,6 +336,7 @@ describe("teamTasksService.assignTask", () => {
     expect(registryState.started[0]?.isWorker).toBe(true);
     // The worker chat got the task as its first user message.
     expect(decodeCoordination(conversationMessages.get(task.workerConversationId)![0]!.content)).toMatchObject({ kind: "request", data: { text: "haz algo con todo el contexto" } });
+    expect(conversationMessages.get(task.workerConversationId)![0]).toMatchObject({ auto: true, replyAudience: "agent" });
   });
 
   it("closes the task as done with the answer when the worker run completes", async () => {

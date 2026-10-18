@@ -373,7 +373,7 @@ export const teamTasksService = {
         })) ?? record;
       await conversationsRepository
         .appendMessages(executor, convId, [
-          { role: "user", provider: worker.providerId, content: workText, displaySummary: visibleSummary(workText), auto: true, ts: new Date().toISOString() },
+          { role: "user", provider: worker.providerId, content: workText, displaySummary: visibleSummary(workText), auto: true, replyAudience: "agent", ts: new Date().toISOString() },
         ])
         .catch(() => undefined);
       startWorkerRun({

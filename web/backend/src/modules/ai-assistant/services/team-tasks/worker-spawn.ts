@@ -112,7 +112,7 @@ export async function createWorkerConversation(
   const convId = String(meta.id);
   if (opts.appendUserMessage) {
     await conversationsRepository
-      .appendMessages(executor, convId, [{ role: "user", provider, content: coordinationTask(task), displaySummary: visibleSummary(task), auto: true, ts: new Date().toISOString() }])
+      .appendMessages(executor, convId, [{ role: "user", provider, content: coordinationTask(task), displaySummary: visibleSummary(task), auto: true, replyAudience: "agent", ts: new Date().toISOString() }])
       .catch(() => undefined);
   }
   return convId;

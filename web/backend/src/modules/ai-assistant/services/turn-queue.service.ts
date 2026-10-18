@@ -107,6 +107,7 @@ export async function persistUserMessage(
         // background translation layer is active; `textOriginal` keeps the
         // user's own-language text for rendering.
         role: "user",
+        replyAudience: "user",
         ...(provider ? { provider } : {}),
         content,
         ts: now,
@@ -721,7 +722,7 @@ export function initAgentMessageListener(): void {
           if (steered) {
             await conversationsRepository
               .appendMessages(executor, target.conversationId, [
-                { role: "user", provider, content: userText, displaySummary: visibleSummary(userText), ts: new Date().toISOString(), auto: true },
+                { role: "user", provider, content: userText, displaySummary: visibleSummary(userText), ts: new Date().toISOString(), auto: true, replyAudience: "agent" },
               ])
               .catch(() => undefined);
             await agentMessagesRepository.update(executor, storedMessageId, {
