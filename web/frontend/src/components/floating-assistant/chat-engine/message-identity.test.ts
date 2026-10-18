@@ -170,3 +170,20 @@ it("treats missing presentation on a new terminal event as full even after an ea
   applyEvent(key, { type: "done", messageId: "logical-a", runId: "transport-a" }, { ...context, seq: 11 });
   expect(chats.get(key)?.turns.at(-1)?.presentation).toBe("full");
 });
+
+it("does not append replay text or usage to a response already restored by identity", () => {
+  seed([request, historyTurn(saved("logical-a", { content: "Saved answer", presentation: "full",
+    tokens: { input: 2, output: 3, total: 5 } }))]);
+  const restored = chats.get(key)!.turns.at(-1)!;
+  const events: AgentEvent[] = [
+    { type: "text", phase: "final_answer", delta: "Saved answer", runId: "transport-a" },
+    { type: "usage", model: "fixture", inputTokens: 2, outputTokens: 3, runId: "transport-a" },
+    { type: "done", pending: true, messageId: "logical-a", runId: "transport-a" },
+  ];
+  events.forEach((event, index) => applyEvent(key, event, { ...context, replay: true, seq: index + 20 }));
+  expect(chats.get(key)?.turns.at(-1)).toBe(restored);
+  expect(chats.get(key)?.turns).toHaveLength(2);
+  expect(chats.get(key)?.lastSeq).toBe(22);
+  expect(restored.text).toBe("Saved answer");
+  expect(restored.tokens?.total).toBe(5);
+});
