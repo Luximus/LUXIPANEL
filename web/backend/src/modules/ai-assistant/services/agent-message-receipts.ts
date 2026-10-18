@@ -13,7 +13,7 @@ import { conversationsRepository, type ConversationMessage } from "../repositori
 export function consumedAgentMessages(history: ConversationMessage[], delivered: AgentMessage[]): Map<string, string> {
   const candidates = new Map(delivered.filter(message => message.id && message.status === "delivered")
     .map(message => [message.id!, message]));
-  const awaiting = new Set<string>();
+  const awaiting = new Map<string, number>();
   const consumed = new Map<string, string>();
   for (const turn of history) {
     if (turn.compacted || (turn.role === "user" && !turn.auto)) {
@@ -28,18 +28,20 @@ export function consumedAgentMessages(history: ConversationMessage[], delivered:
       if (packet?.protocol === AGENT_PROTOCOL && message
         && packet.from === message.fromAgentId && packet.to === message.toAgentId
         && Date.parse(turn.ts) >= Date.parse(message.createdAt)) {
-        awaiting.add(message.id!);
+        awaiting.set(message.id!, Date.parse(turn.ts));
       } else if (turn.content.startsWith("[MENSAJE DE ")) {
         for (const legacy of candidates.values()) {
-          const prefix = `[MENSAJE DE ${legacy.fromAgentName} (agente ${legacy.fromAgentId})]\n${legacy.text}`;
-          if (turn.content.startsWith(prefix) && Date.parse(turn.ts) >= Date.parse(legacy.createdAt)) awaiting.add(legacy.id!);
+          const notice = `[MENSAJE DE ${legacy.fromAgentName} (agente ${legacy.fromAgentId})]\n${legacy.text}`;
+          if (turn.content === notice && Date.parse(turn.ts) >= Date.parse(legacy.createdAt)) awaiting.set(legacy.id!, Date.parse(turn.ts));
         }
       }
       continue;
     }
     if (!turn.error && !turn.interrupted && Number.isFinite(Date.parse(turn.ts))
       && (turn.pending || turn.ask?.length || turn.content.trim())) {
-      for (const id of awaiting) consumed.set(id, turn.ts);
+      for (const [id, receivedAt] of awaiting) {
+        if (Date.parse(turn.ts) >= receivedAt) consumed.set(id, turn.ts);
+      }
     }
     // A later unrelated reply cannot turn a failed/unconfirmed phase into a receipt.
     awaiting.clear();

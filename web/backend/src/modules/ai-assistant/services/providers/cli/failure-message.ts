@@ -14,6 +14,9 @@ export function cliFailureMessage(output: string, exitCode: number): string {
   for (const line of output.split("\n")) {
     try {
       const event = JSON.parse(line);
+      if (event.type === "turn.failed" && event.error?.code === "CLI_NO_FINAL_RESPONSE") {
+        return "El agente terminó sin una respuesta final verificable. Revisa el detalle de la ejecución antes de reintentar; el resultado de la tarea sigue sin confirmar.";
+      }
       if ((event.type === "assistant" && event.error === "authentication_failed") ||
           (event.type === "result" && event.is_error === true &&
            /Failed to authenticate|OAuth session expired/i.test([event.result, ...(Array.isArray(event.errors) ? event.errors : [])].join(" ")))) {

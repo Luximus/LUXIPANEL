@@ -15,9 +15,15 @@ let nextId = 1;
 let completed = false;
 let finalMessage = '';
 let finalPhaseSeen = false;
+let emptyFinalSeen = false;
 let finishing = false;
 let fullPlan = '';
 let usage = null;
+let previousUsage = null;
+let turnTemplate;
+let recoveringAnswer = false;
+let recoveryGuard;
+const settledTurns = new Set();
 const activeItems = new Map();
 let idleGuard;
 let killGuard;
@@ -34,6 +40,7 @@ function touchActivity() {
 
 function stopCodex() {
   clearTimeout(idleGuard);
+  clearTimeout(recoveryGuard);
   codex.kill('SIGTERM');
   killGuard = setTimeout(() => {
     if (codex.exitCode === null && codex.signalCode === null) codex.kill('SIGKILL');
@@ -75,6 +82,8 @@ async function approval(message) {
 }
 
 async function requestDecision(details) {
+  // Recovering the text of an answer never authorizes a new operation.
+  if (recoveringAnswer) return 'deny';
   // Local numeric ids keep reply paths independent of untrusted RPC ids.
   const requestId = String(nextApprovalId++);
   emit({ type: 'lxp.approval.request', request_id: requestId, ...details });
@@ -192,8 +201,44 @@ function finalItem(items) {
   return undefined;
 }
 
+function hasEmptyFinal(items) {
+  return Array.isArray(items) && items.some(entry => {
+    const item = entry?.item || entry;
+    return item?.type === 'agentMessage' && item.phase === 'final_answer'
+      && typeof item.text === 'string' && !item.text.trim();
+  });
+}
+
+async function recoverEmptyAnswer() {
+  recoveringAnswer = true;
+  emptyFinalSeen = false;
+  previousUsage = usage;
+  usage = null;
+  activeItems.clear();
+  finishing = false;
+  recoveryGuard = setTimeout(() => failTurn('Codex did not recover the empty final answer in time', 'CLI_NO_FINAL_RESPONSE'), 180_000);
+  recoveryGuard.unref();
+  const instructions = 'La fase anterior terminó con una respuesta final vacía. Recupera únicamente la respuesta final usando lo ya observado en esta conversación. No repitas la tarea ni ejecutes herramientas, comandos, cambios, delegaciones o envíos de mensajes. Explica brevemente el resultado confirmado y lo que siga pendiente; no inventes verificaciones ni éxito.';
+  try {
+    // Same native thread, one bounded attempt, no replay of the original task.
+    // Restore the normal policy only when the next real user turn starts.
+    await rpc('turn/start', {
+      ...turnTemplate,
+      input: [{ type: 'text', text: instructions }],
+      collaborationMode: { ...turnTemplate.collaborationMode, settings: {
+        ...turnTemplate.collaborationMode.settings, developer_instructions: instructions,
+      } },
+      approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly', networkAccess: false },
+    });
+    touchActivity();
+  } catch (error) {
+    failTurn('Could not recover Codex final answer: ' + String(error), 'CLI_NO_FINAL_RESPONSE');
+  }
+}
+
 async function finishTurn(params) {
-  if (finishing) return;
+  if (completed || finishing || (params.turn?.id && settledTurns.has(params.turn.id))) return;
+  if (params.turn?.id) settledTurns.add(params.turn.id);
   finishing = true;
   clearTimeout(idleGuard);
   if (params.turn?.status !== 'completed') {
@@ -205,6 +250,7 @@ async function finishTurn(params) {
   // item/completed notification to this subscriber. Read the persisted turn
   // before accepting the last commentary message as the final answer.
   if (!finalPhaseSeen) {
+    emptyFinalSeen ||= hasEmptyFinal(params.turn?.items);
     let item = finalItem(params.turn?.items);
     if (!item && params.threadId && params.turn?.id) {
       try {
@@ -212,11 +258,14 @@ async function finishTurn(params) {
           rpc('thread/items/list', { threadId: params.threadId, turnId: params.turn.id, sortDirection: 'desc', limit: 20 }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('final answer lookup timed out')), 5_000).unref()),
         ]);
+        if (completed) return;
         item = finalItem(page?.data);
+        emptyFinalSeen ||= hasEmptyFinal(page?.data);
       } catch (error) {
         emit({ type: 'error', message: 'Could not read Codex final answer: ' + String(error) });
       }
     }
+    if (completed) return;
     if (item) {
       finalMessage = item.text;
       finalPhaseSeen = true;
@@ -224,6 +273,11 @@ async function finishTurn(params) {
     }
   }
   if (!finalPhaseSeen && !(config.approvalMode === 'plan' && fullPlan.trim())) {
+    if (emptyFinalSeen && !recoveringAnswer && config.approvalMode !== 'plan'
+        && params.threadId === turnTemplate?.threadId) {
+      await recoverEmptyAnswer();
+      return;
+    }
     failTurn('Codex finished without a confirmed final answer', 'CLI_NO_FINAL_RESPONSE');
     return;
   }
@@ -233,10 +287,10 @@ async function finishTurn(params) {
   if (config.approvalMode === 'plan' && !fullPlan && finalMessage) {
     emit({ type: 'item.completed', item: { type: 'agent_message', phase: 'final_answer', text: finalMessage.includes('<<<LXP_ASK>>>') ? finalMessage : planAnswer(finalMessage) } });
   }
-  emit({ type: 'turn.completed', usage: usage ? {
-    input_tokens: usage.inputTokens || 0,
-    cached_input_tokens: usage.cachedInputTokens || 0,
-    output_tokens: usage.outputTokens || 0,
+  emit({ type: 'turn.completed', usage: usage || previousUsage ? {
+    input_tokens: (usage?.inputTokens || 0) + (previousUsage?.inputTokens || 0),
+    cached_input_tokens: (usage?.cachedInputTokens || 0) + (previousUsage?.cachedInputTokens || 0),
+    output_tokens: (usage?.outputTokens || 0) + (previousUsage?.outputTokens || 0),
   } : undefined, status: params.turn?.status });
   completed = true;
   stopCodex();
@@ -283,13 +337,19 @@ function onNotification(message) {
   }
   if (method === 'item/started' || method === 'item/completed') {
     const item = params.item || {};
+    if (recoveringAnswer && !['agentMessage', 'reasoning', 'userMessage', 'contextCompaction'].includes(item.type)) {
+      failTurn('Codex attempted work instead of recovering only its answer', 'CLI_NO_FINAL_RESPONSE');
+      return;
+    }
     if (item.id && method === 'item/started') activeItems.set(item.id, item);
     if (item.id && method === 'item/completed') activeItems.delete(item.id);
     if (item.type === 'plan' && method === 'item/completed') fullPlan = item.text || '';
-    if (item.type === 'agentMessage' && method === 'item/completed' && item.text) {
+    if (item.type === 'agentMessage' && method === 'item/completed' && typeof item.text === 'string') {
       if (item.phase === 'final_answer') {
-        finalMessage = item.text;
-        finalPhaseSeen = true;
+        if (item.text.trim()) {
+          finalMessage = item.text;
+          finalPhaseSeen = true;
+        } else emptyFinalSeen = true;
       }
     }
     if (item.type !== 'plan') emit({ type: method === 'item/started' ? 'item.started' : 'item.completed', item: normalizeItem(item) });
@@ -353,10 +413,11 @@ try {
     ? { type: 'dangerFullAccess' }
     : { type: 'readOnly', networkAccess: false };
   startup('submitting');
-  await rpc('turn/start', {
+  turnTemplate = {
     threadId, input: [{ type: 'text', text: prompt }], collaborationMode,
     approvalPolicy: policy, sandboxPolicy,
-  });
+  };
+  await rpc('turn/start', turnTemplate);
   startup('ready');
   touchActivity();
 } catch (error) {

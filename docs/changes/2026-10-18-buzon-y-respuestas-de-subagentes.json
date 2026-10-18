@@ -1,0 +1,9 @@
+{
+  "title": "Continuidad de los chats con equipos de agentes",
+  "changes": [
+    "Los avisos atendidos dejan de ocupar el buzón aunque la tarea grupal continúe, evitando bloqueos al enviar nuevos resultados al coordinador.",
+    "Los reenvíos de un mismo aviso pendiente de lectura se reconocen sin crear duplicados.",
+    "Cuando el proveedor termina una fase con una respuesta final vacía, se intenta recuperar el texto una sola vez dentro de la misma ejecución.",
+    "Si no se obtiene una respuesta final verificable, el chat explica lo ocurrido sin afirmar que la tarea terminó correctamente."
+  ]
+}

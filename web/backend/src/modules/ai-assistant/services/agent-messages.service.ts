@@ -76,7 +76,7 @@ export interface SendMessageInput {
 
 export interface SendMessageResult {
   message: AgentMessage;
-  /** True when an identical pending message already existed (deduped). */
+  /** True when an identical unread message already existed (deduped). */
   deduped: boolean;
 }
 

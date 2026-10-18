@@ -1,10 +1,11 @@
-import { encodeCoordination, decodeCoordination } from "../models/agent-envelope.js";
+import { encodeCoordination, decodeCoordination, coordinationEnvelope } from "../models/agent-envelope.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { AssistantAgent } from "../models/assistant-agent.types.js";
 import type { AgentMessage } from "../models/agent-message.types.js";
 import type { SessionUser } from "../../../shared/types/index.js";
+import type { ConversationMessage } from "../repositories/conversations.repository.js";
 
 // These unit calls run on the explicitly selected test target.
 vi.mock("../../../shared/executor/index.js", async importOriginal => {
@@ -26,8 +27,11 @@ vi.mock("../repositories/agent-messages.repository.js", () => ({
     listForPair: vi.fn(async (_e: unknown, from: string, to: string) =>
       messages.filter((m) => m.fromAgentId === from && m.toAgentId === to),
     ),
-    listByDeliveryConversation: vi.fn(async () => [] as AgentMessage[]),
-    update: vi.fn(async () => null),
+    listByDeliveryConversation: vi.fn(async (_e: unknown, id: string) => messages.filter(m => m.deliveryConversationId === id)),
+    update: vi.fn(async (_e: unknown, id: string, patch: Partial<AgentMessage>) => {
+      const message = messages.find(m => m.id === id);
+      return message ? Object.assign(message, patch) : null;
+    }),
     get: vi.fn(async (_e: unknown, id: string) => messages.find((m) => m.id === id) ?? null),
   },
 }));
@@ -41,13 +45,24 @@ vi.mock("../repositories/agents.repository.js", () => ({
 }));
 
 vi.mock("../repositories/conversations.repository.js", () => ({
-  conversationsRepository: { getMeta: vi.fn(async () => null) },
+  conversationsRepository: { getMeta: vi.fn(async () => null), allMessages: vi.fn(async () => [] as ConversationMessage[]) },
 }));
+vi.mock("../repositories/agent-queue.repository.js", () => ({ agentQueueRepository: { listFor: vi.fn(async () => []) } }));
 
 import { eventBus, Events } from "../../../shared/events/index.js";
 import { localExecutor } from "../../../shared/executor/index.js";
 import { agentMessagesService, buildSendMessageTool } from "./agent-messages.service.js";
 import { agentMessagesRepository } from "../repositories/agent-messages.repository.js";
+import { conversationsRepository } from "../repositories/conversations.repository.js";
+import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
+
+function consumedHistory(items: AgentMessage[]): ConversationMessage[] {
+  const ts = new Date(Date.now() + 60_000).toISOString();
+  return items.flatMap(message => [{
+    role: "user" as const, auto: true, ts,
+    content: encodeCoordination(coordinationEnvelope(message.text, "result", { from: message.fromAgentId, to: message.toAgentId }, { messageId: message.id })),
+  }, { role: "assistant" as const, ts, content: "Esperando al equipo.", pending: true }]);
+}
 
 function mkAgent(over: Partial<AssistantAgent> & { id: string; name: string }): AssistantAgent {
   return {
@@ -83,6 +98,8 @@ beforeEach(() => {
   agents.push(santiago, mateo, lucia, martin, ajeno);
   seq = 0;
   vi.mocked(agentMessagesRepository.update).mockClear();
+  vi.mocked(conversationsRepository.allMessages).mockReset().mockResolvedValue([]);
+  vi.mocked(agentQueueRepository.listFor).mockReset().mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -171,10 +188,50 @@ describe("agentMessagesService.send", () => {
     expect(extra.message.status).toBe("pending");
   });
 
+  it("does not resend an identical message already delivered but still unread", async () => {
+    const first = await agentMessagesService.send(localExecutor, baseInput);
+    first.message.status = "delivered";
+    const second = await agentMessagesService.send(localExecutor, baseInput);
+    expect(second).toMatchObject({ deduped: true, message: { id: first.message.id } });
+    expect(messages).toHaveLength(1);
+  });
+
+  it("recovers five consumed phase notices before rejecting a new handoff", async () => {
+    for (let i = 0; i < 5; i++) {
+      const { message } = await agentMessagesService.send(localExecutor, { ...baseInput, text: `avance ${i}` });
+      Object.assign(message, { status: "delivered", deliveryConversationId: "conv-mateo" });
+    }
+    vi.mocked(conversationsRepository.allMessages).mockResolvedValue(consumedHistory(messages));
+    const next = await agentMessagesService.send(localExecutor, { ...baseInput, text: "listo para QA" });
+    expect(next.message.status).toBe("pending");
+    expect(messages.filter(m => m.status === "read")).toHaveLength(5);
+    expect(messages).toHaveLength(6);
+  });
+
+  it("keeps the full-mailbox guard when the recipient history cannot be verified", async () => {
+    for (let i = 0; i < 5; i++) {
+      const { message } = await agentMessagesService.send(localExecutor, { ...baseInput, text: `avance ${i}` });
+      Object.assign(message, { status: "delivered", deliveryConversationId: "conv-mateo" });
+    }
+    vi.mocked(conversationsRepository.allMessages).mockRejectedValue(new Error("target timeout"));
+    await expect(agentMessagesService.send(localExecutor, { ...baseInput, text: "otro aviso" })).rejects.toThrow(/buzón.*lleno/);
+    expect(messages.every(m => m.status === "delivered")).toBe(true);
+  });
+
   it("clamps the text to 8000 chars", async () => {
     const { message } = await agentMessagesService.send(localExecutor, { ...baseInput, text: "x".repeat(9000) });
     expect(message.text.length).toBeLessThanOrEqual(8000);
     expect(message.text).toMatch(/recortado/);
+  });
+
+  it("acknowledges an attended phase on AI_TURN_SETTLED while the team is still pending", async () => {
+    const { message } = await agentMessagesService.send(localExecutor, baseInput);
+    Object.assign(message, { status: "delivered", deliveryConversationId: "conv-mateo" });
+    vi.mocked(conversationsRepository.allMessages).mockResolvedValue(consumedHistory([message]));
+    agentMessagesService.init();
+    eventBus.emit(Events.AI_TURN_SETTLED, { conversationId: "conv-mateo", executor: localExecutor });
+    await vi.waitFor(() => expect(message.status).toBe("read"));
+    expect(agentMessagesRepository.update).toHaveBeenCalledOnce();
   });
 });
 

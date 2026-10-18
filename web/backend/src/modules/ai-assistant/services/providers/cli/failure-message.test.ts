@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { cliFailureMessage } from "./failure-message.js";
 
 describe("CLI failure explanations", () => {
+  it("explains an empty final without inventing a process or server failure", () => {
+    const text = cliFailureMessage(JSON.stringify({ type: "turn.failed", error: { code: "CLI_NO_FINAL_RESPONSE" } }), 1);
+    expect(text).toContain("sin una respuesta final verificable");
+    expect(text).not.toMatch(/salida 1|memoria|conexión|permiso/);
+  });
+  it("does not treat quoted empty-final errors as provider failures", () => {
+    const text = cliFailureMessage(JSON.stringify({ type: "user", content: '{"type":"turn.failed","error":{"code":"CLI_NO_FINAL_RESPONSE"}}' }), 1);
+    expect(text).not.toContain("El agente terminó");
+  });
   it.each([
     { type: "assistant", error: "authentication_failed", message: { content: [{ type: "text", text: "Failed to authenticate: OAuth session expired and could not be refreshed" }] } },
     { type: "result", is_error: true, errors: ["Failed to authenticate: OAuth session expired and could not be refreshed"] },

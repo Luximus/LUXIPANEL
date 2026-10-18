@@ -94,4 +94,18 @@ describe("Codex activity deadline", () => {
     expect(a.proc.exitCode).toBe(1);
     expect(a.events.at(-1)).toMatchObject({ type: "turn.failed" });
   });
+  it("bounds an empty-answer recovery even while reasoning remains active", async () => {
+    const a = await adapter();
+    a.notify("item/completed", { item: { type: "agentMessage", text: "", phase: "final_answer" } });
+    a.notify("turn/completed", { threadId: "thread", turn: { id: "empty-turn", status: "completed" } });
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(60_000);
+      a.notify("item/reasoning/textDelta", { delta: "progress" });
+    }
+    expect(a.proc.exitCode).toBe(1);
+    expect(a.events.at(-1)).toMatchObject({ type: "turn.failed", error: { code: "CLI_NO_FINAL_RESPONSE" } });
+    expect(a.events.some(e => e.type === "turn.completed")).toBe(false);
+    expect(a.child.kill).toHaveBeenCalledWith("SIGTERM");
+  });
 });

@@ -297,11 +297,26 @@ steering (run API / steering off) → turno `auto` encolado en ESE chat; el
 + `drainConversationQueue` (despierta al destinatario). La coletilla del turno
 cambia en chats de equipo ("Este mensaje llega a tu chat de equipo…").
 
-Cierre `delivered → read` (`agent-messages.service.init`, `AI_CHAT_FINISHED`):
-se omite mientras el texto del mensaje siga en la cola de ese chat (turno auto
-aún no drenado), para que el run que acaba de terminar no lo marque leído sin
-haberlo visto. Limitación: un mensaje *steered* en un run que luego el usuario
-detiene (abort) no dispara `AI_CHAT_FINISHED` y queda `delivered`.
+Cierre `delivered → read` (`agent-messages.service.init`, `AI_TURN_SETTLED` y
+`AI_CHAT_FINISHED`): requiere el aviso automático persistido, con el identificador
+del mensaje y ambos agentes, seguido de una fase atendida sin error ni
+interrupción. La fase puede seguir esperando al equipo o una decisión del
+usuario: no tiene que haber terminado toda la tarea grupal. Un aviso todavía
+encolado, un fallo al consultar la cola o un historial insuficiente mantienen
+el estado `delivered`; un mensaje humano o una compactación no acreditan su
+consumo. Antes de rechazar un buzón lleno se reconcilian los recibos verificables
+del historial, también los de runtimes anteriores. Los reenvíos idénticos aún
+pendientes o entregados se deduplican sin crear otro aviso.
+
+Si Codex confirma una fase completa pero guarda una respuesta final vacía, el
+adaptador intenta recuperar únicamente el texto una vez en la misma sesión.
+Conserva modelo y esfuerzo, usa modo de solo lectura sin red, deniega nuevas
+aprobaciones y aborta si observa un intento de herramienta. El intento tiene un
+límite de tres minutos y no reproduce la petición original. La ejecución emite
+un único cierre y suma el consumo de ambas fases. Un fallo, interrupción, plan
+pendiente o ausencia de un final vacío explícito no dispara esta recuperación;
+si no se obtiene una respuesta verificable, el chat explica ese resultado sin
+presentarlo como un error genérico de salida ni como éxito.
 
 ## Team v2 — aislamiento, verificación, presupuestos (2026-07-02)
 
