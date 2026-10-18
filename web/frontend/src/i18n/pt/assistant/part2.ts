@@ -39,6 +39,9 @@ const assistantPart2 = {
     "minimaxVoiceHint": "Voz do MiniMax a usar."
   },
   "agentMarket": {
+    "creationUncertain": "Não foi possível confirmar a criação. Para evitar duplicados, ela não será enviada novamente. Revise o catálogo e selecione o perfil criado apenas se puder identificá-lo; se não aparecer, o resultado continua sem confirmação.",
+    "reviewProfiles": "Revisar catálogo",
+    "recoverProfile": "Selecionar o perfil criado",
     "overrideHint": "Ao salvar, estas configurações substituem as herdadas neste projeto.",
     "title": "Market",
     "description": "Perfis reutilizáveis para os projetos deste servidor.",

@@ -352,8 +352,9 @@ export const assistantAgentsApi = {
   },
   async create(data: AgentPayload): Promise<AssistantAgent> {
     const res = await api.post<{ ok: boolean; agent: AssistantAgent }>("/api/ai/agents", data);
-    if (!res.ok || !res.data) throw new Error(agentApiError(res, "Failed to create agent"));
-    return res.data.agent;
+    const result = assignmentResult(res);
+    if (!result.agent?.id) throw new AgentRequestError(0, undefined, "");
+    return result.agent;
   },
   async update(id: string, data: Partial<AgentPayload>): Promise<AssistantAgent> {
     const res = await api.put<{ ok: boolean; agent: AssistantAgent }>(`/api/ai/agents/${id}`, data);

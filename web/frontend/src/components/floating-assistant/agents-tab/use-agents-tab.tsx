@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
+import { AgentRequestError } from "../assistant-api/agents";
+import { profileCreationKey, hasUnconfirmedCreation, markUnconfirmedCreation } from "./profile-create-recovery";
 import { useModuleCatalog } from "../use-module-catalog";
 /**
  * AgentsTab orchestrator hook. Holds the ENTIRE stateful body of the original
@@ -88,6 +90,8 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   const [editorTab, setEditorTab] = useState<"general" | "model" | "hierarchy" | "tools" | "resources" | "access">("general");
   const [saving, setSaving] = useState(false);
   const savingProfile = useRef(false);
+  const creationKey = useRef(profileCreationKey());
+  const [creationUncertain, setCreationUncertain] = useState(() => hasUnconfirmedCreation(creationKey.current));
   const [modules, setModules] = useState<ResolvedModule[]>([]);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestArchetype, setSuggestArchetype] = useState("");
@@ -331,6 +335,10 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
 
   async function save() {
     if (!draft || !draft.name.trim() || saving || savingProfile.current || !isCurrent()) return;
+    if (!draft.id && hasUnconfirmedCreation(creationKey.current)) {
+      setCreationUncertain(true);
+      return;
+    }
     // Group (team) is now mandatory: bounce to the Hierarchy tab if missing so
     // the required selector is in view. (UI-only guard — programmatic agent
     // creation paths still allow a null teamId; see the multi-agent/template flows.)
@@ -339,6 +347,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       setEditorTab("hierarchy");
       return;
     }
+    const creating = !draft.id;
     savingProfile.current = true;
     setSaving(true);
     try {
@@ -348,7 +357,11 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
         payload.projectIds = [...new Set([projectScope.project.id, ...(payload.projectIds ?? [])])];
       }
       if (draft.id) await assistantAgentsApi.update(draft.id, payload);
-      else await assistantAgentsApi.create(payload);
+      else {
+        markUnconfirmedCreation(creationKey.current, true);
+        await assistantAgentsApi.create(payload);
+        markUnconfirmedCreation(creationKey.current, false);
+      }
       if (!isCurrent()) return;
       setDraft(null);
       await reload();
@@ -356,11 +369,35 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
       window.dispatchEvent(new CustomEvent("lxp:assistant:agents-updated"));
       onEditorDone?.();
     } catch (e) {
-      if (isCurrent()) setError((e as Error).message);
+      // A transport/5xx/malformed success may follow a persisted POST. The v1
+      // contract has no operation identity with which to safely replay it.
+      const rejected = e instanceof AgentRequestError && e.status >= 400 && e.status < 500
+        && e.status !== 408 && e.code !== "TARGET_SCOPE_CHANGED";
+      if (creating && rejected) markUnconfirmedCreation(creationKey.current, false);
+      if (isCurrent()) {
+        setCreationUncertain(creating && !rejected);
+        setError(creating && !rejected ? null : (e as Error).message);
+      }
     } finally {
       savingProfile.current = false;
       if (isCurrent()) setSaving(false);
     }
+  }
+
+  async function recoverProfile(id: string) {
+    if (!id || !creationUncertain || savingProfile.current || !isCurrent()) return;
+    savingProfile.current = true; setSaving(true);
+    try {
+      // The user chooses a concrete server id. Never infer identity by name,
+      // timestamps or catalog differences, which can include concurrent creates.
+      const items = await assistantAgentsApi.list();
+      if (!isCurrent()) return;
+      const existing = items.find(item => item.id === id && item.capabilities?.canEditProfile === true);
+      if (!existing) { setError(_i18n.agentMarket.forbidden); return; }
+      setAgents(items); setDraft(toDraft(existing)); setError(null);
+      markUnconfirmedCreation(creationKey.current, false); setCreationUncertain(false);
+    } catch { if (isCurrent()) setError(_i18n.agentMarket.error); }
+    finally { savingProfile.current = false; if (isCurrent()) setSaving(false); }
   }
 
   async function remove(a: AssistantAgent) {
@@ -485,10 +522,10 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     }
     setFooterAction({
       label: saving ? t.saving : draft.id ? t.saveChanges : t.editor.createAgent,
-      disabled: saving || !draft.name.trim() || (!editorOnly && !draft.teamId),
+      disabled: saving || (!draft.id && creationUncertain) || !draft.name.trim() || (!editorOnly && !draft.teamId),
       onClick: () => { void save(); },
     });
-  }, [setFooterAction, draft, saving, t.saving, t.saveChanges, t.editor.createAgent]);
+  }, [setFooterAction, draft, saving, creationUncertain, t.saving, t.saveChanges, t.editor.createAgent]);
   useEffect(() => () => setFooterAction?.(null), [setFooterAction]);
 
   // While the agent editor is open, take over the settings-modal header: the
@@ -514,7 +551,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   return {
     onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, newAgent, t, _i18n,
     agents, setAgents, loading, setLoading, error, setError, draft, setDraft,
-    editorTab, setEditorTab, saving, setSaving, modules, setModules,
+    editorTab, setEditorTab, saving, setSaving, creationUncertain, recoverProfile, modules, setModules,
     suggesting, setSuggesting, suggestArchetype, setSuggestArchetype,
     projects, setProjects, conns, setConns, snippetOpts, setSnippetOpts,
     roles, setRoles, teams, setTeams, teamDraft, setTeamDraft,

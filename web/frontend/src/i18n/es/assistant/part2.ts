@@ -40,6 +40,9 @@ const assistantPart2 = {
     "retry": "Reintentar"
   },
   "agentMarket": {
+    "creationUncertain": "No se pudo confirmar la creación. Para evitar duplicados, no se volverá a enviar. Revisa el catálogo y selecciona el perfil creado solo si puedes identificarlo; si no aparece, el resultado sigue sin confirmar.",
+    "reviewProfiles": "Revisar catálogo",
+    "recoverProfile": "Seleccionar el perfil creado",
     "overrideHint": "Al guardar, esta configuración sustituye la heredada en este proyecto.",
     "title": "Market",
     "description": "Perfiles reutilizables para los proyectos de este servidor.",

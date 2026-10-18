@@ -686,7 +686,18 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
         </>)}
         </ViewTransition>
 
-        {error && <p className="text-xs text-red-500">{error}</p>}
+        {vm.creationUncertain && !draft.id && <div role="alert" className="space-y-3 rounded-md border border-border p-3 text-sm">
+          <p>{vm._i18n.agentMarket.creationUncertain}</p>
+          <button type="button" disabled={saving || loading} onClick={() => void reload()} className="min-h-11 rounded border border-border px-3 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">{vm._i18n.agentMarket.reviewProfiles}</button>
+          <label className="grid gap-1">
+            <span>{vm._i18n.agentMarket.recoverProfile}</span>
+            <select data-profile-recovery value="" disabled={saving || loading || !!error} onChange={event => void vm.recoverProfile(event.target.value)} className="min-h-11 rounded border border-input bg-background px-3 focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">{vm._i18n.agentMarket.recoverProfile}</option>
+              {agents.filter(agent => agent.capabilities?.canEditProfile).map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.providerId} · {agent.id}</option>)}
+            </select>
+          </label>
+        </div>}
+        {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
         {/* Único camino de regreso = la flecha del header del modal (cancela el
             formulario). El guardado principal vive en el footer del modal
             (SettingsFooterContext); este botón es solo un fallback cuando el tab
@@ -694,7 +705,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
         {!setFooterAction && (
           <div className="flex items-center gap-2">
             <button
-              type="button" onClick={() => void save()} disabled={saving || !draft.name.trim() || (!vm.editorOnly && !draft.teamId)}
+              type="button" onClick={() => void save()} disabled={saving || (!draft.id && vm.creationUncertain) || !draft.name.trim() || (!vm.editorOnly && !draft.teamId)}
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             >
               {saving ? t.saving : draft.id ? t.saveChanges : t.editor.createAgent}

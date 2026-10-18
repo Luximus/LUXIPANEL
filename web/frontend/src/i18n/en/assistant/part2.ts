@@ -66,6 +66,9 @@ const assistantPart2 = {
     "minimaxVoiceHint": "MiniMax voice to use."
   },
   "agentMarket": {
+    "creationUncertain": "The creation could not be confirmed. It will not be sent again to avoid duplicates. Review the catalog and select the created profile only if you can identify it; if it is missing, the result is still unconfirmed.",
+    "reviewProfiles": "Review catalog",
+    "recoverProfile": "Select the created profile",
     "overrideHint": "Saving replaces the inherited configuration in this project with these settings.",
     "title": "Market",
     "description": "Reusable profiles for projects on this server.",

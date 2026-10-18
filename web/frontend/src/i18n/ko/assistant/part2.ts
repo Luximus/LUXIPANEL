@@ -39,6 +39,9 @@ const assistantPart2 = {
     "minimaxVoiceHint": "사용할 MiniMax 음성."
   },
   "agentMarket": {
+    "creationUncertain": "프로필 생성 결과를 확인하지 못했습니다. 중복을 방지하기 위해 다시 전송하지 않습니다. 카탈로그를 확인하고 생성된 프로필을 식별할 수 있을 때만 선택하세요. 보이지 않으면 결과는 여전히 미확인 상태입니다.",
+    "reviewProfiles": "카탈로그 확인",
+    "recoverProfile": "생성된 프로필 선택",
     "overrideHint": "저장하면 이 프로젝트에서 상속된 구성이 이 설정으로 바뀝니다.",
     "title": "Market",
     "description": "이 서버의 프로젝트에서 재사용할 수 있는 프로필입니다.",

@@ -39,6 +39,9 @@ const assistantPart2 = {
     "minimaxVoiceHint": "使用する MiniMax の音声。"
   },
   "agentMarket": {
+    "creationUncertain": "作成結果を確認できませんでした。重複を避けるため再送信しません。カタログを確認し、作成されたプロフィールを特定できる場合にのみ選択してください。見つからない場合、結果は未確認のままです。",
+    "reviewProfiles": "カタログを確認",
+    "recoverProfile": "作成されたプロフィールを選択",
     "overrideHint": "保存すると、このプロジェクトの継承された設定がこれらの設定に置き換わります。",
     "title": "Market",
     "description": "このサーバーのプロジェクトで再利用できるプロフィール。",
