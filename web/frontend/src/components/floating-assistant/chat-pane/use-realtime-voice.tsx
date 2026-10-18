@@ -88,8 +88,9 @@ export function useRealtimeVoice(opts: Options) {
     } catch { if (valid(s)) showError(s, "No se pudo actualizar la voz. Las tareas pueden seguir ejecutándose."); }
     if (valid(s)) s.timer = setTimeout(() => void poll(s), 1500);
   }
+  const mayStart = () => latest.current.enabled && latest.current.canStart !== false;
   async function start() {
-    if (current.current || !latest.current.enabled || latest.current.canStart === false) return;
+    if (current.current || !mayStart()) return;
     const options = latest.current;
     const s: Session = { key: options.chatKey, draft: !options.conversationId, scope: resolveTargetScope(), conversationId: options.conversationId,
       canceled: false, seq: 0, release: lockChatInput(options.chatKey, "realtime") };
@@ -98,7 +99,7 @@ export function useRealtimeVoice(opts: Options) {
     try {
       s.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       if (!valid(s)) { s.stream.getTracks().forEach(t => t.stop()); return; }
-      if (latest.current.canStart === false) { await stop(s); return; }
+      if (!mayStart()) { await stop(s); return; }
       const id = await options.ensureConversation(id => {
         if (!valid(s)) return false;
         s.conversationId = id;
@@ -108,10 +109,10 @@ export function useRealtimeVoice(opts: Options) {
       });
       if (s.canceled || current.current !== s || !mounted.current) return;
       s.conversationId = id;
-      if (!valid(s) || latest.current.canStart === false) { await stop(s); return; }
+      if (!valid(s) || !mayStart()) { await stop(s); return; }
       const previous = unwrap(await api.get<{ activeId: string | null }>("/api/ai/realtime/conversations/" + id, { fresh: true }), "No se pudo verificar la sesión anterior.");
       if (!valid(s)) return;
-      if (latest.current.canStart === false) { await stop(s); return; }
+      if (!mayStart()) { await stop(s); return; }
       if (previous.activeId) { setPreviousId(previous.activeId); throw new Error("Hay una sesión anterior activa. Finalízala antes de iniciar otra."); }
       const peer = new RTCPeerConnection(); s.peer = peer;
       const audio = new Audio(); audio.autoplay = true; s.audio = audio;

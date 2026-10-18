@@ -128,3 +128,13 @@ it("allows an explicit new general assistant request without rebinding the histo
  expect(m.create).not.toHaveBeenCalled();
  expect(send).toHaveBeenCalledWith(expect.objectContaining({conversationId:"new-general",agentId:null,projectId:null,userText:"Nueva consulta general"}));
 });
+
+it("preserves the original draft and attachments when a suggested send cannot create its chat",async()=>{
+ const send=vi.spyOn(chatEngine,"send").mockResolvedValue(undefined);
+ m.create.mockRejectedValueOnce(new Error("admission rejected"));
+ await mount();
+ const suggestion=host.querySelector<HTMLButtonElement>(".lxp-chat-start-actions button")!;
+ await act(async()=>suggestion.click());
+ expect(m.create).toHaveBeenCalledTimes(1);expect(send).not.toHaveBeenCalled();
+ expect(vm.draft).toBe("Conservar borrador");expect(vm.attachments).toEqual([attachment]);
+});

@@ -362,7 +362,8 @@ export function useChatPaneActions(props: ChatPaneProps, s: ReturnType<typeof us
         setActiveId(meta.id);
         void reloadList(search);
       } catch {
-        if (!voiceInput) setDraft(text);
+        if (!stillCurrent()) return;
+        if (freshAssistant && !voiceInput) setDraft(current => current || text);
         setAttachError("No se pudo guardar la conversación. Inténtalo de nuevo.");
         return;
       }
