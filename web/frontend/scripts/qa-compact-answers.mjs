@@ -17,6 +17,7 @@ const entry = `
 import {createElement} from "react";
 import {createRoot} from "react-dom/client";
 import {CompactAnswer} from "/src/components/floating-assistant/chat-pane/CompactAnswer.tsx";
+import {preloadMonaco} from "/src/components/floating-assistant/CodeBlock.tsx";
 import {TeamExecutionContent} from "/src/components/floating-assistant/chat-pane/team-execution.tsx";
 
 import "/src/styles/starwind.css";
@@ -30,6 +31,7 @@ window.qaRender=(mode="api")=>root.render(createElement("div",{className:"space-
  createElement("section",{className:"border border-border rounded-lg p-3"},
    createElement("h2",{className:"text-sm mb-3"},"Coordinación del equipo"),
    createElement(TeamExecutionContent,{notices:[{role:"user",auto:true,text:packet,tools:[],presentation:"summary"}]}))));
+window.qaCodeModels=async()=>(await preloadMonaco()).editor.getModels().map(model=>model.getValue());
 window.qaRenderAnswer=(props,width=240)=>root.render(createElement("div",{ "data-qa-answer":true,style:{width,fontFamily:"Arial",fontSize:14,lineHeight:"20px"} },createElement(CompactAnswer,props)));
 window.qaRender(new URLSearchParams(location.search).get("mode")||"api"); window.qaReady=true;
 `;
@@ -163,9 +165,13 @@ if(process.env.LXP_QA_SERVE_ONLY === "1") {
      await expect(root).not.toContainText(props.summary);
     }
     if (fixture.name==="code") {
-     // The isolated fixture blocks CDN requests, so CodeBlock's real fallback
-     // must expose every line without relying on the external editor.
-     await expect(content.locator("pre")).toHaveText(codeBody);
+     // Read the actual editor model and navigate its virtualized text to the end.
+     await expect.poll(()=>page.evaluate(()=>window.qaCodeModels())).toEqual([codeBody]);
+     const editor=content.locator(".monaco-editor");
+     await expect(editor).toBeVisible();
+     await editor.locator("textarea").focus();
+     await page.keyboard.press("Control+End");
+     await expect(editor.locator(".view-lines")).toContainText("conservado-31");
      await expect(content).toContainText("Documento solicitado.");
      await expect(content).toContainText("Última sección del documento conservada.");
      await expect(content.locator("p").last()).toBeVisible();
