@@ -171,12 +171,20 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
 
   const realtime = useRealtimeVoice({
     enabled: voiceEnabled && !!voice?.realtimeEnabled, canStart: !agentInputBlocked, chatKey, conversationId: activeId,
+    contextKey: JSON.stringify([provider, activeId ? vm.activeMeta?.agentId ?? currentAgentId : currentAgentId, vm.effectiveProjectId]),
     refresh: (key, id) => chatEngine.refreshVoiceHistory(key, id),
     ensureConversation: async (accept) => {
       if (agentInputBlocked) throw new Error(marketMessages.historical);
       if (activeId) return activeId;
       const meta = await assistantConversationsApi.create(provider, "Conversación por voz", currentProjectId, currentAgent?.id ?? null, { approvalMode });
-      if (accept(meta.id)) await openConversation(meta.id);
+      if (accept(meta.id)) {
+        // Adopt the returned binding atomically with the new id. The previous
+        // render's list cannot yet contain it when openConversation selects it.
+        vm.setConvos(items => [meta, ...items.filter(item => item.id !== meta.id)]);
+        const opening = openConversation(meta.id);
+        vm.setCurrentAgentId(meta.agentId ?? null);
+        await opening;
+      }
       return meta.id;
     },
   });

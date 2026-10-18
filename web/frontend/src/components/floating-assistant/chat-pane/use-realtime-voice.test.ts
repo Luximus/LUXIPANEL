@@ -3,7 +3,7 @@ import {createRoot,type Root} from "react-dom/client";
 import { flushSync } from "react-dom";
 import {beforeEach,afterEach,expect,it,vi} from "vitest";
 const m=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),del:vi.fn(),media:vi.fn(),scope:"host",track:{enabled:true,stop:vi.fn()}}));
-vi.mock("@/lib/api-client",()=>({api:{get:m.get,post:m.post,delete:m.del},unwrap:(v:any)=>v,resolveTargetScope:()=>m.scope}));
+vi.mock("@/lib/api-client",async original=>({...await original<Record<string,unknown>>(),api:{get:m.get,post:m.post,delete:m.del},unwrap:(v:any)=>v,resolveTargetScope:()=>m.scope}));
 import {useRealtimeVoice} from "./use-realtime-voice";
 import { RealtimeRequests } from "./RealtimeRequests";
 import {chatInputLocked} from "../chat-engine/input-lock";
