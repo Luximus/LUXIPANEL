@@ -1,0 +1,9 @@
+{
+  "title": "Market de agentes y asignaciones por proyecto",
+  "changes": [
+    "Consulta los perfiles y capacidades de los agentes y gestiona sus asignaciones por proyecto y subproyecto desde el Market.",
+    "El historial mantiene el agente y el contexto originales de cada chat al navegar o cambiar las asignaciones.",
+    "Los inicios de voz cancelados por una pérdida de acceso o un cambio de sesión no se reactivan al recuperar la admisión.",
+    "Puedes terminar la voz activa aunque el catálogo no esté disponible, y un nuevo inicio autorizado queda protegido frente a respuestas tardías de intentos anteriores."
+  ]
+}
