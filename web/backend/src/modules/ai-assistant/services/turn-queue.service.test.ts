@@ -119,6 +119,7 @@ const teamState = vi.hoisted(() => ({
 }));
 vi.mock("../repositories/team-tasks.repository.js", () => ({
   teamTasksRepository: {
+    getTask: vi.fn(async () => teamState.byWorkerConv),
     listForLeaderConversation: vi.fn(async () => teamState.forLeaderConv),
     findByWorkerConversation: vi.fn(async () => teamState.byWorkerConv),
     updateTask: vi.fn(async (_e: unknown, _id: string, patch: unknown) => { calls.push("team:acknowledge"); return patch; }),
@@ -153,7 +154,7 @@ vi.mock("../repositories/agent-roles.repository.js", () => ({ agentRolesReposito
 
 import { eventBus, Events } from "../../../shared/events/index.js";
 import { getContextExecutor, localExecutor, runWithExecutor } from "../../../shared/executor/index.js";
-import { drainConversationQueue, initAgentMessageListener, initTeamNudgeListener } from "./turn-queue.service.js";
+import { drainConversationQueue, initAgentMessageListener, initTeamNudgeListener, initTeamVerifyRetryListener } from "./turn-queue.service.js";
 import { teamTasksService } from "./team-tasks.service.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
@@ -207,6 +208,22 @@ async function settle(): Promise<void> {
 
 initAgentMessageListener();
 initTeamNudgeListener();
+initTeamVerifyRetryListener();
+
+it("delivers verification retries as compact TOON pointing to complete scoped evidence", async () => {
+  registryState.active.add("verify-worker");
+  const logTail = "diagnóstico ".repeat(500);
+  teamState.byWorkerConv = { id: "verify-task", status: "running", workerConversationId: "verify-worker",
+    leaderConversationId: "leader", verify: { state: "failed", attempts: 1, logTail } };
+  eventBus.emit(Events.AI_TEAM_TASK_VERIFY_RETRY, { executor: localExecutor, taskId: "verify-task", workerConversationId: "verify-worker",
+    workerAgentId: "a-mateo", user: sender, userId: "7", logTail, failedCommand: "pnpm test", exitCode: 1, attempt: 1, maxAttempts: 2 });
+  await vi.waitFor(() => expect(queue.items).toHaveLength(1));
+  const wire = queue.items[0]!.userText;
+  expect(wire.length).toBeLessThanOrEqual(2000);
+  expect(decodeCoordination(wire)).toMatchObject({ kind: "request", detail: { taskId: "verify-task", tool: "agents.read_message", required: true } });
+  expect(teamState.byWorkerConv.verify).toMatchObject({ logTail });
+  expect(wire).not.toContain("haz commit");
+});
 
 describe("durable team result delivery", () => {
   function setup() {
