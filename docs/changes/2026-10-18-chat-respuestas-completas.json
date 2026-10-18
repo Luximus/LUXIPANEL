@@ -1,0 +1,9 @@
+{
+  "title": "Respuestas completas e historial claro en el chat",
+  "changes": [
+    "Las respuestas del chat muestran completos los documentos, el código, los planes y las traducciones guardadas.",
+    "Los resúmenes autorizados mantienen el texto completo accesible en Ver detalle, también en pantallas pequeñas.",
+    "La actividad de cada turno se reúne en un único historial y muestra tres tareas con opción de desplegar el resto.",
+    "Los documentos antiguos con ejemplos de consola se conservan íntegros al guardar y volver a abrir las conversaciones."
+  ]
+}
