@@ -1,0 +1,7 @@
+{
+  "title": "Regreso rápido al principal desde los chats del proyecto",
+  "changes": [
+    "El acceso a Todos los agentes está disponible desde cualquier chat del proyecto y conserva el borrador y los adjuntos.",
+    "Los subagentes mantienen además el acceso al chat del líder."
+  ]
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Search, Store, Bot, RefreshCw } from "lucide-react";
+import { ArrowLeft, Search, Store, RefreshCw } from "lucide-react";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { openConfirm } from "@/lib/confirm";
 import { resolveTargetScope, scopeHeaders } from "@/lib/api-client";
@@ -102,17 +102,17 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
   const viewTitle = projectView ? (source === "project" ? t.projectAgents : t.marketAgents) : t.title;
   const projectTitle = (id: string) => projects.find(project => project.id === id)?.title ?? t.project;
   return <section aria-label={viewTitle} aria-busy={loading || !!pending} className={`flex min-h-0 flex-1 flex-col overflow-y-auto text-foreground ${projectView ? "" : "p-4 sm:p-6"}`}>
-    <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="flex items-center gap-2 text-xl font-semibold">{projectView && source === "project" ? <Bot size={22} aria-hidden /> : <Store size={22} aria-hidden />}{viewTitle}</h2><p className="mt-1 text-sm text-muted-foreground">{projectView && source === "project" ? t.projectAgentsHint : t.description}</p></div>
+    <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      {projectView ? <select aria-label={t.agentSource} className={`${marketControl} min-w-0 max-w-sm flex-1`} value={source} disabled={!!pending} onChange={event => { setSource(event.target.value as "project" | "market"); setEditor(null); setNotice(""); }}>
+        <option value="project">{t.projectAgents}</option><option value="market">{t.marketAgents}</option>
+      </select> : <div><h2 className="flex items-center gap-2 text-xl font-semibold"><Store size={22} aria-hidden />{t.title}</h2><p className="mt-1 text-sm text-muted-foreground">{t.description}</p></div>}
       <div className="flex flex-wrap gap-2">
         {onBack && <button type="button" className={marketControl} onClick={onBack}><ArrowLeft className="me-2 inline" size={16} aria-hidden />{t.back}</button>}
         <button type="button" className={marketControl} disabled={!!pending || loading} onClick={() => setProfile("new")}>{t.newProfile}</button>
       </div>
     </header>
-    <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {projectView ? <label className="grid min-w-0 gap-1 text-sm"><span>{t.agentSource}</span><select className={marketControl} value={source} disabled={!!pending} onChange={event => { setSource(event.target.value as "project" | "market"); setEditor(null); setNotice(""); }}>
-        <option value="project">{t.projectAgents}</option><option value="market">{t.marketAgents}</option>
-      </select></label> : <label className="grid min-w-0 gap-1 text-sm"><span>{t.project}</span><select className={marketControl} value={selected} disabled={(!!projectId && !onBack) || !!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
+    <div className={`mb-4 grid gap-3 sm:grid-cols-2 ${projectView ? "" : "lg:grid-cols-3"}`}>
+      {!projectView && <label className="grid min-w-0 gap-1 text-sm"><span>{t.project}</span><select className={marketControl} value={selected} disabled={(!!projectId && !onBack) || !!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
         <option value="">{t.chooseProject}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.parentId ? `${projectTitle(project.parentId)} / ` : ""}{project.title}</option>)}
       </select></label>}
       <label className="grid min-w-0 gap-1 text-sm sm:col-span-2"><span>{t.search}</span><div className="relative"><Search className="pointer-events-none absolute start-3 top-3 text-muted-foreground" size={18} aria-hidden /><input type="search" value={filters.query} onChange={event => setFilters({ ...filters, query: event.target.value })} className={`${marketControl} w-full ps-10`} /></div></label>

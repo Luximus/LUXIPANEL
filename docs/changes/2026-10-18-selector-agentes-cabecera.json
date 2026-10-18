@@ -1,0 +1,4 @@
+{
+  "title": "Cabecera más compacta en Agentes IA",
+  "changes": ["El selector de agentes del proyecto o del Market ocupa la fila superior junto a Crear perfil, sustituyendo el título, el icono y la descripción repetidos."]
+}

@@ -138,7 +138,7 @@ it("opens an existing chat from the sidebar and keeps its messages and team visi
   } finally { await act(async () => root.unmount()); }
 });
 
-it("returns from a leader while its history is loading and ignores the late result", async () => {
+it.each(["agent", "worker", null])("returns from a project chat with agent %s while loading and ignores the late result", async (agentId) => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   chatUiState.patchPane("claude", { activeId: null, currentProjectId: "child", currentAgentId: "agent" });
   const host = document.createElement("div"), root = createRoot(host);
@@ -152,8 +152,10 @@ it("returns from a leader while its history is loading and ignores the late resu
   }
   try {
     await act(async () => root.render(createElement(Probe)));
+    conversationApi.get.mockResolvedValueOnce({ ...legacy, id: "loading-chat", projectId: "child", agentId } as typeof legacy);
     conversationApi.messages.mockImplementationOnce(() => history);
-    await act(async () => { opening = vm.openConversation(legacy.id); });
+    await act(async () => { opening = vm.openConversation("loading-chat"); });
+    expect(vm.currentAgentId).toBe(agentId);
     expect(vm.chatLoading).toBe(true);
     await act(async () => { vm.setDraft("Seguir después"); vm.setAttachments([staged]); });
     const back = host.querySelector<HTMLButtonElement>('[data-search-target="chat-all-agents"]');
@@ -310,7 +312,7 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     expect(host.querySelectorAll('[data-agent-shortcut]')).toHaveLength(3);
     expect(host.querySelector('[data-search-target="chat-all-agents"]')).toBeNull();
     await choose("[Desarrollo] Sofía");
-    expect(host.querySelector('[data-search-target="chat-all-agents"]')).toBeNull();
+    expect(host.querySelector('[data-search-target="chat-all-agents"]')).not.toBeNull();
     expect(vm.draft).toBe("Revisar con el equipo");
     expect(vm.attachments).toEqual([staged]);
     expect(vm.activeId).toBeNull();

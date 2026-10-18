@@ -229,7 +229,8 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
     || (agentRoleId(agent) && rolesById.get(agentRoleId(agent)!)?.name)
     || (agent.id === projectTeam?.root.leaderAgentId ? ct.agentRoleLeader : ct.agentBadgeModel);
   const selectProjectAgent = (key: string) => {
-    if (key === (currentAgentId ?? "")) return;
+    // All agents also leaves an open conversation without an assigned agent.
+    if (key === (currentAgentId ?? "") && (key !== "" || !activeId)) return;
     if (vm.historicalProjectAgents.some(agent => agent.id === key)) {
       newConversation(); vm.setCurrentAgentId(key); setDraft(draft); setAttachments(attachments); return;
     }
@@ -554,7 +555,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   {ct.backToLeader ?? "Volver al chat del líder"}
                 </button>
               )}
-              {!(activeId && leaderConv) && currentProject && currentAgentId && currentAgentId === projectTeam?.root.leaderAgentId && (
+              {currentProject && (currentAgentId || activeId) && (
                 <button
                   type="button"
                   data-search-target="chat-all-agents"
