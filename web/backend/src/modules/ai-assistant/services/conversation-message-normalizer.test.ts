@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { describe, expect, it } from "vitest";
+import type { ConversationMessage } from "../repositories/conversations.repository.js";
 import { normalizeConversationMessage, normalizeConversationMessages } from "./conversation-message-normalizer.js";
 
 describe("conversation message normalizer", () => {
@@ -118,4 +119,77 @@ it("keeps a pending team result out of the answer when reloading its console", (
   expect(out.content).toBe("");
   expect(out.pending).toBe(true);
   expect(out.cliLog).toContain("Falta verificarlo");
+});
+
+describe("legacy documents containing CLI examples", () => {
+  const document = "# Documento solicitado\n\nPaso 1: conserva este ejemplo completo.\n\n```sh\n$ codex exec\n  echo ejemplo\n```\n\nPaso 2: revisa el resultado.";
+  const base: ConversationMessage = {
+    role: "assistant",
+    content: document,
+    ts: "2026-10-17T00:00:00Z",
+  };
+  const variants: Array<[string, Partial<ConversationMessage>]> = [
+    ["without CLI metadata", {}],
+    ["with CLI metadata", { cli: true }],
+    ["with explicit full presentation", { cli: true, presentation: "full", displaySummary: "Documento listo." }],
+    ["with an existing identity", { cli: true, presentation: "full", messageId: "qa-document-identity" }],
+  ];
+
+  it.each(variants)("preserves the exact document %s", (_label, metadata) => {
+    const input = { ...base, ...metadata };
+    expect(normalizeConversationMessage(input)).toEqual(input);
+    expect(input.content).toBe(document);
+  });
+
+  it.each([undefined, "full"] as const)("keeps canonical and translated documents separate with presentation %s", (presentation) => {
+    const input: ConversationMessage = {
+      ...base,
+      content: "\n# Requested document\r\n\r\n```sh\r\n$ codex exec\r\n  echo example\r\n```\r\n\r\nReview the result.  \r\n",
+      textTranslated: "\n" + document + "\n\nTraducción íntegra: áéíóú 日本語.  \n",
+      lang: "es",
+      cli: true,
+      ...(presentation ? { presentation } : {}),
+      displaySummary: "Documento listo.",
+    };
+    const out = normalizeConversationMessage(input);
+    expect(out).toEqual(input);
+    expect(out.textTranslated ?? out.content).toBe(input.textTranslated);
+    expect(out.messageId).toBeUndefined();
+  });
+
+  it("keeps a final document and its translation when the separate console stops at earlier progress", () => {
+    const input: ConversationMessage = {
+      ...base,
+      cli: true,
+      cliLog: "$ codex exec\nRevisando.\n⏺ Bash pwd",
+      textTranslated: "# Traducción\n\n" + document,
+      lang: "es",
+    };
+    expect(normalizeConversationMessage(input)).toEqual(input);
+  });
+
+  it.each([
+    ["tilde fence", "~~~sh\n$ codex exec\n⏺ ejemplo\n  ⎿ salida\n~~~"],
+    ["long fence containing shorter fences", "````markdown\n```sh\n$ codex exec\n```\n● Codex\n````"],
+    ["indented fence", "   ```sh\n$ codex exec\n   ```"],
+    ["unfinished fence", "```sh\n$ codex exec\n  echo ejemplo"],
+  ])("preserves a document with a %s", (_label, sample) => {
+    const input = { ...base, cli: true, content: "# Ejemplo\n\n" + sample };
+    expect(normalizeConversationMessage(input)).toEqual(input);
+  });
+
+  it.each([false, true])("extracts the whole final document from a real CLI transcript (cli=%s)", (cli) => {
+    const log = "$ codex exec\nReading additional input from stdin...\n● Codex\nRevisando.\n⏺ Bash pwd\n  ⎿ /project\n" + document;
+    const out = normalizeConversationMessage({ ...base, ...(cli ? { cli: true } : {}), content: log });
+    expect(out.content).toBe(document);
+    expect(out.cliLog).toBe(log);
+    expect(out.messageId).toBeUndefined();
+  });
+
+  it.each(["```", "~~~~"])("resumes real CLI parsing after closing a %s fence", (fence) => {
+    const log = "$ codex exec\nEjemplo previo:\n" + fence + "sh\n$ codex exec\n" + fence + "\n⏺ Bash pwd\n  ⎿ /project\nResultado final.";
+    const out = normalizeConversationMessage({ ...base, cli: true, content: log });
+    expect(out.content).toBe("Resultado final.");
+    expect(out.cliLog).toBe(log);
+  });
 });

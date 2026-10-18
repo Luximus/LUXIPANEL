@@ -93,7 +93,7 @@ vi.mock("../../../shared/data-store/index.js", () => ({
   },
 }));
 
-import { conversationsRepository } from "./conversations.repository.js";
+import { conversationsRepository, type ConversationMessage } from "./conversations.repository.js";
 import { reconstructMissingIndex } from "./conversations/reconstruction.js";
 import type { Executor } from "../../../shared/executor/index.js";
 
@@ -859,5 +859,68 @@ describe("durable logical message identities", () => {
       textTranslated: "翻訳\n" + document, displaySummary: "Resumen.", cli: true, cliLog: "$ codex\nProgreso" };
     await conversationsRepository.appendMessages(executor, id, [answer]);
     expect(await conversationsRepository.allMessages(executor, id)).toEqual([answer]);
+  });
+});
+
+describe("legacy documents survive persistence without message identities", () => {
+  const document = "# Documento solicitado\n\nPaso 1: conserva este ejemplo completo.\n\n```sh\n$ codex exec\n  echo ejemplo\n```\n\nPaso 2: revisa el resultado.";
+  const variants: Array<[string, Partial<ConversationMessage>]> = [
+    ["absent presentation", {}],
+    ["CLI without presentation", { cli: true }],
+    ["explicit full", { cli: true, presentation: "full", displaySummary: "Documento listo." }],
+  ];
+
+  it.each(variants)("appends and reloads %s without trimming or deduplicating equal documents", async (_label, metadata) => {
+    const executor = makeExecutor([]);
+    const id = String((await conversationsRepository.create(executor, "codex")).id);
+    const reply: ConversationMessage = { ...msg("assistant", document, "2026-10-17T00:00:00Z"), ...metadata };
+    await conversationsRepository.appendMessages(executor, id, [reply]);
+    await conversationsRepository.appendMessages(executor, id, [reply]);
+    const persisted = col("assistant", `conv-u1-${id}`).get("messages");
+    expect(persisted?.messages).toEqual([reply, reply]);
+    // Reload serialized data, not object references returned by appendMessages.
+    seedTranscript(`conv-u1-${id}`, JSON.parse(JSON.stringify(persisted?.messages)));
+    const writes = { set: calls.set, transaction: calls.transaction };
+    expect(await conversationsRepository.allMessages(executor, id)).toEqual([reply, reply]);
+    expect(await conversationsRepository.messages(executor, id)).toMatchObject({ items: [reply, reply], total: 2 });
+    expect({ set: calls.set, transaction: calls.transaction }).toEqual(writes);
+  });
+
+  it.each(["user", "shared"] as const)("reads preexisting documents from %s storage without rewriting them", async (scope) => {
+    const executor = makeExecutor([]);
+    const id = `legacy-documents-${scope}`;
+    seedMeta("conversations-u1", id, { provider: "codex", messageCount: variants.length });
+    const collection = scope === "user" ? `conv-u1-${id}` : `conv-${id}`;
+    const replies = variants.map(([, metadata]) => ({
+      ...msg("assistant", document, "2026-10-17T00:00:00Z"),
+      ...metadata,
+    }));
+    seedTranscript(collection, JSON.parse(JSON.stringify(replies)));
+    const writes = { set: calls.set, transaction: calls.transaction };
+    expect(await conversationsRepository.allMessages(executor, id)).toEqual(replies);
+    expect(await conversationsRepository.messages(executor, id)).toMatchObject({ items: replies, total: 3 });
+    expect(col("assistant", collection).get("messages")?.messages).toEqual(replies);
+    expect({ set: calls.set, transaction: calls.transaction }).toEqual(writes);
+  });
+
+  it.each(variants)("preserves canonical and translated bytes through append, reload and replace for %s", async (_label, metadata) => {
+    const executor = makeExecutor([]);
+    const id = String((await conversationsRepository.create(executor, "codex")).id);
+    const reply: ConversationMessage = {
+      ...msg("assistant", "\n# Requested document\r\n\r\n```sh\r\n$ codex exec\r\n  echo example\r\n```\r\n\r\nReview the result.  \r\n", "2026-10-17T00:00:00Z"),
+      ...metadata,
+      textTranslated: "\n" + document + "\n\nTraducción: áéíóú 日本語.  \n",
+      lang: "es",
+    };
+    await conversationsRepository.appendMessages(executor, id, [reply]);
+    const persisted = col("assistant", `conv-u1-${id}`).get("messages");
+    expect(persisted?.messages).toEqual([reply]);
+    seedTranscript(`conv-u1-${id}`, JSON.parse(JSON.stringify(persisted?.messages)));
+    const reloaded = await conversationsRepository.allMessages(executor, id);
+    expect(reloaded).toEqual([reply]);
+    expect(reloaded[0]).not.toHaveProperty("messageId");
+    await conversationsRepository.replaceMessages(executor, id, reloaded, reloaded);
+    expect(col("assistant", `conv-u1-${id}`).get("messages")?.messages).toEqual([reply]);
+    expect(await conversationsRepository.allMessages(executor, id)).toEqual([reply]);
   });
 });

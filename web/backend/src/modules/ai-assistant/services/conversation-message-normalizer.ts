@@ -42,6 +42,22 @@ export function cleanCliText(raw: string): string {
   );
 }
 
+// CLI examples in Markdown are answer text, including fences nested inside a
+// longer fence. Only matching delimiters of at least the opening length close it.
+function* cliTextLines(text: string) {
+  let fence: string | undefined;
+  for (const line of text.split("\n")) {
+    const delimiter = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line.replace(/\r$/, ""));
+    const fenced = fence !== undefined || delimiter !== null;
+    if (delimiter) {
+      const marker = delimiter[1]!;
+      if (!fence) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length && !delimiter[2]!.trim()) fence = undefined;
+    }
+    yield { line, fenced };
+  }
+}
+
 export function extractCliFinalNarrative(cleaned: string): string {
   // The clean answer is the LAST narrative block the agent wrote: a run of
   // unindented prose lines that is neither a tool marker (`⏺ …`, `  ⎿ …`,
@@ -51,7 +67,6 @@ export function extractCliFinalNarrative(cleaned: string): string {
   // to "" when there is none. NEVER return the whole log: the bubble would
   // render the raw console stream (unreadable), which is exactly the bug seen
   // on reloaded team-orchestration chats (2026-08-25).
-  const lines = cleaned.split("\n");
   const blocks: string[] = [];
   let current: string[] = [];
   let inMarker = false;
@@ -60,7 +75,12 @@ export function extractCliFinalNarrative(cleaned: string): string {
     if (text) blocks.push(text);
     current = [];
   };
-  for (const line of lines) {
+  for (const { line, fenced } of cliTextLines(cleaned)) {
+    if (fenced) {
+      inMarker = false;
+      current.push(line);
+      continue;
+    }
     const isMarker = /^(?:⏺ | {2}⎿ |\$ |Reading additional input from stdin\.\.\.|● )/.test(line);
     if (isMarker) { flush(); inMarker = true; continue; }
     if (inMarker && /^\s/.test(line)) continue; // indented continuation of a tool line
@@ -98,8 +118,11 @@ export function deriveNotificationPreview(
   return summary ? humanizePreview(summary, max) : "";
 }
 
-function looksLikeCliTranscript(text: string): boolean {
-  return CLI_PREFIX_RE.test(text);
+function looksLikeCliTranscript(text: string, includeToolMarkers = false): boolean {
+  for (const { line, fenced } of cliTextLines(text)) {
+    if (!fenced && (CLI_PREFIX_RE.test(line) || (includeToolMarkers && /^(?:⏺ | {2}⎿ )/.test(line)))) return true;
+  }
+  return false;
 }
 
 function normalizeCliAssistantMessage(message: ConversationMessage): ConversationMessage {
@@ -111,11 +134,14 @@ function normalizeCliAssistantMessage(message: ConversationMessage): Conversatio
   const rawTranscript = cliLog || content;
   // Split logs may be truncated before the final answer. Preserve canonical
   // content, and never turn old progress into a final answer after a failure.
-  const cleanContent = stripAskBlock(stripMcpTransportNoise(stripAnsi(content))).trim();
-  const contentIsTranscript = looksLikeCliTranscript(content) || /^(?:⏺ | {2}⎿ )/m.test(content);
+  const strippedContent = stripAskBlock(stripMcpTransportNoise(stripAnsi(content))).trim();
+  // Keep canonical documents byte-for-byte, independently of their translation
+  // or whether legacy records have a separate console log.
+  const cleanContent = strippedContent && strippedContent === content.trim() ? content : strippedContent;
+  const contentIsTranscript = looksLikeCliTranscript(content, true);
   const cleanAnswer = message.pending ? "" : message.error || message.interrupted
     ? (contentIsTranscript ? "" : cleanContent)
-    : cliLog && cleanContent && !contentIsTranscript
+    : cleanContent && !contentIsTranscript
       ? cleanContent
       : deriveCliSummary(message.textTranslated, rawTranscript);
   const cleanLog = stripAskBlock(stripAnsi(stripLaneTokens(rawTranscript))).trim();
