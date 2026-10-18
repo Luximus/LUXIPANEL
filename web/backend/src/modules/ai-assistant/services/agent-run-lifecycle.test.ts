@@ -14,6 +14,7 @@ const io = vi.hoisted(() => ({
   order: [] as string[],
   contexts: [] as Array<{ target: string; user?: number }>,
   cli: false,
+  cliJobSerial: 0,
   beforeSave: undefined as undefined | ((messages: ConversationMessage[]) => Promise<void>),
   failUserSave: false,
   key: (executor: Executor, id: string) => JSON.stringify([executor.target.id, id]),
@@ -62,8 +63,9 @@ vi.mock("./agent.service.js", () => ({
       io.order.push("provider:start");
       io.contexts.push({ target: getContextExecutor().target.id, user: getContextUser()?.userId });
       if (io.cli) {
-        yield { type: "tool_use", id: "cli", name: "claude.cli", input: {} };
-        yield { type: "tool_result", id: "cli", success: true, output: "Respuesta verificada" };
+        const id = `cli-${++io.cliJobSerial}`;
+        yield { type: "tool_use", id, name: "claude.cli", input: {} };
+        yield { type: "tool_result", id, success: true, output: "Respuesta verificada" };
       } else {
         yield { type: "text", delta: "Respuesta verificada", phase: "final_answer" };
       }
@@ -130,7 +132,7 @@ function terminals(events: AgentEvent[]) {
 initTeamVerifyRetryListener();
 beforeEach(() => {
   io.history.clear(); io.queue.length = 0; io.order.length = 0; io.contexts.length = 0;
-  io.cli = false; io.beforeSave = undefined; io.failUserSave = false;
+  io.cli = false; io.cliJobSerial = 0; io.beforeSave = undefined; io.failUserSave = false;
   vi.clearAllMocks();
 });
 afterEach(() => vi.restoreAllMocks());
@@ -162,7 +164,10 @@ describe("persistence release and real queue continuation", () => {
       expect(successor).not.toBe(run);
       await successor.completion;
       expect(agentService.run).toHaveBeenCalledTimes(2);
-      expect(terminals(received)).toEqual([{ type: "done" }]);
+      expect(terminals(received)).toEqual([{ type: "done", messageId: run.messageId, presentation: "full", displaySummary: "Respuesta verificada" }]);
+      const replies = io.history.get(io.key(executor, key))!.filter(message => message.role === "assistant");
+      expect(replies.map(message => message.messageId)).toEqual([run.messageId, successor.messageId]);
+      expect(run.messageId).not.toBe(successor.messageId);
       expect(io.order.indexOf("saved:assistant")).toBeLessThan(io.order.indexOf("terminal:done"));
       expect(io.order.indexOf("terminal:done")).toBeLessThan(io.order.lastIndexOf("provider:start"));
       expect(io.history.get(io.key(executor, key))?.map(message => message.role)).toEqual(["assistant", "user", "assistant"]);
@@ -189,7 +194,7 @@ describe("persistence release and real queue continuation", () => {
       expect(agentService.run).toHaveBeenCalledTimes(1);
       expect(io.queue).toHaveLength(1);
       expect(io.history.get(io.key(executor, key))).toBeUndefined();
-      expect(terminals(received)).toEqual([{ type: "error", message: expect.stringContaining("guardado") }]);
+      expect(terminals(received)).toEqual([{ type: "error", message: expect.stringContaining("guardado"), messageId: run.messageId, presentation: "full" }]);
     } finally { save.release.resolve(); await run.completion; unsubscribe?.(); }
   });
 
@@ -199,7 +204,7 @@ describe("persistence release and real queue continuation", () => {
     io.failUserSave = true;
     const { run, starts } = start(key);
     await run.completion;
-    expect(terminals(run.events)).toEqual([{ type: "done" }]);
+    expect(terminals(run.events)).toEqual([{ type: "done", messageId: run.messageId, presentation: "full", displaySummary: "Respuesta verificada" }]);
     expect(io.queue).toHaveLength(1);
     expect(starts).toHaveBeenCalledTimes(1);
     io.failUserSave = false;
@@ -208,7 +213,7 @@ describe("persistence release and real queue continuation", () => {
     await successor.completion;
     expect(agentService.run).toHaveBeenCalledTimes(2);
     expect(io.queue).toHaveLength(0);
-    expect(terminals(run.events)).toEqual([{ type: "done" }]);
+    expect(terminals(run.events)).toEqual([{ type: "done", messageId: run.messageId, presentation: "full", displaySummary: "Respuesta verificada" }]);
   });
 
   it("preserves a verify retry enqueued while the worker completion hook still owns the run", async () => {
@@ -216,8 +221,8 @@ describe("persistence release and real queue continuation", () => {
     const run = agentRunRegistry.start({
       key, executor, user, isWorker: true,
       makeGen: async function* () { yield { type: "text", delta: "Primera respuesta" }; yield { type: "done" }; },
-      onComplete: async text => {
-        await persistAssistantMessage(executor, key, text, "claude", false);
+      onComplete: async (text, _errored, ask, translation, duration, cliLog, askKind, outcome, apiActivity, messageId) => {
+        await persistAssistantMessage(executor, key, text, "claude", false, ask, translation, undefined, duration, cliLog, askKind, outcome, apiActivity, messageId);
         eventBus.emit(Events.AI_TEAM_TASK_VERIFY_RETRY, {
           executor, taskId: "fixture-task", workerConversationId: key, workerAgentId: "worker",
           user, userId: "7", logTail: "fixture verification failed", attempt: 1, maxAttempts: 2,
@@ -267,7 +272,7 @@ describe("one terminal and bounded shutdown", () => {
       expect(terminals(events)).toHaveLength(0);
       release.resolve();
       await run.completion;
-      expect(terminals(events)).toEqual([{ type: "error", message: rejects ? expect.stringContaining("guardado") : "fixture provider error" }]);
+      expect(terminals(events)).toEqual([{ type: "error", message: rejects ? expect.stringContaining("guardado") : "fixture provider error", messageId: run.messageId, presentation: "full" }]);
     } finally { release.resolve(); await run.completion; unsubscribe?.(); }
   });
 
@@ -291,7 +296,7 @@ describe("one terminal and bounded shutdown", () => {
       expect(await shutdown).toEqual({ flushed: 1, cliDetached: 0 });
       await run.completion;
       expect(drain).not.toHaveBeenCalled();
-      expect(terminals(run.events)).toEqual([{ type: "done", pending: true }]);
+      expect(terminals(run.events)).toEqual([{ type: "done", pending: true, messageId: run.messageId, presentation: "full" }]);
     } finally { release.resolve(); await Promise.all([run.completion, shutdown]); }
   });
 
