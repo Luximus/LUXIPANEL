@@ -532,7 +532,7 @@ const assistantPart3 = {
     "attachFailed": "চ্যাটে ফাইলটি সংযুক্ত করা যায়নি।"
   },
   "teamBoard": {
-    "showMoreTasks": "আরও {count}টি কাজ দেখুন",
+    "showMoreTasks": "আরও কাজ দেখুন ({count})",
     "showFewerTasks": "কম কাজ দেখান",
     "title": "টিম কাজ করছে",
     "progressOf": "{total}টির মধ্যে {done}টি কাজ সম্পন্ন",

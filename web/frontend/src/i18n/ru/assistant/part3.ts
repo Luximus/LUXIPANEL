@@ -532,7 +532,7 @@ const assistantPart3 = {
     "attachFailed": "Не удалось прикрепить файл к чату."
   },
   "teamBoard": {
-    "showMoreTasks": "Показать ещё {count} задач",
+    "showMoreTasks": "Ещё задачи ({count})",
     "showFewerTasks": "Показать меньше задач",
     "title": "Команда за работой",
     "progressOf": "{done} из {total} задач выполнено",

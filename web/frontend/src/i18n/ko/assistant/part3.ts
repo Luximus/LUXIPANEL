@@ -532,7 +532,7 @@ const assistantPart3 = {
     "attachFailed": "채팅에 파일을 첨부하지 못했습니다."
   },
   "teamBoard": {
-    "showMoreTasks": "작업 {count}개 더 보기",
+    "showMoreTasks": "다른 작업 보기 ({count}개)",
     "showFewerTasks": "작업 간략히 보기",
     "title": "팀 작업 중",
     "progressOf": "{total}개 중 {done}개 작업 완료",

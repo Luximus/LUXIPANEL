@@ -532,7 +532,7 @@ const assistantPart3 = {
     "mediaTitle": "Multimedia"
   },
   "teamBoard": {
-    "showMoreTasks": "Mostra altre {count} attività",
+    "showMoreTasks": "Mostra altre attività ({count})",
     "showFewerTasks": "Mostra meno attività",
     "title": "Team al lavoro",
     "progressOf": "{done} di {total} attività completate",

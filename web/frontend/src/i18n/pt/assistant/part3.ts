@@ -532,7 +532,7 @@ const assistantPart3 = {
     "attachFailed": "Não foi possível anexar o ficheiro à conversa."
   },
   "teamBoard": {
-    "showMoreTasks": "Ver mais {count} tarefas",
+    "showMoreTasks": "Ver mais tarefas ({count})",
     "showFewerTasks": "Mostrar menos tarefas",
     "title": "Equipe trabalhando",
     "progressOf": "{done} de {total} tarefas concluídas",
