@@ -825,7 +825,7 @@ it.each([0, 1, 3, 4, 27])("keeps one task list with three initial rows and an ac
   expect(board.textContent).toContain(`${count} de ${count} tareas completadas`);
   const expand = board.querySelector<HTMLButtonElement>("[data-team-tasks-toggle]");
   if (count <= 3) { expect(expand).toBeNull(); return; }
-  expect(expand!.textContent).toContain(`Ver ${count - 3} tareas más`);
+  expect(expand!.textContent).toContain(`Ver más tareas (${count - 3})`);
   expect(expand!.getAttribute("aria-expanded")).toBe("false");
   expect(document.getElementById(expand!.getAttribute("aria-controls")!)).toBe(board.querySelector("ul"));
   expand!.focus();

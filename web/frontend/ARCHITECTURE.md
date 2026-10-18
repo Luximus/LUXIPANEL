@@ -500,3 +500,12 @@ se incorporan por bloques al mismo scroll.
 ### Respuestas compactas (2026-10-17)
 
 `CompactAnswer` limita la presentación del resumen a dos líneas con un máximo de 240 caracteres. El contenido original solo se monta en «Ver detalle» al abrirlo; copiar, el contexto del modelo, errores, permisos y preguntas conservan sus contratos. La proyección funciona en respuestas API/CLI, avisos de equipo, fases anteriores e historial sin displaySummary. Los mensajes TOON muestran su summary raíz, no los datos internos; la validación completa pertenece al backend. El escritorio activo carga este frontend. `scripts/qa-compact-answers.mjs` comprueba geometría y expansión con Chromium y datos simulados, sin invocar proveedores ni conversaciones reales.
+
+
+### Historial único y lista compacta del turno (2026-10-17)
+
+`TurnView` mantiene un único `ExecutionDisclosure` durante el turno, sus continuaciones y la recuperación del historial. Las consolas CLI en vivo y guardadas aportan solo su contenido dentro de ese control; las llamadas API conservan sus detalles individuales. Añadir fases no remonta el control ni reemplaza la elección de apertura del usuario. Los fallos, resultados inciertos y aprobaciones mantienen su estado visible.
+
+`TeamTaskBoard` muestra tres tareas al abrir el proceso y ofrece el resto mediante un botón con contador, `aria-expanded` y `aria-controls`; su estado de apertura pertenece a la conversación. Las alertas del equipo siguen visibles en el resumen del proceso aunque su tarea quede fuera de esas tres filas. Los estados y acciones se asocian al id original de cada tarea.
+
+Al terminar una ejecución CLI, la narración permanece en el historial y deja de repetirse en la fila de progreso. `CompactAnswer` no ofrece un detalle redundante cuando la respuesta ya coincide con la síntesis. Al abrir un contenido extenso, reemplaza la síntesis visible por el texto íntegro y la recupera al cerrar; no modifica el contenido guardado ni el que se copia. Las regresiones de estos comportamientos están en `chat-pane/team-execution.render.test.ts`.

@@ -17,7 +17,7 @@ export function CompactAnswer({ text, summary, streaming = false }: {
   if (!text.trim()) return null;
   const hasDetail = text.trim() !== preview;
   return <div data-compact-answer className="min-w-0">
-    {(!open || !hasDetail) && <p data-visible-summary className="line-clamp-2 whitespace-normal break-words" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{preview || t.toolTrace.viewDetails}</p>}
+    {(!open || !hasDetail) && !!preview && <p data-visible-summary className="line-clamp-2 whitespace-normal break-words" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{preview}</p>}
     {hasDetail && <details open={open} className="mt-1 min-w-0" onToggle={event => setOpen(event.currentTarget.open)}>
       <summary aria-expanded={open} aria-controls={contentId} className="flex min-h-11 cursor-pointer items-center rounded-md px-1 text-xs text-muted-foreground transition-colors duration-200 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t.toolTrace.viewDetails}</summary>
       <div id={contentId}>
