@@ -48,8 +48,10 @@ const allowed = new Set([
   resolve(backend, "modules/ai-assistant/models/team-task.types.ts"),
   ...["agent-run-registry", "turn-finalization", "assistant-message-persistence", "conversation-message-normalizer", "api-activity", "execution-scope", "ask-protocol"].map(name => resolve(services, `${name}.ts`)),
   ...["events/index", "text/humanize-preview", "diagnostics/sanitize"].map(name => resolve(backend, `shared/${name}.ts`)),
+  ...["message-presentation", "agent-envelope", "visible-summary"].map(name => resolve(backend, "modules/ai-assistant/models", name + ".ts")),
 ]);
 const nativeRequire = createRequire(import.meta.url);
+const backendRequire = createRequire(resolve(backend, "../package.json"));
 const loaded = new Map<string, { exports: Record<string, any> }>();
 function loadBackend(file: string): any {
   if (stubs.has(file)) return stubs.get(file);
@@ -61,6 +63,7 @@ function loadBackend(file: string): any {
     fileName: file, compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
   const requireSource = (id: string): unknown => id.startsWith("node:") ? nativeRequire(id)
+    : id === "zod" || id === "@toon-format/toon" ? backendRequire(id)
     : loadBackend(resolve(dirname(file), id.replace(/\.js$/, ".ts")));
   new Function("exports", "require", "module", output)(module.exports, requireSource, module);
   return module.exports;

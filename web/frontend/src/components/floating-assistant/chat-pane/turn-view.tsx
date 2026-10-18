@@ -163,7 +163,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   // tool boundary below controls presentation without rewriting that text.
   const summaryText = turn.text || (turn.completionPending || turn.error || turn.stopped || turn.interrupted ? "" : cliFallbackAnswer);
   const hasApiActivity = !isUser && !turn.cli && !hasCliConsole
-    && Boolean(turn.apiActivity?.events.length || turn.apiActivity?.truncated || (turn.completionPending && turn.text));
+    && Boolean(turn.apiActivity?.events.length || turn.apiActivity?.truncated);
   const groupApiTools = !isUser && !hasCliConsole && (visibleTools.length > 0 || hasApiActivity);
   // Use only observed tool boundaries, never paragraph/word heuristics.
   // Legacy history has no boundary: retain its original text intact.
@@ -172,11 +172,13 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
     ? turn.apiTextOffset : 0;
   const holdApiText = groupApiTools && turn.pending && !turn.stopped && !turn.error
     && !turn.interrupted && !turn.permission && !turn.ask?.length;
-  const answerText = holdApiText || turn.completionPending ? "" : summaryText.slice(apiTextOffset);
+  // Persisted pending content can carry a necessary notice; keep it readable
+  // alongside the waiting state. Live process narration stays in its history.
+  const answerText = holdApiText ? "" : summaryText.slice(apiTextOffset);
   const apiProgressText = groupApiTools
     ? turn.apiActivity
-      ? (holdApiText || turn.completionPending ? summaryText.slice(apiTextOffset) : "")
-      : (holdApiText || turn.completionPending ? summaryText : summaryText.slice(0, apiTextOffset))
+      ? (holdApiText ? summaryText.slice(apiTextOffset) : "")
+      : (holdApiText ? summaryText : summaryText.slice(0, apiTextOffset))
     : "";
   const apiEntries = groupApiTools
     ? visibleTools.map(tool => ({ id: tool.id, label: tool.name, status: apiToolStatus(tool, turn) }))

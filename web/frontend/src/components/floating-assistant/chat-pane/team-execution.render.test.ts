@@ -966,6 +966,6 @@ it.each([
   expect(visibleText(answer)).toContain("Detalle verificable conservado.");
   expect(visibleText(answer)).not.toContain("Síntesis");
   if ("error" in state) expect(visibleText(answer)).toContain(state.error);
-  if ("permission" in state) expect(visibleText(answer)).toContain(state.permission.title);
-  if ("ask" in state) expect(visibleText(answer)).toContain(state.ask[0]!.text);
+  if (state.permission) expect(visibleText(answer)).toContain(state.permission.title);
+  if (state.ask) expect(visibleText(answer)).toContain(state.ask[0]!.text);
 });

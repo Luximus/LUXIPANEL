@@ -30,29 +30,31 @@ describe("CLI progress for ThoughtLine", () => {
 });
 
 describe("historyTurn", () => {
-  it("derives the clean final answer when split CLI history still has transcript in content", () => {
-    const turn = historyTurn({
+  it("preserves legacy content verbatim when no presentation contract authorizes extraction", () => {
+    const message = {
       role: "assistant",
       provider: "codex",
       cli: true,
       content: "2026-07-01T02:14:31Z ERROR rmcp...\nVoy a revisar el flujo.\n⏺ bash /bin/bash -lc \"echo hi\"\n  ⎿ hi\nRespuesta final limpia.\n\nSegundo párrafo.",
       cliLog: "$ codex exec -m gpt-5.6-terra\r\nReading additional input from stdin...\r\n● Codex\r\n2026-07-01T02:14:31Z ERROR rmcp...\r\nVoy a revisar el flujo.\r\n⏺ bash /bin/bash -lc \"echo hi\"\r\n  ⎿ hi\r\nRespuesta final limpia.\r\n\r\nSegundo párrafo.\r\n",
-    } as ConversationMessage);
+    } as ConversationMessage;
+    const turn = historyTurn(message);
 
-    expect(turn.text).toBe("Respuesta final limpia.\n\nSegundo párrafo.");
+    expect(turn.text).toBe(message.content);
     expect(turn.cliHistoryLog).toContain("$ codex exec -m gpt-5.6-terra");
   });
 
-  it("falls back to the last narrative block (never the whole log) when the run ended mid-tool", () => {
+  it("does not discard earlier content or an uncertain tail when a legacy run ended mid-tool", () => {
     const log = "$ claude -p …\nVoy a coordinar.\n⏺ Bash ls\n  ⎿ x\nCarolina ya commiteó la marca v3. Sigo esperando.\n⏺ mcp__team__collect {\"waitSeconds\":58}\n  ⎿ { \"results\": [] }\n⏺ mcp__team__collect {\"waitSeconds\":58}";
     const turn = historyTurn({ role: "assistant", provider: "claude", cli: true, content: log, cliLog: log } as ConversationMessage);
-    expect(turn.text).toBe("Carolina ya commiteó la marca v3. Sigo esperando.");
+    expect(turn.text).toBe(log);
     expect(turn.cliHistoryLog).toContain("team__collect");
   });
 
-  it("yields an empty answer when the log has no narrative at all", () => {
+  it("preserves shell-only content and does not invent a separate legacy console", () => {
     const log = "$ claude -p …\n⏺ Bash ls\n  ⎿ x\n⏺ Bash pwd";
     const turn = historyTurn({ role: "assistant", provider: "claude", cli: true, content: log } as ConversationMessage);
-    expect(turn.text).toBe("");
+    expect(turn.text).toBe(log);
+    expect(turn.cliHistoryLog).toBeUndefined();
   });
 });

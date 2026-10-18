@@ -164,3 +164,9 @@ it("does not carry an ID match from another conversation when seeding a new chat
   expect(chats.get(key)?.turns[0]?.completionPending).toBe(true);
   expect(chats.get(key)?.turns[0]?.text).toBe("");
 });
+
+it("treats missing presentation on a new terminal event as full even after an earlier summary", () => {
+  seed([request, { ...historyTurn(saved("logical-a", { presentation: "summary" })), pending: true }]);
+  applyEvent(key, { type: "done", messageId: "logical-a", runId: "transport-a" }, { ...context, seq: 11 });
+  expect(chats.get(key)?.turns.at(-1)?.presentation).toBe("full");
+});
