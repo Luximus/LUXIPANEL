@@ -34,15 +34,15 @@ export function ProjectAgentShortcuts({ agents, selectedId, roleLabel, onSelect,
         aria-label={`${formatAssistantMessage(labels.select, { name: agent.name })} · ${roleLabel(agent)} · ${statusLabel}${!loading && !error ? ` · ${unread}` : ""}`}
         onClick={() => onSelect(agent.id!)}>
         <span className="lxp-agent-shortcut__top">
-          <AgentAvatar agent={agent} size={44} />
+          <AgentAvatar agent={agent} size={32} />
           {!loading && !error && value.unreadCount > 0 && <span className="lxp-agent-shortcut__unread" title={unread} aria-label={unread}>{value.unreadCount > 99 ? "99+" : value.unreadCount}</span>}
           {selectedId === agent.id && <i className="ti ti-check lxp-agent-shortcut__selected" aria-hidden />}
         </span>
-        <span className="lxp-agent-shortcut__identity"><strong>{agent.name}</strong><span>{roleLabel(agent)}</span></span>
-        <span className="lxp-agent-shortcut__status" data-state={state}>
+        <span className="lxp-agent-shortcut__identity"><strong title={agent.name}>{agent.name}</strong><span title={roleLabel(agent)}>{roleLabel(agent)}</span></span>
+        <span className="lxp-agent-shortcut__status" data-state={state} title={statusLabel}>
           {state === "available" || state === "loading" ? <span className="lxp-agent-shortcut__dot" aria-hidden />
             : <i className={`ti ${state === "running" ? "ti-loader-2" : state === "waiting" ? "ti-clock" : state === "failed" ? "ti-alert-circle" : state === "done" ? "ti-circle-check" : "ti-cloud-off"}`} aria-hidden />}
-          {statusLabel}
+          <span className="lxp-agent-shortcut__status-label">{statusLabel}</span>
         </span>
       </button>;
     })}

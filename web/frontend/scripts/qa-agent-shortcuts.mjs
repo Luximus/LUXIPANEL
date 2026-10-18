@@ -76,7 +76,7 @@ const server = await createServer({
       if (req.url?.split("?")[0] !== "/") return next();
       const light = req.url?.includes("light");
       res.setHeader("Content-Type", "text/html");
-      res.end(`<!doctype html><html lang="es" class="${light ? "" : "dark"}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agentes del proyecto</title><style id="xterm-css-cdn"></style><style>html,body{margin:0;min-height:100%}#root{min-height:100vh}.lxp-workspace-chat{padding-top:2rem!important}</style></head><body class="bg-background text-foreground"><main data-workspace-shell><div id="root" class="lxp-workspace-chat flex flex-col"></div></main><script type="module" src="/qa-entry.js"></script></body></html>`);
+      res.end(`<!doctype html><html lang="es" class="${light ? "" : "dark"}"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agentes del proyecto</title><style id="xterm-css-cdn"></style><style>html,body{margin:0;min-height:100%}#root{height:100dvh;min-height:0}#root>div{min-height:0}</style></head><body class="bg-background text-foreground"><main data-workspace-shell><div id="root" class="lxp-workspace-chat flex flex-col"></div></main><script type="module" src="/qa-entry.js"></script></body></html>`);
     }); },
   }, tailwind()],
   server: { host: "127.0.0.1", port: Number(process.env.LXP_QA_PORT) || 0, strictPort: true, hmr: false, watch: null },

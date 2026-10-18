@@ -1,0 +1,7 @@
+{
+  "title": "Tarjetas de agentes más compactas",
+  "changes": [
+    "Las tarjetas de agentes usan menos altura al mostrar el avatar junto al nombre, rol y estado, conservando las dos filas y el desplazamiento horizontal.",
+    "La vista de agentes mantiene visible el cuadro de mensaje sin desplazarlo hacia abajo y conserva los avisos de mensajes pendientes."
+  ]
+}
