@@ -232,7 +232,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
       : tool.terminal ?? ""))
     .join("\n") || historyLog;
   const progressMessages = showTerminal ? extractCliProgress(cliTranscript, turn.pending ? "" : summaryText) : [];
-  const thoughtSteps = turn.pending ? progressMessages.slice(0, -1) : progressMessages;
+  const thoughtSteps = turn.pending ? progressMessages.slice(0, -1) : [];
   const currentThought = turn.pending && progressMessages.length
     ? progressMessages[progressMessages.length - 1]
     : (ct.toolTrace?.running ?? "Ejecutando…");
@@ -240,8 +240,6 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
   const executionDetails = hasExecutionDetails ? <TeamExecutionContent boards={teamBoards} notices={teamNotices} /> : undefined;
   const executionAttention = hasExecutionDetails && teamTasks?.length ? <TeamExecutionAttention tasks={teamTasks} /> : undefined;
   const hasEarlierPhases = !isUser && !!executionPhases?.length;
-  const inlineExecutionDetails = hasEarlierPhases ? undefined : executionDetails;
-  const inlineExecutionAttention = hasEarlierPhases ? undefined : executionAttention;
   const hasConsole =
     !isUser &&
     (groupApiTools || visibleTools.length > 0 || showWorkingIndicator || (showTerminal && isHistoryCli && !!historyLog) || hasExecutionDetails || hasEarlierPhases);
@@ -316,7 +314,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
         <div data-message-section="reasoning" className="border-b border-border/60 px-3 py-2 text-muted-foreground">
           <ThoughtLine
             key={groupApiTools ? "api" : "cli"}
-            autoExpand={!groupApiTools}
+            autoExpand={false}
             breathDepth={groupApiTools ? 0 : undefined}
             working={executionStatus === "running"}
             label={apiStatus ? activityLabels[apiStatus] : currentThought}
@@ -324,7 +322,7 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
             steps={thoughtSteps}
             entries={showTerminal ? apiEntries : undefined}
             entryStatusLabels={activityLabels}
-            collapseOnSettle={!groupApiTools}
+            collapseOnSettle={false}
             settleDuration={200}
             showTimer={false}
             shimmer={false}
@@ -337,66 +335,51 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
       {/* Tool disclosures and the CLI console are rows of this message. */}
       {hasConsole && (
         <div data-message-section="console" className={cn("w-full min-w-0 divide-y divide-border/60", (hasModifiedFiles || hasBubbleContent) && "border-b border-border/60")}>
-          {(() => {
-            const hasHistoryConsole = showTerminal && isHistoryCli && !!historyLog;
-            // API tools share one collapsed console, like a CLI execution.
-            // Keep the team board and attention controls on that outer group.
-            const currentConsole = (
-              <>
-                {groupApiTools ? (
-                  <ExecutionDisclosure source="API" activityStatus={apiStatus} attention={inlineExecutionAttention}>
-                    <div className="divide-y divide-border/60 border-t border-border/60">
-                      {turn.apiActivity ? turn.apiActivity.events.map((event, index) => {
-                        if (event.type === "text") return (
-                          <div key={`text-${index}`} data-api-progress className="px-3 py-2 text-foreground">
-                            <MessageContent text={event.delta} scrollContainerRef={scrollContainerRef} />
-                          </div>
-                        );
-                        if (event.type === "tool_use") {
-                          if (turn.apiActivity!.events.findIndex(item => item.type === "tool_use" && item.id === event.id) !== index) return null;
-                          const tool = visibleTools.find(item => item.id === event.id);
-                          return tool ? <ToolDisclosure key={tool.id} t={tool} turn={turn} uiMode={uiMode} embedded /> : null;
-                        }
-                        // A limited trace can contain a result without its call.
-                        // Keep that received output reachable, without inventing a call.
-                        return visibleTools.some(tool => tool.id === event.id) ? null : (
-                          <div key={`result-${event.id}`} data-api-result className="px-3 py-2">
-                            <span>{event.success ? ct.toolTrace.done : ct.toolTrace.error}</span>
-                            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-[11px]">{event.output}</pre>
-                          </div>
-                        );
-                      }) : visibleTools.map(t => <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded />)}
-                      {apiProgressText.trim() && (
-                        <div data-api-progress className="px-3 py-2 text-foreground">
-                          <MessageContent text={apiProgressText} scrollContainerRef={scrollContainerRef} streaming={!!holdApiText} />
-                        </div>
-                      )}
-                      {turn.apiActivity?.truncated && (
-                        <p data-api-truncated className="px-3 py-2 text-muted-foreground">{ct.toolTrace.historyTruncated}</p>
-                      )}
+          <ExecutionDisclosure
+            source={hasCliConsole || isHistoryCli ? "CLI" : groupApiTools ? "API" : undefined}
+            activityStatus={executionStatus}
+            attention={executionAttention}
+            startedAt={typeof turn.tools.find(tool => tool.name.endsWith(".cli"))?.input.startedAt === "number"
+              ? turn.tools.find(tool => tool.name.endsWith(".cli"))!.input.startedAt as number : undefined}
+          >
+            {hasEarlierPhases && <ExecutionPhases phases={executionPhases!} showTerminal={showTerminal} uiMode={uiMode} />}
+            {groupApiTools ? (
+              <div className="divide-y divide-border/60 border-t border-border/60">
+                {turn.apiActivity ? turn.apiActivity.events.map((event, index) => {
+                  if (event.type === "text") return (
+                    <div key={`text-${index}`} data-api-progress className="px-3 py-2 text-foreground">
+                      <MessageContent text={event.delta} scrollContainerRef={scrollContainerRef} />
                     </div>
-                    {inlineExecutionDetails}
-                  </ExecutionDisclosure>
-                ) : visibleTools.map((t, index) => (
-                  <ToolDisclosure key={t.id} t={t} turn={turn} uiMode={uiMode} embedded attention={index === 0 ? inlineExecutionAttention : undefined}>
-                    {index === 0 ? inlineExecutionDetails : undefined}
-                  </ToolDisclosure>
-                ))}
-                {/* Reloaded CLI turn: collapsed "Consola del servidor" from the log. */}
-                {hasHistoryConsole && <CliHistoryView text={historyLog} embedded activityStatus={executionStatus} attention={inlineExecutionAttention}>{inlineExecutionDetails}</CliHistoryView>}
-                {hasExecutionDetails && !hasEarlierPhases && !groupApiTools && !visibleTools.length && !hasHistoryConsole && (
-                  <ExecutionDisclosure activityStatus={executionStatus} attention={inlineExecutionAttention}>
-                    {inlineExecutionDetails}
-                  </ExecutionDisclosure>
+                  );
+                  if (event.type === "tool_use") {
+                    if (turn.apiActivity!.events.findIndex(item => item.type === "tool_use" && item.id === event.id) !== index) return null;
+                    const tool = visibleTools.find(item => item.id === event.id);
+                    return tool ? <ToolDisclosure key={tool.id} t={tool} turn={turn} uiMode={uiMode} embedded /> : null;
+                  }
+                  return visibleTools.some(tool => tool.id === event.id) ? null : (
+                    <div key={`result-${event.id}`} data-api-result className="px-3 py-2">
+                      <span>{event.success ? ct.toolTrace.done : ct.toolTrace.error}</span>
+                      <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-[11px]">{event.output}</pre>
+                    </div>
+                  );
+                }) : visibleTools.map(tool => <ToolDisclosure key={tool.id} t={tool} turn={turn} uiMode={uiMode} embedded />)}
+                {apiProgressText.trim() && (
+                  <div data-api-progress className="px-3 py-2 text-foreground">
+                    <MessageContent text={apiProgressText} scrollContainerRef={scrollContainerRef} streaming={!!holdApiText} />
+                  </div>
                 )}
-              </>
-            );
-            return hasEarlierPhases ? <ExecutionDisclosure activityStatus={executionStatus} attention={executionAttention}>
-              <ExecutionPhases phases={executionPhases!} showTerminal={showTerminal} uiMode={uiMode} />
-              {currentConsole}
-              {executionDetails}
-            </ExecutionDisclosure> : currentConsole;
-          })()}
+                {turn.apiActivity?.truncated && (
+                  <p data-api-truncated className="px-3 py-2 text-muted-foreground">{ct.toolTrace.historyTruncated}</p>
+                )}
+              </div>
+            ) : visibleTools.map(tool => (
+              <ToolDisclosure key={tool.id} t={tool} turn={turn} uiMode={uiMode} embedded contentOnly />
+            ))}
+            {showTerminal && isHistoryCli && !!historyLog && (
+              <CliHistoryView text={historyLog} embedded contentOnly activityStatus={executionStatus} />
+            )}
+            {executionDetails}
+          </ExecutionDisclosure>
           {/* Background mode: live console hidden — discreet "working" hint. */}
           {showWorkingIndicator && (
             <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground">

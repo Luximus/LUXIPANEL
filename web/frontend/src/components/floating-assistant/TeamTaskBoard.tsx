@@ -16,7 +16,8 @@
  * status, cancel-all, manual task assignment, 👍/👎 feedback and a live
  * status-coloured org chart of the leader's subtree.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import {
   assistantAgentsApi,
   assistantProjectsApi,
@@ -100,6 +101,10 @@ export function TeamTaskBoard({
   embedded?: boolean;
 }) {
   const t = useAssistantI18n().teamBoard;
+  const taskListId = useId();
+  const [expandedFor, setExpandedFor] = useState<string | null>(null);
+  const tasksExpanded = expandedFor === conversationId;
+  const visibleTasks = tasksExpanded ? tasks : tasks.slice(0, 3);
   const [plan, setPlan] = useState<TeamPlan | null>(null);
   const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -466,8 +471,8 @@ export function TeamTaskBoard({
         </ul>
       )}
 
-      <ul className="space-y-1.5">
-        {tasks.map((task) => {
+      <ul id={taskListId} className="space-y-1.5">
+        {visibleTasks.map((task) => {
           const chip = statusChip(task, t);
           const isTerminal = TERMINAL.has(task.status);
           const st = isTerminal ? summary?.tasks.find((x) => x.taskId === task.id) : undefined;
@@ -477,6 +482,7 @@ export function TeamTaskBoard({
           return (
             <li
               key={task.id}
+              data-team-task-id={task.id}
               className="rounded-lg border border-border/60 bg-background/60 px-2 py-1.5"
             >
               <div className="flex items-center gap-2">
@@ -641,6 +647,20 @@ export function TeamTaskBoard({
           );
         })}
       </ul>
+
+      {tasks.length > 3 && (
+        <button
+          type="button"
+          data-team-tasks-toggle
+          aria-expanded={tasksExpanded}
+          aria-controls={taskListId}
+          onClick={() => setExpandedFor(tasksExpanded ? null : conversationId)}
+          className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-3 text-xs font-medium text-foreground transition-colors duration-200 hover:bg-accent active:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span>{tasksExpanded ? t.showFewerTasks : formatAssistantMessage(t.showMoreTasks, { count: tasks.length - 3 })}</span>
+          <ChevronDown aria-hidden className={`size-4 transition-transform duration-200 ${tasksExpanded ? "rotate-180" : ""}`} />
+        </button>
+      )}
 
       {/* Cost footer: tokens spent by the leader + the whole team (shown as
           soon as any task settled; feeds off GET /api/ai/team/summary). */}
