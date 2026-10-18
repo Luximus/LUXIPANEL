@@ -257,6 +257,16 @@ async function handlePermissionRequest(
   if (!ctx.permissionConversationId) {
     return permissionVerdict("deny", input);
   }
+  // The actual handler authorizes the exact worker/request. Do not recursively
+  // ask the human to approve the leader's decision. Plan mode stays read-only.
+  if (["mcp__luxipanel-servers__team__review", "mcp__luxipanel-servers__team__approvals"].includes(toolName)) {
+    const team = await resolveTeamTools(ctx);
+    if (team.state === "ready") {
+      if (toolName.endsWith("__review") && agentRunRegistry.getApproval(ctx.permissionConversationId)?.mode === "plan") return permissionVerdict("deny", input);
+      return permissionVerdict("allow", input);
+    }
+    return permissionVerdict("deny", input);
+  }
   // Read-only tools never interrupt the user.
   if (permissionPolicy.decide(toolName) === "allow") {
     return permissionVerdict("allow", input);

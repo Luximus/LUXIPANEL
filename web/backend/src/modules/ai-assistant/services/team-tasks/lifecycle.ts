@@ -38,6 +38,7 @@ import { emitTaskUpdate, injectTaskUpdate } from "./task-events.js";
 import { pingWaiters, hasWaiters } from "./waiters.js";
 import { workerRunStarted, workerRunEnded, hasWorkerSlot } from "./worker-quota.js";
 import { isInterruptionPlaceholder, TASK_INTERRUPTED_ERROR } from "./interruption.js";
+import { scheduleExecutionRetry, safeRetryError } from "./execution-retry.js";
 
 const log = createModuleLogger("assistant-team-tasks");
 const nudgeInFlight = new Set<string>();
@@ -227,6 +228,9 @@ type TaskOutcome = {
 interface FinalizeOpts {
   /** Salta la verificación ejecutable (cancel/reconciliación). */
   skipVerify?: boolean;
+  /** Only provider/CLI execution failures, never budgets or user cancellation. */
+  retryExecution?: boolean;
+  dispatchFailureId?: string;
 }
 
 /** Serializa los cierres concurrentes del MISMO task (onDone del run vs el
@@ -242,13 +246,14 @@ export async function finalizeTask(
   outcome: TaskOutcome,
   opts: FinalizeOpts = {},
 ): Promise<TeamTask | null> {
-  const prev = finalizeLocks.get(taskId) ?? Promise.resolve(null);
+  const key = JSON.stringify([executor.target.id, taskId]);
+  const prev = finalizeLocks.get(key) ?? Promise.resolve(null);
   const next = prev.catch(() => null).then(() => finalizeTaskInner(executor, taskId, outcome, opts));
-  finalizeLocks.set(taskId, next);
+  finalizeLocks.set(key, next);
   try {
     return await next;
   } finally {
-    if (finalizeLocks.get(taskId) === next) finalizeLocks.delete(taskId);
+    if (finalizeLocks.get(key) === next) finalizeLocks.delete(key);
   }
 }
 
@@ -355,6 +360,14 @@ async function finalizeTaskInner(
   if (isTerminalTaskStatus(current.status)) return current;
 
   workerRunEnded(current.userId ?? undefined, current.workerConversationId);
+  if (outcome.status === "failed" && opts.retryExecution) {
+    const waiting = await scheduleExecutionRetry(executor, current, outcome.error ?? "El agente terminó con error.", opts.dispatchFailureId);
+    if (waiting) return waiting;
+    const fresh = await teamTasksRepository.getTask(executor, taskId);
+    if (fresh?.retry?.state === "exhausted" && fresh.retry.attempts >= fresh.retry.maxRetries) {
+      outcome = { ...outcome, error: `Falló tras ${fresh.retry.attempts} reintentos: ${safeRetryError(outcome.error ?? "Error de ejecución.")}` };
+    }
+  }
   if (outcome.status === "done" && current.leaderAgentId.startsWith("realtime:")) {
     const { items } = await conversationsRepository.messages(executor, current.workerConversationId, { limit: 2 });
     const last = items.at(-1);
@@ -548,11 +561,15 @@ export async function maybeNudgeLeader(executor: Executor, leaderConversationId:
     if (hasWaiters(leaderConversationId, executor.target.id)) return; // a collect will grab them
     if (agentRunRegistry.isActive(leaderConversationId, executor.target.id)) return; // leader mid-turn
     const tasks = await teamTasksRepository.listForLeaderConversation(executor, leaderConversationId);
-    const candidates = tasks.filter((t) => t.id && !t.collected && !t.nudged);
+    let candidates = tasks.filter((t) => t.id && !t.collected && !t.nudged);
     if (candidates.length === 0) return;
     // Voice coordinators have no persisted agent identity; their task cards remain authoritative.
     if (candidates.every(t => t.leaderAgentId.startsWith("realtime:"))) return;
-    if (candidates.some((t) => !isTerminalTaskStatus(t.status))) return; // team still working
+    // Exhausted/blocked work must reach its leader even if peers keep running.
+    if (candidates.some((t) => !isTerminalTaskStatus(t.status))) {
+      candidates = candidates.filter(t => t.status === "failed");
+      if (!candidates.length) return;
+    }
     if (candidates.every(t => t.status === "canceled")) return;
     const { items } = await conversationsRepository.messages(executor, leaderConversationId, { limit: 1 });
     const last = items.at(-1);

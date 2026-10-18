@@ -96,7 +96,9 @@ export async function runToolHandler(
       }
       // modules.execute applies its own per-operation approval after resolving
       // the actual module tool. Asking here too would show two prompts.
-      if (mutating && mode === "manual" && name !== "modules.execute" && !approval?.autoApprove.has(name)) {
+      // team.review is itself a scoped approval decision with live authority
+      // checks; asking the human to approve that decision recreates the deadlock.
+      if (mutating && mode === "manual" && name !== "modules.execute" && name !== "team.review" && !approval?.autoApprove.has(name)) {
         if (!opts?.conversationId) return { output: "Esta acción requiere una conversación activa para aprobarla.", success: false, isAsk };
         const decision = await permissionBroker.request({
           conversationId: opts.conversationId,

@@ -37,4 +37,13 @@ describe("API tool approval modes", () => {
     expect(handler).toHaveBeenCalledTimes(2);
     expect(request).toHaveBeenCalledTimes(1);
   });
+
+  it("lets the authorized team-review handler decide in manual mode without a recursive human prompt", async () => {
+    const review = { ...tool, name: "team.review" };
+    expect((await runToolHandler([review], review.name, {}, { approvalMode: "manual", conversationId: "leader" })).success).toBe(true);
+    expect(request).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledOnce();
+    expect((await runToolHandler([review], review.name, {}, { approvalMode: "plan", conversationId: "leader" })).success).toBe(false);
+    expect(handler).toHaveBeenCalledOnce();
+  });
 });

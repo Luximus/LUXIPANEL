@@ -16,6 +16,8 @@ vi.mock("./agent-context.service.js", () => ({
   resolveConversationBinding: async (_e: unknown, input: { agentId?: string; projectId?: string }) => ({ agentId: input.agentId, projectId: input.projectId ?? null }),
 }));
 
+vi.mock("../repositories/assistant-audit.repository.js", () => ({ assistantAuditRepository: { append: vi.fn(async () => undefined) } }));
+
 // In-memory task board + plans (double of team-tasks.repository).
 interface AnyTask { [k: string]: unknown; id?: string; status: string; leaderConversationId: string; workerConversationId: string; createdAt: string }
 interface AnyPlan { [k: string]: unknown; id?: string; status: string; leaderConversationId: string; steps: Array<{ title: string; workerAgentId?: string; status: string }> }
@@ -315,10 +317,11 @@ describe("teamTasksService.assignTask", () => {
     expect(msgs.at(-1)?.role).toBe("assistant");
   });
 
-  it("closes the task as failed when the worker run errors", async () => {
+  it("keeps the task alive with a delayed retry when the worker run errors", async () => {
     const task = await assign();
     await registryState.started[0]?.onComplete?.("", true);
-    expect(board.get(task.id ?? "")?.status).toBe("failed");
+    expect(board.get(task.id ?? "")).toMatchObject({ status: "running", retry: { state: "waiting", attempts: 0, maxRetries: 3, delayMs: 30000 } });
+    expect(queuedTurns.at(-1)).toMatchObject({ isWorker: true, teamRetry: { taskId: task.id, attempt: 1 } });
   });
 
   it("preserves the same console, metrics and translated answer as a normal chat", async () => {
@@ -609,7 +612,7 @@ describe("team plans", () => {
       expect(plans.get(plan.id ?? "")?.steps[0]?.status).toBe("done");
       expect(plans.get(plan.id ?? "")?.status).toBe("active");
       expect(events).toHaveLength(0);
-      await registryState.started[1]?.onComplete?.("", true); // step B fails
+      await registryState.started[1]?.onComplete?.("Permisos insuficientes", true); // permanent failure
       expect(plans.get(plan.id ?? "")?.steps[1]?.status).toBe("failed");
       expect(plans.get(plan.id ?? "")?.status).toBe("failed");
       expect(events).toHaveLength(1);
@@ -648,7 +651,8 @@ describe("interruption placeholders (restart recovery)", () => {
     const task = await assign();
     conversationMessages.get(task.workerConversationId)?.push({ role: "assistant", content: "Voy a cambiarlo", error: "Resultado sin confirmar", ts: new Date().toISOString() } as never);
     const tasks = await teamTasksService.listForLeaderConversation(executor, "conv-leader");
-    expect(tasks[0]).toMatchObject({ status: "failed", error: "Resultado sin confirmar" });
+    expect(tasks[0]).toMatchObject({ status: "running", retry: { state: "waiting", history: [{ error: "Resultado sin confirmar" }] } });
+    expect(queuedTurns.at(-1)?.userText).toContain("No repitas operaciones con resultado no confirmado");
   });
 
   it("keeps a manual worker stop canceled even if text was produced", async () => {
@@ -745,7 +749,7 @@ describe("plan-step dedupe (assignTask)", () => {
 
   it("after a FAILED attempt a retry creates a new task and retires the old one from collect/nudge", async () => {
     const first = await assignStep(0);
-    await registryState.started[0]?.onComplete?.("", true); // primer intento falla
+    await registryState.started[0]?.onComplete?.("Permisos insuficientes", true); // permanent failure
     const retry = await assignStep(0);
     expect(retry.id).not.toBe(first.id);
     expect(retry.status).toBe("running");

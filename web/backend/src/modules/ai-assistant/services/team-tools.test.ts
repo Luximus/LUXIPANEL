@@ -153,9 +153,9 @@ describe("buildTeamTools", () => {
     expect(built).toBeNull();
   });
 
-  it("exposes the 6 tools and an enriched roster + protocol block", async () => {
+  it("exposes the 8 tools and an enriched roster + protocol block", async () => {
     const { tools, promptBlock } = await build();
-    expect(tools.map((t) => t.name).sort()).toEqual(["team.assign", "team.collect", "team.integrate", "team.note", "team.plan", "team.status"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["team.approvals", "team.assign", "team.collect", "team.integrate", "team.note", "team.plan", "team.review", "team.status"]);
     // Roster is enriched: role name, provider/model, tools, project titles.
     expect(promptBlock).toContain("Ingeniero Backend");
     expect(promptBlock).toContain("claude/default");
@@ -309,7 +309,7 @@ describe("buildTeamToolsForConversation (per-run cross MCP channel / CLI leaders
       maxCollectWaitS: 240,
     });
     expect(built).not.toBeNull();
-    expect(built!.tools.map((t) => t.name).sort()).toEqual(["team.assign", "team.collect", "team.integrate", "team.note", "team.plan", "team.status"]);
+    expect(built!.tools.map((t) => t.name).sort()).toEqual(["team.approvals", "team.assign", "team.collect", "team.integrate", "team.note", "team.plan", "team.review", "team.status"]);
   });
 
   it("returns null for loose/non-leader chats and rejects missing bound agents", async () => {
@@ -368,7 +368,7 @@ describe("team.status", () => {
     const res = await status.handler({});
     expect(res.ok).toBe(true);
     const rows = res.output as Array<{ status: string; pendingPermission?: boolean; elapsedSeconds: number }>;
-    expect(rows[0]?.status).toContain("esperando aprobación");
+    expect(rows[0]?.status).toContain("decisión del líder");
     expect(rows[0]?.pendingPermission).toBe(true);
     expect(rows[0]?.elapsedSeconds).toBeGreaterThanOrEqual(59);
   });

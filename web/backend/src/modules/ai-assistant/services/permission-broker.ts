@@ -42,6 +42,7 @@ const DEFAULT_TIMEOUT_MS = 4 * 60_000;
 interface Pending {
   resolve: (decision: PermissionDecision) => void;
   timer: ReturnType<typeof setTimeout>;
+  request: { id: string; tool: string; title: string; detail?: string; userId: number | null };
 }
 
 /** (server, conversationId) → (requestId → pending). */
@@ -104,6 +105,20 @@ export const permissionBroker = {
       );
       return "deny";
     }
+    // Register BEFORE notifying: a supervisor can answer during event delivery.
+    let settle!: (decision: PermissionDecision) => void;
+    const result = new Promise<PermissionDecision>(resolve => { settle = resolve; });
+    const timer = setTimeout(() => {
+      log.warn({ conversationId: args.conversationId, requestId, tool: args.tool }, "permission request timed out — denying");
+      finalize(args.conversationId, requestId, "deny", targetId);
+    }, args.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    timer.unref?.();
+    let pending = byConversation.get(key);
+    if (!pending) { pending = new Map(); byConversation.set(key, pending); }
+    pending.set(requestId, { resolve: settle, timer, request: {
+      id: requestId, tool: args.tool, title: args.title, userId: getContextUserId(),
+      ...(args.detail ? { detail: args.detail } : {}),
+    } });
     // Surface a "needs your approval" notification in the bell (and a Dashboard/
     // chat-list yellow dot via the active-runs feed). Fire-and-forget: a listener
     // failure must never block the actual approval prompt.
@@ -127,23 +142,13 @@ export const permissionBroker = {
     } catch (err) {
       log.warn({ err: (err as Error).message }, "AI_PERMISSION_REQUESTED emit failed");
     }
-    return new Promise<PermissionDecision>((resolve) => {
-      const timer = setTimeout(() => {
-        log.warn(
-          { conversationId: args.conversationId, requestId, tool: args.tool },
-          "permission request timed out — denying",
-        );
-        finalize(args.conversationId, requestId, "deny", targetId);
-      }, args.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-      // Don't keep the event loop alive just to wait on a human.
-      timer.unref?.();
-      let m = byConversation.get(key);
-      if (!m) {
-        m = new Map();
-        byConversation.set(key, m);
-      }
-      m.set(requestId, { resolve, timer });
-    });
+    return result;
+  },
+
+  /** Metadata only; callers must authorize the worker/leader relationship. */
+  pendingRequests(conversationId: string, targetId = executionTargetId()) {
+    return [...(byConversation.get(executionKey(conversationId, targetId))?.values() ?? [])]
+      .map(p => ({ ...p.request }));
   },
 
   /** Apply the user's decision. Returns false when no such request is pending. */

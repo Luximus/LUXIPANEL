@@ -41,6 +41,7 @@ import { waitForPing, pingWaiters } from "./waiters.js";
 import { emitTaskUpdate, injectTaskUpdate } from "./task-events.js";
 import { TASK_INTERRUPTED_ERROR } from "./interruption.js";
 import { persistedWorkerOutcome } from "./persisted-outcome.js";
+import { ensureExecutionRetryQueued } from "./execution-retry.js";
 import type { ConversationMessage } from "../../repositories/conversations.repository.js";
 import {
   finalizeTask,
@@ -111,10 +112,8 @@ export const teamTasksService = {
       }, env.ASSISTANT_TEAM_BUDGET_CHECK_MS);
       timer.unref?.();
     }
-    // Escalate a worker's pending permission prompt to the LEADER's card
-    // (amber "waiting for your approval") and clear it when settled. The human
-    // approves in the WORKER's chat with the existing flow — the leader-model
-    // never approves permissions itself; this only routes the user's attention.
+    // Mirror pending approval on the board; the supervision listener delivers
+    // the exact request to the authorized leader for a scoped decision.
     const onPermission = (pending: boolean) => (payload: { conversationId: string }) => {
       let executor: Executor | null = null;
       try {
@@ -148,7 +147,8 @@ export const teamTasksService = {
         if (agentRunRegistry.isActive(task.workerConversationId, executor.target.id)) return;
         if ((await agentQueueRepository.listFor(executor, task.workerConversationId)).length > 0) return;
         if (payload.errored) {
-          await finalizeTask(executor, task.id, { status: "failed", error: "El agente terminó con error." });
+          const { items } = await conversationsRepository.messages(executor, task.workerConversationId, { limit: 1 });
+          await finalizeTask(executor, task.id, { status: "failed", error: items.at(-1)?.error || "El agente terminó con error." }, { retryExecution: true });
           return;
         }
         if (payload.pending || payload.awaitingInput) return;
@@ -363,7 +363,7 @@ export const teamTasksService = {
         await finalizeTask(executor, taskId, {
           status: "failed",
           error: assistantText ? assistantText.slice(0, 500) : "El agente terminó con error.",
-        });
+        }, { retryExecution: true });
       } else {
         await finalizeTask(executor, taskId, { status: "done", resultSummary: assistantText });
       }
@@ -501,6 +501,9 @@ export const teamTasksService = {
       const subset = all.filter((t) => t.id && taskIds.includes(t.id));
       const pending = subset.filter((t) => !isTerminalTaskStatus(t.status));
       if (pending.length === 0) return { tasks: subset, timedOut: false };
+      // A leader blocked in collect must be able to decide a worker approval
+      // or handle an exhausted failure without waiting for all its peers.
+      if (subset.some(t => t.pendingPermission || (t.status === "failed" && !t.collected))) return { tasks: subset, timedOut: false };
       const remaining = deadline - Date.now();
       if (remaining <= 0 || signal?.aborted) return { tasks: subset, timedOut: true };
       await waitForPing(leaderConversationId, Math.min(remaining, WAIT_POLL_MS), signal, executor.target.id);
@@ -551,6 +554,10 @@ export const teamTasksService = {
   async reconcileRunningTask(executor: Executor, task: TeamTask): Promise<TeamTask | null> {
     if (task.leaderAgentId.startsWith("realtime:") && task.status === "pending" && task.pendingPermission) return task;
     if (!task.id) return null;
+    if (task.retry?.state === "waiting") {
+      await ensureExecutionRetryQueued(executor, task);
+      return task;
+    }
 
     if (task.status === "pending") {
       // Un reinicio pudo drenar su turno (recoverServerRuns) sin pasar por
@@ -610,7 +617,7 @@ export const teamTasksService = {
         executor,
         task.id,
         persisted,
-        { skipVerify: true },
+        { skipVerify: true, retryExecution: persisted.status === "failed" && persisted.error !== TASK_INTERRUPTED_ERROR },
       );
     }
     const started = Date.parse(task.startedAt ?? task.createdAt);

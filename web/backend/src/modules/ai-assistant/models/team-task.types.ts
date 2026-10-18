@@ -71,6 +71,18 @@ export interface TeamTaskVerify {
   logTail?: string;
 }
 
+/** Execution failures are separate from verification recipe failures. */
+export interface TeamTaskRetry {
+  state: "waiting" | "running" | "exhausted";
+  /** Retries started; excludes the initial attempt. */
+  attempts: number;
+  maxRetries: number;
+  delayMs: number;
+  failureId: string;
+  nextAttemptAt?: string;
+  history: Array<{ at: string; attempt: number; error: string }>;
+}
+
 export interface TeamTaskFileChange {
   path: string;
   status: "A" | "M" | "D" | "R" | "C" | "?";
@@ -128,6 +140,7 @@ export interface TeamTask {
   nudged?: boolean;
   /** The worker has a pending interactive permission_request (manual mode). */
   pendingPermission?: boolean;
+  retry?: TeamTaskRetry;
   /**
    * Snapshot of the assigning user (same rationale as QueuedTurn.user): a
    * backgrounded nudge/re-wake must keep the EXACT tool/CLI gating the user had

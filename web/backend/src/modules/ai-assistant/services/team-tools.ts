@@ -34,6 +34,7 @@ import { assistantAuditRepository } from "../repositories/assistant-audit.reposi
 import { conversationsRepository } from "../repositories/conversations.repository.js";
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentRolesRepository } from "../repositories/agent-roles.repository.js";
+import { listTeamApprovals, reviewTeamApproval } from "./team-approvals.js";
 
 const log = createModuleLogger("assistant-team-tools");
 
@@ -79,7 +80,7 @@ export interface TeamToolsCtx {
    * (`mcp__luxipanel-servers__team__assign`, …) because that's how the Claude
    * CLI addresses tools served over the cross channel.
    */
-  promptToolNames?: { plan: string; assign: string; status: string; collect: string; integrate: string; note: string };
+  promptToolNames?: { plan: string; assign: string; status: string; collect: string; integrate: string; note: string; approvals?: string; review?: string };
   /** True when rendering the prompt for a CLI leader: omits the notes about
    *  `agents.delegate`/`chats.create` (not available over the MCP channel). */
   cliPrompt?: boolean;
@@ -94,7 +95,7 @@ export interface BuiltTeamTools {
 function statusEs(t: TeamTask): string {
   switch (t.status) {
     case "pending": return "pendiente";
-    case "running": return t.pendingPermission ? "en curso (esperando aprobación del usuario)" : "en curso";
+    case "running": return t.pendingPermission ? "en curso (requiere decisión del líder)" : t.retry?.state === "waiting" ? "esperando reintento automático" : "en curso";
     case "done": return "hecha";
     case "failed": return "fallida";
     case "canceled": return "cancelada";
@@ -123,6 +124,8 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
     collect: "team.collect",
     integrate: "team.integrate",
     note: "team.note",
+    approvals: "team.approvals",
+    review: "team.review",
   };
   const scopeProjectId = ctx.projectId ?? (await conversationsRepository.getMeta(executor, conversationId))?.projectId ?? null;
   const members = await scopedAgents(executor, allAgents, scopeProjectId, user);
@@ -357,7 +360,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
     title: "Estado de las tareas del equipo",
     description:
       "Snapshot of the tasks you assigned in THIS conversation: id, title, worker, state (pendiente/en curso/hecha/" +
-      "fallida/cancelada), elapsed seconds and whether the worker is waiting for a user permission approval. " +
+      "fallida/cancelada), elapsed seconds and whether the worker needs YOUR approval (team.approvals / team.review). " +
       "Does NOT wait — use team.collect to wait for results.",
     kind: "read",
     dangerous: false,
@@ -377,6 +380,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
             elapsedSeconds: elapsedS(t),
             collected: Boolean(t.collected),
             ...(t.pendingPermission ? { pendingPermission: true } : {}),
+            ...(t.retry ? { retry: t.retry } : {}),
             ...(t.error ? { error: t.error.slice(0, 200) } : {}),
           })),
         };
@@ -507,8 +511,13 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
             status: statusEs(t),
             elapsedSeconds: elapsedS(t),
             ...(t.pendingPermission ? { pendingPermission: true } : {}),
+            ...(t.retry ? { retry: t.retry } : {}),
           }));
-          output["note"] = timedOut
+          output["note"] = pending.some(t => t.pendingPermission)
+            ? "Hay solicitudes pendientes: consulta team.approvals y decide con team.review antes de volver a esperar."
+            : finished.some(t => t.status === "failed")
+              ? "Una tarea falló; revisa el error y sus reintentos, aunque otras tareas sigan activas."
+              : timedOut
             ? "Tareas aún en curso. Puedes terminar tu turno informando al usuario qué sigue pendiente; serás despertado automáticamente cuando terminen."
             : "Espera liberada antes de terminar (stop del usuario). Las tareas siguen corriendo en background.";
         }
@@ -548,6 +557,32 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
       } catch (err) {
         return { ok: false, output: `No se pudieron actualizar las notas: ${(err as Error).message}` };
       }
+    },
+  };
+
+  const approvalsTool: AgentTool = {
+    name: "team.approvals", title: "Leer solicitudes de aprobación del equipo", kind: "read", dangerous: false,
+    description: "Read the exact pending tool requests and complete plans from YOUR workers in THIS conversation. Use team.review to allow or deny with a reason; do not guess request ids.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => {
+      try { return { ok: true, output: encodeCoordination({ kind: "request", summary: "Solicitudes pendientes del equipo.", data: { requests: await listTeamApprovals(executor, conversationId, user) }, refs: { conversationId } }) }; }
+      catch (err) { return { ok: false, output: (err as Error).message }; }
+    },
+  };
+  const reviewTool: AgentTool = {
+    name: "team.review", title: "Decidir una solicitud del trabajador", kind: "action", dangerous: false,
+    description: "Allow or deny one exact pending request from YOUR worker after reading team.approvals. Decide within the user's task and current permissions. This never grants permanent permissions or approves unrelated work.",
+    inputSchema: { type: "object", properties: {
+      taskId: { type: "string" }, requestId: { type: "string" }, decision: { type: "string", enum: ["allow", "deny"] },
+      reason: { type: "string", description: "Brief reason based on the user's authorized scope and the request evidence." },
+    }, required: ["taskId", "requestId", "decision", "reason"] },
+    handler: async input => {
+      const value = input as Record<string, unknown> | null;
+      if (!value || typeof value.taskId !== "string" || typeof value.requestId !== "string"
+        || !["allow", "deny"].includes(String(value.decision)) || typeof value.reason !== "string" || !value.reason.trim()) return { ok: false, output: "Faltan taskId, requestId, decision o reason." };
+      try { return { ok: true, output: await reviewTeamApproval({ executor, conversationId, user, taskId: value.taskId,
+        requestId: value.requestId, decision: value.decision as "allow" | "deny", reason: value.reason }) }; }
+      catch (err) { return { ok: false, output: (err as Error).message }; }
     },
   };
 
@@ -657,6 +692,9 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
     `proyecto con \`${names.integrate}\` — una por una, en orden. Si hay conflicto, reasigna una tarea de resolución.\n` +
     `6. Si \`${names.collect}\` expira con tareas en curso, informa al usuario qué sigue pendiente y TERMINA tu turno: ` +
     "serás despertado automáticamente cuando terminen.\n" +
+    `Si un trabajador necesita aprobación, lee \`${names.approvals ?? "team.approvals"}\` y decide con \`${names.review ?? "team.review"}\` (allow/deny y motivo). ` +
+    "Resuelve dentro del alcance autorizado; no apruebes cambios ajenos ni inventes decisiones del usuario. collect devuelve el control cuando hay solicitudes. " +
+    "Los errores de ejecución tienen hasta 3 reintentos cada 30 segundos; consulta su historial y no crees otra tarea duplicada mientras esperan.\n" +
     (ctx.cliPrompt
       ? ""
       : "7. Usa `agents.delegate` solo para consultas cortas que necesitas responder YA dentro de tu turno; " +
@@ -676,7 +714,7 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
     `RECUERDA: ante un pedido de trabajo/análisis, tu PRIMERA acción debe ser registrar el plan con \`${names.plan}\` ` +
     "y delegar — no investigar por tu cuenta.";
 
-  return { tools: [planTool, assignTool, statusTool, collectTool, integrateTool, noteTool], promptBlock };
+  return { tools: [planTool, assignTool, statusTool, collectTool, integrateTool, noteTool, approvalsTool, reviewTool], promptBlock };
 }
 
 /**
@@ -691,6 +729,8 @@ export const TEAM_TOOL_WIRE_NAMES = {
   collect: "mcp__luxipanel-servers__team__collect",
   integrate: "mcp__luxipanel-servers__team__integrate",
   note: "mcp__luxipanel-servers__team__note",
+  approvals: "mcp__luxipanel-servers__team__approvals",
+  review: "mcp__luxipanel-servers__team__review",
 } as const;
 
 /**

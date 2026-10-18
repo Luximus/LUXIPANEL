@@ -17,6 +17,12 @@ import { enqueueAgentTurn } from "./queued-turn-admission.js";
  */
 
 import { workerRunStarted, workerRunEnded } from "./team-tasks/worker-quota.js";
+import { hasWorkerSlot } from "./team-tasks/worker-quota.js";
+import { validExecutionRetry } from "./team-tasks/execution-retry.js";
+import { initTeamApprovalDelivery, validTeamReview } from "./team-approvals.js";
+import { deferQueueDrain } from "./deferred-queue-drain.js";
+import { teamIsolationService } from "./team-isolation.service.js";
+import { finalizeTask } from "./team-tasks/lifecycle.js";
 import { liveVoiceSession } from "./realtime-state.js";
 import { agentService } from "./agent.service.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
@@ -301,16 +307,52 @@ export async function drainConversationQueue(executor: Executor, conversationId:
   const current = previous.catch(() => undefined).then(() => drainNextTurn(executor, conversationId));
   drainingConversations.set(key, current);
   try { await current; }
+  catch (error) {
+    const queued = (await agentQueueRepository.listFor(executor, conversationId))[0];
+    if (!queued?.id || !queued.teamRetry) throw error;
+    const task = await teamTasksRepository.getTask(executor, queued.teamRetry.taskId);
+    if (!validExecutionRetry(task, queued) || !task.retry) throw error;
+    // Admission/preparation failures consume the bounded attempt too. The
+    // queued receipt is removed before scheduling another, never spun forever.
+    await teamTasksRepository.updateTask(executor, task.id!, { retry: { ...task.retry, state: "running", attempts: queued.teamRetry.attempt } });
+    await agentQueueRepository.remove(executor, queued.id);
+    await finalizeTask(executor, task.id!, { status: "failed", error: String(error) }, { retryExecution: true, dispatchFailureId: `dispatch:${queued.id}` });
+  }
   finally { if (drainingConversations.get(key) === current) drainingConversations.delete(key); }
 }
 async function drainNextTurn(executor: Executor, conversationId: string): Promise<void> {
   if (liveVoiceSession(conversationId, executor.target.id) || agentRunRegistry.isActive(conversationId, executor.target.id)) return;
   const candidate = (await agentQueueRepository.listFor(executor, conversationId))[0];
   if (!candidate?.id) return;
+  const retryTask = candidate.teamRetry ? await teamTasksRepository.getTask(executor, candidate.teamRetry.taskId) : null;
+  const retry = candidate.teamRetry ? validExecutionRetry(retryTask, candidate) : false;
+  const review = candidate.teamReview ? await validTeamReview(executor, candidate) : false;
+  if ((candidate.teamRetry && !retry) || (candidate.teamReview && !review)) {
+    await agentQueueRepository.remove(executor, candidate.id);
+    return drainNextTurn(executor, conversationId);
+  }
+  if (retry && retryTask) {
+    const due = Date.parse(retryTask.retry?.nextAttemptAt ?? "");
+    if (!Number.isFinite(due)) throw new Error("El reintento no tiene una fecha válida.");
+    if (Date.now() < due) {
+      deferQueueDrain(executor, conversationId, due - Date.now(), candidate.user, drainConversationQueue);
+      return;
+    }
+    if (cliJobTracker.hasJobForConversation(conversationId, executor.target.id) || !hasWorkerSlot(candidate.userId)
+      || (retryTask.isolation?.leasePath && !teamIsolationService.tryAcquireLease(retryTask.isolation.leasePath, retryTask.id!, executor.target.id))) {
+      deferQueueDrain(executor, conversationId, 1000, candidate.user, drainConversationQueue);
+      return;
+    }
+  }
   if (candidate.auto || candidate.teamTaskIds?.length) {
     const { items } = await conversationsRepository.messages(executor, conversationId, { limit: 1 });
     const last = items.at(-1);
-    if (last?.role === "assistant" && (last.interrupted || last.error || last.ask?.length)) return;
+    if (retry && last?.interrupted && candidate.teamRetry) {
+      await agentQueueRepository.remove(executor, candidate.id);
+      await finalizeTask(executor, candidate.teamRetry.taskId, { status: "canceled", error: "Cancelada por el usuario." }, { skipVerify: true });
+      return;
+    }
+    if (last?.role === "assistant" && (last.interrupted || (last.error && !retry) || (last.ask?.length && !review))) return;
   }
   const queuedIdentity = candidate.user ?? getContextUser() ?? undefined;
   await runWithExecutor(executor, async () => {
@@ -373,6 +415,15 @@ async function drainNextTurn(executor: Executor, conversationId: string): Promis
   } catch (err) {
     log.warn({ err: (err as Error).message }, "agent: queue takeNext failed");
     return;
+  }
+  if (retry && retryTask?.retry && candidate.teamRetry) {
+    await teamTasksRepository.updateTask(executor, retryTask.id!, {
+      retry: { ...retryTask.retry, state: "running", attempts: candidate.teamRetry.attempt, nextAttemptAt: undefined },
+      pendingPermission: false,
+    });
+  }
+  if (review && candidate.teamReview) {
+    await teamTasksRepository.updateTask(executor, candidate.teamReview.taskId, { pendingPermission: false });
   }
   startConversationRun({
     executor,
@@ -724,12 +775,13 @@ let teamDispatchListenerWired = false;
 export function initTeamDispatchListener(): void {
   if (teamDispatchListenerWired) return;
   teamDispatchListenerWired = true;
+  initTeamApprovalDelivery(drainConversationQueue);
   eventBus.on(
     Events.AI_TEAM_TASK_DISPATCH,
     (payload: { executor: Executor; taskId: string; workerConversationId: string }) => {
-      void drainConversationQueue(payload.executor, payload.workerConversationId).catch((err) =>
-        log.warn({ err: (err as Error).message, taskId: payload.taskId }, "agent: team task dispatch drain failed"),
-      );
+      void drainConversationQueue(payload.executor, payload.workerConversationId).catch(async (err) => {
+        log.warn({ err: (err as Error).message, taskId: payload.taskId }, "agent: team task dispatch drain failed");
+      }).catch(err => log.warn({ err: String(err) }, "team retry failure could not be recorded"));
     },
   );
 }

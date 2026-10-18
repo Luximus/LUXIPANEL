@@ -60,6 +60,13 @@ export interface QueuedTurn {
   auto?: boolean;
   /** Durable identity of an automatic team-result delivery (dedupe on recovery). */
   teamTaskIds?: string[];
+  /** Internal retry receipt, validated against the task before starting. */
+  teamRetry?: { taskId: string; failureId: string; attempt: number };
+  notBefore?: string;
+  /** Exact worker approval answered by its authorized leader. */
+  teamReview?: { taskId: string; requestId: string };
+  /** Leader notification dedupe; never grants execution authority. */
+  teamReviewNotice?: string;
   /** Durable agent message identity; independent of its compact representation. */
   agentMessageId?: string;
   /**
