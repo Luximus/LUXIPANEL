@@ -508,7 +508,7 @@ se incorporan por bloques al mismo scroll.
 
 `TeamTaskBoard` muestra tres tareas al abrir el proceso y ofrece el resto mediante un botón con contador, `aria-expanded` y `aria-controls`; su estado de apertura pertenece a la conversación. Las alertas del equipo siguen visibles en el resumen del proceso aunque su tarea quede fuera de esas tres filas. Los estados y acciones se asocian al id original de cada tarea.
 
-Al terminar una ejecución CLI, la narración permanece en el historial y deja de repetirse en la fila de progreso. `CompactAnswer`, cuando el backend autoriza una síntesis, no ofrece un detalle redundante si la respuesta ya coincide con ella. Al abrir un contenido extenso, reemplaza la síntesis visible por el texto íntegro y la recupera al cerrar; no modifica el contenido guardado ni el que se copia. Las regresiones de estos comportamientos están en `chat-pane/team-execution.render.test.ts`.
+Al terminar una ejecución CLI, la narración permanece en el historial y deja de repetirse en la fila de progreso. `CompactAnswer`, cuando el backend autoriza una síntesis, solo oculta el acceso al detalle si la respuesta coincide con la síntesis y cabe visualmente sin recorte; si existe recorte, el texto completo sigue accesible en «Ver detalle». Al abrir un contenido extenso, reemplaza la síntesis visible por el texto íntegro y la recupera al cerrar; no modifica el contenido guardado ni el que se copia. Las regresiones de estos comportamientos están en `chat-pane/team-execution.render.test.ts`.
 
 ### Identidad de respuestas y presentación conservadora (2026-10-17)
 
