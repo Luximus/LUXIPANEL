@@ -160,14 +160,15 @@ export interface TerminalSnippetFilterOptions {
 export async function fetchTerminalSnippetFilterOptions(): Promise<TerminalSnippetFilterOptions> {
   try {
     const res = await api.get<{
-      ok: boolean;
-      data?: { categories?: TerminalSnippetCategoryRef[]; tags?: TerminalSnippetTagRef[] };
+      categories: TerminalSnippetCategoryRef[];
+      tags: TerminalSnippetTagRef[];
     }>("/api/terminal/snippets");
-    if (!res.ok || !res.data?.data) return { ok: false, categories: [], tags: [] };
+    // api.get already unwraps the server envelope. Validate the catalog itself.
+    if (!res.ok || !Array.isArray(res.data?.categories) || !Array.isArray(res.data?.tags)) return { ok: false, categories: [], tags: [] };
     return {
       ok: true,
-      categories: res.data.data.categories ?? [],
-      tags: res.data.data.tags ?? [],
+      categories: res.data.categories,
+      tags: res.data.tags,
     };
   } catch {
     return { ok: false, categories: [], tags: [] };

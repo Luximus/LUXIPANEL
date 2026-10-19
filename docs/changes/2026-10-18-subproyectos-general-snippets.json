@@ -1,0 +1,7 @@
+{
+  "title": "Subproyectos en General y filtros de snippets corregidos",
+  "changes": [
+    "La pestaña General permite asignar, abrir y desvincular subproyectos sin cambiar de sección.",
+    "Los selectores de categorías y etiquetas de snippets cargan correctamente en proyectos existentes, proyectos nuevos y editores de agentes."
+  ]
+}

@@ -21,7 +21,7 @@ import { DrawerSectionNav, type DrawerSectionItem } from "@/components/ui/Drawer
 import { cn } from "@/lib/utils";
 import { ViewTransition, useViewDirection } from "@/components/ui/ViewTransition";
 
-const PROJECT_TAB_ORDER = ["general", "agents", "context", "servers", "skills", "children", "structure"] as const;
+const PROJECT_TAB_ORDER = ["general", "agents", "context", "servers", "skills", "structure"] as const;
 type ProjectTab = (typeof PROJECT_TAB_ORDER)[number];
 import { PROJECT_ICONS, STRUCTURE_PROVIDERS, type StructureProviderId } from "../assistant-api";
 import { LucideIcon } from "../LucideIcon";
@@ -53,7 +53,6 @@ export function ProjectModalView(props: ProjectModalViewProps) {
     { id: "context", label: t.tabContext, icon: "ti-file-text", description: t.sectionContextDesc },
     { id: "servers", label: t.tabServers, icon: "ti-server", description: t.sectionServersDesc },
     { id: "skills", label: t.tabSkills, icon: "ti-stack-2", description: t.sectionSkillsDesc },
-    { id: "children", label: t.tabChildren, icon: "ti-sitemap", description: t.sectionChildrenDesc },
     ...(project ? [{ id: "structure", label: t.tabStructure, icon: "ti-binary-tree", description: t.sectionStructureDesc }] : []),
   ];
   const activeSection = sections.find((s) => s.id === tab) ?? sections[0]!;
@@ -325,6 +324,88 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   )}
                 </div>
               )}
+              {/* ── Proyectos hijos ─────────────────────────────────────── */}
+              <div className="space-y-2 border-t border-border pt-4" data-project-children>
+                <span className="block text-xs font-medium text-muted-foreground">{t.childProjectsLabel}</span>
+
+                {/* Selector para añadir */}
+                {availableForChild.length > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <select
+                      ref={selectRef}
+                      defaultValue=""
+                      disabled={addBusy}
+                      aria-label={t.selectProject}
+                      className="min-w-0 flex-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">{t.selectProject}</option>
+                      {availableForChild.map((p) => (
+                        <option key={p.id} value={p.id}>{p.title}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void doAddChild()}
+                      disabled={addBusy}
+                      className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {addBusy ? t.adding : t.add}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    {allProjects.length === 0
+                      ? t.noProjectsRegistered
+                      : t.noMoreProjects}
+                  </p>
+                )}
+
+                {/* Lista de hijos asignados */}
+                {assignedChildren.length > 0 && (
+                  <div className="space-y-1">
+                    {assignedChildren.map((child) => (
+                      <div
+                        key={child.id}
+                        className="flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2 py-1.5"
+                      >
+                        {/* Click a child → load its info in a nested modal (with a
+                            Back button). Only in edit mode (the project exists). */}
+                        {project ? (
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(child)}
+                            title={formatAssistantMessage(t.openChild, { title: child.title })}
+                            className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left hover:text-primary"
+                          >
+                            <LucideIcon name={child.icon} size={12} className="shrink-0 text-muted-foreground" />
+                            <span className="flex-1 truncate text-[11px]">{child.title}</span>
+                            <i className="ti ti-chevron-right shrink-0 text-[11px] opacity-60" aria-hidden></i>
+                          </button>
+                        ) : (
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                            <LucideIcon name={child.icon} size={12} className="shrink-0 text-muted-foreground" />
+                            <span className="flex-1 truncate text-[11px]">{child.title}</span>
+                          </div>
+                        )}
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {STRUCTURE_PROVIDERS.find((p) => p.id === child.provider)?.label ?? child.provider}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void doRemoveChild(child)}
+                          disabled={removeBusy === child.id}
+                          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
+                          title={t.removeChild}
+                        >
+                          {removeBusy === child.id
+                            ? <i className="ti ti-loader-2 animate-spin text-[11px]" aria-hidden></i>
+                            : <i className="ti ti-x text-[11px]" aria-hidden></i>}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
 
@@ -507,92 +588,6 @@ export function ProjectModalView(props: ProjectModalViewProps) {
               <div className="flex min-h-0 w-full flex-1 flex-col gap-2">
                 <span className="shrink-0 text-xs font-medium text-muted-foreground">{t.skillsLabel}</span>
                 <SkillsPicker value={skills} onChange={setSkills} fill />
-              </div>
-            </>
-          )}
-
-          {tab === "children" && (
-            <>
-              {/* ── Proyectos hijos ─────────────────────────────────────── */}
-              <div className="space-y-2">
-                <span className="block text-xs font-medium text-muted-foreground">{t.childProjectsLabel}</span>
-
-                {/* Selector para añadir */}
-                {availableForChild.length > 0 ? (
-                  <div className="flex items-center gap-2">
-                    <select
-                      ref={selectRef}
-                      defaultValue=""
-                      disabled={addBusy}
-                      className="flex-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">{t.selectProject}</option>
-                      {availableForChild.map((p) => (
-                        <option key={p.id} value={p.id}>{p.title}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => void doAddChild()}
-                      disabled={addBusy}
-                      className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {addBusy ? t.adding : t.add}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    {allProjects.length === 0
-                      ? t.noProjectsRegistered
-                      : t.noMoreProjects}
-                  </p>
-                )}
-
-                {/* Lista de hijos asignados */}
-                {assignedChildren.length > 0 && (
-                  <div className="space-y-1">
-                    {assignedChildren.map((child) => (
-                      <div
-                        key={child.id}
-                        className="flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2 py-1.5"
-                      >
-                        {/* Click a child → load its info in a nested modal (with a
-                            Back button). Only in edit mode (the project exists). */}
-                        {project ? (
-                          <button
-                            type="button"
-                            onClick={() => onNavigate(child)}
-                            title={formatAssistantMessage(t.openChild, { title: child.title })}
-                            className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left hover:text-primary"
-                          >
-                            <LucideIcon name={child.icon} size={12} className="shrink-0 text-muted-foreground" />
-                            <span className="flex-1 truncate text-[11px]">{child.title}</span>
-                            <i className="ti ti-chevron-right shrink-0 text-[11px] opacity-60" aria-hidden></i>
-                          </button>
-                        ) : (
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                            <LucideIcon name={child.icon} size={12} className="shrink-0 text-muted-foreground" />
-                            <span className="flex-1 truncate text-[11px]">{child.title}</span>
-                          </div>
-                        )}
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {STRUCTURE_PROVIDERS.find((p) => p.id === child.provider)?.label ?? child.provider}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void doRemoveChild(child)}
-                          disabled={removeBusy === child.id}
-                          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
-                          title={t.removeChild}
-                        >
-                          {removeBusy === child.id
-                            ? <i className="ti ti-loader-2 animate-spin text-[11px]" aria-hidden></i>
-                            : <i className="ti ti-x text-[11px]" aria-hidden></i>}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </>
           )}

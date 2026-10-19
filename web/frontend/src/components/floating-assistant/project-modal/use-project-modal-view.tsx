@@ -56,7 +56,7 @@ export function useProjectModalView({
     projectModal?: Partial<ProjectModalMessages>;
   };
   const t = mergeNamespaces(projectModalFallback, i18n.projectModal);
-  const [tab, setTab] = useState<"general" | "context" | "servers" | "skills" | "children" | "structure" | "agents">(project ? initialTab : "general");
+  const [tab, setTab] = useState<"general" | "context" | "servers" | "skills" | "structure" | "agents">(project ? initialTab : "general");
   const [title, setTitle] = useState(project?.title ?? "");
   const [teamName, setTeamName] = useState("");
   const [leaderName, setLeaderName] = useState("");
