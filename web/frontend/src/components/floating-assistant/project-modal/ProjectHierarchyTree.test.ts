@@ -45,9 +45,19 @@ afterEach(async () => {
 describe("ProjectHierarchyTree", () => {
   it("renders the same hierarchy from the parent and a grandchild", async () => {
     await show("root");
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="Expandir root"]')?.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelectorAll("[data-hierarchy-node]")).toHaveLength(1);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expandir root"]')!.click());
+    expect(host.querySelectorAll("[data-hierarchy-node]")).toHaveLength(3);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expandir web"]')!.click());
     expect(Array.from(host.querySelectorAll("[data-hierarchy-node]"), (element) => element.getAttribute("data-hierarchy-node")))
       .toEqual(["root", "mobile", "web", "api"]);
+    await act(async () => root.unmount());
+    root = createRoot(host);
     await show("api");
+    expect(host.querySelectorAll("[data-hierarchy-node]")).toHaveLength(1);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expandir root"]')!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expandir web"]')!.click());
     expect(Array.from(host.querySelectorAll("[data-hierarchy-node]"), (element) => element.getAttribute("data-hierarchy-node")))
       .toEqual(["root", "mobile", "web", "api"]);
     expect(host.textContent).not.toContain("other");
@@ -59,6 +69,8 @@ describe("ProjectHierarchyTree", () => {
 
   it("reorders siblings and changes level without overwriting the parent on reorder", async () => {
     await show("root");
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expandir root"]')!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expandir web"]')!.click());
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Subir web"]')!.click());
     expect(assistantProjectsApi.update).toHaveBeenCalledWith("web", expect.objectContaining({ sortOrder: expect.any(Number) }));
     expect(vi.mocked(assistantProjectsApi.update).mock.calls[0]?.[1]).not.toHaveProperty("parentId");

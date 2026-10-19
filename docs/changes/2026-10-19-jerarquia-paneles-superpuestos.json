@@ -1,0 +1,7 @@
+{
+  "title": "Navegación de proyectos en paneles superpuestos",
+  "changes": [
+    "La estructura de proyectos inicia colapsada y permite desplegar cada nivel cuando se necesita.",
+    "Al elegir un proyecto de la estructura, su editor se abre encima del actual y al cerrarlo se recupera el panel anterior."
+  ]
+}

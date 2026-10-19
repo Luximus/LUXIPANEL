@@ -17,6 +17,10 @@ export type ModalShellProps = {
   onClose: () => void;
   /** z-index class. Defaults to 9999 (panel-dialog conventions). */
   zIndexClass?: string;
+  /** Numeric layer for drawers opened above another drawer. */
+  zIndex?: number;
+  /** Keep a covered drawer mounted without allowing interaction or focus. */
+  inactive?: boolean;
   /** Background opacity / blur. Defaults to the panel-dialog style. */
   backdropClass?: string;
   /** Wrapping classes for the content card. */
@@ -146,6 +150,8 @@ export const DRAWER_CARD = `fixed @container ${DRAWER_CARD_METRICS}`;
 export function ModalShell({
   onClose,
   zIndexClass = "z-[9999]",
+  zIndex,
+  inactive = false,
   backdropClass = "bg-black/50 backdrop-blur-sm",
   cardClassName,
   closeOnEscape = true,
@@ -180,7 +186,7 @@ export function ModalShell({
     requestClose: (fn) => { if (!closeDisabled) deferred.requestClose(fn); },
   };
   const handleClose = () => guardedClose.requestClose();
-  useEscapeToClose(handleClose, closeOnEscape);
+  useEscapeToClose(handleClose, closeOnEscape && !inactive);
 
   if (typeof document === "undefined") {
     // SSR: render nothing (mirrors the existing per-component `typeof
@@ -224,6 +230,9 @@ export function ModalShell({
     <ModalCloseContext.Provider value={guardedClose}>
     <div
       ref={overlayRef}
+      style={zIndex === undefined ? undefined : { zIndex }}
+      inert={inactive}
+      aria-hidden={inactive ? true : undefined}
       className={cn(
         "fixed inset-0",
         // Centered variant lays the card out with flex + breathing room; the
@@ -232,13 +241,13 @@ export function ModalShell({
         zIndexClass,
         backdropClass,
         backdropMotionClass(closing),
-        closing && "pointer-events-none",
+        (closing || inactive) && "pointer-events-none",
       )}
       onClick={handleClose}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       role="dialog"
-      aria-modal="true"
+      aria-modal={inactive ? undefined : "true"}
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy ?? (title != null ? titleId : undefined)}
     >

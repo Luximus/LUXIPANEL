@@ -19,8 +19,7 @@ export interface ProjectModalProps {
   onRefresh?(): void;
 }
 
-/** Inner view props: the public props plus the in-place navigation controls the
- *  wrapper injects (parent ↔ child navigation swaps content IN the same modal). */
+/** Inner view props: navigation controls and the layer managed by the wrapper. */
 export type ProjectModalViewProps = ProjectModalProps & {
   /** True when this isn't the root project → show a "Back" button. */
   canGoBack: boolean;
@@ -30,6 +29,11 @@ export type ProjectModalViewProps = ProjectModalProps & {
   onBack(): void;
   /** Push a related project (parent/child) to view it IN this same modal. */
   onNavigate(p: AssistantProject): void;
+  /** Open a project selected in the hierarchy above the current drawer. */
+  onOpenDrawer(p: AssistantProject): void;
   /** Open the same project editor in create mode under a chosen node. */
   onCreateChild(parent: AssistantProject): void;
+  /** Drawers below the active one remain mounted but cannot receive input. */
+  covered?: boolean;
+  layer?: number;
 };

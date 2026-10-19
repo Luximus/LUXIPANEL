@@ -17,7 +17,7 @@ type Props = {
 
 export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreateChild, onRefresh }: Props) {
   const [projects, setProjects] = useState(allProjects);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
   const draggedIdRef = useRef<string | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
@@ -32,6 +32,7 @@ export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreat
   }, [project.id]);
 
   const root = useMemo(() => hierarchyRoot(project, projects), [project, projects]);
+  useEffect(() => setExpanded(new Set()), [root.id]);
   const inTree = useMemo(() => hierarchyIds(root, projects), [root, projects]);
   const byId = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const members = projects.filter((item) => inTree.has(item.id));
@@ -64,7 +65,7 @@ export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreat
         ...(node.parentId !== parent.id ? { parentId: parent.id } : {}),
         sortOrder: rank,
       });
-      setCollapsed((current) => { const next = new Set(current); next.delete(parent.id); return next; });
+      setExpanded((current) => new Set(current).add(parent.id));
       await refresh();
     } catch (cause) {
       setError((cause as Error).message);
@@ -162,14 +163,14 @@ export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreat
           onDragLeave={() => setDropKey(null)}
           onDrop={(event) => { event.preventDefault(); const id = draggedIdRef.current; const source = id && byId.get(id); if (source) void move(source, node, null); }}
         >
-          <button type="button" aria-label={`${collapsed.has(node.id) ? "Expandir" : "Contraer"} ${node.title}`}
-            aria-expanded={!collapsed.has(node.id)}
-            onClick={() => setCollapsed((current) => { const next = new Set(current); if (next.has(node.id)) next.delete(node.id); else next.add(node.id); return next; })}
+          {children.length > 0 ? <button type="button" aria-label={`${expanded.has(node.id) ? "Contraer" : "Expandir"} ${node.title}`}
+            aria-expanded={expanded.has(node.id)}
+            onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(node.id)) next.delete(node.id); else next.add(node.id); return next; })}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary">
-            <i className={`ti ti-chevron-right text-xs text-muted-foreground transition-transform ${collapsed.has(node.id) ? "" : "rotate-90"}`} aria-hidden />
-          </button>
+            <i className={`ti ti-chevron-right text-xs text-muted-foreground transition-transform ${expanded.has(node.id) ? "rotate-90" : ""}`} aria-hidden />
+          </button> : <span className="h-7 w-7 shrink-0" aria-hidden />}
           <LucideIcon name={node.icon} size={15} className="shrink-0 text-primary" />
-          <button type="button" onClick={() => { if (project.id !== node.id) onNavigate(node); }} title={`Editar ${node.title}`}
+          <button type="button" onClick={() => onNavigate(node)} title={`Editar ${node.title}`}
             className="lxp-tree-name min-w-0 flex-1 truncate rounded px-1 text-left text-xs font-medium hover:text-primary focus-visible:ring-2 focus-visible:ring-primary">
             {node.title}
           </button>
@@ -190,7 +191,7 @@ export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreat
           </>}
           </div>
         </div>
-        {children.length > 0 && !collapsed.has(node.id) && (
+        {children.length > 0 && expanded.has(node.id) && (
           <div className="lxp-project-tree-children" role="group" aria-label={`Subproyectos de ${node.title}`}>
             {children.map((child) => renderNode(child, depth + 1))}
           </div>

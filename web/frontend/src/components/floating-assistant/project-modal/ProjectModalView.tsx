@@ -7,7 +7,7 @@
  *
  * Chrome = `ModalShell` with the SAME navigation/loading UI as the Agentes IA
  * settings drawer (`AssistantSettingsModal`): structured header (back chevron
- * for in-place parent/child navigation, title, ✕), left `DrawerSectionNav`
+ * for parent/child navigation, title, ✕), left `DrawerSectionNav`
  * rail, `@container` content column with the panel's view transition, fixed
  * footer (primary Save/Create, danger Delete) and an INLINE loading
  * state inside the content column while the drawer swaps to another project
@@ -106,6 +106,8 @@ export function ProjectModalView(props: ProjectModalViewProps) {
       onClose={props.onClose}
       closeController={deferredClose}
       overlayRef={overlayRef}
+      zIndex={9999 + (props.layer ?? 0)}
+      inactive={props.covered}
       cardClassName="w-[min(96vw,68rem)] max-lg:w-[85vw] max-sm:w-full"
       title={tab === "agents" ? `${activeAgentHeader?.title ?? t.tabAgents} · ${project?.title}` : headerTitle}
       description={tab === "agents" ? `${project?.title} · ${activeAgentHeader?.description ?? activeSection.description}` : activeSection.description}
@@ -344,7 +346,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   </p>
                 )}
               </div>
-              {project && <ProjectHierarchyTree project={project} allProjects={allProjects} onNavigate={onNavigate}
+              {project && <ProjectHierarchyTree project={project} allProjects={allProjects} onNavigate={props.onOpenDrawer}
                 onCreateChild={props.onCreateChild} onRefresh={props.onRefresh} />}
             </>
           )}
