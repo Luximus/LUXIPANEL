@@ -13,6 +13,8 @@ router.use("/api/obsidian", requireAuth, requireModule("obsidian"));
 router.get("/api/obsidian/preferences", obsidianPreferencesController.get);
 router.patch("/api/obsidian/preferences", csrfProtection, obsidianPreferencesController.patch);
 
+router.post("/api/obsidian/projects/:id/context-document", csrfProtection, requireObsidianAdmin, obsidianController.projectDocument);
+
 // ── Vault registry ──
 router.get("/api/obsidian/vaults", obsidianController.listVaults);
 router.post("/api/obsidian/vaults", csrfProtection, requireObsidianAdmin, obsidianController.createVault);

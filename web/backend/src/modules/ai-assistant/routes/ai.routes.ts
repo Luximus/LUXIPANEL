@@ -244,6 +244,8 @@ protectedRouter.get("/agent-messages", agentMessagesController.list);
 
 // Per-project provider structure (CLAUDE.md, .claude/, AGENTS.md, GEMINI.md…)
 // managed as REAL files in the project's working dir on the target.
+protectedRouter.get("/projects/:id/context-document", requireActionPermission("files.read"), projectStructureController.context);
+protectedRouter.put("/projects/:id/context-document", requireActionPermission("files.write"), projectStructureController.saveContext);
 protectedRouter.get("/projects/:id/structure", projectStructureController.scan);
 protectedRouter.post("/projects/:id/structure/scaffold", projectStructureController.scaffold);
 protectedRouter.get("/projects/:id/structure/file", projectStructureController.readFile);

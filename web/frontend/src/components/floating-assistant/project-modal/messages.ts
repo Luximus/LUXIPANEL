@@ -37,6 +37,9 @@ export type ProjectModalMessages = {
   browse: string;
   clear: string;
   workingDirHint: string;
+  contextObsidian: string;
+  contextDocumentHint: string;
+  contextSaveSettings: string;
   instructionsLabel: string;
   instructionsPlaceholder: string;
   associatedServersLabel: string;
@@ -122,6 +125,9 @@ export const projectModalFallback: ProjectModalMessages = {
   browse: "",
   clear: "",
   workingDirHint: "",
+  contextObsidian: "Abrir en Obsidian",
+  contextDocumentHint: "Editas el documento del proyecto. Los cambios guardados aquí, en Estructura u Obsidian se leen desde el mismo archivo.",
+  contextSaveSettings: "Guarda primero el cambio de directorio o proveedor y vuelve a abrir el contexto.",
   instructionsLabel: "",
   instructionsPlaceholder: "",
   associatedServersLabel: "",

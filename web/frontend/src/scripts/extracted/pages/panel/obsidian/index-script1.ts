@@ -1,3 +1,6 @@
+import { api } from "/scripts/extracted/lib/api-client.js?v=20260506a";
+import { openNote } from "./editor";
+import { showToast } from "./dom";
 // Obsidian page script — entry point. Splits the former 969-line monolith into
 // cohesive submodules (state / dom / input-dialog / vaults / tree / editor /
 // links / search / assistant / bind), wired here. This entry only runs the
@@ -33,6 +36,20 @@ createModuleInit({
     // Fetch both resources now; resolve the stored selection before applying
     // the vault list so lastVaultId and editor preferences remain authoritative.
     const preferences = loadPreferences();
-    void loadVaults(undefined, preferences);
+    const projectId = new URLSearchParams(window.location.search).get("project");
+    if (projectId) {
+      const scope = state.scopeSeq;
+      void (async () => {
+        const res = await api.post<{ vaultId: string; note: string }>(`/api/obsidian/projects/${encodeURIComponent(projectId)}/context-document`, {});
+        if (scope !== state.scopeSeq) return;
+        if (!res.ok || !res.data) {
+          showToast(res.error ?? "No se pudo abrir el documento del proyecto", false);
+          await loadVaults(undefined, preferences);
+          return;
+        }
+        await loadVaults(res.data.vaultId, preferences);
+        if (scope === state.scopeSeq && state.vaultId === res.data.vaultId) await openNote(res.data.note);
+      })();
+    } else void loadVaults(undefined, preferences);
   },
 });

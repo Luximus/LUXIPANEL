@@ -1,3 +1,4 @@
+import { projectDocumentService } from "../project-document.service.js";
 import { resolveAgentContext, scopedAgents, intersectPaths, assignmentError } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -226,12 +227,13 @@ export async function buildSystemPrompt(
     }
     const mergedSkills: AssistantSkillsMap = {};
     for (const anc of ancestors) {
-      if (anc.instructions.trim()) systemPrompt += `\n\n## Contexto del proyecto padre "${anc.title}"\n${capText(anc.instructions, PROJECT_ANCESTOR_INSTRUCTIONS_MAX)}`;
+      const ancestorContext = await projectDocumentService.prompt(executor ?? undefined, anc);
+      if (ancestorContext.trim()) systemPrompt += `\n\n## Contexto del proyecto padre "${anc.title}"\n${capText(ancestorContext, PROJECT_ANCESTOR_INSTRUCTIONS_MAX)}`;
       Object.assign(mergedSkills, anc.skills ?? {});
     }
     Object.assign(mergedSkills, project.skills ?? {});
     projectSkillsOverride = mergedSkills;
-    systemPrompt += `\n\n## Contexto del proyecto "${project.title}"\n${capText(project.instructions, PROJECT_LEAF_INSTRUCTIONS_MAX)}`;
+    systemPrompt += `\n\n## Contexto del proyecto "${project.title}"\n${capText(await projectDocumentService.prompt(executor ?? undefined, project), PROJECT_LEAF_INSTRUCTIONS_MAX)}`;
     if (project.profile) systemPrompt += "\nPerfil del proyecto: " + project.profile;
     if (project.technologies?.length) systemPrompt += "\nTecnologías declaradas: " + project.technologies.join(", ");
     const children = context.contextProjects.filter(p => p.id !== projectId);

@@ -1,0 +1,9 @@
+{
+  "title": "Contexto del proyecto unificado con su documento de IA",
+  "changes": [
+    "La pestaña Contexto permite editar el documento CLAUDE.md, AGENTS.md o GEMINI.md del proyecto según el proveedor seleccionado.",
+    "Las instrucciones anteriores se conservan en el documento al guardar y los agentes consultan su contenido actualizado.",
+    "El documento puede abrirse en Obsidian sin crear una copia, conservando las notas complementarias existentes.",
+    "El editor detecta cambios posteriores a la lectura para evitar sobrescribir otra revisión del contexto."
+  ]
+}

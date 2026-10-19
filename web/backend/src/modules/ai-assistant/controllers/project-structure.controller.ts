@@ -20,6 +20,8 @@ import { apiModuleMessage } from "../../../shared/i18n/module-messages.js";
 import { projectsRepository } from "../repositories/projects.repository.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
 import { projectStructureService } from "../services/project-structure/project-structure.service.js";
+import { projectDocumentService } from "../services/project-document.service.js";
+import { assertOwner } from "./ownership.js";
 import { PROVIDER_IDS } from "../models/assistant-config.types.js";
 
 const scaffoldSchema = z.object({
@@ -43,10 +45,20 @@ async function loadProject(req: Request, locale: unknown) {
   const executor = getExecutor(req);
   const project = await projectsRepository.get(executor, id);
   if (!project) throw assistantNotFound(locale, "project");
+  assertOwner(project.ownerId, locale);
   return { executor, project };
 }
 
 export const projectStructureController = {
+  context: asyncHandler(async (req: Request, res: Response) => {
+    const { executor, project } = await loadProject(req, res.locals.locale);
+    res.json({ ok: true, document: await projectDocumentService.read(executor, project) });
+  }),
+  saveContext: asyncHandler(async (req: Request, res: Response) => {
+    const body = z.object({ content: z.string().max(512 * 1024), revision: z.string().regex(/^[a-f0-9]{64}$/) }).parse(req.body);
+    const { executor, project } = await loadProject(req, res.locals.locale);
+    res.json({ ok: true, document: await projectDocumentService.save(executor, project, body.content, body.revision) });
+  }),
   scan: asyncHandler(async (req: Request, res: Response) => {
     const { executor, project } = await loadProject(req, res.locals.locale);
     const structure = await projectStructureService.scan(executor, project);

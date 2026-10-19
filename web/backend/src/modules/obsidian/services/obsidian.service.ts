@@ -90,9 +90,9 @@ function parseVaultGrepLine(base: string, line: string): SearchHit | null {
  * failure (missing dir, permissions) with no output raises instead of
  * masquerading as "no matches". grep finding nothing is a normal empty result.
  */
-async function grepNotes(executor: Executor, base: string, needle: string): Promise<string[]> {
+async function grepNotes(executor: Executor, base: string, needle: string, shallow = false): Promise<string[]> {
   const body =
-    `{ find ${quoteArg(base)} -mindepth 1 -name '.*' -prune -o ` +
+    `{ find ${quoteArg(base)} ${shallow ? "-maxdepth 1 " : ""}-mindepth 1 -name '.*' -prune -o ` +
     `-type f \\( -name '*.md' -o -name '*.canvas' \\) -print0 2>/dev/null; ` +
     `echo "__lxp_find_rc=$?" >&2; } ` +
     `| xargs -0 -r grep -inF -m 5 -e ${quoteArg(needle)} /dev/null 2>/dev/null ` +
@@ -167,7 +167,7 @@ export const obsidianService = {
         const p = quoteArg(normalizedVaultPath(vault.path));
         return (
           `p=${p}; if [ -d "$p" ]; then ` +
-          `c=$(find "$p" -mindepth 1 -name '.*' -prune -o -type f -name '*.md' -print 2>/dev/null | wc -l | tr -d ' '); ` +
+          `c=$(find "$p" ${vault.shallow ? "-maxdepth 1 " : ""}-mindepth 1 -name '.*' -prune -o -type f -name '*.md' -print 2>/dev/null | wc -l | tr -d ' '); ` +
           `printf '%s\\t%s\\t%s\\n' ${idx} yes "$c"; ` +
           `else printf '%s\\t%s\\t%s\\n' ${idx} no 0; fi`
         );
@@ -231,7 +231,7 @@ export const obsidianService = {
    * `.obsidian/app.json` so the Obsidian app recognizes it); mode="register"
    * requires the directory to already exist on the target.
    */
-  async createVault(executor: Executor, input: CreateVaultInput): Promise<RegisteredVault> {
+  async createVault(executor: Executor, input: CreateVaultInput, options: { shallow?: boolean } = {}): Promise<RegisteredVault> {
     const path = normalizedVaultPath(input.path);
     const duplicate = await vaultsRepository.findByPath(executor, path);
     if (duplicate) throw new ConflictError(`Ya hay un vault registrado en '${path}'`);
@@ -256,7 +256,7 @@ export const obsidianService = {
       }
     }
 
-    const vault = await vaultsRepository.create(executor, { name: input.name, path });
+    const vault = await vaultsRepository.create(executor, { name: input.name, path, shallow: options.shallow });
     log.info({ vaultId: vault.id, path, mode: input.mode }, "vault registered");
     return vault;
   },
@@ -278,7 +278,7 @@ export const obsidianService = {
   async getTree(executor: Executor, vault: RegisteredVault): Promise<VaultTree> {
     const base = normalizedVaultPath(vault.path);
     const body =
-      `find ${quoteArg(base)} -mindepth 1 -name '.*' -prune -o ` +
+      `find ${quoteArg(base)} ${vault.shallow ? "-maxdepth 1 " : ""}-mindepth 1 -name '.*' -prune -o ` +
       `\\( -type d -printf 'd\\t%P\\t0\\t0\\n' \\) -o ` +
       `\\( -type f \\( -name '*.md' -o -name '*.canvas' \\) -printf 'f\\t%P\\t%s\\t%T@\\n' \\) ` +
       `2>/dev/null`;
@@ -291,7 +291,7 @@ export const obsidianService = {
       const [type, rel, size, mtime] = line.split("\t");
       if (!type || !rel) continue;
       if (type === "d") {
-        folders.push(rel);
+        if (!vault.shallow) folders.push(rel);
       } else if (type === "f") {
         const epoch = Number(mtime);
         notes.push({
@@ -415,7 +415,7 @@ export const obsidianService = {
    */
   async search(executor: Executor, vault: RegisteredVault, query: string): Promise<SearchHit[]> {
     const base = normalizedVaultPath(vault.path);
-    const lines = await grepNotes(executor, base, query);
+    const lines = await grepNotes(executor, base, query, vault.shallow);
     const hits: SearchHit[] = [];
     for (const line of lines) {
       if (!line) continue;
@@ -446,7 +446,7 @@ export const obsidianService = {
 
     const noteName = (rel.split("/").pop() ?? rel).replace(/\.[^.]+$/, "");
     const base = normalizedVaultPath(vault.path);
-    const lines = await grepNotes(executor, base, `[[${noteName}`);
+    const lines = await grepNotes(executor, base, `[[${noteName}`, vault.shallow);
 
     // Post-filter: the grep needle is a loose prefix; confirm a real wikilink
     // to THIS note (closed, aliased or anchored) and drop self-references.

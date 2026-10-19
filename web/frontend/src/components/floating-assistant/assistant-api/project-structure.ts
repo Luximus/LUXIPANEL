@@ -24,7 +24,24 @@ export interface ProjectStructure {
   nodes: StructureNodeStatus[];
 }
 
+export interface ProjectContextDocument {
+  rel: string;
+  content: string;
+  revision: string;
+  needsMigration: boolean;
+  path: string;
+  provider: StructureProviderId;
+}
+
 export const assistantProjectStructureApi = {
+  async readContext(projectId: string): Promise<ProjectContextDocument> {
+    const res = await api.get<{ ok: boolean; document: ProjectContextDocument }>(`/api/ai/projects/${projectId}/context-document`);
+    return unwrap(res, "Failed to read project context").document;
+  },
+  async saveContext(projectId: string, content: string, revision: string): Promise<ProjectContextDocument> {
+    const res = await api.put<{ ok: boolean; document: ProjectContextDocument }>(`/api/ai/projects/${projectId}/context-document`, { content, revision });
+    return unwrap(res, "Failed to save project context").document;
+  },
   async scan(projectId: string): Promise<ProjectStructure> {
     const res = await api.get<{ ok: boolean; structure: ProjectStructure }>(`/api/ai/projects/${projectId}/structure`);
     return unwrap(res, "Failed to scan structure").structure;

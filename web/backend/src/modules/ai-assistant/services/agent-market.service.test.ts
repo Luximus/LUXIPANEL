@@ -55,6 +55,9 @@ vi.mock("../../../shared/agent-capability/index.js", () => {
     findTool: (name: string) => names.includes(name) ? { tool: { name } } : undefined,
   } };
 });
+vi.mock("./project-document.service.js", () => ({ projectDocumentService: {
+  prompt: async (_executor: Executor, project: AssistantProject) => `${project.instructions}\nDOCUMENT_${project.id}`,
+} }));
 vi.mock("./team-tools.js", () => ({ buildTeamTools: async () => null, TEAM_TOOL_WIRE_NAMES: {} }));
 vi.mock("./agent-messages.service.js", () => ({ buildSendMessageTool: () => null, buildAgentMessagePromptBlock: () => "", SEND_MESSAGE_TOOL_WIRE_NAME: "" }));
 vi.mock("./system-prompt/delegation-tools.js", () => ({ buildDelegateTool: () => null, buildSpawnChatsTool: () => null }));
@@ -282,6 +285,8 @@ describe("effective runtime scope", () => {
       runAgent: async function* () {},
     } as never);
     expect(built.systemPrompt).toContain("CONTEXT_X");
+    expect(built.systemPrompt).toContain("DOCUMENT_X");
+    expect(built.systemPrompt).not.toContain("DOCUMENT_Y");
     expect(built.systemPrompt).toContain("server-X");
     expect(built.systemPrompt).not.toContain("CONTEXT_Y"); expect(built.systemPrompt).not.toContain("server-Y");
     expect(built.systemPrompt).not.toContain("graph-Y"); expect(built.jailPaths).not.toContain("/Y");

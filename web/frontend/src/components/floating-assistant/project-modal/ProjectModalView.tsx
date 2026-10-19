@@ -37,7 +37,6 @@ export function ProjectModalView(props: ProjectModalViewProps) {
   const { i18n, project, allProjects, initialParentId, onClose, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, teamName, setTeamName, leaderName, setLeaderName, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, addBusy, removeBusy, selectRef, overlayRef, assignedChildren, parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide } = vm;
   // Dirección de la transición entre secciones (orden del menú lateral).
   const tabDirection = useViewDirection(tab, PROJECT_TAB_ORDER);
-  const [editRootDocument, setEditRootDocument] = useState(false);
   const rootDoc = STRUCTURE_PROVIDERS.find((item) => item.id === provider)!.rootDoc;
   const canEditRoot = !!project?.path && path === project.path && provider === project.provider;
   const { structurePanel } = i18n as typeof i18n & { structurePanel?: { edit: string } };
@@ -83,7 +82,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
         <button
           type="button"
           onClick={save}
-          disabled={busy || loading}
+          disabled={busy || loading || vm.contextLoading || (tab === "context" && !!project?.path && !vm.contextDocument)}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
         >
           {busy ? t.saving : t.save}
@@ -119,7 +118,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
       ) : undefined) : footer}
     >
       <div className="flex h-full min-h-0">
-        <DrawerSectionNav items={sections} activeId={tab} onSelect={(id) => { setEditRootDocument(false); setTab(id as ProjectTab); }} />
+        <DrawerSectionNav items={sections} activeId={tab} onSelect={(id) => { setTab(id as ProjectTab); }} />
 
         <div
           className={cn(
@@ -190,7 +189,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                 </label>
                 <button
                   type="button"
-                  onClick={() => { setEditRootDocument(true); setTab("structure"); }}
+                  onClick={() => { setTab("context"); }}
                   disabled={!canEditRoot || busy || loading}
                   title={canEditRoot ? editRootLabel : `${t.save} · ${rootDoc}`}
                   aria-label={editRootLabel}
@@ -329,9 +328,18 @@ export function ProjectModalView(props: ProjectModalViewProps) {
           {tab === "context" && (
             <>
               <label className="block text-xs">
-                <span className="text-muted-foreground">{t.instructionsLabel}</span>
+                <span className="flex items-center justify-between gap-2 text-muted-foreground">
+                  <span>{project?.path ? `${t.tabContext} · ${vm.contextDocument?.rel ?? rootDoc}` : t.instructionsLabel}</span>
+                  {project?.path && (vm.contextDocument && !vm.contextDocument.needsMigration && instructions === vm.contextDocument.content && canEditRoot
+                    ? <a href={`/obsidian?project=${encodeURIComponent(project.id)}`} className="text-primary hover:underline">{t.contextObsidian}</a>
+                    : <span aria-disabled="true" title={`${t.save} · ${t.tabContext}`} className="opacity-50">{t.contextObsidian}</span>)}
+                </span>
+                {project?.path && <span className="mt-1 block text-xs text-muted-foreground">{t.contextDocumentHint}</span>}
+                {vm.contextLoading && <span role="status" className="mt-2 block">{t.loadingProject}</span>}
+                {vm.contextError && <span role="alert" className="mt-2 block text-destructive">{vm.contextError}</span>}
                 <textarea
                   value={instructions}
+                  disabled={!!project?.path && (!vm.contextDocument || path !== project.path || provider !== project.provider)}
                   onChange={(e) => setInstructions(e.target.value)}
                   rows={8}
                   placeholder={t.instructionsPlaceholder}
@@ -597,7 +605,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
           )}
 
           {tab === "structure" && project && (
-            <StructurePanel key={project.id} projectId={project.id} openRootDocument={editRootDocument} />
+            <StructurePanel key={project.id} projectId={project.id} />
           )}
           </ViewTransition>
           )}

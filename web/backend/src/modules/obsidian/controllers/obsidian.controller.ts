@@ -1,3 +1,7 @@
+import { projectsRepository } from "../../ai-assistant/repositories/projects.repository.js";
+import { projectDocumentPath } from "../../ai-assistant/services/project-document.service.js";
+import { assertOwner } from "../../ai-assistant/controllers/ownership.js";
+import { vaultsRepository } from "../repositories/vaults.repository.js";
 /**
  * Obsidian controller — vault registry + note CRUD/search/links on top of the
  * per-request executor. Double path gate: on top of `requireAuth` +
@@ -62,6 +66,19 @@ async function requireNoteAccess(req: Request, res: Response, vaultPath: string,
 }
 
 export const obsidianController = {
+  /** Register the EXISTING workspace, never copy or scaffold provider files. */
+  projectDocument: asyncHandler(async (req: Request, res: Response) => {
+    const executor = getExecutor(req);
+    const project = await projectsRepository.get(executor, z.string().uuid().parse(req.params.id));
+    if (!project) throw new NotFoundError("Proyecto");
+    assertOwner(project.ownerId, res.locals.locale);
+    const { root, rel, target } = await projectDocumentPath(executor, project, "read");
+    requireVaultAccess(res, root, "write");
+    requireVaultAccess(res, target, "read");
+    const existing = await vaultsRepository.findByPath(executor, root);
+    const vault = existing ?? await obsidianService.createVault(executor, { name: project.title, path: root, mode: "register" }, { shallow: true });
+    res.json({ ok: true, data: { vaultId: vault.id, note: rel } });
+  }),
   /** GET /api/obsidian/vaults — registered vaults + live exists/noteCount. */
   listVaults: asyncHandler(async (req: Request, res: Response) => {
     const user = sessionUser(res);

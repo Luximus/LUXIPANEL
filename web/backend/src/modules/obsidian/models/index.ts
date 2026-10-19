@@ -17,6 +17,8 @@ export interface ObsidianVault {
   name: string;
   /** Absolute Unix path of the vault directory on the client server. */
   path: string;
+  /** Workspace document view: enumerate root notes without scanning source/dependencies. */
+  shallow?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

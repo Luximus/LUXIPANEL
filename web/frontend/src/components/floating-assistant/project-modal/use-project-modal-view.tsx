@@ -1,3 +1,4 @@
+import { assistantProjectStructureApi, type ProjectContextDocument } from "../assistant-api/project-structure";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -73,6 +74,24 @@ export function useProjectModalView({
   const [parentId] = useState<string>(project?.parentId ?? initialParentId ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const [contextDocument, setContextDocument] = useState<ProjectContextDocument | null>(null);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextError, setContextError] = useState<string | null>(null);
+  useEffect(() => {
+    if (tab !== "context" || !project?.path || (contextDocument && instructions !== contextDocument.content)) return;
+    let alive = true;
+    setContextLoading(true);
+    setContextDocument(null);
+    setContextError(null);
+    assistantProjectStructureApi.readContext(project.id).then(document => {
+      if (!alive) return;
+      setContextDocument(document);
+      setInstructions(document.content);
+    }).catch(error => alive && setContextError((error as Error).message))
+      .finally(() => alive && setContextLoading(false));
+    return () => { alive = false; setContextLoading(false); };
+  }, [tab, project?.id, project?.path]);
 
   // Working directory is set ONLY via the folder picker (browses the connected
   // server's filesystem) — the field itself is read-only.
@@ -226,9 +245,19 @@ export function useProjectModalView({
 
   async function save() {
     if (!title.trim()) { setErr(t.titleRequired); return; }
+    if (contextLoading || (tab === "context" && project?.path && !contextDocument)) return;
     setBusy(true);
     setErr(null);
     try {
+      if (contextDocument && project) {
+        const edited = instructions !== contextDocument.content;
+        const sameSource = path === contextDocument.path && provider === contextDocument.provider;
+        if (edited && !sameSource) throw new Error(t.contextSaveSettings);
+        if (sameSource && (edited || contextDocument.needsMigration)) {
+          const savedDocument = await assistantProjectStructureApi.saveContext(project.id, instructions, contextDocument.revision);
+          setContextDocument(savedDocument);
+        }
+      }
       // Verify recipe: one command per line (≤10, ≤400 chars each); empty → null.
       const verifyCommands = verifyText
         .split("\n")
@@ -243,7 +272,7 @@ export function useProjectModalView({
         webPreviewUrl: webPreviewUrl.trim(),
         appPreviewUrl: appPreviewUrl.trim(),
         fileProjectRef,
-        instructions,
+        ...(!project?.path ? { instructions } : {}),
         provider,
         parentId: parentId || null,
         ...(!project && !parentId ? { teamName: teamName.trim() || title.trim(), leaderName: leaderName.trim() || `${title.trim()} · Líder`, creationKey: creationKey.current } : {}),
@@ -369,7 +398,7 @@ export function useProjectModalView({
     canGoBack, loading, onBack, onNavigate, t, i18n,
     tab, setTab, title, setTitle, teamName, setTeamName, leaderName, setLeaderName, icon, setIcon, path, setPath,
     webPreviewUrl, setWebPreviewUrl, appPreviewUrl, setAppPreviewUrl, fileProjectRef, setFileProjectRef,
-    instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture,
+    instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, contextDocument, contextLoading, contextError,
     verifyText, setVerifyText, parentId, busy, setBusy, err, setErr,
     pickingDir, setPickingDir, graphAvail, setGraphAvail, graphEnabled, setGraphEnabled,
     graphState, setGraphState, graphBusy, setGraphBusy, indexNow,

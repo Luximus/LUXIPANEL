@@ -47,11 +47,12 @@ export const vaultsRepository = {
   /** Create a registration. `createdAt`/`updatedAt` are stamped by dataStore. */
   async create(
     executor: Executor | null | undefined,
-    data: Pick<ObsidianVault, "name" | "path">,
+    data: Pick<ObsidianVault, "name" | "path" | "shallow">,
   ): Promise<ObsidianVault & { id: string }> {
     return (await store(executor).create({
       name: data.name,
       path: data.path,
+      ...(data.shallow ? { shallow: true } : {}),
     })) as ObsidianVault & { id: string };
   },
 
