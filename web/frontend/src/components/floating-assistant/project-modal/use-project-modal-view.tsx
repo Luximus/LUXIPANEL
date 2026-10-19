@@ -56,10 +56,8 @@ export function useProjectModalView({
     projectModal?: Partial<ProjectModalMessages>;
   };
   const t = mergeNamespaces(projectModalFallback, i18n.projectModal);
-  const [tab, setTab] = useState<"general" | "context" | "servers" | "skills" | "structure" | "agents">(project ? initialTab : "general");
+  const [tab, setTab] = useState<"general" | "context" | "skills" | "structure" | "agents">(project ? initialTab : "general");
   const [title, setTitle] = useState(project?.title ?? "");
-  const [teamName, setTeamName] = useState("");
-  const [leaderName, setLeaderName] = useState("");
   const creationKey = useRef(crypto.randomUUID());
   const [icon, setIcon] = useState(project?.icon ?? "Folder");
   const [path, setPath] = useState(project?.path ?? "");
@@ -275,7 +273,7 @@ export function useProjectModalView({
         ...(!project ? { instructions } : { expectedPath: project.path }),
         provider,
         parentId: parentId || null,
-        ...(!project && !parentId ? { teamName: teamName.trim() || title.trim(), leaderName: leaderName.trim() || `${title.trim()} · Líder`, creationKey: creationKey.current } : {}),
+        ...(!project && !parentId ? { teamName: title.trim(), leaderName: `${title.trim()} · Líder`, creationKey: creationKey.current } : {}),
         servers,
         autoCapture,
         skills,
@@ -396,7 +394,7 @@ export function useProjectModalView({
   return {
     project, allProjects, initialParentId, onClose, closing, deferredClose, onSaved, onDeleted, onRefresh,
     canGoBack, loading, onBack, onNavigate, t, i18n,
-    tab, setTab, title, setTitle, teamName, setTeamName, leaderName, setLeaderName, icon, setIcon, path, setPath,
+    tab, setTab, title, setTitle, icon, setIcon, path, setPath,
     webPreviewUrl, setWebPreviewUrl, appPreviewUrl, setAppPreviewUrl, fileProjectRef, setFileProjectRef,
     instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, contextDocument, contextLoading, contextError,
     verifyText, setVerifyText, parentId, busy, setBusy, err, setErr,

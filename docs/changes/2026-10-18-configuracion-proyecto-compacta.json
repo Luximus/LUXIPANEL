@@ -1,0 +1,8 @@
+{
+  "title": "Configuración del proyecto más compacta",
+  "changes": [
+    "El icono del proyecto se elige desde un desplegable junto al título.",
+    "Los servidores asociados se gestionan desde General, junto a los subproyectos.",
+    "Se retira el bloque informativo del equipo y las pestañas quedan ordenadas como General, Contexto, Skills, Estructura y Agentes IA."
+  ]
+}

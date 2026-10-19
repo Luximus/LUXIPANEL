@@ -21,20 +21,21 @@ import { DrawerSectionNav, type DrawerSectionItem } from "@/components/ui/Drawer
 import { cn } from "@/lib/utils";
 import { ViewTransition, useViewDirection } from "@/components/ui/ViewTransition";
 
-const PROJECT_TAB_ORDER = ["general", "agents", "context", "servers", "skills", "structure"] as const;
+const PROJECT_TAB_ORDER = ["general", "context", "skills", "structure", "agents"] as const;
 type ProjectTab = (typeof PROJECT_TAB_ORDER)[number];
-import { PROJECT_ICONS, STRUCTURE_PROVIDERS, type StructureProviderId } from "../assistant-api";
+import { STRUCTURE_PROVIDERS, type StructureProviderId } from "../assistant-api";
 import { LucideIcon } from "../LucideIcon";
 import { StructurePanel } from "../StructurePanel";
 import { DirectoryPicker } from "../DirectoryPicker";
 import { SkillsPicker } from "../SkillsPicker";
 import { formatAssistantMessage } from "../i18n";
 import { useProjectModalView, type ProjectModalViewVM } from "./use-project-modal-view";
+import { ProjectIconSelect } from "./ProjectIconSelect";
 import { type ProjectModalViewProps } from "./types";
 
 export function ProjectModalView(props: ProjectModalViewProps) {
   const vm: ProjectModalViewVM = useProjectModalView(props);
-  const { i18n, project, allProjects, initialParentId, onClose, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, teamName, setTeamName, leaderName, setLeaderName, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, addBusy, removeBusy, selectRef, overlayRef, assignedChildren, parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide } = vm;
+  const { i18n, project, allProjects, initialParentId, onClose, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, addBusy, removeBusy, selectRef, overlayRef, assignedChildren, parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide } = vm;
   // Dirección de la transición entre secciones (orden del menú lateral).
   const tabDirection = useViewDirection(tab, PROJECT_TAB_ORDER);
   const rootDoc = STRUCTURE_PROVIDERS.find((item) => item.id === provider)!.rootDoc;
@@ -49,11 +50,10 @@ export function ProjectModalView(props: ProjectModalViewProps) {
   // Structure only exists for saved projects.
   const sections: DrawerSectionItem[] = [
     { id: "general", label: t.tabGeneral, icon: "ti-id-badge-2", description: t.sectionGeneralDesc },
-    ...(project ? [{ id: "agents", label: t.tabAgents, icon: "ti-robot", description: t.sectionAgentsDesc }] : []),
     { id: "context", label: t.tabContext, icon: "ti-file-text", description: t.sectionContextDesc },
-    { id: "servers", label: t.tabServers, icon: "ti-server", description: t.sectionServersDesc },
     { id: "skills", label: t.tabSkills, icon: "ti-stack-2", description: t.sectionSkillsDesc },
     ...(project ? [{ id: "structure", label: t.tabStructure, icon: "ti-binary-tree", description: t.sectionStructureDesc }] : []),
+    ...(project ? [{ id: "agents", label: t.tabAgents, icon: "ti-robot", description: t.sectionAgentsDesc }] : []),
   ];
   const activeSection = sections.find((s) => s.id === tab) ?? sections[0]!;
   const headerTitle = project ? t.editProject : (initialParentId ? t.newSubproject : t.newProject);
@@ -164,7 +164,8 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                 </>
               )}
 
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 @md:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto]" data-project-identity-row>
+              <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-end gap-3 @md:grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,14rem)_auto]" data-project-identity-row>
+                <ProjectIconSelect value={icon} onChange={setIcon} label={t.iconLabel} />
                 <label className="col-span-2 block min-w-0 text-xs @md:col-span-1">
                   <span className="text-muted-foreground">{t.titleLabel}</span>
                   <input
@@ -174,7 +175,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                     className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
                   />
                 </label>
-                <label className="block min-w-0 text-xs">
+                <label className="col-span-2 block min-w-0 text-xs @md:col-span-1">
                   <span className="text-muted-foreground">{t.providerLabel}</span>
                   <select
                     value={provider}
@@ -196,34 +197,6 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                 >
                   <i className="ti ti-pencil text-base" aria-hidden />
                 </button>
-              </div>
-
-              {!parentProject && !initialParentId && (
-                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
-                  <p className="font-semibold">Equipo IA del proyecto</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">Al crear un proyecto se crea su equipo y un agente líder. Los subproyectos comparten este equipo.</p>
-                  {!project ? <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="block"><span>Nombre del equipo</span><input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder={title || "Equipo del proyecto"} maxLength={120} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-xs outline-none focus:border-primary" /></label>
-                    <label className="block"><span>Agente líder</span><input value={leaderName} onChange={(e) => setLeaderName(e.target.value)} placeholder={title ? `${title} · Líder` : "Agente líder"} maxLength={120} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-xs outline-none focus:border-primary" /></label>
-                  </div> : <button type="button" onClick={() => setTab("agents")} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"><i className="ti ti-robot" aria-hidden />{t.tabAgents}</button>}
-                </div>
-              )}
-
-              <div className="block text-xs">
-                <span className="text-muted-foreground">{t.iconLabel}</span>
-                <div className="mt-1 grid grid-cols-8 gap-1.5">
-                  {PROJECT_ICONS.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setIcon(n)}
-                      className={`flex h-8 w-8 items-center justify-center rounded-md border ${icon === n ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"}`}
-                      title={n}
-                    >
-                      <LucideIcon name={n} size={16} />
-                    </button>
-                  ))}
-                </div>
               </div>
 
               <div className="block text-xs">
@@ -324,6 +297,52 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   )}
                 </div>
               )}
+              {/* ── Servidores asociados ────────────────────────────────── */}
+              <div className="space-y-1.5 border-t border-border pt-4" data-project-servers>
+                <span className="block text-xs font-medium text-muted-foreground">{t.associatedServersLabel}</span>
+                <p className="text-[10px] text-muted-foreground">
+                  {t.associatedServersHint}{" "}
+                  <code className="text-[9px]">servers.*</code>.
+                </p>
+                {connsLoading ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    <i className="ti ti-loader-2 animate-spin mr-1" aria-hidden></i>{t.loadingConnections}
+                  </p>
+                ) : availableConns.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t.noServersToAssociate}
+                  </p>
+                ) : (
+                  <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border/50 bg-muted/20 p-1.5">
+                    {availableConns.map((conn) => {
+                      const checked = servers.some((s) => s.id === conn.id);
+                      return (
+                        <label
+                          key={conn.id}
+                          className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleServer(conn)}
+                            className="h-3.5 w-3.5 shrink-0 accent-primary"
+                          />
+                          <i className="ti ti-server text-muted-foreground" aria-hidden></i>
+                          <span className="flex-1 truncate font-medium">{conn.name}</span>
+                          {conn.host && (
+                            <span className="shrink-0 truncate text-[10px] text-muted-foreground">{conn.host}</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                {servers.length > 0 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    {formatAssistantMessage(t.associatedServersCount, { count: servers.length })}
+                  </p>
+                )}
+              </div>
               {/* ── Proyectos hijos ─────────────────────────────────────── */}
               <div className="space-y-2 border-t border-border pt-4" data-project-children>
                 <span className="block text-xs font-medium text-muted-foreground">{t.childProjectsLabel}</span>
@@ -527,57 +546,6 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                     </div>
                   );
                 })()}
-              </div>
-            </>
-          )}
-
-          {tab === "servers" && (
-            <>
-              {/* ── Servidores asociados ────────────────────────────────── */}
-              <div className="space-y-1.5">
-                <span className="block text-xs font-medium text-muted-foreground">{t.associatedServersLabel}</span>
-                <p className="text-[10px] text-muted-foreground">
-                  {t.associatedServersHint}{" "}
-                  <code className="text-[9px]">servers.*</code>.
-                </p>
-                {connsLoading ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    <i className="ti ti-loader-2 animate-spin mr-1" aria-hidden></i>{t.loadingConnections}
-                  </p>
-                ) : availableConns.length === 0 ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    {t.noServersToAssociate}
-                  </p>
-                ) : (
-                  <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border/50 bg-muted/20 p-1.5">
-                    {availableConns.map((conn) => {
-                      const checked = servers.some((s) => s.id === conn.id);
-                      return (
-                        <label
-                          key={conn.id}
-                          className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleServer(conn)}
-                            className="h-3.5 w-3.5 shrink-0 accent-primary"
-                          />
-                          <i className="ti ti-server text-muted-foreground" aria-hidden></i>
-                          <span className="flex-1 truncate font-medium">{conn.name}</span>
-                          {conn.host && (
-                            <span className="shrink-0 truncate text-[10px] text-muted-foreground">{conn.host}</span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-                {servers.length > 0 && (
-                  <p className="text-[10px] text-muted-foreground">
-                    {formatAssistantMessage(t.associatedServersCount, { count: servers.length })}
-                  </p>
-                )}
               </div>
             </>
           )}
