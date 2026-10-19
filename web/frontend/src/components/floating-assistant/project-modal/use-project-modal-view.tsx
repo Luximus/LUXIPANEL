@@ -27,6 +27,7 @@ import {
 import { formatAssistantMessage, mergeNamespaces, useAssistantI18n } from "../i18n";
 import { projectModalFallback, type ProjectModalMessages } from "./messages";
 import { reparentChild, getAncestorIds } from "./helpers";
+import { isProjectPathWithinRoot } from "./project-path";
 import { type ProjectModalViewProps } from "./types";
 import { useDeferredClose } from "@/components/ui/use-deferred-close";
 
@@ -185,6 +186,13 @@ export function useProjectModalView({
   const [pendingChildIds, setPendingChildIds] = useState<string[]>([]);
   const [addBusy, setAddBusy] = useState(false);
   const [removeBusy, setRemoveBusy] = useState<string | null>(null);
+  useEffect(() => {
+    setPendingChildIds(ids => ids.filter(id => {
+      const child = allProjects.find(p => p.id === id);
+      return child && isProjectPathWithinRoot(child.path, path);
+    }));
+    if (selectRef.current) selectRef.current.value = "";
+  }, [path]);
   const selectRef = useRef<HTMLSelectElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -236,9 +244,12 @@ export function useProjectModalView({
     ? allProjects.find((p) => p.id === project.parentId) ?? null
     : null;
 
-  // Projects that can still be added as children: not self, not already assigned, not an ancestor.
+  // Offer only projects in this working directory or below it, excluding ancestors.
+  // Existing assignments stay visible so they can still be explicitly removed.
   const availableForChild = allProjects.filter(
-    (p) => p.id !== project?.id && !assignedChildIds.has(p.id) && !ancestorIds.has(p.id),
+    (p) => p.id !== project?.id && p.id !== initialParentId
+      && !assignedChildIds.has(p.id) && !ancestorIds.has(p.id)
+      && isProjectPathWithinRoot(p.path, path),
   );
 
   async function save() {
@@ -301,7 +312,7 @@ export function useProjectModalView({
         await Promise.all(
           pendingChildIds.map((childId) => {
             const child = allProjects.find((p) => p.id === childId);
-            if (!child) return Promise.resolve();
+            if (!child || !isProjectPathWithinRoot(child.path, data.path)) return Promise.resolve();
             return reparentChild(child, saved.id);
           }),
         );
@@ -344,7 +355,8 @@ export function useProjectModalView({
 
   async function doAddChild() {
     const childId = selectRef.current?.value ?? "";
-    if (!childId) return;
+    const child = availableForChild.find((p) => p.id === childId);
+    if (!child) return;
 
     if (!project) {
       // CREATE mode: only local state, no API call yet.
@@ -354,8 +366,6 @@ export function useProjectModalView({
     }
 
     // EDIT mode: persist immediately.
-    const child = allProjects.find((p) => p.id === childId);
-    if (!child) return;
     setAddBusy(true);
     setErr(null);
     try {

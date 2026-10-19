@@ -1,0 +1,7 @@
+{
+  "title": "Subproyectos limitados al directorio del proyecto",
+  "changes": [
+    "El selector de subproyectos ofrece únicamente proyectos del mismo directorio o de sus subcarpetas, excluyendo rutas externas y nombres de carpeta parecidos.",
+    "La lista se actualiza al cambiar el directorio de trabajo y también aplica al crear proyectos nuevos."
+  ]
+}
