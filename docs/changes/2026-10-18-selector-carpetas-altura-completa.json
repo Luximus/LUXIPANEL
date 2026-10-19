@@ -1,0 +1,6 @@
+{
+  "title": "Selector de carpetas a toda altura",
+  "changes": [
+    "La lista del selector de carpetas ocupa toda la altura disponible, con desplazamiento propio y los controles de navegación y selección siempre visibles."
+  ]
+}

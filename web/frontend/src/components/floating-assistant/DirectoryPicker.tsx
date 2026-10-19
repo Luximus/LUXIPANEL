@@ -98,7 +98,7 @@ export function DirectoryPicker({ initialPath = "/", onClose, onSelect }: Direct
       zIndexClass="z-[10000]"
       title={tt.title}
       closeLabel={i18n.drawer.close}
-      bodyClassName="space-y-2 p-3"
+      bodyClassName="flex min-h-0 flex-col gap-2 overflow-hidden p-3"
       footer={
         <>
           <button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
@@ -114,7 +114,7 @@ export function DirectoryPicker({ initialPath = "/", onClose, onSelect }: Direct
         </>
       }
     >
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={() => setCwd(parentOf(cwd))}
@@ -129,9 +129,9 @@ export function DirectoryPicker({ initialPath = "/", onClose, onSelect }: Direct
             </code>
           </div>
 
-          {error && <p className="rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-500">⚠ {error}</p>}
+          {error && <p className="shrink-0 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-500">⚠ {error}</p>}
 
-          <ul className="max-h-64 min-h-[6rem] overflow-y-auto rounded-md border border-border/50 bg-muted/20 p-1">
+          <ul className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/50 bg-muted/20 p-1" data-directory-list>
             {loading ? (
               <li className="px-3 py-3 text-center text-xs text-muted-foreground">
                 <i className="ti ti-loader-2 animate-spin mr-1" aria-hidden></i>{tt.loading}
