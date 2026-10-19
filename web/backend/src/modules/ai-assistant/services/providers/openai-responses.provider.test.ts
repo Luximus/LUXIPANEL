@@ -28,13 +28,14 @@ describe("GPT-6 Responses tool loop", () => {
     const provider = makeOpenAiResponsesProvider({ apiKey: "key", model: "gpt-6-astra" });
     const events = [];
     for await (const event of provider.run([{ role: "user", content: "hola" }], {
-      systemPrompt: "Sistema", tools: [tool], effort: "xhigh",
+      systemPrompt: "Sistema", tools: [tool], effort: "xhigh", speed: "fast",
     })) events.push(event);
 
     expect(requests.map((r) => r.url)).toEqual([
       "https://api.openai.com/v1/responses", "https://api.openai.com/v1/responses",
     ]);
     expect(requests[0]!.body).toMatchObject({ model: "gpt-6-astra", store: false, reasoning: { effort: "xhigh" } });
+    expect(requests.every(request => request.body.service_tier === "fast")).toBe(true);
     expect(requests[0]!.body.tools).toMatchObject([{ type: "function", name: "demo__echo" }]);
     expect(requests[1]!.body.input).toEqual(expect.arrayContaining([
       { type: "reasoning", id: "rs_1", encrypted_content: "opaque" },

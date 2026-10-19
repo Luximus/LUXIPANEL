@@ -125,6 +125,7 @@ export interface ConversationMeta {
   model?: string;
   effort?: "" | "low" | "medium" | "high" | "xhigh" | "max";
   approvalMode?: "manual" | "auto" | "plan";
+  speed?: "normal" | "fast";
 
   id?: string;
   title: string;
@@ -200,6 +201,7 @@ export interface EmbeddedConversationMeta {
   model?: string;
   effort?: "" | "low" | "medium" | "high" | "xhigh" | "max";
   approvalMode?: "manual" | "auto" | "plan";
+  speed?: "normal" | "fast";
 
   agentId?: string | null;
   provider?: string;

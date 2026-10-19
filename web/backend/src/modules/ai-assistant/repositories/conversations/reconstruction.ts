@@ -85,7 +85,7 @@ export function buildMetaFromMessages(
     originProvider: embedded?.originProvider || provider,
     provider,
     projectId: embedded?.projectId ?? null,
-    model: embedded?.model, effort: embedded?.effort, approvalMode: embedded?.approvalMode,
+    model: embedded?.model, effort: embedded?.effort, approvalMode: embedded?.approvalMode, speed: embedded?.speed,
     agentId,
     messageCount: msgs.length,
     preview: preview(display(last)),

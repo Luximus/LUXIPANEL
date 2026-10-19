@@ -10,6 +10,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 interface FakeOptions {
+  speed?: "normal" | "fast";
   emptyFinal?: string;
   persistedEmpty?: boolean;
   recoveryAnswer?: string;
@@ -60,7 +61,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const promptFile = join(dir, "prompt.txt");
   const configFile = join(dir, "config.json");
   writeFileSync(promptFile, "Verificar despliegue");
-  writeFileSync(configFile, JSON.stringify({ promptFile, approvalDir: dir, approvalMode: options.plan ? "plan" : "auto", resume: false, cwd: dir, model: "gpt-6-astra", effort }));
+  writeFileSync(configFile, JSON.stringify({ promptFile, approvalDir: dir, approvalMode: options.plan ? "plan" : "auto", resume: false, cwd: dir, model: "gpt-6-astra", effort, speed: options.speed }));
   const callsFile = join(dir, "calls.jsonl");
   const adapter = new URL("./codex-app-server-adapter.mjs", import.meta.url).pathname;
   let status = 0;
@@ -151,4 +152,12 @@ describe("Codex app-server final answer", () => {
     expect(events.at(-1)).toMatchObject({ type: "turn.failed", error: { code: "CLI_NO_FINAL_RESPONSE" } });
     expect(events.some(e => e.type === "turn.completed")).toBe(false);
   });
+});
+
+it.each(["normal", "fast"] as const)("passes %s speed to Codex turns", speed => {
+  const { status, calls } = runAdapter("Listo", "high", { speed });
+  expect(status).toBe(0);
+  const turns = calls.filter(call => call.method === "turn/start");
+  expect(turns).toHaveLength(1);
+  expect(turns[0].params.serviceTier).toBe(speed === "fast" ? "fast" : "default");
 });

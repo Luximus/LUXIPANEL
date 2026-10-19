@@ -9,7 +9,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 const config = JSON.parse(await readFile(process.argv[2], 'utf8'));
 const prompt = await readFile(config.promptFile, 'utf8');
-const codex = spawn('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] });
+const codex = spawn('codex', ['app-server', '-c', 'features.fast_mode=true'], { stdio: ['pipe', 'pipe', 'pipe'] });
 const pending = new Map();
 let nextId = 1;
 let completed = false;
@@ -415,7 +415,7 @@ try {
   startup('submitting');
   turnTemplate = {
     threadId, input: [{ type: 'text', text: prompt }], collaborationMode,
-    approvalPolicy: policy, sandboxPolicy,
+    approvalPolicy: policy, sandboxPolicy, serviceTier: config.speed === 'fast' ? 'fast' : 'default',
   };
   await rpc('turn/start', turnTemplate);
   startup('ready');

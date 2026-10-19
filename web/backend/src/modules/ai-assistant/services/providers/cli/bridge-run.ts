@@ -427,7 +427,7 @@ export function makeCliBridgeProvider(args: {
             await executor.exec(`mkdir -m 700 ${quoteArg(approvalDir)}`, { timeoutMs: 5_000 });
             await executor.writeFile(codexAdapterFile, source, { mode: 0o600 });
             await executor.writeFile(codexConfigFile, Buffer.from(JSON.stringify({
-              promptFile, approvalDir, cwd, model: args.model, effort: opts.effort,
+              promptFile, approvalDir, cwd, model: args.model, effort: opts.effort, speed: opts.speed,
               approvalMode, resume: attemptResume, sessionId,
             })), { mode: 0o600 });
             codexAdapterCleanup = `rm -rf ${quoteArg(codexAdapterFile)} ${quoteArg(codexConfigFile)} ${quoteArg(approvalDir)}`;

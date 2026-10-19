@@ -20,10 +20,11 @@ import {chatUiState} from "/src/components/floating-assistant/chat-ui-state.ts";
 import "/src/styles/starwind.css";
 import "/src/styles/panel-workspace.css";
 import "/src/styles/reactbits-kit.css";
+const provider=new URLSearchParams(location.search).get("provider")??"claude";
 const names=["Óscar","Sofía","Mateo","Valentina","Andrés","Lucía","Camila","Daniel"];
 const roles=["Coordinación","Desarrollo","Pruebas","Diseño","Seguridad","Documentación","Infraestructura","Accesibilidad"];
 assistantProjectsApi.list=async()=>[{id:"project",title:"Mi proyecto",teamId:"team",leaderAgentId:"agent-0"}];
-assistantAgentsApi.list=async(query={})=>names.map((name,index)=>({id:"agent-"+index,name,roleId:"role-"+index,providerId:"claude",teamId:"team",
+assistantAgentsApi.list=async(query={})=>names.map((name,index)=>({id:"agent-"+index,name,roleId:"role-"+index,providerId:provider,teamId:"team",
   capabilities:{canExecute:true},context:{projectId:query.contextProjectId??query.projectId??"project",membership:"direct"}}));
 assistantAgentRolesApi.list=async()=>roles.map((name,index)=>({id:"role-"+index,name}));
 const conversations=${JSON.stringify(conversations)};
@@ -42,9 +43,9 @@ assistantConversationsApi.activity=async()=>[
 ];
 const query=new URLSearchParams(location.search);
 const selectedAgent=query.get("agent");
-chatUiState.patchPane("claude",{activeId:null,currentAgentId:selectedAgent,currentProjectId:"project"});
+chatUiState.patchPane(provider,{activeId:null,currentAgentId:selectedAgent,currentProjectId:"project"});
 function App(){
-  const vm=useChatPane({provider:"claude",mode:"api",active:true,openProjectId:"project",openAgentId:selectedAgent,openConversationId:query.get("chat")??undefined,openNonce:1});
+  const vm=useChatPane({provider,mode:"api",active:true,openProjectId:"project",openAgentId:selectedAgent,openConversationId:query.get("chat")??undefined,openNonce:1});
   useEffect(()=>{if(query.has("history"))vm.setListOpen(true);},[]);
   return createElement("div",{className:"flex flex-1 min-w-0"},
     query.has("history")&&createElement(ChatSidebar,{vm}),

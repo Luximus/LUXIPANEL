@@ -72,7 +72,7 @@ export function embeddedFromMeta(m: Partial<ConversationMeta>): EmbeddedConversa
     projectId: m.projectId ?? null,
     title: m.title,
     createdAt: m.createdAt,
-    model: m.model, effort: m.effort, approvalMode: m.approvalMode,
+    model: m.model, effort: m.effort, approvalMode: m.approvalMode, speed: m.speed,
   };
 }
 

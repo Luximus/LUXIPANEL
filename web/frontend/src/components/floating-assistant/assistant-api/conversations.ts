@@ -11,6 +11,7 @@ export interface ConversationMeta {
   model?: string;
   effort?: "" | "low" | "medium" | "high" | "xhigh" | "max";
   approvalMode?: "manual" | "auto" | "plan";
+  speed?: "normal" | "fast";
 
   id: string;
   title: string;
@@ -225,7 +226,7 @@ export const assistantConversationsApi = {
     const data = unwrap(res, "Failed to load conversations");
     return { ...data, items: data.items, total: data.total };
   },
-  async create(provider: string, firstMessage?: string, projectId?: string | null, agentId?: string | null, choices: Partial<Pick<ConversationMeta, "model" | "effort" | "approvalMode">> = {}): Promise<ConversationMeta> {
+  async create(provider: string, firstMessage?: string, projectId?: string | null, agentId?: string | null, choices: Partial<Pick<ConversationMeta, "model" | "effort" | "approvalMode" | "speed">> = {}): Promise<ConversationMeta> {
     const res = await api.post<{ ok: boolean; conversation: ConversationMeta }>(
       "/api/ai/conversations",
       { provider, firstMessage, projectId, agentId, ...choices },
@@ -280,7 +281,7 @@ export const assistantConversationsApi = {
     const data = unwrap(res, "Failed to compact");
     return { result: data.result, context: data.context };
   },
-  async setOptions(id: string, patch: Partial<Pick<ConversationMeta, "provider" | "model" | "effort" | "approvalMode">>): Promise<ConversationMeta> {
+  async setOptions(id: string, patch: Partial<Pick<ConversationMeta, "provider" | "model" | "effort" | "approvalMode" | "speed">>): Promise<ConversationMeta> {
     const key = optionKey(id);
     const write = (optionWrites.get(key) ?? Promise.resolve()).catch(() => undefined).then(async () => {
       if (optionKey(id) !== key) throw new Error("Conversation target changed");

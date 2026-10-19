@@ -147,6 +147,7 @@ export function makeOpenAiCompatibleProvider(args: MakeArgs): AgentProvider {
             model: args.api.model,
             tools: tools.length > 0 ? tools : undefined,
             messages: history,
+            ...(args.id === "codex" && opts.speed ? { service_tier: opts.speed === "fast" ? "fast" : "default" } : {}),
             ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           }),
           signal: withApiTimeout(opts.signal),

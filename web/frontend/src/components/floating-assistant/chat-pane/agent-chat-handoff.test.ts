@@ -14,7 +14,7 @@ const legacy = vi.hoisted(() => ({ id: "legacy", title: "Buzón antiguo", provid
 const conversationApi = vi.hoisted(() => ({
   activity: vi.fn(async () => [{ id: "worker-chat", agentId: "worker", unreviewed: true, unreadCount: 3, running: true }]),
   list: vi.fn(async (...args: Parameters<typeof import("../assistant-api/conversations").assistantConversationsApi.list>) => ({ items: args[6]?.agentId ? [legacy] : [], total: 1, summary: { agents: { agent: 1 }, projects: {} } })),
-  get: vi.fn(async () => legacy),
+  get: vi.fn(async (): Promise<import("../assistant-api/conversations").ConversationMeta> => legacy),
   messages: vi.fn(async (): Promise<{ items: import("../assistant-api/conversations").ConversationMessage[]; total: number; hasMore: boolean }> => ({ items: [], total: 0, hasMore: false })),
   session: vi.fn(async () => ({ sessionId: null })),
   context: vi.fn(async () => ({ enabled: false })),
@@ -152,7 +152,7 @@ it.each(["agent", "worker", null])("returns from a project chat with agent %s wh
   }
   try {
     await act(async () => root.render(createElement(Probe)));
-    conversationApi.get.mockResolvedValueOnce({ ...legacy, id: "loading-chat", projectId: "child", agentId } as typeof legacy);
+    conversationApi.get.mockResolvedValueOnce({ ...legacy, id: "loading-chat", projectId: "child", agentId });
     conversationApi.messages.mockImplementationOnce(() => history);
     await act(async () => { opening = vm.openConversation("loading-chat"); });
     expect(vm.currentAgentId).toBe(agentId);
@@ -361,5 +361,35 @@ it("selects a member in PromptBar, filters nested history and preserves that mem
     onLaunchAgent.mockClear();
     await act(async () => host.querySelector<HTMLButtonElement>('[data-agent-shortcut="other-provider"]')!.click());
     expect(onLaunchAgent).toHaveBeenCalledWith(expect.objectContaining({ id: "other-provider" }), "root", { text: "Mensaje para otro proveedor", attachments: [staged] });
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("moves context to the header and cycles execution from the focused draft without sending", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  chatUiState.patchPane("codex", { activeId: null, currentProjectId: "child", currentAgentId: null, draft: "Conservar texto", attachments: [staged] });
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host); let vm!: ChatPaneVM;
+  function Probe() { vm = useChatPane({ provider: "codex", mode: "api", active: true }); return createElement(ChatMain, { vm, attachmentImages: new Map() }); }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    const input = host.querySelector("textarea")!; input.focus();
+    expect(host.querySelector('.lxp-chat-composer-meta [data-picker="project"]')).not.toBeNull();
+    expect(host.querySelector('.lxp-chat-composer-meta [data-picker="agent"]')).not.toBeNull();
+    expect(host.querySelector('.prompt-bar__bar [data-picker="project"]')).toBeNull();
+    expect(host.querySelector('[data-picker="approval"]')).toBeNull();
+    expect(host.querySelector('[data-picker="speed"]')).not.toBeNull();
+    for (const expected of ["auto", "plan", "manual"]) {
+      const key = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+      await act(async () => input.dispatchEvent(key));
+      expect(key.defaultPrevented).toBe(true); expect(document.activeElement).toBe(input);
+      expect(vm.approvalMode).toBe(expected); expect(input.value).toBe("Conservar texto");
+      expect(vm.attachments).toEqual([staged]); expect(vm.activeId).toBeNull();
+    }
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    await act(async () => input.dispatchEvent(tab)); expect(tab.defaultPrevented).toBe(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-picker="speed"]')!.click());
+    const fast = [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(el => el.textContent?.includes("Fast"));
+    expect(fast).toBeTruthy(); await act(async () => fast!.click());
+    expect(vm.conversationOptions.snapshot().speed).toBe("fast");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

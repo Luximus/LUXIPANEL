@@ -149,6 +149,7 @@ export interface ProviderRunOptions {
    * `reasoning_effort` on reasoning models). Absent → provider sends nothing.
    */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  speed?: "normal" | "fast";
   /**
    * CLI TEAM-LEADER run: the system prompt carries the delegation protocol and
    * the `team.*` tools ride the cross MCP channel. The CLI bridge must carve

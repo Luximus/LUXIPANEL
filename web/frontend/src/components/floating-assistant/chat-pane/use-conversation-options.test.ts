@@ -86,3 +86,14 @@ it("keeps legacy and explicitly automatic conversations automatic", async () => 
     await render(null);
   }
 });
+
+it("persists speed per chat and defaults legacy and new chats to normal", async () => {
+  await render("a");
+  await act(async () => { expect(await value.setSelectedSpeed("fast")).toBe(true); });
+  expect(assistantConversationsApi.setOptions).toHaveBeenCalledWith("a", { speed: "fast" });
+  expect(value.snapshot().speed).toBe("fast");
+  await render("b"); expect(value.selectedSpeed).toBe("normal");
+  vi.mocked(assistantConversationsApi.get).mockResolvedValueOnce({ ...data.a, speed: "fast" });
+  await render("a"); expect(value.selectedSpeed).toBe("fast");
+  await render(null); expect(value.selectedSpeed).toBe("normal");
+});

@@ -176,7 +176,7 @@ export const conversationsRepository = {
     firstMessage?: string,
     projectId?: string | null,
     agentId?: string | null,
-    choices: Pick<ConversationMeta, "model" | "effort" | "approvalMode"> = {},
+    choices: Pick<ConversationMeta, "model" | "effort" | "approvalMode" | "speed"> = {},
   ): Promise<ConversationMeta> {
     const meta = await metaStore(executor).create({
       ...choices,
@@ -214,7 +214,7 @@ export const conversationsRepository = {
   async patchMeta(
     executor: Executor | null | undefined,
     id: string,
-    patch: Partial<Pick<ConversationMeta, "title" | "pinned" | "provider" | "model" | "effort" | "approvalMode">>,
+    patch: Partial<Pick<ConversationMeta, "title" | "pinned" | "provider" | "model" | "effort" | "approvalMode" | "speed">>,
   ): Promise<ConversationMeta | null> {
     const update: Partial<ConversationMeta> = {};
     if (patch.title !== undefined) update.title = patch.title.slice(0, 120);
@@ -222,6 +222,7 @@ export const conversationsRepository = {
     if (patch.provider !== undefined) update.provider = patch.provider;
     if (patch.model !== undefined) update.model = patch.model;
     if (patch.effort !== undefined) update.effort = patch.effort;
+    if (patch.speed !== undefined) update.speed = patch.speed;
     if (patch.approvalMode !== undefined) update.approvalMode = patch.approvalMode;
     const scope = await resolveScope(executor, id);
     const store = storeForScope(executor, scope);

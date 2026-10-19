@@ -66,6 +66,7 @@ export function makeOpenAiResponsesProvider(api: ProviderApiConfig): AgentProvid
             store: false,
             input,
             tools: tools.length ? tools : undefined,
+            ...(opts.speed ? { service_tier: opts.speed === "fast" ? "fast" : "default" } : {}),
             reasoning: opts.effort ? { effort: opts.effort } : undefined,
           }),
           signal: withApiTimeout(opts.signal),

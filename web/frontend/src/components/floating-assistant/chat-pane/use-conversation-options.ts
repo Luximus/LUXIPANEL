@@ -5,7 +5,7 @@ import { assistantConversationsApi, type ConversationMeta } from "../assistant-a
 import { normalizeReasoningEffort, type ChatReasoningEffort } from "../reasoning-effort";
 import { chatUiState } from "../chat-ui-state";
 
-type Options = Required<Pick<ConversationMeta, "model" | "effort" | "approvalMode">>;
+type Options = Required<Pick<ConversationMeta, "model" | "effort" | "approvalMode" | "speed">>;
 const toEffort = (value: string): Options["effort"] => ({ Auto: "", Low: "low", Medium: "medium", High: "high", Extra: "xhigh", Max: "max" }[value] ?? "") as Options["effort"];
 const effortLabel = (value: Options["effort"]) => ({ "": "Auto", low: "Low", medium: "Medium", high: "High", xhigh: "Extra", max: "Max" }[value]);
 
@@ -17,7 +17,7 @@ export function useConversationOptions(input: {
   onRestoreProvider?: (provider: string, id: string) => void;
 }) {
   const { id, provider, active } = input;
-  const defaults = (): Options => ({ model: input.defaultModel, effort: normalizeReasoningEffort(input.defaultEffort), approvalMode: input.defaultApproval });
+  const defaults = (): Options => ({ model: input.defaultModel, effort: normalizeReasoningEffort(input.defaultEffort), approvalMode: input.defaultApproval, speed: "normal" });
   const [state, setState] = useState<{ id: string | null; value: Options; meta: ConversationMeta | null; ready: boolean; error: string | null }>(() => ({ id, value: defaults(), meta: null, ready: !id, error: null }));
   const stateRef = useRef(state); stateRef.current = state;
   const current = useRef(id); current.current = id;
@@ -29,7 +29,7 @@ export function useConversationOptions(input: {
     if (!active) return;
     pending.current = Promise.resolve(true);
     if (!id) { update({ id, value: defaults(), meta: null, ready: true, error: null }); return; }
-    update({ id, value: { model: "", effort: "", approvalMode: "manual" }, meta: null, ready: false, error: null });
+    update({ id, value: { model: "", effort: "", approvalMode: "manual", speed: "normal" }, meta: null, ready: false, error: null });
     void assistantConversationsApi.get(id).then(meta => {
       if (cancelled || current.current !== id || !meta) return;
       if (meta.provider && meta.provider !== provider) {
@@ -44,6 +44,7 @@ export function useConversationOptions(input: {
         effort: meta.effort ?? toEffort(legacy?.effort ?? "Auto"),
         // Legacy chats never inherit another chat's recent approval selection.
         approvalMode: meta.approvalMode ?? "manual",
+        speed: meta.speed === "fast" ? "fast" : "normal",
       } });
     }).catch(() => {
       if (!cancelled && current.current === id) update({ ...stateRef.current, error: "No se pudieron cargar las opciones del chat. Vuelve a abrirlo para reintentar." });
@@ -71,7 +72,7 @@ export function useConversationOptions(input: {
     pending.current = write;
     return write;
   };
-  const visible = state.id === id ? state.value : { model: "", effort: "" as const, approvalMode: "manual" as const };
+  const visible = state.id === id ? state.value : { model: "", effort: "" as const, approvalMode: "manual" as const, speed: "normal" as const };
   return {
     meta: state.id === id ? state.meta : null,
     ready: state.id === id && state.ready,
@@ -79,6 +80,8 @@ export function useConversationOptions(input: {
     selectedModel: visible.model, selectedEffort: effortLabel(visible.effort), approvalMode: visible.approvalMode,
     setSelectedModel: (model: string) => { void persist({ model }); },
     setSelectedEffort: (effort: string) => { void persist({ effort: toEffort(effort) }); },
+    selectedSpeed: visible.speed,
+    setSelectedSpeed: (speed: Options["speed"]) => persist({ speed }),
     changeApproval: (approvalMode: Options["approvalMode"]) => persist({ approvalMode }),
     select: (target: string) => { current.current = target; },
     isCurrent: (target: string) => current.current === target,

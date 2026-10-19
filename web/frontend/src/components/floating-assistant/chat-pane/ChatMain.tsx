@@ -493,17 +493,12 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               ],
               onChange: selectProjectAgent,
             }] : []),
-            ...(onApprovalModeChange ? [{
-              key: "approval", label: ct.approvalModeLabel ?? "Modo de aprobación del agente",
-              value: approvalMode,
-              title: ct.approvalModeHelp ?? "Cómo debe actuar el agente al realizar tareas: aprobación manual, automática o generar plan.",
-              icon: <i className="ti ti-shield-check text-sm" aria-hidden />,
-              options: [
-                { key: "manual", name: ct.approvalManual ?? "Aprob. manual" },
-                { key: "auto", name: ct.approvalAuto ?? "Aprob. automática" },
-                { key: "plan", name: ct.approvalPlan ?? "Generar plan" },
-              ],
-              onChange: (key: string) => { void onApprovalModeChange(key as ApprovalMode); },
+            ...(provider === "codex" ? [{
+              key: "speed", label: "Velocidad", value: vm.conversationOptions.selectedSpeed,
+              title: "Velocidad · Fast consume más cuota; depende del modelo y del plan",
+              icon: <i className="ti ti-bolt text-sm" aria-hidden />,
+              options: [{ key: "normal", name: "Normal" }, { key: "fast", name: "Fast" }],
+              onChange: (key: string) => { void vm.conversationOptions.setSelectedSpeed(key as "normal" | "fast"); },
             }] : []),
             {
               key: "provider", label: ct.changeProvider ?? "Cambiar proveedor",
@@ -519,14 +514,12 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
           ];
           {/* Single action slot to the right of the pill: renders exactly ONE of
               record-bar / stop / send / mic / disabled-send by priority. */}
-          const composerNode = (
-          <>
-          {active && mobileNavigation && <ChatNavbar project={toolbarPickers[0]} terminalAvailable={terminalAvailable}
-            terminalLabel={ct.openTerminal ?? "Terminal"} multimediaLabel={ct.multimedia ?? "Multimedia"}
-            onTerminal={() => window.__lxpFloatingTerminalAPI?.requestOpen()} onMultimedia={() => setBrowserOpen(true)} />}
-          <div className="lxp-chat-composer relative border-t border-border p-3 shrink-0 space-y-2">
-          {(!isMobile || onCloseDrawer || headerAgent || activeId || streaming || backgroundRunning || chatTokens.total > 0 || attachments.length > 0 || locationNames.length > 0 || (ctx?.enabled && ctx.limit > 0 && (ctx.warn || ctx.ratio >= 0.5))) && (
-            <div className="lxp-chat-composer-meta mx-auto flex w-full max-w-[780px] flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+          const cycleExecutionMode = () => {
+            const modes: ApprovalMode[] = ["manual", "auto", "plan"];
+            void onApprovalModeChange?.(modes[(modes.indexOf(approvalMode) + 1) % modes.length]);
+          };
+          const executionLabel = approvalMode === "auto" ? (ct.approvalAuto ?? "Aprob. automática") : approvalMode === "plan" ? (ct.approvalPlan ?? "Generar plan") : (ct.approvalManual ?? "Aprob. manual");
+          const composerHeader = <>
               <button type="button" data-search-target="chat-list-toggle" onClick={() => setListOpen((value) => !value)} className="hidden sm:inline-flex h-6 items-center justify-center rounded px-1 text-muted-foreground hover:bg-accent" title={listOpen ? (ct.hideList ?? "Ocultar lista") : (ct.showList ?? "Mostrar lista")} aria-label={listOpen ? (ct.hideList ?? "Ocultar lista") : (ct.showList ?? "Mostrar lista")}>
                 <i className={`ti ${listOpen ? "ti-chevron-left" : "ti-chevron-right"} text-sm`} aria-hidden />
               </button>
@@ -567,17 +560,17 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   {ct.agentHistoryAll ?? "Todos los agentes"}
                 </button>
               )}
+              {activeId && (
+                <button type="button" onClick={() => void copyChatId(activeId)} title={chatIdCopied ? (ct.copyDone ?? "Copiado") : (ct.copyChatId ?? "Copiar ID chat")} aria-label={ct.copyChatId ?? "Copiar ID chat"} className="lxp-chat-copy-id inline-flex h-6 items-center gap-1 rounded-md border border-border bg-muted/40 px-2 text-[10px] text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
+                  <i className={`ti ${chatIdCopied ? "ti-check" : "ti-copy"} text-xs`} aria-hidden />
+                  {ct.copyChatId ?? "Copiar ID chat"}
+                </button>
+              )}
               {chatTokens.total > 0 && (
                 <span className="lxp-chat-token-counter inline-flex h-6 items-center gap-1 text-muted-foreground tabular-nums" title={ct.tokenAccumTooltip ?? `Tokens acumulados de este chat${chatTokens.estimated ? " (incluye estimaciones de CLI)" : " (recuento real)"} · ${chatTokens.assistantTurns} turno(s)`}>
                   <span aria-hidden>Σ</span>{formatTokens(chatTokens.total)}{chatTokens.estimated ? "~" : ""} tok
                   <span className="opacity-70">· {chatTokens.assistantTurns}</span>
                 </span>
-              )}
-              {activeId && (
-                <button type="button" onClick={() => void copyChatId(activeId)} title={chatIdCopied ? (ct.copyDone ?? "Copiado") : (ct.copyChatId ?? "Copiar ID chat")} aria-label={ct.copyChatId ?? "Copiar ID chat"} className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-muted/40 px-2 text-[10px] text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
-                  <i className={`ti ${chatIdCopied ? "ti-check" : "ti-copy"} text-xs`} aria-hidden />
-                  {ct.copyChatId ?? "Copiar ID chat"}
-                </button>
               )}
               {attachments.length > 0 && (
                 <div className="lxp-chat-staged-attachments" aria-label={ct.attachments ?? "Adjuntos"}>
@@ -605,14 +598,22 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
               )}
               {streaming ? <span className="inline-flex h-6 items-center gap-1 text-emerald-500"><i className="ti ti-loader-2 animate-spin" aria-hidden />{ct.responding ?? "respondiendo…"} <StreamTimer running={streaming} /></span> : backgroundRunning ? <span className="inline-flex h-6 items-center gap-1 text-amber-500" title={ct.backgroundRunningTitle ?? "La tarea sigue ejecutándose en el servidor"}><i className="ti ti-cloud-cog" aria-hidden />{ct.inBackground ?? "en background"}</span> : null}
               {locationNames.length > 0 && (
-                <span className="lxp-chat-project-path" title={locationLabel} aria-label={locationLabel}>
-                  <i className="ti ti-folder" aria-hidden="true" />
-                  <span className="lxp-chat-project-path-text">{locationLabel}</span>
-                </span>
+                <nav className="lxp-chat-project-path" title={locationLabel} aria-label="Ruta del proyecto">
+                  <ol>{locationNames.map((name, index) => <li key={`${index}:${name}`}>
+                    {index > 0 && <span aria-hidden="true">/</span>}
+                    <span aria-current={index === locationNames.length - 1 ? "page" : undefined}>{name}</span>
+                  </li>)}</ol>
+                </nav>
               )}
               {onCloseDrawer && <button type="button" onClick={onCloseDrawer} aria-label={ct.closeAssistant ?? "Cerrar asistente"} title={ct.close ?? "Cerrar"} className="ml-auto sm:hidden rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><i className="ti ti-x text-base" aria-hidden /></button>}
-            </div>
-          )}
+          </>;
+          const composerNode = (
+          <>
+          {active && mobileNavigation && <ChatNavbar project={toolbarPickers[0]} terminalAvailable={terminalAvailable}
+            terminalLabel={ct.openTerminal ?? "Terminal"} multimediaLabel={ct.multimedia ?? "Multimedia"}
+            onTerminal={() => window.__lxpFloatingTerminalAPI?.requestOpen()} onMultimedia={() => setBrowserOpen(true)} />}
+          <div className="lxp-chat-composer relative border-t border-border p-3 shrink-0 space-y-2">
+
           <div className="lxp-chat-composer-navigation" />
           {/* Recovery runs silently; only an exhausted recovery needs a notice. */}
           {mcpExpired && mcpRepairError && (
@@ -673,7 +674,14 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             sources={[]}
             settingsLabel={ct.advancedSettings ?? "Configuración avanzada"}
             onOpenSettings={() => window.dispatchEvent(new CustomEvent("luxipanel:assistant-settings-open"))}
-            toolbarPickers={mobileNavigation ? toolbarPickers.filter(picker => picker.key !== "project") : toolbarPickers}
+            toolbarPickers={toolbarPickers.map(picker => picker.key === "project" ? { ...picker, before: undefined } : picker)}
+            headerPickerKeys={["project", "agent"]}
+            headerControls={composerHeader}
+            onCycleExecutionMode={cycleExecutionMode}
+            toolbarControls={<>
+              {toolbarPickers[0]?.before}
+              {<button type="button" data-execution-mode={approvalMode} className="prompt-bar__pick" aria-keyshortcuts="Shift+Tab" title={`${executionLabel} · Shift+Tab`} onClick={cycleExecutionMode}><i className="ti ti-shield-check" aria-hidden /><span aria-live="polite">{executionLabel}</span></button>}
+            </>}
             inputLeading={mobileNavigation ? null : <a href="/panel/preferences#pref-profile" className="prompt-bar__profile-avatar" aria-label={`${ct.openProfile ?? "Abrir perfil"}${userInitials ? ` (${userInitials})` : ""}`} title={ct.openProfile ?? "Abrir perfil"}><span aria-hidden="true">{userInitials ?? <i className="ti ti-user" aria-hidden="true" />}</span></a>}
             commands={SLASH_COMMANDS.map((command) => ({ key: command.cmd, name: command.cmd, description: command.desc }))}
             models={[

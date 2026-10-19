@@ -696,14 +696,14 @@ describe("conversation history and options isolation", () => {
 
   it("persists each chat's options without altering another chat or its project", async () => {
     const ex = makeExecutor([]);
-    const a = await conversationsRepository.create(ex, "codex", "A", "project-a", null, { model: "model-a", effort: "high", approvalMode: "plan" });
+    const a = await conversationsRepository.create(ex, "codex", "A", "project-a", null, { model: "model-a", effort: "high", approvalMode: "plan", speed: "fast" });
     const b = await conversationsRepository.create(ex, "claude", "B", null, null, { model: "model-b", approvalMode: "manual" });
-    await conversationsRepository.patchMeta(ex, a.id!, { approvalMode: "auto", effort: "", model: "" });
+    await conversationsRepository.patchMeta(ex, a.id!, { approvalMode: "auto", effort: "", model: "", speed: "normal" });
     expect(await conversationsRepository.getMeta(ex, a.id!)).toMatchObject({ projectId: "project-a", model: "", effort: "", approvalMode: "auto" });
     expect(await conversationsRepository.getMeta(ex, b.id!)).toMatchObject({ projectId: null, model: "model-b", approvalMode: "manual" });
     await conversationsRepository.patchRuntime(ex, b.id!, { provider: "codex" });
     expect((await conversationsRepository.getMeta(ex, b.id!))?.provider).toBe("claude");
-    expect(col("assistant", `conv-u1-${a.id}`).get("__meta")).toMatchObject({ approvalMode: "auto", effort: "", model: "" });
+    expect(col("assistant", `conv-u1-${a.id}`).get("__meta")).toMatchObject({ approvalMode: "auto", effort: "", model: "", speed: "normal" });
   });
 });
 

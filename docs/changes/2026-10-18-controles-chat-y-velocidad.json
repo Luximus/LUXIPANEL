@@ -1,0 +1,8 @@
+{
+  "title": "Controles del chat más accesibles y selección de velocidad",
+  "changes": [
+    "Los selectores de proyecto y agente comparten la fila de regreso, con la ruta como miga de pan y Copiar ID junto a Todos los agentes.",
+    "Shift+Tab alterna entre aprobación manual, automática y plan desde el texto; el modo también puede cambiarse pulsando su indicador.",
+    "Los chats de OpenAI y Codex permiten guardar velocidad Normal o Fast de forma independiente."
+  ]
+}

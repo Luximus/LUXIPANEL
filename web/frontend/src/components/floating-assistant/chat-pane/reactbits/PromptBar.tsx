@@ -97,6 +97,9 @@ export interface PromptBarProps {
   /** Selectors that belong inside the prompt toolbar (provider/project). */
   toolbarControls?: ReactNode;
   toolbarPickers?: PromptBarPicker[];
+  headerPickerKeys?: string[];
+  headerControls?: ReactNode;
+  onCycleExecutionMode?: () => void;
   /** Optional control immediately beside the message input. */
   inputLeading?: ReactNode;
   /** Chatbox mobile: settings and send flank the input; selectors stay above. */
@@ -282,6 +285,9 @@ const PromptBar: React.FC<PromptBarProps> = ({
   sources = DEFAULT_SOURCES,
   toolbarControls,
   toolbarPickers = [],
+  headerPickerKeys = [],
+  headerControls,
+  onCycleExecutionMode,
   inputLeading,
   mobileLayout = false,
   settingsLabel = 'Configuración avanzada',
@@ -722,6 +728,11 @@ const PromptBar: React.FC<PromptBarProps> = ({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.nativeEvent.isComposing && !readOnly && onCycleExecutionMode) {
+      e.preventDefault();
+      if (!e.repeat) { closeMenus(); setDismissed(true); onCycleExecutionMode(); }
+      return;
+    }
     if (open && list.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -1006,6 +1017,30 @@ const PromptBar: React.FC<PromptBarProps> = ({
         </div>
   ) : null;
 
+  const renderPicker = (item: PromptBarPicker) => {
+    const selected = item.options.find(option => option.key === item.value);
+    const expanded = pickerOpen === item.key;
+    return <span key={item.key} className={`prompt-bar__picker-group prompt-bar__picker-group--${item.key}`}>
+      {item.before && <span className="prompt-bar__picker-leading" onClick={closeMenus}>{item.before}</span>}
+      <button type="button" className="prompt-bar__pick prompt-bar__context-pick"
+        data-picker={item.key} role="combobox" aria-label={item.label} title={item.title ?? selected?.name ?? item.label}
+        aria-haspopup="listbox" aria-expanded={expanded} aria-controls={expanded ? `${menuId}-list` : undefined}
+        aria-activedescendant={expanded && list.length ? `${menuId}-${cursor}` : undefined}
+        data-on={expanded ? '' : undefined}
+        onKeyDown={event => onPickerKeyDown(event, item.key, item.options, item.value)}
+        onClick={event => {
+          pickerTriggerRef.current = event.currentTarget;
+          closeMenus(); setDismissed(true);
+          setActive(Math.max(0, item.options.findIndex(option => option.key === item.value)));
+          setPickerOpen(expanded ? null : item.key);
+        }}>
+        {item.icon && <span className="prompt-bar__picker-icon">{item.icon}</span>}
+        <span className="prompt-bar__picker-value">{selected?.name ?? item.label}</span>
+        <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={2.4} />
+      </button>
+    </span>;
+  };
+
   return (
     <div
       ref={rootRef}
@@ -1026,6 +1061,10 @@ const PromptBar: React.FC<PromptBarProps> = ({
     >
       {mobileLayout && mobileSettingsTarget ? createPortal(settingsButton, mobileSettingsTarget) : null}
       {menuNode}
+      {(headerControls || headerPickerKeys.length > 0) && <div className="lxp-chat-composer-meta flex w-full flex-wrap items-center gap-x-2 gap-y-1 text-[11px] mb-2">
+        <span className="lxp-chat-context-selectors inline-flex min-w-0 flex-wrap items-center gap-1">{toolbarPickers.filter(item => headerPickerKeys.includes(item.key)).map(renderPicker)}</span>
+        {headerControls}
+      </div>}
 
       <div
         className="prompt-bar__field"
@@ -1100,29 +1139,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
         <div className="prompt-bar__bar">
           {!mobileLayout && settingsButton}
           {toolbarPickers.length > 0 || toolbarControls ? <span className="prompt-bar__toolbar-controls">
-            {toolbarPickers.map(item => {
-              const selected = item.options.find(option => option.key === item.value);
-              const expanded = pickerOpen === item.key;
-              return <span key={item.key} className={`prompt-bar__picker-group prompt-bar__picker-group--${item.key}`}>
-                {item.before && <span className="prompt-bar__picker-leading" onClick={closeMenus}>{item.before}</span>}
-                <button type="button" className="prompt-bar__pick prompt-bar__context-pick"
-                  data-picker={item.key} role="combobox" aria-label={item.label} title={item.title ?? selected?.name ?? item.label}
-                  aria-haspopup="listbox" aria-expanded={expanded} aria-controls={expanded ? `${menuId}-list` : undefined}
-                  aria-activedescendant={expanded && list.length ? `${menuId}-${cursor}` : undefined}
-                  data-on={expanded ? '' : undefined}
-                  onKeyDown={event => onPickerKeyDown(event, item.key, item.options, item.value)}
-                  onClick={event => {
-                    pickerTriggerRef.current = event.currentTarget;
-                    closeMenus(); setDismissed(true);
-                    setActive(Math.max(0, item.options.findIndex(option => option.key === item.value)));
-                    setPickerOpen(expanded ? null : item.key);
-                  }}>
-                  {item.icon && <span className="prompt-bar__picker-icon">{item.icon}</span>}
-                  <span className="prompt-bar__picker-value">{selected?.name ?? item.label}</span>
-                  <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={2.4} />
-                </button>
-              </span>;
-            })}
+            {toolbarPickers.filter(item => !headerPickerKeys.includes(item.key)).map(renderPicker)}
             {toolbarControls}
           </span> : null}
           {models.length > 0 ? (

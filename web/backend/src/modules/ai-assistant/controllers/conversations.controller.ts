@@ -37,6 +37,7 @@ const choiceSchema = {
   model: z.string().max(200).optional(),
   effort: z.enum(["", "low", "medium", "high", "xhigh", "max"]).optional(),
   approvalMode: z.enum(["manual", "auto", "plan"]).optional(),
+  speed: z.enum(["normal", "fast"]).optional(),
 };
 const createSchema = z.object({
   ...choiceSchema,
@@ -171,7 +172,7 @@ export const conversationsController = {
       parsed.data.firstMessage,
       parsed.data.projectId ?? null,
       parsed.data.agentId ?? null,
-      { model: parsed.data.model ?? "", effort: parsed.data.effort ?? "", approvalMode: parsed.data.approvalMode ?? "manual" },
+      { model: parsed.data.model ?? "", effort: parsed.data.effort ?? "", approvalMode: parsed.data.approvalMode ?? "manual", speed: parsed.data.speed ?? "normal" },
     );
     // Obsidian mints a context container for LOOSE chats (no project). It
     // listens for this event and decides — keeps the dependency one-way.
