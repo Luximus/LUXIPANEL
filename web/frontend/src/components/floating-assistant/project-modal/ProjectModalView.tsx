@@ -136,7 +136,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
           /* Contenido de la sección con la transición de vista del panel
              (motion.css): remontado por sección, entra desde el lado según el
              orden del menú. */
-          <ViewTransition viewKey={tab} direction={tabDirection} className={wide ? "flex h-full min-h-0 flex-col" : "space-y-3"}>
+          <ViewTransition viewKey={tab} direction={tabDirection} className={wide ? "flex h-full min-h-0 flex-col" : tab === "context" ? "flex h-full flex-col gap-3" : "space-y-3"}>
           {tab === "general" && (
             <>
               {/* In-place navigation: the parent project button (Back moved to
@@ -430,7 +430,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
 
           {tab === "context" && (
             <>
-              <label className="block text-xs">
+              <label className="flex flex-1 flex-col text-xs" data-project-context-editor>
                 <span className="flex items-center justify-between gap-2 text-muted-foreground">
                   <span>{project?.id ? `${t.tabContext} · ${vm.contextDocument?.rel ?? rootDoc}` : t.instructionsLabel}</span>
                   {project?.id && (vm.contextDocument && !vm.contextDocument.needsMigration && instructions === vm.contextDocument.content && canEditRoot
@@ -447,12 +447,12 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   onChange={(e) => setInstructions(e.target.value)}
                   rows={8}
                   placeholder={t.instructionsPlaceholder}
-                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none resize-y"
+                  className="mt-1 min-h-48 w-full flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                 />
               </label>
 
               {/* Comandos de verificación (definition of done, equipos v2) */}
-              <label className="block text-xs">
+              <label className="block shrink-0 text-xs">
                 <span className="text-muted-foreground">{t.verifyLabel}</span>
                 <textarea
                   value={verifyText}
@@ -465,7 +465,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
               </label>
 
               {/* Auto-captura al vault Obsidian (opt-in por proyecto) */}
-              <label className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs cursor-pointer">
+              <label className="flex shrink-0 items-start gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs cursor-pointer">
                 <input
                   type="checkbox"
                   checked={autoCapture}
@@ -483,7 +483,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
               {/* Snippets de terminal: pre-filtro por categoría (+tags) para los
                   chats de este proyecto. Vacío = sin filtro. Sin permiso de
                   terminal → campos deshabilitados con aviso. */}
-              <div className="block rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1.5">
+              <div className="block shrink-0 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1.5">
                 <span className="font-medium">{t.snippetsSection}</span>
                 <p className="text-[10px] text-muted-foreground">{t.snippetsHelp}</p>
                 {snippetOpts !== null && !snippetOpts.ok && (
