@@ -19,6 +19,7 @@ vi.mock("../../../config/auth.js", () => ({
       secure: false,
       sameSite: "lax" as const,
       domain: "",
+      legacyDomains: [],
     },
   },
 }));
@@ -33,6 +34,7 @@ vi.mock("../../../shared/redis/index.js", () => ({
 }));
 
 import { tokenService, type TokenPayload } from "./token.service.js";
+import type { Response } from "express";
 
 const samplePayload: TokenPayload = {
   userId: 1,
@@ -55,6 +57,19 @@ describe("tokenService.sign", () => {
     const normal   = tokenService.sign(samplePayload, false);
     const remember = tokenService.sign(samplePayload, true);
     expect(remember.expiresAt).toBeGreaterThan(normal.expiresAt);
+  });
+});
+
+describe("session cookie persistence", () => {
+  it("persists only remembered sessions while both keep the same signed deadline", () => {
+    const cookie = vi.fn();
+    const res = { cookie, req: { headers: { host: "localhost" } } } as unknown as Response;
+    const deadline = Date.now() + 12 * 3600_000;
+    tokenService.setSessionCookie(res, "token", false, deadline);
+    expect(cookie.mock.calls[0]?.[2]).not.toHaveProperty("maxAge");
+    tokenService.setSessionCookie(res, "token", true, deadline);
+    expect(cookie.mock.calls[1]?.[2].maxAge).toBeGreaterThan(11 * 3600_000);
+    expect(cookie.mock.calls[1]?.[2].maxAge).toBeLessThanOrEqual(12 * 3600_000);
   });
 });
 

@@ -7,6 +7,8 @@
 import type { Request, Response } from "express";
 import { githubStatus } from "../../../shared/github/user-connection.js";
 import { tokenService, type TokenPayload } from "../services/token.service.js";
+import { refreshedSessionExpiry } from "../services/session-duration.js";
+import { securitySettingsService } from "../../admin/services/security-settings.service.js";
 import { authConfig } from "../../../config/auth.js";
 import { extractToken } from "../middlewares/session.middleware.js";
 import { authService } from "../services/auth.service.js";
@@ -265,8 +267,13 @@ export const sessionController = {
         external: current.external,
       }),
     );
-    const result = tokenService.sign(payload, false);
-    tokenService.setSessionCookie(res, result.token, false);
+    const settings = await securitySettingsService.read(identityExecutor);
+    const expiresAt = refreshedSessionExpiry(base, settings.sessionDurationHours);
+    if (!expiresAt) throw new AuthError("Invalid or expired session");
+    const remember = base.remember === true;
+    payload.remember = remember;
+    const result = tokenService.signWithExpiry(payload, expiresAt);
+    tokenService.setSessionCookie(res, result.token, remember, expiresAt);
     res.json({
       ok: true,
       kind: payload.kind,

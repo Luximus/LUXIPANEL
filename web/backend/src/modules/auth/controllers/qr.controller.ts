@@ -9,6 +9,10 @@ import type { Request, Response } from "express";
 import { qrAuthService, qrRequesterFingerprint } from "../services/qr-auth.service.js";
 import { authService } from "../services/auth.service.js";
 import { tokenService } from "../services/token.service.js";
+import { configuredSessionExpiry } from "../services/session-duration.js";
+import { securitySettingsService } from "../../admin/services/security-settings.service.js";
+import { getDirectExecutorByBridgeSessionId } from "../../../shared/executor/factory.js";
+import { localExecutor } from "../../../shared/executor/local-executor.js";
 import { panelUserRepository } from "../repositories/index.js";
 import { asyncHandler } from "../../../shared/types/index.js";
 import { AuthError } from "../../../shared/errors/index.js";
@@ -83,9 +87,15 @@ export const qrController = {
     // only restores DB-derived fields (role/modules/permissions); without the
     // bridge fields the cookie is "unbridged" and every /panel/* route 401s.
     if (result.bridge) Object.assign(payload, pickDefined(result.bridge as Record<string, unknown>));
-    const { token, expiresAt } = tokenService.sign(payload, false);
+    const executor = result.bridge?.direct
+      ? await getDirectExecutorByBridgeSessionId(result.bridge.bridgeSessionId ?? "", result.bridge.targetId, result.bridge.targetName)
+      : localExecutor;
+    if (!executor) throw new AuthError("Invalid or expired session");
+    const settings = await securitySettingsService.read(executor);
+    const expiresAt = configuredSessionExpiry(settings.sessionDurationHours);
+    const { token } = tokenService.signWithExpiry(payload, expiresAt);
 
-    tokenService.setSessionCookie(res, token, false);
+    tokenService.setSessionCookie(res, token, false, expiresAt);
 
     await authService.logAudit("qr_login", user.id, "info", requestMeta(req));
 

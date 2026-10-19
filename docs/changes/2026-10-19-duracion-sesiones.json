@@ -1,0 +1,7 @@
+{
+  "title": "Duración de sesión coherente",
+  "changes": [
+    "Las sesiones nuevas respetan la duración configurada incluso al usar Recordarme, la verificación en dos pasos o el acceso por QR.",
+    "Renovar la sesión actualiza los permisos sin ampliar su vencimiento original; Recordarme conserva la sesión al cerrar el navegador solo hasta ese límite."
+  ]
+}

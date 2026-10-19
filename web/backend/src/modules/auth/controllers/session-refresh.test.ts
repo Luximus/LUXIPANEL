@@ -6,10 +6,11 @@ import { getContextExecutor, runWithExecutor } from "../../../shared/executor/co
 import type { Executor } from "../../../shared/executor/types.js";
 import { PrivilegeDropExecutor } from "../../../shared/executor/privilege-drop-executor.js";
 
-const m = vi.hoisted(() => ({ find: vi.fn(), build: vi.fn(), groups: vi.fn(), sign: vi.fn(), verify: vi.fn(), cookie: vi.fn(), direct: vi.fn(), wsSign: vi.fn() }));
+const m = vi.hoisted(() => ({ find: vi.fn(), build: vi.fn(), groups: vi.fn(), sign: vi.fn(), verify: vi.fn(), cookie: vi.fn(), direct: vi.fn(), wsSign: vi.fn(), settings: vi.fn() }));
 vi.mock("../repositories/index.js", () => ({ panelUserRepository: { findById: m.find } }));
 vi.mock("../services/auth.service.js", () => ({ authService: { buildTokenPayload: m.build } }));
 vi.mock("../services/token.service.js", () => ({ tokenService: { verify: m.verify, sign: m.sign, signWithExpiry: m.wsSign, setSessionCookie: m.cookie } }));
+vi.mock("../../admin/services/security-settings.service.js", () => ({ securitySettingsService: { read: m.settings } }));
 vi.mock("../../../shared/executor/factory.js", () => ({ getDirectExecutorByBridgeSessionId: m.direct, disposeDirectExecutor: vi.fn() }));
 vi.mock("../middlewares/session.middleware.js", () => ({ extractToken: () => "session-token" }));
 vi.mock("../../users/services/system-accounts.service.js", () => ({ systemAccountsService: { userGroups: m.groups } }));
@@ -34,11 +35,12 @@ async function refresh(executor = dropped, user = current) {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  m.verify.mockResolvedValue({ ...current, bridgeSessionId: "local-bridge", targetId: "local", local: true });
+  m.verify.mockResolvedValue({ ...current, bridgeSessionId: "local-bridge", targetId: "local", local: true, authTime: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 12 * 3600 });
   m.find.mockResolvedValue({ id: 91, username: "hp123", enabled: true, groups: ["old-group"] });
   m.groups.mockResolvedValue(["current-group"]);
   m.build.mockResolvedValue({ userId: 91, username: "hp123", kind: "user", role: "user", modules: ["mail"] });
-  m.sign.mockReturnValue({ token: "refreshed", expiresAt: Date.now() + 60_000 });
+  m.settings.mockResolvedValue({ sessionDurationHours: 12 });
+  m.wsSign.mockImplementation((_payload, expiresAt) => ({ token: "refreshed", expiresAt }));
 });
 
 describe("normal panel tenant session refresh", () => {
@@ -50,21 +52,21 @@ describe("normal panel tenant session refresh", () => {
     const { next } = await refresh();
     expect(next).not.toHaveBeenCalled();
     expect(m.build).toHaveBeenCalledWith(expect.objectContaining({ id: 91, groups: ["current-group"] }));
-    expect(m.sign).toHaveBeenCalledWith(expect.objectContaining({ userId: 91, kind: "user", modules: ["mail"], local: true, ...scope }), false);
+    expect(m.wsSign).toHaveBeenCalledWith(expect.objectContaining({ userId: 91, kind: "user", modules: ["mail"], local: true, ...scope }), expect.any(Number));
   });
 
   it.each([{ enabled: false, username: "hp123" }, { enabled: true, username: "another-user" }])("rejects disabled or mismatched identities", async (patch) => {
     m.find.mockResolvedValue({ id: 91, ...patch });
     const { next } = await refresh();
     expect(next).toHaveBeenCalledWith(expect.any(Error));
-    expect(m.sign).not.toHaveBeenCalled();
+    expect(m.wsSign).not.toHaveBeenCalled();
   });
 
   it("fails closed if the tenant's executor belongs to another owner", async () => {
     const other = new PrivilegeDropExecutor(service, "another-user", "/home/another-user");
     const { next } = await refresh(other);
     expect(next).toHaveBeenCalledWith(expect.any(Error));
-    expect(m.find).not.toHaveBeenCalled(); expect(m.sign).not.toHaveBeenCalled();
+    expect(m.find).not.toHaveBeenCalled(); expect(m.wsSign).not.toHaveBeenCalled();
   });
   it("preserves the complete tenant envelope in short-lived WebSocket tokens", async () => {
     m.wsSign.mockReturnValue({ token: "ws-token" });
@@ -77,13 +79,29 @@ describe("normal panel tenant session refresh", () => {
   it("renews the base cookie using the base server, even when the tab points elsewhere", async () => {
     const baseExecutor = { target: { id: "base-server", name: "Base" } } as Executor;
     m.direct.mockResolvedValue(baseExecutor);
-    m.verify.mockResolvedValue({ userId: 91, username: "hp123", bridgeSessionId: "base-bridge", targetId: "base-server", direct: true });
+    m.verify.mockResolvedValue({ userId: 91, username: "hp123", bridgeSessionId: "base-bridge", targetId: "base-server", direct: true, authTime: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 12 * 3600 });
     m.find.mockImplementation(async () => {
       expect(getContextExecutor()).toBe(baseExecutor);
       return { id: 91, username: "hp123", enabled: true };
     });
     const { next } = await refresh(service, { userId: 91, username: "hp123", kind: "user", role: "user", modules: [], bridgeSessionId: "tab-bridge" } as typeof current);
     expect(next).not.toHaveBeenCalled();
-    expect(m.sign).toHaveBeenCalledWith(expect.objectContaining({ bridgeSessionId: "base-bridge", targetId: "base-server", direct: true }), false);
+    expect(m.settings).toHaveBeenCalledWith(baseExecutor);
+    expect(m.wsSign).toHaveBeenCalledWith(expect.objectContaining({ bridgeSessionId: "base-bridge", targetId: "base-server", direct: true }), expect.any(Number));
+  });
+  it("keeps the original deadline and refuses a session past the configured limit", async () => {
+    const started = Math.floor(Date.now() / 1000) - 11 * 3600;
+    m.verify.mockResolvedValue({ ...current, authTime: started, exp: started + 48 * 3600, remember: true });
+    const { next } = await refresh();
+    expect(next).not.toHaveBeenCalled();
+    expect(m.wsSign).toHaveBeenCalledWith(expect.objectContaining({ remember: true }), (started + 12 * 3600) * 1000);
+    expect(m.cookie).toHaveBeenCalledWith(expect.anything(), "refreshed", true, (started + 12 * 3600) * 1000);
+
+    vi.clearAllMocks();
+    m.verify.mockResolvedValue({ ...current, authTime: started - 2 * 3600, exp: started + 48 * 3600 });
+    m.settings.mockResolvedValue({ sessionDurationHours: 12 });
+    const expired = await refresh();
+    expect(expired.next).toHaveBeenCalledWith(expect.any(Error));
+    expect(m.wsSign).not.toHaveBeenCalled();
   });
 });

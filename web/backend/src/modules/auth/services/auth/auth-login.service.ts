@@ -14,8 +14,8 @@
 
 import { panelUserRepository, totpRepository } from "../../repositories/index.js";
 import { hostingTemplateService } from "../../../hosting/services/hosting-template.service.js";
-import { tokenService, parseDuration, type TokenPayload } from "../token.service.js";
-import { authConfig } from "../../../../config/auth.js";
+import { tokenService, type TokenPayload } from "../token.service.js";
+import { configuredSessionExpiry } from "../session-duration.js";
 import { AuthError } from "../../../../shared/errors/index.js";
 import { eventBus, Events } from "../../../../shared/events/index.js";
 import { systemAccountsService } from "../../../users/services/system-accounts.service.js";
@@ -267,7 +267,7 @@ export const authLoginService = {
     //    root-owned account sidecar as the sudo-capable service user) and
     //    validate the account + bcrypt within that executor scope.
     const serviceExec = new DirectSshExecutor(targetId, targetName, serviceMaterial);
-    const { account, panelUser, mfaPending } = await runWithExecutor(serviceExec, async () => {
+    const { account, panelUser, mfaPending, sessionDurationHours } = await runWithExecutor(serviceExec, async () => {
       // Same per-account lockout/throttle as login()/loginLocal(): enforced
       // BEFORE bcrypt.compare so a locked account never even runs the hash.
       // Scope = login subdomain (mirrors the SSH login path). The counter is
@@ -328,16 +328,15 @@ export const authLoginService = {
       const account = await hostingTemplateService.project(serviceExec, acc);
       const totp = await totpRepository.getByUser(panelUser.id);
       if ((settings.requireTwoFa || account.security?.requireMfa) && !totp?.enabled) throw new AuthError("This hosting plan requires MFA authentication", "TWO_FA_REQUIRED");
-      return { account, panelUser, mfaPending: !!totp?.enabled };
+      return { account, panelUser, mfaPending: !!totp?.enabled, sessionDurationHours: settings.sessionDurationHours };
     });
 
     // e) Cache the SERVICE material WITH owner/homeRoot for the JWT lifetime so
     //    the factory wraps the executor in a PrivilegeDropExecutor (`sudo -u
-    //    <owner>`). TTL mirrors login()'s remember/non-remember windows.
+    //    <owner>`). TTL matches the target's configured session duration.
     const bridgeSessionId = randomUUID();
-    const ttlSeconds = Math.floor(
-      parseDuration(remember ? authConfig.jwt.rememberExpiresIn : authConfig.jwt.expiresIn) / 1000,
-    );
+    const expiresAt = configuredSessionExpiry(sessionDurationHours);
+    const ttlSeconds = Math.ceil((expiresAt - Date.now()) / 1000);
     await sshCredentialsCache.put(
       bridgeSessionId,
       {
@@ -390,15 +389,15 @@ export const authLoginService = {
     };
     const signed = mfaPending
       ? tokenService.signPartial({ ...payload, kind: "mfa_pending", role: "mfa_pending", modules: [], permissions: undefined, remember })
-      : tokenService.sign(payload, remember);
+      : tokenService.signWithExpiry({ ...payload, remember }, expiresAt);
     const { token } = signed;
-    const expiresAt = "expiresAt" in signed ? signed.expiresAt as number : Date.now() + 300_000;
+    const signedExpiresAt = "expiresAt" in signed ? signed.expiresAt as number : Date.now() + 300_000;
 
     await authAuditService.logAudit("login_success", account.id, "info", meta, { remember, hosting: true });
     eventBus.emit(Events.AUTH_LOGIN_SUCCESS, { userId: account.id, username: account.username });
     log.info({ id: account.id, username: account.username, target: targetName }, "Hosting account logged in (password)");
 
     const { passwordHash: _omit, ...safeAccount } = account;
-    return { token, expiresAt, mfaPending, account: safeAccount };
+    return { token, expiresAt: signedExpiresAt, mfaPending, account: safeAccount };
   },
 };

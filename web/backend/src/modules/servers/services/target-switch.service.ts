@@ -99,7 +99,7 @@ export async function resignSessionWithBridge(
   const exp = (base as TokenPayload & { exp?: number }).exp;
   const expiresAtMs = typeof exp === "number" ? exp * 1000 : Date.now() + bridgeTtlSeconds() * 1000;
   const { token: fresh, expiresAt } = tokenService.signWithExpiry(payload, expiresAtMs);
-  tokenService.setSessionCookie(res, fresh, false, expiresAt);
+  tokenService.setSessionCookie(res, fresh, base.remember === true, expiresAt);
 
   // Revoke the previous JWT best-effort (denylist by jti). A revoke failure must
   // not break the switch — the fresh cookie is already set on the response.

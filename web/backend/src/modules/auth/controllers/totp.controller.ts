@@ -18,6 +18,7 @@ import {
 } from "../services/auth.service.js";
 import { securitySettingsService } from "../../admin/services/security-settings.service.js";
 import { tokenService } from "../services/token.service.js";
+import { configuredSessionExpiry } from "../services/session-duration.js";
 import { AuthError } from "../../../shared/errors/index.js";
 import { ErrorCodes } from "../../../shared/errors/codes.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
@@ -202,8 +203,13 @@ export const totpController = {
     else if (mfaUser.direct) payload.direct = true;
 
     payload.mfaAuthenticated = true;
-    const result = tokenService.sign(payload, remember ?? false);
-    tokenService.setSessionCookie(res, result.token, remember ?? false);
+    // The password step started this login. Keep that clock across the MFA
+    // step so the session and its SSH bridge share the same deadline.
+    payload.authTime = mfaUser.authTime ?? mfaUser.iat;
+    payload.remember = remember === true;
+    const expiresAt = configuredSessionExpiry(settings.sessionDurationHours, (payload.authTime ?? Math.floor(Date.now() / 1000)) * 1000);
+    const result = tokenService.signWithExpiry(payload, expiresAt);
+    tokenService.setSessionCookie(res, result.token, payload.remember, expiresAt);
 
     log.info({ userId }, "2FA verification successful");
 

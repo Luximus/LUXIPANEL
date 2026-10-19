@@ -291,6 +291,24 @@ describe("authService.buildLoginResponse", () => {
     expect(tokenService.signPartial).not.toHaveBeenCalled();
   });
 
+  it("uses the configured limit even when remember-me is selected", async () => {
+    vi.mocked(securitySettingsService.read).mockResolvedValue(settings({ sessionDurationHours: 12 }));
+    vi.mocked(totpRepository.getByUser).mockResolvedValue({ enabled: false } as never);
+    const started = Date.now();
+
+    await authService.buildLoginResponse(
+      { id: 1, username: "alice", displayName: "Alice", roleId: null, modules: '["mail"]' },
+      true,
+      {} as never,
+    );
+
+    const [payload, expiresAt] = vi.mocked(tokenService.signWithExpiry).mock.calls.at(-1)!;
+    expect(payload.remember).toBe(true);
+    expect(expiresAt).toBeGreaterThanOrEqual(started + 12 * 3600_000);
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + 12 * 3600_000);
+    expect(tokenService.setSessionCookie).toHaveBeenCalledWith(expect.anything(), "full-token", true, expiresAt);
+  });
+
   it("requires TOTP when the global 2FA setting is enabled", async () => {
     vi.mocked(securitySettingsService.read).mockResolvedValue(settings({ requireTwoFa: true }));
     vi.mocked(totpRepository.getByUser).mockResolvedValue({ enabled: false } as never);

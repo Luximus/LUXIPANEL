@@ -13,8 +13,8 @@
 
 import type { Response } from "express";
 import { totpRepository } from "../../repositories/index.js";
-import { authConfig } from "../../../../config/auth.js";
-import { tokenService, parseDuration, type TokenPayload } from "../token.service.js";
+import { tokenService, type TokenPayload } from "../token.service.js";
+import { configuredSessionExpiry } from "../session-duration.js";
 import { AuthError } from "../../../../shared/errors/index.js";
 import { ErrorCodes } from "../../../../shared/errors/codes.js";
 import { securitySettingsService } from "../../../admin/services/security-settings.service.js";
@@ -149,15 +149,10 @@ export const authSessionService = {
       if (user.bridge.local) payload.local = true;
       else payload.direct = true;
     }
-    // Session duration: respect the "remember me" checkbox first; otherwise
-    // use the panel-configured `session_duration_hours`. Remember-me defaults
-    // to JWT_REMEMBER_EXPIRES_IN (30d) and never falls below the configured
-    // session duration so users don't perceive a shorter session.
-    const baseHours = Math.max(1, settings.sessionDurationHours);
-    const baseMs = baseHours * 60 * 60 * 1000;
-    const rememberMs = parseDuration(authConfig.jwt.rememberExpiresIn, 30 * 24 * 60 * 60 * 1000);
-    const sessionMs = remember ? Math.max(rememberMs, baseMs) : baseMs;
-    const expiresAt = Date.now() + sessionMs;
+    // Remember-me only persists the cookie across browser restarts; the
+    // server's session duration remains the upper bound for the signed JWT.
+    payload.remember = remember;
+    const expiresAt = configuredSessionExpiry(settings.sessionDurationHours);
     const result = tokenService.signWithExpiry(payload, expiresAt);
     if (res) tokenService.setSessionCookie(res, result.token, remember, expiresAt);
     return { mfaPending: false, token: result.token, expiresAt: result.expiresAt };

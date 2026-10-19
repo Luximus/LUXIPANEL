@@ -291,7 +291,7 @@ export const tokenService = {
       secure,
       sameSite: authConfig.cookie.sameSite,
       domain: effectiveDomain,
-      maxAge,
+      ...(remember ? { maxAge } : {}),
       path: "/",
     });
     // Delete any stale wildcard-domain copy so it can't shadow this cookie.
