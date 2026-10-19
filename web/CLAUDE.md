@@ -1,4 +1,6 @@
 # LUXIPANEL web application
 Read backend/ARCHITECTURE.md, frontend/ARCHITECTURE.md and MODULE-SDK-SPEC.md before changing code.
 Backend layering: models → repositories → services → controllers → routes → index.ts. Services do not depend on Express. Module effects and target data go through Executor; installation data explicitly uses the local executor. Never import implementation code between modules. Preserve user/target isolation and verify live authorization for privileged actions.
-Build/typecheck one package at a time with NODE_OPTIONS=--max-old-space-size=2560. Test changes before deploying. Public module contributions use web/modules/<id> on the modules branch; core changes target main. Never publish credentials, production configuration, user files, build output or signing material.
+Build/typecheck one package at a time with NODE_OPTIONS=--max-old-space-size=2560. Test changes before deploying. Public module contributions use web/modules/<id> on the modules branch; development across clients uses developer, and reviewed stable delivery uses main. In panel-managed contribution sessions, preserve the original checkout and let the panel handle publication; do not commit, push or switch branches manually. Never publish credentials, production configuration, user files, build output or signing material.
+
+See ../docs/ai-project-structure.md for project boundaries, current client responsibilities and scoped assistant context. Documentation and assistant configuration updates do not require builds or restarts.

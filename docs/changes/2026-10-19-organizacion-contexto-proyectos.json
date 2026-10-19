@@ -1,0 +1,7 @@
+{
+  "title": "Guía de proyectos y contexto de agentes",
+  "changes": [
+    "La documentación distingue las áreas web, móvil y escritorio y explica cómo organizar sus subproyectos.",
+    "La guía aclara cómo mantener contextos, perfiles y skills por área sin confundir rutas de código, datos del proyecto y funciones antiguas."
+  ]
+}
