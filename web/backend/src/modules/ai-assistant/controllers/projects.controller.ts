@@ -10,6 +10,7 @@
  */
 
 import { z } from "zod";
+import path from "node:path";
 import type { Request, Response } from "express";
 import { asyncHandler, type SessionUser } from "../../../shared/types/index.js";
 import { zodIssues } from "../../../shared/validators/index.js";
@@ -41,6 +42,13 @@ const previewUrlSchema = z.string().trim().max(2048).refine((value) => {
   } catch { return false; }
 }, "La URL de vista previa debe ser HTTPS o una ruta del panel");
 const fileProjectRefSchema = z.object({ targetId: z.string().min(1).max(128), path: z.string().startsWith("/").max(512) }).nullable();
+
+function isWithinProjectDirectory(child: string, parent: string): boolean {
+  if (!child.startsWith("/") || !parent.startsWith("/") || child.includes("\0") || parent.includes("\0")) return false;
+  const base = path.posix.resolve(parent);
+  const candidate = path.posix.resolve(child);
+  return base === "/" || candidate === base || candidate.startsWith(`${base}/`);
+}
 
 const createSchema = z.object({
   profile: z.string().trim().max(2000).optional(),
@@ -86,6 +94,7 @@ const updateSchema = z.object({
   fileProjectRef: fileProjectRefSchema.optional(),
   provider: providerSchema.optional(),
   parentId: z.string().max(64).nullable().optional(),
+  sortOrder: z.number().finite().min(-1e12).max(1e12).optional(),
   servers: z.array(serverSchema).max(50).optional(),
   /** Opt-in auto-capture of conversation excerpts to the project vault (B2). */
   autoCapture: z.boolean().optional(),
@@ -164,6 +173,14 @@ export const projectsController = {
       const existing = (await projectsRepository.list(executor)).find((p) => p.creationKey === parsed.data.creationKey && p.ownerId === getContextUserId());
       if (existing) { res.json({ ok: true, project: existing }); return; }
     }
+    if (parsed.data.parentId) {
+      const parent = await projectsRepository.get(executor, parsed.data.parentId);
+      if (!parent) throw new ValidationError("El proyecto padre ya no existe.");
+      assertCanModify(parent.ownerId, res.locals.locale);
+      if (!isWithinProjectDirectory(parsed.data.path, parent.path)) {
+        throw new ValidationError("El subproyecto debe estar dentro del directorio del proyecto padre.");
+      }
+    }
     parsed.data.fileProjectRef = await validateFileProjectRef(req, res, parsed.data.fileProjectRef);
     const result = await projectWorkspaceService.create(executor, parsed.data);
     let project = result.project;
@@ -205,6 +222,24 @@ export const projectsController = {
     parsed.data.fileProjectRef = await validateFileProjectRef(req, res, parsed.data.fileProjectRef, id);
     if (parsed.data.expectedPath !== undefined && parsed.data.expectedPath !== cur.path) {
       throw new ConflictError("El directorio cambió. Vuelve a abrir el proyecto antes de guardar.");
+    }
+    const nextParentId = parsed.data.parentId !== undefined ? parsed.data.parentId : cur.parentId;
+    if (nextParentId && (parsed.data.parentId !== undefined || parsed.data.path !== undefined)) {
+      const all = await projectsRepository.list(executor);
+      const byId = new Map(all.map((item) => [item.id, item]));
+      const parent = byId.get(nextParentId);
+      if (!parent) throw new ValidationError("El proyecto padre ya no existe.");
+      assertCanModify(parent.ownerId, res.locals.locale);
+      if (!isWithinProjectDirectory(parsed.data.path ?? cur.path, parent.path)) {
+        throw new ValidationError("El subproyecto debe estar dentro del directorio del proyecto padre.");
+      }
+      const seen = new Set([id]);
+      let ancestor: typeof parent | undefined = parent;
+      while (ancestor) {
+        if (!ancestor.id || seen.has(ancestor.id)) throw new ValidationError("La jerarquía de proyectos no puede contener ciclos.");
+        seen.add(ancestor.id);
+        ancestor = ancestor.parentId ? byId.get(ancestor.parentId) : undefined;
+      }
     }
     if ((parsed.data.path !== undefined && parsed.data.path !== cur.path) || (parsed.data.provider !== undefined && parsed.data.provider !== cur.provider)) {
       // Preserve the OLD directory before committing the new cwd/provider.

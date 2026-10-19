@@ -1,0 +1,8 @@
+{
+  "title": "Jerarquía visual de subproyectos",
+  "changes": [
+    "La pestaña General muestra todos los subproyectos anidados del proyecto desde cualquier nivel de la misma jerarquía.",
+    "Ahora puedes crear, editar, ordenar y cambiar el nivel de los subproyectos desde el árbol visual.",
+    "La eliminación de un subproyecto requiere confirmación y evita borrar proyectos que aún tienen descendientes."
+  ]
+}

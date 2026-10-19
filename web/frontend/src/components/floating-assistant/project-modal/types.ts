@@ -30,4 +30,6 @@ export type ProjectModalViewProps = ProjectModalProps & {
   onBack(): void;
   /** Push a related project (parent/child) to view it IN this same modal. */
   onNavigate(p: AssistantProject): void;
+  /** Open the same project editor in create mode under a chosen node. */
+  onCreateChild(parent: AssistantProject): void;
 };

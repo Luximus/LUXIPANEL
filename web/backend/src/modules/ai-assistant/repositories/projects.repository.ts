@@ -159,6 +159,8 @@ export interface AssistantProject {
    * means a top-level project.
    */
   parentId?: string | null;
+  /** Manual position among siblings in the project hierarchy. */
+  sortOrder?: number;
   /** Workspace ownership: root projects own a team and its default leader. */
   teamId?: string | null;
   leaderAgentId?: string | null;
@@ -317,7 +319,7 @@ export const projectsRepository = {
   async update(
     executor: Executor | null | undefined,
     id: string,
-    patch: Partial<Pick<AssistantProject, "title" | "icon" | "path" | "instructions" | "provider" | "parentId" | "teamId" | "leaderAgentId" | "autoCapture" | "servers" | "skills" | "verify" | "snippetCategory" | "snippetTags" | "webPreviewUrl" | "appPreviewUrl" | "fileProjectRef" | "profile" | "technologies">>,
+    patch: Partial<Pick<AssistantProject, "title" | "icon" | "path" | "instructions" | "provider" | "parentId" | "sortOrder" | "teamId" | "leaderAgentId" | "autoCapture" | "servers" | "skills" | "verify" | "snippetCategory" | "snippetTags" | "webPreviewUrl" | "appPreviewUrl" | "fileProjectRef" | "profile" | "technologies">>,
   ): Promise<AssistantProject | null> {
     const clean: Partial<AssistantProject> = {};
     if (patch.profile !== undefined) clean.profile = patch.profile.trim().slice(0, 2000);
@@ -340,6 +342,7 @@ export const projectsRepository = {
     if (patch.verify !== undefined) clean.verify = sanitizeVerify(patch.verify) ?? null;
     // parentId: allow clearing (null) but never let a project parent itself.
     if (patch.parentId !== undefined) clean.parentId = patch.parentId === id ? null : patch.parentId || null;
+    if (patch.sortOrder !== undefined) clean.sortOrder = patch.sortOrder;
     if (patch.teamId !== undefined) clean.teamId = patch.teamId || null;
     if (patch.leaderAgentId !== undefined) clean.leaderAgentId = patch.leaderAgentId || null;
     return store(executor).update(id, clean);

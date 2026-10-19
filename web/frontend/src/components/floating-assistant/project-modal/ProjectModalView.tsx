@@ -31,11 +31,12 @@ import { SkillsPicker } from "../SkillsPicker";
 import { formatAssistantMessage } from "../i18n";
 import { useProjectModalView, type ProjectModalViewVM } from "./use-project-modal-view";
 import { ProjectIconSelect } from "./ProjectIconSelect";
+import { ProjectHierarchyTree } from "./ProjectHierarchyTree";
 import { type ProjectModalViewProps } from "./types";
 
 export function ProjectModalView(props: ProjectModalViewProps) {
   const vm: ProjectModalViewVM = useProjectModalView(props);
-  const { i18n, project, allProjects, initialParentId, onClose, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, addBusy, removeBusy, selectRef, overlayRef, assignedChildren, parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide } = vm;
+  const { i18n, project, allProjects, initialParentId, deferredClose, canGoBack, loading, onBack, onNavigate, t, tab, setTab, title, setTitle, icon, setIcon, path, setPath, fileProjectRef, setFileProjectRef, instructions, setInstructions, provider, setProvider, autoCapture, setAutoCapture, verifyText, setVerifyText, busy, err, pickingDir, setPickingDir, graphAvail, graphEnabled, setGraphEnabled, graphState, graphBusy, indexNow, skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags, snippetOpts, servers, availableConns, connsLoading, toggleServer, overlayRef, parentProject, save, del, wide } = vm;
   // Dirección de la transición entre secciones (orden del menú lateral).
   const tabDirection = useViewDirection(tab, PROJECT_TAB_ORDER);
   const rootDoc = STRUCTURE_PROVIDERS.find((item) => item.id === provider)!.rootDoc;
@@ -343,88 +344,8 @@ export function ProjectModalView(props: ProjectModalViewProps) {
                   </p>
                 )}
               </div>
-              {/* ── Proyectos hijos ─────────────────────────────────────── */}
-              <div className="space-y-2 border-t border-border pt-4" data-project-children>
-                <span className="block text-xs font-medium text-muted-foreground">{t.childProjectsLabel}</span>
-
-                {/* Selector para añadir */}
-                {availableForChild.length > 0 ? (
-                  <div className="flex items-center gap-2">
-                    <select
-                      ref={selectRef}
-                      defaultValue=""
-                      disabled={addBusy}
-                      aria-label={t.selectProject}
-                      className="min-w-0 flex-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus:border-primary focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">{t.selectProject}</option>
-                      {availableForChild.map((p) => (
-                        <option key={p.id} value={p.id}>{p.title}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => void doAddChild()}
-                      disabled={addBusy}
-                      className="shrink-0 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {addBusy ? t.adding : t.add}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    {allProjects.length === 0
-                      ? t.noProjectsRegistered
-                      : t.noMoreProjects}
-                  </p>
-                )}
-
-                {/* Lista de hijos asignados */}
-                {assignedChildren.length > 0 && (
-                  <div className="space-y-1">
-                    {assignedChildren.map((child) => (
-                      <div
-                        key={child.id}
-                        className="flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2 py-1.5"
-                      >
-                        {/* Click a child → load its info in a nested modal (with a
-                            Back button). Only in edit mode (the project exists). */}
-                        {project ? (
-                          <button
-                            type="button"
-                            onClick={() => onNavigate(child)}
-                            title={formatAssistantMessage(t.openChild, { title: child.title })}
-                            className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left hover:text-primary"
-                          >
-                            <LucideIcon name={child.icon} size={12} className="shrink-0 text-muted-foreground" />
-                            <span className="flex-1 truncate text-[11px]">{child.title}</span>
-                            <i className="ti ti-chevron-right shrink-0 text-[11px] opacity-60" aria-hidden></i>
-                          </button>
-                        ) : (
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                            <LucideIcon name={child.icon} size={12} className="shrink-0 text-muted-foreground" />
-                            <span className="flex-1 truncate text-[11px]">{child.title}</span>
-                          </div>
-                        )}
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {STRUCTURE_PROVIDERS.find((p) => p.id === child.provider)?.label ?? child.provider}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void doRemoveChild(child)}
-                          disabled={removeBusy === child.id}
-                          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
-                          title={t.removeChild}
-                        >
-                          {removeBusy === child.id
-                            ? <i className="ti ti-loader-2 animate-spin text-[11px]" aria-hidden></i>
-                            : <i className="ti ti-x text-[11px]" aria-hidden></i>}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {project && <ProjectHierarchyTree project={project} allProjects={allProjects} onNavigate={onNavigate}
+                onCreateChild={props.onCreateChild} onRefresh={props.onRefresh} />}
             </>
           )}
 
@@ -582,7 +503,7 @@ export function ProjectModalView(props: ProjectModalViewProps) {
       {/* Folder picker — browses the connected server, stacks above this drawer (z-[10000]) */}
       {pickingDir && (
         <DirectoryPicker
-          initialPath={path || "/"}
+          initialPath={path || (initialParentId ? allProjects.find((item) => item.id === initialParentId)?.path : undefined) || "/"}
           onClose={() => setPickingDir(false)}
           onSelect={(p) => {
             setPath(p);

@@ -27,8 +27,6 @@ import {
 } from "../assistant-api";
 import { formatAssistantMessage, mergeNamespaces, useAssistantI18n } from "../i18n";
 import { projectModalFallback, type ProjectModalMessages } from "./messages";
-import { reparentChild, getAncestorIds } from "./helpers";
-import { isProjectPathWithinRoot } from "./project-path";
 import { type ProjectModalViewProps } from "./types";
 import { useDeferredClose } from "@/components/ui/use-deferred-close";
 
@@ -188,18 +186,6 @@ export function useProjectModalView({
     );
   }
 
-  // Children already assigned (edit mode: from allProjects; create mode: local pending list)
-  const [pendingChildIds, setPendingChildIds] = useState<string[]>([]);
-  const [addBusy, setAddBusy] = useState(false);
-  const [removeBusy, setRemoveBusy] = useState<string | null>(null);
-  useEffect(() => {
-    setPendingChildIds(ids => ids.filter(id => {
-      const child = allProjects.find(p => p.id === id);
-      return child && isProjectPathWithinRoot(child.path, path);
-    }));
-    if (selectRef.current) selectRef.current.value = "";
-  }, [path]);
-  const selectRef = useRef<HTMLSelectElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   // Defeat the drawer's Radix focus trap (vaul 1.1.2 never forwards `modal={false}`
@@ -236,27 +222,10 @@ export function useProjectModalView({
     };
   }, []);
 
-  // In edit mode children come from allProjects (authoritative after onRefresh).
-  // In create mode they come from local pendingChildIds.
-  const assignedChildren = project
-    ? allProjects.filter((p) => p.parentId === project.id)
-    : allProjects.filter((p) => pendingChildIds.includes(p.id));
-
-  const assignedChildIds = new Set(assignedChildren.map((c) => c.id));
-  const ancestorIds = project ? getAncestorIds(project.id, allProjects) : new Set<string>();
-
   // Parent project (if this is a child) — for the header "open parent" nav button.
   const parentProject = project?.parentId
     ? allProjects.find((p) => p.id === project.parentId) ?? null
     : null;
-
-  // Offer only projects in this working directory or below it, excluding ancestors.
-  // Existing assignments stay visible so they can still be explicitly removed.
-  const availableForChild = allProjects.filter(
-    (p) => p.id !== project?.id && p.id !== initialParentId
-      && !assignedChildIds.has(p.id) && !ancestorIds.has(p.id)
-      && isProjectPathWithinRoot(p.path, path),
-  );
 
   async function save() {
     if (!title.trim()) { setErr(t.titleRequired); return; }
@@ -289,7 +258,7 @@ export function useProjectModalView({
         fileProjectRef,
         ...(!project ? { instructions } : { expectedPath: project.path }),
         provider,
-        parentId: parentId || null,
+        ...(!project ? { parentId: parentId || null } : {}),
         ...(!project && !parentId ? { teamName: title.trim(), leaderName: `${title.trim()} · Líder`, creationKey: creationKey.current } : {}),
         servers: servers.filter((server) => server.id !== currentTargetId),
         autoCapture,
@@ -305,24 +274,12 @@ export function useProjectModalView({
       };
       const saved = project
         ? await assistantProjectsApi.update(project.id, data)
-        : await assistantProjectsApi.create(data);
+        : await assistantProjectsApi.create({ ...data, instructions });
 
       // CREATE mode with the graph toggle on: kick off the first indexing now
       // that we have the real project id (best-effort; the modal is closing).
       if (!project && graphEnabled && graphAvail && data.path) {
         startProjectGraphIndex(saved.id).catch(() => undefined);
-      }
-
-      // CREATE mode: assign pending children now that we have the real ID.
-      if (!project && pendingChildIds.length > 0) {
-        await Promise.all(
-          pendingChildIds.map((childId) => {
-            const child = allProjects.find((p) => p.id === childId);
-            if (!child || !isProjectPathWithinRoot(child.path, data.path)) return Promise.resolve();
-            return reparentChild(child, saved.id);
-          }),
-        );
-        onRefresh?.();
       }
 
       onSaved(saved);
@@ -359,52 +316,6 @@ export function useProjectModalView({
     }
   }
 
-  async function doAddChild() {
-    const childId = selectRef.current?.value ?? "";
-    const child = availableForChild.find((p) => p.id === childId);
-    if (!child) return;
-
-    if (!project) {
-      // CREATE mode: only local state, no API call yet.
-      setPendingChildIds((prev) => [...prev, childId]);
-      if (selectRef.current) selectRef.current.value = "";
-      return;
-    }
-
-    // EDIT mode: persist immediately.
-    setAddBusy(true);
-    setErr(null);
-    try {
-      await reparentChild(child, project.id);
-      if (selectRef.current) selectRef.current.value = "";
-      onRefresh?.();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setAddBusy(false);
-    }
-  }
-
-  async function doRemoveChild(child: AssistantProject) {
-    if (!project) {
-      // CREATE mode: remove from local list.
-      setPendingChildIds((prev) => prev.filter((id) => id !== child.id));
-      return;
-    }
-
-    // EDIT mode: unassign via API.
-    setRemoveBusy(child.id);
-    setErr(null);
-    try {
-      await reparentChild(child, null);
-      onRefresh?.();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setRemoveBusy(null);
-    }
-  }
-
   const wide = tab === "structure" || tab === "skills" || tab === "agents";
 
   return {
@@ -419,9 +330,7 @@ export function useProjectModalView({
     skills, setSkills, snippetCategory, setSnippetCategory, snippetTags, setSnippetTags,
     snippetOpts, setSnippetOpts, servers, setServers, availableConns, setAvailableConns,
     connsLoading, setConnsLoading, toggleServer,
-    pendingChildIds, setPendingChildIds, addBusy, setAddBusy, removeBusy, setRemoveBusy,
-    selectRef, overlayRef, assignedChildren, assignedChildIds, ancestorIds,
-    parentProject, availableForChild, save, del, doAddChild, doRemoveChild, wide,
+    overlayRef, parentProject, save, del, wide,
   };
 }
 

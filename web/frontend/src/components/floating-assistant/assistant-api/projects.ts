@@ -37,6 +37,7 @@ export interface AssistantProject {
   fileProjectRef?: { targetId: string; path: string } | null;
   provider: StructureProviderId;
   parentId?: string | null;
+  sortOrder?: number;
   teamId?: string | null;
   leaderAgentId?: string | null;
   /** Other server connections this project's chats may act on (servers.* tools). */
@@ -93,6 +94,7 @@ type ProjectPayload = {
   fileProjectRef?: { targetId: string; path: string } | null;
   provider: StructureProviderId;
   parentId?: string | null;
+  sortOrder?: number;
   teamName?: string;
   leaderName?: string;
   creationKey?: string;

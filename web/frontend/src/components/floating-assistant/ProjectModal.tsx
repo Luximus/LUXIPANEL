@@ -19,13 +19,14 @@ import { type ProjectModalProps } from "./project-modal/types";
  * for the project being shown; "Back" pops to the project we came from.
  */
 export function ProjectModal(props: ProjectModalProps) {
-  const [navStack, setNavStack] = useState<(AssistantProject | null)[]>([props.project ?? null]);
+  type Entry = { project: AssistantProject | null; parentId?: string };
+  const [navStack, setNavStack] = useState<Entry[]>([{ project: props.project ?? null }]);
   // Brief "changing project" spinner shown while the view swaps to the new
   // project (parent/child navigation or Back).
   const [navigating, setNavigating] = useState(false);
   // Reset to the root if the caller opens the modal on a different project.
   useEffect(() => {
-    setNavStack([props.project ?? null]);
+    setNavStack([{ project: props.project ?? null }]);
   }, [props.project?.id]);
   // Clear the spinner shortly after a navigation lands (re-arms on each jump).
   useEffect(() => {
@@ -34,20 +35,23 @@ export function ProjectModal(props: ProjectModalProps) {
     return () => window.clearTimeout(id);
   }, [navigating, navStack.length]);
 
-  const active = navStack[navStack.length - 1] ?? null;
-  const navTo = (updater: (s: (AssistantProject | null)[]) => (AssistantProject | null)[]) => {
+  const entry = navStack[navStack.length - 1]!;
+  const active = entry.project ? props.allProjects?.find((item) => item.id === entry.project?.id) ?? entry.project : null;
+  const navTo = (updater: (s: Entry[]) => Entry[]) => {
     setNavigating(true);
     setNavStack(updater);
   };
   return (
     <ProjectModalView
-      key={active?.id ?? "new"}
+      key={active?.id ?? `new:${entry.parentId ?? props.initialParentId ?? "root"}`}
       {...props}
       project={active}
+      initialParentId={entry.parentId ?? props.initialParentId}
       canGoBack={navStack.length > 1}
       loading={navigating}
       onBack={() => navTo((s) => (s.length > 1 ? s.slice(0, -1) : s))}
-      onNavigate={(p) => navTo((s) => [...s, p])}
+      onNavigate={(p) => navTo((s) => [...s, { project: p }])}
+      onCreateChild={(parent) => navTo((s) => [...s, { project: null, parentId: parent.id }])}
     />
   );
 }
