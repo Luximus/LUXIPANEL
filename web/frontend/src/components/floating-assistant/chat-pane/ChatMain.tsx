@@ -678,8 +678,8 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             headerPickerKeys={["project", "agent"]}
             headerControls={composerHeader}
             onCycleExecutionMode={cycleExecutionMode}
+            toolbarLeading={toolbarPickers[0]?.before}
             toolbarControls={<>
-              {toolbarPickers[0]?.before}
               {<button type="button" data-execution-mode={approvalMode} className="prompt-bar__pick" aria-keyshortcuts="Shift+Tab" title={`${executionLabel} · Shift+Tab`} onClick={cycleExecutionMode}><i className="ti ti-shield-check" aria-hidden /><span aria-live="polite">{executionLabel}</span></button>}
             </>}
             inputLeading={mobileNavigation ? null : <a href="/panel/preferences#pref-profile" className="prompt-bar__profile-avatar" aria-label={`${ct.openProfile ?? "Abrir perfil"}${userInitials ? ` (${userInitials})` : ""}`} title={ct.openProfile ?? "Abrir perfil"}><span aria-hidden="true">{userInitials ?? <i className="ti ti-user" aria-hidden="true" />}</span></a>}

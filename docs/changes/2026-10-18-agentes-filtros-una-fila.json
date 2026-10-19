@@ -1,0 +1,4 @@
+{
+  "title": "Filtros de agentes en una sola fila",
+  "changes": ["La búsqueda aparece primero a la izquierda, seguida de los selectores y Crear perfil en una sola fila; en pantallas estrechas la fila permite desplazamiento horizontal."]
+}

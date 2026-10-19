@@ -96,6 +96,8 @@ export interface PromptBarProps {
   sources?: PromptBarSource[];
   /** Selectors that belong inside the prompt toolbar (provider/project). */
   toolbarControls?: ReactNode;
+  /** Actions immediately after settings and before the selectors. */
+  toolbarLeading?: ReactNode;
   toolbarPickers?: PromptBarPicker[];
   headerPickerKeys?: string[];
   headerControls?: ReactNode;
@@ -284,6 +286,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   dictateHint,
   sources = DEFAULT_SOURCES,
   toolbarControls,
+  toolbarLeading,
   toolbarPickers = [],
   headerPickerKeys = [],
   headerControls,
@@ -1138,6 +1141,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
 
         <div className="prompt-bar__bar">
           {!mobileLayout && settingsButton}
+          {toolbarLeading}
           {toolbarPickers.length > 0 || toolbarControls ? <span className="prompt-bar__toolbar-controls">
             {toolbarPickers.filter(item => !headerPickerKeys.includes(item.key)).map(renderPicker)}
             {toolbarControls}

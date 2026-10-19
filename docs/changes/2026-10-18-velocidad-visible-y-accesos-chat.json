@@ -1,0 +1,7 @@
+{
+  "title": "Velocidad visible y accesos ordenados en el chat",
+  "changes": [
+    "El selector de velocidad muestra el texto Normal o Fast sin quedar reducido a un icono.",
+    "Los accesos a Terminal y Multimedia aparecen junto a Configuración en el chat de escritorio."
+  ]
+}

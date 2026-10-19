@@ -102,29 +102,30 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
   const viewTitle = projectView ? (source === "project" ? t.projectAgents : t.marketAgents) : t.title;
   const projectTitle = (id: string) => projects.find(project => project.id === id)?.title ?? t.project;
   return <section aria-label={viewTitle} aria-busy={loading || !!pending} className={`flex min-h-0 flex-1 flex-col overflow-y-auto text-foreground ${projectView ? "" : "p-4 sm:p-6"}`}>
-    <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      {projectView ? <select aria-label={t.agentSource} className={`${marketControl} min-w-0 max-w-sm flex-1`} value={source} disabled={!!pending} onChange={event => { setSource(event.target.value as "project" | "market"); setEditor(null); setNotice(""); }}>
-        <option value="project">{t.projectAgents}</option><option value="market">{t.marketAgents}</option>
-      </select> : <div><h2 className="flex items-center gap-2 text-xl font-semibold"><Store size={22} aria-hidden />{t.title}</h2><p className="mt-1 text-sm text-muted-foreground">{t.description}</p></div>}
-      <div className="flex flex-wrap gap-2">
-        {onBack && <button type="button" className={marketControl} onClick={onBack}><ArrowLeft className="me-2 inline" size={16} aria-hidden />{t.back}</button>}
-        <button type="button" className={marketControl} disabled={!!pending || loading} onClick={() => setProfile("new")}>{t.newProfile}</button>
+    {!projectView && <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div><h2 className="flex items-center gap-2 text-xl font-semibold"><Store size={22} aria-hidden />{t.title}</h2><p className="mt-1 text-sm text-muted-foreground">{t.description}</p></div>
+      {onBack && <button type="button" className={marketControl} onClick={onBack}><ArrowLeft className="me-2 inline" size={16} aria-hidden />{t.back}</button>}
+    </header>}
+    <div data-agent-filters className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
+      <div className="relative min-w-40 flex-1">
+        <Search className="pointer-events-none absolute start-3 top-3 text-muted-foreground" size={18} aria-hidden />
+        <input type="search" aria-label={t.search} title={t.search} placeholder={t.search} value={filters.query} onChange={event => setFilters({ ...filters, query: event.target.value })} className={`${marketControl} w-full ps-10`} />
       </div>
-    </header>
-    <div className={`mb-4 grid gap-3 sm:grid-cols-2 ${projectView ? "" : "lg:grid-cols-3"}`}>
-      {!projectView && <label className="grid min-w-0 gap-1 text-sm"><span>{t.project}</span><select className={marketControl} value={selected} disabled={(!!projectId && !onBack) || !!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
+      {projectView ? <select aria-label={t.agentSource} className={`${marketControl} w-44 shrink-0`} value={source} disabled={!!pending} onChange={event => { setSource(event.target.value as "project" | "market"); setEditor(null); setNotice(""); }}>
+        <option value="project">{t.projectAgents}</option><option value="market">{t.marketAgents}</option>
+      </select> : <select aria-label={t.project} className={`${marketControl} w-44 shrink-0`} value={selected} disabled={!!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
         <option value="">{t.chooseProject}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.parentId ? `${projectTitle(project.parentId)} / ` : ""}{project.title}</option>)}
-      </select></label>}
-      <label className="grid min-w-0 gap-1 text-sm sm:col-span-2"><span>{t.search}</span><div className="relative"><Search className="pointer-events-none absolute start-3 top-3 text-muted-foreground" size={18} aria-hidden /><input type="search" value={filters.query} onChange={event => setFilters({ ...filters, query: event.target.value })} className={`${marketControl} w-full ps-10`} /></div></label>
-      <select aria-label={i18n.agentInfo.providerLabel} className={marketControl} value={filters.provider} onChange={event => setFilters({ ...filters, provider: event.target.value })}>
+      </select>}
+      <select aria-label={i18n.agentInfo.providerLabel} className={`${marketControl} w-40 shrink-0`} value={filters.provider} onChange={event => setFilters({ ...filters, provider: event.target.value })}>
         <option value="">{t.allProviders}</option>{[...new Set(agents.map(a => a.providerId))].sort().map(id => <option key={id} value={id}>{PROVIDER_META[id]?.label ?? id}</option>)}
       </select>
-      <select aria-label={i18n.agentInfo.roleLabel} className={marketControl} value={filters.role} onChange={event => setFilters({ ...filters, role: event.target.value })}>
+      <select aria-label={i18n.agentInfo.roleLabel} className={`${marketControl} w-36 shrink-0`} value={filters.role} onChange={event => setFilters({ ...filters, role: event.target.value })}>
         <option value="">{t.allRoles}</option>{roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
       </select>
-      {!projectView && <select aria-label={t.allAssignments} className={marketControl} disabled={!selected} value={filters.assignment} onChange={event => setFilters({ ...filters, assignment: event.target.value })}>
+      {!projectView && <select aria-label={t.allAssignments} className={`${marketControl} w-44 shrink-0`} disabled={!selected} value={filters.assignment} onChange={event => setFilters({ ...filters, assignment: event.target.value })}>
         <option value="">{t.allAssignments}</option><option value="assigned">{t.assigned}</option><option value="unassigned">{t.unassigned}</option>
       </select>}
+      <button type="button" className={`${marketControl} shrink-0 whitespace-nowrap`} disabled={!!pending || loading} onClick={() => setProfile("new")}>{t.newProfile}</button>
     </div>
     {!selected && <p className="mb-4 text-sm text-muted-foreground">{t.chooseProject}</p>}
     {error && <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-destructive p-3 text-sm"><p>{error}</p><button className={marketControl} disabled={!!pending} onClick={() => void reload()}><RefreshCw size={16} className="me-2 inline" aria-hidden />{t.retry}</button></div>}

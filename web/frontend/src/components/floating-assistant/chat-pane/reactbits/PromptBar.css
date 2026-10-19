@@ -796,6 +796,7 @@
 .prompt-bar__picker-group--agent { width: 180px; }
 .prompt-bar__picker-group--approval { width: 140px; }
 .prompt-bar__picker-group--provider { width: 112px; }
+.prompt-bar__picker-group--speed { width: 108px; min-width: 108px; }
 .prompt-bar__picker-group .prompt-bar__context-pick {
   flex: 1 1 0;
   width: 0;
