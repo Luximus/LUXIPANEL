@@ -10,6 +10,7 @@ import { assistantProjectStructureApi, type ProjectContextDocument } from "../as
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { openConfirm } from "@/lib/confirm";
+import { resolveTargetScope } from "@/lib/api-client";
 import {
   assistantProjectsApi,
   fetchAssociatableConnections,
@@ -152,13 +153,17 @@ export function useProjectModalView({
   }, []);
 
   // Associated server connections (other servers from the bottom-left selector).
-  const [servers, setServers] = useState<AssistantProjectServer[]>(project?.servers ?? []);
+  const currentTargetId = resolveTargetScope();
+  const [servers, setServers] = useState<AssistantProjectServer[]>(() =>
+    (project?.servers ?? []).filter((server) => server.id !== currentTargetId),
+  );
   const [availableConns, setAvailableConns] = useState<AssistantProjectServer[]>([]);
   const [connsLoading, setConnsLoading] = useState(true);
 
   // Load the connections the user can associate (same list as the sidebar
   // selector). Merge in any already-saved servers so they show even if the
-  // SSO list (which excludes the current target) doesn't return them.
+  // registry doesn't return them. The current target already has access and
+  // must not be reintroduced by a legacy saved association.
   useEffect(() => {
     let alive = true;
     setConnsLoading(true);
@@ -168,15 +173,16 @@ export function useProjectModalView({
         const byId = new Map<string, AssistantProjectServer>();
         for (const c of conns) byId.set(c.id, c);
         for (const s of project?.servers ?? []) if (!byId.has(s.id)) byId.set(s.id, s);
-        setAvailableConns([...byId.values()]);
+        setAvailableConns([...byId.values()].filter((server) => server.id !== currentTargetId));
       })
       .finally(() => alive && setConnsLoading(false));
     return () => {
       alive = false;
     };
-  }, [project?.id]);
+  }, [project?.id, currentTargetId]);
 
   function toggleServer(conn: AssistantProjectServer) {
+    if (conn.id === currentTargetId) return;
     setServers((prev) =>
       prev.some((s) => s.id === conn.id) ? prev.filter((s) => s.id !== conn.id) : [...prev, conn],
     );
@@ -285,7 +291,7 @@ export function useProjectModalView({
         provider,
         parentId: parentId || null,
         ...(!project && !parentId ? { teamName: title.trim(), leaderName: `${title.trim()} · Líder`, creationKey: creationKey.current } : {}),
-        servers,
+        servers: servers.filter((server) => server.id !== currentTargetId),
         autoCapture,
         skills,
         graphIndexEnabled: graphEnabled,

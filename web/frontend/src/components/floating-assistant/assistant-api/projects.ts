@@ -114,6 +114,7 @@ interface VaultTargetView {
   id: string;
   name: string;
   host: string;
+  active?: boolean;
 }
 
 /**
@@ -128,7 +129,7 @@ export async function fetchAssociatableConnections(): Promise<AssistantProjectSe
   // so for GET /api/servers `res.data` IS the TargetView[] array.
   const res = await api.get<VaultTargetView[]>(SERVERS_PATH);
   if (!res.ok || !Array.isArray(res.data)) return [];
-  return res.data.map((s) => ({ id: s.id, name: s.name, host: s.host }));
+  return res.data.filter((s) => !s.active).map((s) => ({ id: s.id, name: s.name, host: s.host }));
 }
 
 // ── Terminal snippets (pre-filter selects for agents/projects) ──────────────

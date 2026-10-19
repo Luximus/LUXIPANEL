@@ -1,0 +1,1 @@
+{"title":"Lista de servidores asociados sin duplicar el servidor actual","changes":["El servidor conectado deja de aparecer entre los servidores que se pueden asociar al proyecto, ya que su acceso está incluido por defecto.","Las asociaciones antiguas al servidor actual se omiten al editar y guardar el proyecto, conservando los demás servidores asociados."]}
