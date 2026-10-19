@@ -33,7 +33,6 @@ import { LOOSE_GROUP_ID } from "../conversation-grouping";
 import { START_TILES, iconForSuggestion } from "./helpers";
 const TurnView = lazy(() => import("./turn-view").then(module => ({ default: module.TurnView })));
 const CompactionDivider = lazy(() => import("./ask-permission").then(module => ({ default: module.CompactionDivider })));
-import { StreamTimer } from "./message-bits";
 import { conversationInProjectScope, projectScopeIds } from "./project-search";
 import { type ChatPaneVM } from "./use-chat-pane";
 import { chatUiState } from "../chat-ui-state";
@@ -596,7 +595,7 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
                   {compacting ? (ct.compacting ?? "Compactando…") : (ct.compact ?? "Compactar")}
                 </button>
               )}
-              {streaming ? <span className="inline-flex h-6 items-center gap-1 text-emerald-500"><i className="ti ti-loader-2 animate-spin" aria-hidden />{ct.responding ?? "respondiendo…"} <StreamTimer running={streaming} /></span> : backgroundRunning ? <span className="inline-flex h-6 items-center gap-1 text-amber-500" title={ct.backgroundRunningTitle ?? "La tarea sigue ejecutándose en el servidor"}><i className="ti ti-cloud-cog" aria-hidden />{ct.inBackground ?? "en background"}</span> : null}
+              {!streaming && backgroundRunning ? <span className="inline-flex h-6 items-center gap-1 text-amber-500" title={ct.backgroundRunningTitle ?? "La tarea sigue ejecutándose en el servidor"}><i className="ti ti-cloud-cog" aria-hidden />{ct.inBackground ?? "en background"}</span> : null}
               {locationNames.length > 0 && (
                 <nav className="lxp-chat-project-path" title={locationLabel} aria-label="Ruta del proyecto">
                   <ol>{locationNames.map((name, index) => <li key={`${index}:${name}`}>

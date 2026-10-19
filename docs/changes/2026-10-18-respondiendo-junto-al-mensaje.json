@@ -1,0 +1,4 @@
+{
+  "title": "Estado de respuesta junto al mensaje",
+  "changes": ["El indicador de respuesta y su contador aparecen junto al spinner del mensaje del asistente, liberando espacio en la barra de escritura."]
+}

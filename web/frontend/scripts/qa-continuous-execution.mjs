@@ -51,6 +51,7 @@ function App(){
   const vm={active:false,activeId:"qa-execution",chatKey:"qa-execution",provider:"codex",mode:cli?"cli":"api",uiMode:"advanced",
     turns,streaming:!done&&!next,chatLoading:false,ct,projects:[],projectTeamAgents:[],historicalProjectAgents:[],rolesById:new Map(),
     currentAgent:null,headerAgent:null,currentAgentId:null,currentProjectId:null,agentCatalogReady:true,
+    conversationOptions:{selectedSpeed:"normal",setSelectedSpeed:noop},
     draft,attachments:[],queued:[],modelOptions:[],quickStartSuggestions:[],visibleProviderOptions:[{id:"codex"}],selectedModel:"",selectedEffort:"Auto",
     chatTokens:{total:0,assistantTurns:phase},support:{enabled:false},contentRef:{current:null},scrollerRef:{current:null},textareaRef:{current:null},
     teamBoardGroups:{byTurn:new Map(),unanchored:[]},renderTeamBoard:()=>null,send:async()=>{},newConversation:noop,openConversation:noop,

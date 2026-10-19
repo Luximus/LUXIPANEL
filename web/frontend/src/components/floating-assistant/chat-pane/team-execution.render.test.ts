@@ -105,6 +105,7 @@ function ThreadView({ mode, turns, tasks = [], byTurn = new Map(), agent: curren
     turns, streaming: turns.some(t => t.pending), chatLoading: false,
     ct, projects: [], projectTeamAgents: [], rolesById: new Map(),
     currentAgent, headerAgent: currentAgent, currentProjectId: null,
+    conversationOptions: { selectedSpeed: "normal", setSelectedSpeed: vi.fn() },
     draft: "", attachments: [], queued: [], modelOptions: [], quickStartSuggestions: [],
     visibleProviderOptions: [{ id: "codex" }], selectedModel: "", selectedEffort: "Auto",
     chatTokens: { total: 0, assistantTurns: 0 }, support: { enabled: false },

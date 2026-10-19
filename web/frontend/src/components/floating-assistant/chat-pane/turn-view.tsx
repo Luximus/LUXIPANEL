@@ -31,7 +31,7 @@ import { ToolDisclosure, CliHistoryView, ExecutionDisclosure } from "./tool-disc
 import { isTeamNotice, TeamExecutionContent, TeamExecutionAttention } from "./team-execution";
 import { ExecutionPhases } from "./execution-phases";
 import { AskView, PermissionView } from "./ask-permission";
-import { TranslatingShimmer, PendingDot, CopyButton } from "./message-bits";
+import { TranslatingShimmer, PendingDot, CopyButton, StreamTimer } from "./message-bits";
 import { SpeakButton } from "./voice-controls";
 import { VoiceMessage } from "./voice-message";
 import ThoughtLine, { type ThoughtLineEntryStatus } from "./reactbits/ThoughtLine";
@@ -301,6 +301,11 @@ export function TurnView({ turn, provider, uiMode = "advanced", isLast, onAnswer
           <span role="img" aria-label={turnStatusLabel} className="inline-flex shrink-0" title={turnStatusLabel}>
             <span aria-hidden="true"><StatusMark status={turnStatus} size={16} strokeWidth={2} strike={false} /></span>
           </span>
+          {executionStatus === "running" && (
+            <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-emerald-500">
+              {ct.responding ?? "respondiendo…"} <StreamTimer running />
+            </span>
+          )}
           <TurnMeta turn={turn} isUser={false} header />
         </div>
       )}

@@ -116,7 +116,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
       </select> : <select aria-label={t.project} className={`${marketControl} w-44 shrink-0`} value={selected} disabled={!!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
         <option value="">{t.chooseProject}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.parentId ? `${projectTitle(project.parentId)} / ` : ""}{project.title}</option>)}
       </select>}
-      <select aria-label={i18n.agentInfo.providerLabel} className={`${marketControl} w-40 shrink-0`} value={filters.provider} onChange={event => setFilters({ ...filters, provider: event.target.value })}>
+      <select aria-label={i18n.agentInfo.providerLabel} className={`${marketControl} w-48 shrink-0`} value={filters.provider} onChange={event => setFilters({ ...filters, provider: event.target.value })}>
         <option value="">{t.allProviders}</option>{[...new Set(agents.map(a => a.providerId))].sort().map(id => <option key={id} value={id}>{PROVIDER_META[id]?.label ?? id}</option>)}
       </select>
       <select aria-label={i18n.agentInfo.roleLabel} className={`${marketControl} w-36 shrink-0`} value={filters.role} onChange={event => setFilters({ ...filters, role: event.target.value })}>
