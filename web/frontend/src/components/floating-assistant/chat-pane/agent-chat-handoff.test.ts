@@ -393,3 +393,29 @@ it("moves context to the header and cycles execution from the focused draft with
     expect(vm.conversationOptions.snapshot().speed).toBe("fast");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+
+it("does not invent historical members from a shared legacy team or descendant assignments", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  chatUiState.patchPane("claude", { activeId: null, currentProjectId: "root", currentAgentId: null, draft: "", attachments: [] });
+  const list = vi.mocked(assistantAgentsApi.list), original = list.getMockImplementation()!;
+  list.mockImplementation(async query => [...await original(query), ...["legacy-only", "child-only", "removed-here"].map(id => ({
+    id, name: id, providerId: "claude", teamId: "team", model: "",
+    context: { projectId: "root", membership: id === "removed-here" ? "removed" : "none" },
+    capabilities: { canExecute: false },
+    assignments: [{ projectId: id === "removed-here" ? "root" : "child", status: id === "removed-here" ? "removed" : "active", source: "legacy" }],
+  } as import("../assistant-api").AssistantAgent))]);
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host); let vm!: ChatPaneVM;
+  function Probe() { vm = useChatPane({ provider: "claude", mode: "api", active: true }); return createElement(ChatMain, { vm, attachmentImages: new Map() }); }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    expect(vm.historicalProjectAgents.map(agent => agent.id)).toEqual(["removed-here"]);
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-picker="agent"]')!.click());
+    const options = [...document.querySelectorAll('[role="option"]')].map(node => node.textContent);
+    expect(options.some(text => text?.includes("legacy-only"))).toBe(false);
+    expect(options.some(text => text?.includes("child-only"))).toBe(false);
+    expect(options.some(text => text?.includes("removed-here"))).toBe(true);
+    expect(vm.projectTeamAgents.map(agent => agent.id).sort()).toEqual(["agent", "other-provider", "worker"]);
+  } finally { await act(async () => root.unmount()); host.remove(); list.mockImplementation(original); }
+});

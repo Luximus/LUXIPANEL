@@ -23,9 +23,12 @@ import "/src/styles/reactbits-kit.css";
 const provider=new URLSearchParams(location.search).get("provider")??"claude";
 const names=["Óscar","Sofía","Mateo","Valentina","Andrés","Lucía","Camila","Daniel"];
 const roles=["Coordinación","Desarrollo","Pruebas","Diseño","Seguridad","Documentación","Infraestructura","Accesibilidad"];
-assistantProjectsApi.list=async()=>[{id:"project",title:"Mi proyecto",teamId:"team",leaderAgentId:"agent-0"}];
+assistantProjectsApi.list=async()=>[{id:"project",title:"Mi proyecto",teamId:"team",leaderAgentId:"agent-0"},{id:"child",title:"Subproyecto",parentId:"project"}];
 assistantAgentsApi.list=async(query={})=>names.map((name,index)=>({id:"agent-"+index,name,roleId:"role-"+index,providerId:provider,teamId:"team",
-  capabilities:{canExecute:true},context:{projectId:query.contextProjectId??query.projectId??"project",membership:"direct"}}));
+  capabilities:{canExecute:true},context:{projectId:query.contextProjectId??query.projectId??"project",membership:"direct"}})).concat(
+    new URLSearchParams(location.search).has("foreign") ? [{id:"foreign-agent",name:"Agente de otro ámbito",providerId:provider,teamId:"team",
+      assignments:[{projectId:"child",status:"active",source:"legacy"}],capabilities:{canExecute:false},
+      context:{projectId:query.contextProjectId??query.projectId??"project",membership:"none"}}] : []);
 assistantAgentRolesApi.list=async()=>roles.map((name,index)=>({id:"role-"+index,name}));
 const conversations=${JSON.stringify(conversations)};
 assistantConversationsApi.get=async(id)=>conversations.find(chat=>chat.id===id)??null;

@@ -1,0 +1,4 @@
+{
+  "title": "Agentes del proyecto coherentes en el chat",
+  "changes": ["El selector del chat deja de mostrar como históricos agentes ajenos al proyecto por compartir un equipo antiguo o pertenecer a un subproyecto.", "Se conserva el acceso de lectura a conversaciones abiertas y a agentes retirados del proyecto."]
+}

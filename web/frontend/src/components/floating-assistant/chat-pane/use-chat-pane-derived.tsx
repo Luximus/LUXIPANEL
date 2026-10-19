@@ -11,7 +11,7 @@ import { historyReady } from "@/lib/startup-state";
 import { isLooseConversation, projectScopeIds } from "./project-search";
 import { rootProjectId } from "./project-history-picker";
 import { projectAgentScope, projectForAgent } from "../project-modal/agent-scope";
-import { availableInProject, legacyHistoryAgentIds } from "../agent-market-state";
+import { assignedInProject, availableInProject, legacyHistoryAgentIds } from "../agent-market-state";
 import { createProjectHistory, emptyProjectHistory } from "./project-history";
 import {
   assistantConversationsApi,
@@ -381,9 +381,12 @@ export function useChatPaneDerived(props: ChatPaneProps, s: ReturnType<typeof us
       ? [activeMeta, ...rows] : rows;
   }, [historyState, historyKey, convos, activeMeta, historyProjectIds, selectedRoot, includeLegacy, legacyAgentIds, search, historyAgentId]);
   const historySummary = historyData.summary;
+  // Shared legacy teams and descendant assignments do not establish membership
+  // or history in this project. Keep actual retired members and open history.
   const historicalProjectAgents = agents.filter(agent => !availableInProject(agent, currentProjectId) && (
-    agent.id === currentAgentId || (historySummary?.agents[agent.id] ?? 0) > 0 || legacyMembers.includes(agent.id) ||
-    agent.assignments?.some(assignment => historyProjectIds.split(",").includes(assignment.projectId))
+    agent.id === currentAgentId || (historySummary?.agents[agent.id] ?? 0) > 0 ||
+    assignedInProject(agent, currentProjectId) ||
+    (agent.context?.projectId === currentProjectId && agent.context?.membership === "removed")
   ));
 
   // Auto-expand the collapsable branch that holds the ACTIVE conversation, so
