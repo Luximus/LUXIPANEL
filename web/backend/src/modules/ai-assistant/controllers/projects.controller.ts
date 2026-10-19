@@ -16,7 +16,7 @@ import { zodIssues } from "../../../shared/validators/index.js";
 import { serverSchema, skillsSchema } from "./shared-schemas.js";
 import { assertOwner } from "./ownership.js";
 import { getExecutor, getContextUserId } from "../../../shared/executor/index.js";
-import { ValidationError } from "../../../shared/errors/index.js";
+import { ConflictError, ValidationError } from "../../../shared/errors/index.js";
 import { assistantNotFound } from "./not-found-i18n.js";
 import { apiModuleMessage } from "../../../shared/i18n/module-messages.js";
 import { eventBus, Events } from "../../../shared/events/index.js";
@@ -27,6 +27,9 @@ import { panelUserRepository } from "../../auth/repositories/panel-user.reposito
 import { safePath } from "../../files/services/filesystem.service.js";
 import { canAccessPath } from "../../../shared/auth/role-permissions.js";
 import { projectWorkspaceService } from "../services/project-workspace.service.js";
+
+import { projectDocumentService } from "../services/project-document.service.js";
+import { ensureProjectStorage, projectStorageRoot } from "../services/project-storage.service.js";
 
 const providerSchema = z.enum(STRUCTURE_PROVIDER_IDS);
 const previewUrlSchema = z.string().trim().max(2048).refine((value) => {
@@ -76,6 +79,7 @@ const updateSchema = z.object({
   title: z.string().min(1).max(120).optional(),
   icon: z.string().max(48).optional(),
   path: z.string().max(512).optional(),
+  expectedPath: z.string().max(512).optional(),
   instructions: z.string().max(8192).optional(),
   webPreviewUrl: previewUrlSchema.optional(),
   appPreviewUrl: previewUrlSchema.optional(),
@@ -138,6 +142,7 @@ export async function loadAssistantProjects(req: Request, res: Response) {
       const relation: "owner" | "shared" = ownerId == null || ownerId === uid ? "owner" : "shared";
       return {
         ...p,
+        storagePath: projectStorageRoot(p),
         ownerId,
         relation,
         ownerName: ownerId != null ? (nameById.get(ownerId) ?? null) : null,
@@ -162,6 +167,7 @@ export const projectsController = {
     parsed.data.fileProjectRef = await validateFileProjectRef(req, res, parsed.data.fileProjectRef);
     const result = await projectWorkspaceService.create(executor, parsed.data);
     let project = result.project;
+    await ensureProjectStorage(executor, project);
     // Toggle del grafo en el create: solo persiste `enabled` (la indexación en
     // sí la dispara el cliente vía POST /projects/:id/graph-index al tener id).
     if (parsed.data.graphIndexEnabled && project.id) {
@@ -197,6 +203,14 @@ export const projectsController = {
     if (!cur) throw assistantNotFound(res.locals.locale, "project");
     assertCanModify(cur.ownerId, res.locals.locale);
     parsed.data.fileProjectRef = await validateFileProjectRef(req, res, parsed.data.fileProjectRef, id);
+    if (parsed.data.expectedPath !== undefined && parsed.data.expectedPath !== cur.path) {
+      throw new ConflictError("El directorio cambió. Vuelve a abrir el proyecto antes de guardar.");
+    }
+    if ((parsed.data.path !== undefined && parsed.data.path !== cur.path) || (parsed.data.provider !== undefined && parsed.data.provider !== cur.provider)) {
+      // Preserve the OLD directory before committing the new cwd/provider.
+      const document = await projectDocumentService.read(executor, cur);
+      await projectDocumentService.save(executor, cur, document.content, document.revision);
+    }
     let project = await projectsRepository.update(executor, id, parsed.data);
     if (
       parsed.data.graphIndexEnabled !== undefined &&

@@ -1,3 +1,4 @@
+import { readProjectSettings, codexProjectOverrides } from "./project-settings.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { moduleMcpServer, prepareModuleAdapter } from "./module-channel.js";
@@ -148,6 +149,7 @@ export function makeCliBridgeProvider(args: {
       // LUXIPANEL_CONFIG_DIR, i.e. outside cwd/$HOME — without this the model is
       // told "puedes leerlos" but every Read is denied → "lo adjunté y no lo viste").
       const jailPaths: string[] = opts.jailPaths ? [...opts.jailPaths] : [];
+      const projectSettings = await readProjectSettings(executor, opts.projectStoragePath);
       // Approval mode: propagate the user's assistant-config choice to the
       // CLI so "auto" / "plan" actually take effect (previously hardcoded to
       // the manual gate regardless of mode).
@@ -372,7 +374,7 @@ export function makeCliBridgeProvider(args: {
         const fail = (): AttemptResult =>
           ({ detached: false, exitCode: 1, accumulated: "", prompt, pid: "", jobId, resumeNotFound: false });
 
-        const adapter = await prepareModuleAdapter(executor, args.id, jobId, opts);
+        const adapter = await prepareModuleAdapter(executor, args.id, jobId, opts, projectSettings.gemini);
         const runPrompt = adapter.directive ? `${prompt}\n\n${adapter.directive}` : prompt;
         // Write prompt to a temp file on the target (avoids arg-length limits)
         try {
@@ -429,6 +431,7 @@ export function makeCliBridgeProvider(args: {
             await executor.writeFile(codexConfigFile, Buffer.from(JSON.stringify({
               promptFile, approvalDir, cwd, model: args.model, effort: opts.effort, speed: opts.speed,
               approvalMode, resume: attemptResume, sessionId,
+              projectConfig: codexProjectOverrides(projectSettings.codex ?? {}),
             })), { mode: 0o600 });
             codexAdapterCleanup = `rm -rf ${quoteArg(codexAdapterFile)} ${quoteArg(codexConfigFile)} ${quoteArg(approvalDir)}`;
           } catch (err) {
@@ -474,6 +477,12 @@ export function makeCliBridgeProvider(args: {
         // the run) and/or the target's codebase graph (stdio binary, projects
         // indexed from the assistant UI). `--strict-mcp-config` stays on: only
         // what THIS file lists loads — the user's ~/.claude.json stays ignored.
+        let projectSettingsFile: string | undefined;
+        if ((args.id === "claude" || args.id === "minimax") && projectSettings.claude && Object.keys(projectSettings.claude).length) {
+          projectSettingsFile = `/tmp/${jobId}-project-settings.json`;
+          await executor.writeFile(projectSettingsFile, JSON.stringify(projectSettings.claude), { encoding: "utf8", mode: 0o600 });
+          systemFileCleanup = [systemFileCleanup, `rm -f ${quoteArg(projectSettingsFile)}`].filter(Boolean).join("; ");
+        }
         let mcpConfigFile: string | undefined;
         let graphMcpAttached = false;
         let mcpCleanup = "";
@@ -548,7 +557,7 @@ export function makeCliBridgeProvider(args: {
 
         // Launch detached — returns the PID in < 1 s
         const launchCmd = spec.buildLaunch({
-          promptFile, logFile, exitFile, cwd,
+          promptFile, logFile, exitFile, cwd, projectSettingsFile,
           ...(jailPaths ? { jailPaths } : {}),
           approvalMode,
           effort: opts.effort,

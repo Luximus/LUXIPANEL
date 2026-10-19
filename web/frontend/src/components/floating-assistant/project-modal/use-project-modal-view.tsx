@@ -79,7 +79,7 @@ export function useProjectModalView({
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
   useEffect(() => {
-    if (tab !== "context" || !project?.path || (contextDocument && instructions !== contextDocument.content)) return;
+    if (tab !== "context" || !project?.id || (contextDocument && instructions !== contextDocument.content)) return;
     let alive = true;
     setContextLoading(true);
     setContextDocument(null);
@@ -245,13 +245,13 @@ export function useProjectModalView({
 
   async function save() {
     if (!title.trim()) { setErr(t.titleRequired); return; }
-    if (contextLoading || (tab === "context" && project?.path && !contextDocument)) return;
+    if (contextLoading || (tab === "context" && project?.id && !contextDocument)) return;
     setBusy(true);
     setErr(null);
     try {
       if (contextDocument && project) {
         const edited = instructions !== contextDocument.content;
-        const sameSource = path === contextDocument.path && provider === contextDocument.provider;
+        const sameSource = provider === contextDocument.provider;
         if (edited && !sameSource) throw new Error(t.contextSaveSettings);
         if (sameSource && (edited || contextDocument.needsMigration)) {
           const savedDocument = await assistantProjectStructureApi.saveContext(project.id, instructions, contextDocument.revision);
@@ -272,7 +272,7 @@ export function useProjectModalView({
         webPreviewUrl: webPreviewUrl.trim(),
         appPreviewUrl: appPreviewUrl.trim(),
         fileProjectRef,
-        ...(!project?.path ? { instructions } : {}),
+        ...(!project ? { instructions } : { expectedPath: project.path }),
         provider,
         parentId: parentId || null,
         ...(!project && !parentId ? { teamName: teamName.trim() || title.trim(), leaderName: leaderName.trim() || `${title.trim()} · Líder`, creationKey: creationKey.current } : {}),

@@ -400,8 +400,8 @@ try {
   const sandbox = mode === 'auto' ? 'danger-full-access' : 'read-only';
   startup(config.resume ? 'resuming' : 'creating');
   const session = config.resume
-    ? await rpc('thread/resume', { threadId: config.sessionId, cwd: config.cwd, approvalPolicy: policy, sandbox })
-    : await rpc('thread/start', { cwd: config.cwd, approvalPolicy: policy, sandbox, ...(config.model ? { model: config.model } : {}) });
+    ? await rpc('thread/resume', { threadId: config.sessionId, cwd: config.cwd, config: config.projectConfig ?? {}, approvalPolicy: policy, sandbox })
+    : await rpc('thread/start', { cwd: config.cwd, config: config.projectConfig ?? {}, approvalPolicy: policy, sandbox, ...(config.model ? { model: config.model } : {}) });
   const threadId = session.thread?.id;
   if (!threadId) throw new Error('Codex did not return a thread id');
   emit({ type: 'thread.started', thread_id: threadId });

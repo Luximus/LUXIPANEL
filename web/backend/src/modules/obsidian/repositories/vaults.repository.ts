@@ -22,6 +22,9 @@ const store = makeKvStore<ObsidianVault>({
 });
 
 export const vaultsRepository = {
+  async update(executor: Executor, id: string, data: Partial<Pick<ObsidianVault, "path" | "name" | "shallow">>) {
+    return store(executor).update(id, data);
+  },
   async list(executor?: Executor | null): Promise<Array<ObsidianVault & { id: string }>> {
     const all = (await store(executor).list()) as Array<ObsidianVault & { id: string }>;
     return [...all].sort((a, b) => (a.name || "").localeCompare(b.name || ""));

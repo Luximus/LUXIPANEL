@@ -3,8 +3,8 @@
 /**
  * Manages a project's on-disk provider structure on the connected target.
  *
- * The source of truth is the real filesystem at `project.path` (the same files
- * the provider CLIs read). This service:
+ * Provider data lives in stable per-project storage; marketplace source
+ * modules remain at `project.path`. This service:
  *   - scans which recommended nodes already exist (1 SSH round-trip),
  *   - scaffolds selected missing nodes (never overwrites),
  *   - reads/writes the content of declared structure files (path-guarded).
@@ -13,6 +13,7 @@
  * root-owned, mirroring modules/mail's writeRootOwnedFile.
  */
 
+import { ensureProjectStorage, projectStorageOperation, assertProjectStorageAccess } from "../project-storage.service.js";
 import * as posix from "node:path/posix";
 import type { Executor } from "../../../../shared/executor/index.js";
 import { quoteCmd, quoteArg } from "../../../../shared/executor/quote.js";
@@ -146,13 +147,14 @@ async function writeFileMaybeSudo(
 export const projectStructureService = {
   /** Recommended structure for a project + which nodes already exist on disk. */
   async scan(executor: Executor, project: AssistantProject): Promise<StructureScan> {
-    const base = requirePath(project);
+    const snapshot = await projectStorageOperation(executor, project, "read");
+    const base = snapshot.managed ? snapshot.storagePath : requirePath(project);
     const opts = await marketplaceOptsFor(executor, project);
     const def = getProviderStructure(project.provider, opts);
 
     // One round-trip: print the rel of every node that exists.
     const checks = def.nodes
-      .map((n) => `if [ -e ${quoteArg(resolveRel(base, n.rel))} ]; then printf '%s\\n' ${quoteArg(n.rel)}; fi`)
+      .map((n) => `if [ -e ${quoteArg(resolveRel(n.rel.startsWith("modules/") ? requirePath(project) : base, n.rel))} ]; then printf '%s\\n' ${quoteArg(n.rel)}; fi`)
       .join("; ");
     const present = new Set<string>();
     try {
@@ -191,10 +193,10 @@ export const projectStructureService = {
     project: AssistantProject,
     rels: string[],
   ): Promise<{ created: string[]; skipped: string[] }> {
-    const base = requirePath(project);
+    const base = (await ensureProjectStorage(executor, project)).storagePath;
     const opts = await marketplaceOptsFor(executor, project);
     const def = getProviderStructure(project.provider, opts);
-    const ctx = templateCtx(project, base, opts);
+    const ctx = templateCtx(project, project.path || base, opts);
 
     // Order so parent dirs come before their children.
     const wanted = def.nodes.filter((n) => rels.includes(n.rel));
@@ -203,7 +205,7 @@ export const projectStructureService = {
     const created: string[] = [];
     const skipped: string[] = [];
     for (const node of wanted) {
-      const abs = resolveRel(base, node.rel);
+      const abs = resolveRel(node.rel.startsWith("modules/") ? requirePath(project) : base, node.rel);
       // Skip if it already exists (idempotent, never clobber).
       const exists = await pathExists(executor, abs);
       if (exists) {
@@ -212,11 +214,15 @@ export const projectStructureService = {
       }
       try {
         if (node.type === "dir") {
+          const physical = await executor.exec(`realpath -m -- ${quoteArg(abs)}`, { timeoutMs: 10000 });
+          const allowedRoot = node.rel.startsWith("modules/") ? requirePath(project) : base;
+          if (physical.exitCode !== 0 || !physical.stdout.trim().startsWith(allowedRoot + "/")) throw new ValidationError("Directorio fuera del proyecto.");
           await ensureDir(executor, abs);
         } else {
           const content = node.template ? node.template(ctx) : "";
           const mode = node.rel.endsWith(".sh") ? "755" : undefined;
-          await writeFileMaybeSudo(executor, abs, content, mode);
+          if (node.rel.startsWith("modules/")) await writeFileMaybeSudo(executor, abs, content, mode);
+          else await projectStorageOperation(executor, project, "write", node.rel, { content, expectedHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" });
         }
         created.push(node.rel);
       } catch (err) {
@@ -229,10 +235,16 @@ export const projectStructureService = {
 
   /** Read the content of a declared file node. */
   async readFile(executor: Executor, project: AssistantProject, rel: string): Promise<string> {
-    const base = requirePath(project);
+    const snapshot = await projectStorageOperation(executor, project, "read");
+    const base = snapshot.managed ? snapshot.storagePath : requirePath(project);
     const opts = await marketplaceOptsFor(executor, project);
     const node = requireFileNode(project.provider, rel, opts);
-    const abs = resolveRel(base, node.rel);
+    const abs = resolveRel(node.rel.startsWith("modules/") ? requirePath(project) : base, node.rel);
+    if (!node.rel.startsWith("modules/")) {
+      const result = await projectStorageOperation(executor, project, "read", node.rel);
+      if (!result.exists) throw new ValidationError(`No se pudo leer ${rel}. ¿Está creado?`);
+      return result.content;
+    }
     try {
       const data = await executor.readFile(abs, "utf-8");
       return typeof data === "string" ? data : data.toString("utf-8");
@@ -250,12 +262,14 @@ export const projectStructureService = {
     rel: string,
     content: string,
   ): Promise<void> {
-    const base = requirePath(project);
+    assertProjectStorageAccess(project, "write");
     const opts = await marketplaceOptsFor(executor, project);
     const node = requireFileNode(project.provider, rel, opts);
-    const abs = resolveRel(base, node.rel);
-    const mode = node.rel.endsWith(".sh") ? "755" : undefined;
-    await writeFileMaybeSudo(executor, abs, content, mode);
+    if (node.rel.startsWith("modules/")) {
+      await writeFileMaybeSudo(executor, resolveRel(requirePath(project), node.rel), content);
+    } else {
+      await projectStorageOperation(executor, project, "write", node.rel, { content });
+    }
   },
 
   /**

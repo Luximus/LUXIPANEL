@@ -89,6 +89,7 @@ export interface SystemPromptBuildResult {
   cwd: string | undefined;
   /** FILE-ACCESS JAIL allowlist accumulated from every source (empty = none). */
   jailPaths: string[];
+  projectStoragePath?: string;
   /** True when this is a CLI TEAM-LEADER run (the roster + delegation
    *  protocol block was injected and the team.* tools are served over the
    *  cross MCP channel). The CLI bridge uses it to carve the team tools out

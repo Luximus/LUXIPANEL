@@ -29,6 +29,9 @@ export interface ProjectContextDocument {
   content: string;
   revision: string;
   needsMigration: boolean;
+  storagePath: string;
+  documentPath: string;
+  managed: boolean;
   path: string;
   provider: StructureProviderId;
 }

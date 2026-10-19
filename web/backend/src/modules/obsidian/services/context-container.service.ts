@@ -1,3 +1,4 @@
+import { connectProjectStorageVault } from "./project-storage-vault.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 /**
@@ -366,8 +367,11 @@ export const contextContainerService = {
   ) {
     const spec = projectSpec(project);
     if (!spec) return null;
-    const ctx = await buildCtx(executor);
-    return ensureOne(executor, ctx, spec);
+    const full = await projectsRepository.get(executor, project.id!);
+    if (!full) return null;
+    const existed = await containersRepository.findByRefKey(executor, spec.refKey);
+    await connectProjectStorageVault(executor, full);
+    return { container: (await containersRepository.findByRefKey(executor, spec.refKey))!, created: !existed };
   },
 
   /** Ensure a container for a loose chat (from the create event). No-op for

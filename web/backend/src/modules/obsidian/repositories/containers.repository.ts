@@ -50,6 +50,9 @@ const store = makeKvStore<ContextContainer>({
 });
 
 export const containersRepository = {
+  async update(executor: Executor, id: string, data: Partial<Pick<ContextContainer, "path" | "vaultId">>) {
+    return store(executor).update(id, data);
+  },
   async list(executor?: Executor | null): Promise<Registered[]> {
     return (await store(executor).list()) as Registered[];
   },

@@ -479,6 +479,7 @@ export const agentService = {
     const moduleToken = provider.mode === "cli" ? mintModuleMcpToken(user, conversationId) : undefined;
     const modulesMcp = moduleToken && crossChannelOrigin ? { url: `${crossChannelOrigin}/api/ai/mcp/modules`, token: moduleToken } : undefined;
     const baseRunOpts = {
+      ...(built.projectStoragePath ? { projectStoragePath: built.projectStoragePath } : {}),
       speed: (effId === "codex" && conversation?.speed === "fast" ? "fast" : "normal") as "normal" | "fast",
       systemPrompt,
       systemContext,

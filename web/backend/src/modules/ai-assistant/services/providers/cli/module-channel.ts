@@ -30,11 +30,11 @@ const response = await fetch(channel.url, { method: "POST", redirect: "error", s
 if (!response.ok) throw new Error("Module channel unavailable: " + response.status);
 process.stdout.write(JSON.stringify(await response.json()) + "\\n");
 `;
-export async function prepareModuleAdapter(executor: Executor, id: string, jobId: string, opts: ProviderRunOptions): Promise<{ env: string; cleanup: string; directive: string }> {
-  if (!opts.modulesMcp) return { env: "", cleanup: "", directive: "" };
+export async function prepareModuleAdapter(executor: Executor, id: string, jobId: string, opts: ProviderRunOptions, projectSettings: Record<string, unknown> = {}): Promise<{ env: string; cleanup: string; directive: string }> {
+  if (!opts.modulesMcp && !(id === "gemini" && Object.keys(projectSettings).length)) return { env: "", cleanup: "", directive: "" };
   if (id === "gemini") {
     const file = `/tmp/${jobId}-gemini-settings.json`;
-    await executor.writeFile(file, Buffer.from(JSON.stringify(geminiModuleSettings(opts))), { mode: 0o600 });
+    await executor.writeFile(file, Buffer.from(JSON.stringify({ ...projectSettings, ...geminiModuleSettings(opts) })), { mode: 0o600 });
     return { env: `export GEMINI_CLI_SYSTEM_SETTINGS_PATH=${quoteArg(file)};`, cleanup: `rm -f ${quoteArg(file)}`, directive: "Use the luxipanel-modules MCP tools to discover and manage panel modules." };
   }
   if (id !== "grok") return { env: "", cleanup: "", directive: "Use the luxipanel-modules MCP tools: modules__list, modules__describe, modules__read and modules__execute." };

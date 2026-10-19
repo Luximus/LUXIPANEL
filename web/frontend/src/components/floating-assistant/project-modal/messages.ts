@@ -36,6 +36,7 @@ export type ProjectModalMessages = {
   workingDirPlaceholder: string;
   browse: string;
   clear: string;
+  projectDataLabel: string;
   workingDirHint: string;
   contextObsidian: string;
   contextDocumentHint: string;
@@ -124,10 +125,11 @@ export const projectModalFallback: ProjectModalMessages = {
   workingDirPlaceholder: "",
   browse: "",
   clear: "",
-  workingDirHint: "",
+  projectDataLabel: "Datos del proyecto",
+  workingDirHint: "El agente trabaja en esta carpeta. Cambiarla conserva el contexto, las notas y la configuración del proyecto.",
   contextObsidian: "Abrir en Obsidian",
-  contextDocumentHint: "Editas el documento del proyecto. Los cambios guardados aquí, en Estructura u Obsidian se leen desde el mismo archivo.",
-  contextSaveSettings: "Guarda primero el cambio de directorio o proveedor y vuelve a abrir el contexto.",
+  contextDocumentHint: "El documento se guarda en la carpeta permanente del proyecto. Contexto, Estructura y Obsidian editan el mismo archivo.",
+  contextSaveSettings: "Guarda primero el cambio de proveedor y vuelve a abrir el contexto.",
   instructionsLabel: "",
   instructionsPlaceholder: "",
   associatedServersLabel: "",

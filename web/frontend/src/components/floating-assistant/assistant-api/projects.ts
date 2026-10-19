@@ -26,6 +26,7 @@ export interface AssistantProjectServer {
 }
 
 export interface AssistantProject {
+  storagePath?: string;
   id: string;
   title: string;
   icon: string;

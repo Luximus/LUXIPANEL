@@ -31,6 +31,7 @@ export interface CliBuildCtx {
   /** Paths the CLI sandbox should allow access to (forwarded as `--add-dir`).
    *  Mirrors the BACKEND file-jail so the subprocess sandbox matches. */
   jailPaths?: string[];
+  projectSettingsFile?: string;
   model?: string;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   apiKey?: string;
@@ -188,8 +189,8 @@ export const CLI_SPECS: Record<AssistantProviderId, CliSpec | null> = {
     bin: "claude",
     // First turn pins a fixed --session-id (UUID we minted); later turns
     // --resume that id so the upstream Claude session keeps full memory.
-    buildLaunch: ({ promptFile, logFile, exitFile, cwd, jailPaths, model, effort, resume, sessionId, envPrefix, cleanup, mcpConfigFile, graphMcpAttached, modulesMcpAttached, appendSystemPromptFile, approvalMode = "manual", stdinFifo }) => {
-      const addDirFlag = buildClaudeAddDirFlag(cwd, jailPaths);
+    buildLaunch: ({ promptFile, logFile, exitFile, cwd, jailPaths, projectSettingsFile, model, effort, resume, sessionId, envPrefix, cleanup, mcpConfigFile, graphMcpAttached, modulesMcpAttached, appendSystemPromptFile, approvalMode = "manual", stdinFifo }) => {
+      const addDirFlag = buildClaudeAddDirFlag(cwd, jailPaths) + (projectSettingsFile ? `--settings ${quoteArg(projectSettingsFile)} ` : "");
       const sessionFlag = resume
         ? `--resume ${quoteArg(sessionId ?? "")}`
         : sessionId
@@ -332,8 +333,8 @@ export const CLI_SPECS: Record<AssistantProviderId, CliSpec | null> = {
     // hooks as the `claude` entry (Claude Code IS what runs underneath): live
     // tool events, MCP servers, `--resume` for memory, `--disallowedTools
     // Workflow`. Auth/model/base-url are provided ONLY by the wrapper env.
-    buildLaunch: ({ promptFile, logFile, exitFile, cwd, jailPaths, resume, sessionId, envPrefix, cleanup, mcpConfigFile, graphMcpAttached, modulesMcpAttached, appendSystemPromptFile, approvalMode = "manual", stdinFifo }) => {
-      const addDirFlag = buildClaudeAddDirFlag(cwd, jailPaths);
+    buildLaunch: ({ promptFile, logFile, exitFile, cwd, jailPaths, projectSettingsFile, resume, sessionId, envPrefix, cleanup, mcpConfigFile, graphMcpAttached, modulesMcpAttached, appendSystemPromptFile, approvalMode = "manual", stdinFifo }) => {
+      const addDirFlag = buildClaudeAddDirFlag(cwd, jailPaths) + (projectSettingsFile ? `--settings ${quoteArg(projectSettingsFile)} ` : "");
       const sessionFlag = resume
         ? `--resume ${quoteArg(sessionId ?? "")}`
         : sessionId

@@ -1,3 +1,4 @@
+import { projectStorageRoot } from "../project-storage.service.js";
 import { projectDocumentService } from "../project-document.service.js";
 import { resolveAgentContext, scopedAgents, intersectPaths, assignmentError } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -207,6 +208,7 @@ export async function buildSystemPrompt(
   // tree, agent). Doubles as the FILE-ACCESS JAIL allowlist for the run when
   // non-empty: the file tools may only touch paths under these.
   const jailPaths: string[] = [];
+  let projectStoragePath: string | undefined;
   if (cwdOverride && !context.projectId) {
     cwd = cwdOverride;
     jailPaths.push(cwdOverride);
@@ -221,6 +223,8 @@ export async function buildSystemPrompt(
     const ancestors = context.ancestors.slice(0, -1);
     const scopedPaths = agent ? agent.projectPaths ?? [] : context.contextProjects.map(p => p.path).filter(Boolean);
     jailPaths.push(...scopedPaths);
+    projectStoragePath = projectStorageRoot(project);
+    jailPaths.push(...context.ancestors.map(projectStorageRoot));
     cwd = project.path && intersectPaths([project.path], scopedPaths).includes(project.path) ? project.path : scopedPaths[0];
     if (cwdOverride && !intersectPaths([cwdOverride], scopedPaths).includes(cwdOverride)) {
       throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "El directorio solicitado está fuera del proyecto activo.", 403);
@@ -584,5 +588,5 @@ export async function buildSystemPrompt(
     jailPaths.splice(0,jailPaths.length,workspace,env.ASSISTANT_BROWSER_SHOT_DIR);
     systemPrompt+="\nLa única ruta editable de esta tarea es "+workspace+". Las rutas originales del proyecto son referencias de contexto: resuelve sus archivos dentro de esta copia. El envío a GitHub lo confirma el panel; no lo anuncies como terminado desde el agente.";
   }
-  return { systemPrompt, systemContext, tools, cwd, jailPaths, cliTeamLeader, ...(graphMcp ? { graphMcp } : {}) };
+  return { systemPrompt, systemContext, tools, cwd, jailPaths, projectStoragePath, cliTeamLeader, ...(graphMcp ? { graphMcp } : {}) };
 }

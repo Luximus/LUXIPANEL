@@ -100,6 +100,7 @@ export interface ProviderRunOptions {
    * but is plumbed through to the subprocess so its own sandbox matches.
    */
   jailPaths?: string[];
+  projectStoragePath?: string;
   /** Files attached to the latest user message (images/pdf/etc). */
   attachments?: ProviderAttachment[];
   /**
