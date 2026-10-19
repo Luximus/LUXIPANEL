@@ -9,27 +9,44 @@ carpetas de clientes no son las rutas de trabajo de este monorepo.
 
 | Área | Directorio | Responsabilidad y referencia |
 | --- | --- | --- |
-| WEB | [web](../web) | Coordinación de API, interfaz e instalación. |
-| BACKEND | [web/backend](../web/backend/ARCHITECTURE.md) | API Express/TypeScript, login Linux y ejecución contextual. |
-| MODULOS | [web/backend/src/modules](../web/backend/src/modules) | Un dominio por carpeta; consultar su README y registro activo. |
+| Web | [web](../web) | Coordinación de API, interfaz e instalación. |
+| Backend | [web/backend](../web/backend/ARCHITECTURE.md) | API Express/TypeScript, login Linux y ejecución contextual. |
+| Módulos del backend | [web/backend/src/modules](../web/backend/src/modules) | Servicios y contratos por dominio; consultar su README y registro activo. |
 | Servicios compartidos | [web/backend/src/shared](../web/backend/src/shared) | Executor, permisos, caché, contratos y servicios transversales. |
 | Motores y scripts | [web/backend/scripts](../web/backend/scripts) | Collectors, workers, auxiliares de despliegue y activos del backend. |
-| FRONTEND | [web/frontend](../web/frontend/ARCHITECTURE.md) | Astro SSR, islas React y navegación persistente. |
-| Componentes UI | [web/frontend/src/components](../web/frontend/src/components) | Primitivas y componentes de cada dominio. |
+| Frontend | [web/frontend](../web/frontend/ARCHITECTURE.md) | Astro SSR, islas React y navegación persistente. |
+| Módulos del frontend | [web/frontend/src/pages/panel](../web/frontend/src/pages/panel) | Rutas de los módulos y otras vistas del panel; cada módulo con ruta propia tiene un subproyecto. |
+| Componentes de interfaz | [web/frontend/src/components](../web/frontend/src/components) | Primitivas y componentes de cada dominio. |
 | Rutas y páginas | [web/frontend/src/pages](../web/frontend/src/pages) | Entradas Astro y proxy API; revisar también middleware y layouts. |
 | Cliente y sesión | [web/frontend/src/lib](../web/frontend/src/lib) | Transporte, contexto y utilidades compartidas de la interfaz. |
 | Traducciones | [web/frontend/src/i18n](../web/frontend/src/i18n) | Catálogos fuente por idioma y namespace. |
 | Navegación y scripts | [web/frontend/src/scripts](../web/frontend/src/scripts) | Inicialización, limpieza y comportamiento cliente durante navegación SPA. |
 | Instalación y versiones | [web/scripts](../web/scripts) | Instaladores y preparación y revisión de entregas. |
 | Compatibilidad y capacidades | [web/security](../web/security) | Comprobaciones de compatibilidad y capacidades de módulos. |
-| APP | [mobile](../mobile/ARCHITECTURE.md) | Cliente React Native/Expo que consume las APIs directas del panel. |
-| DESKTOP | [desktop](../desktop/ARCHITECTURE.md) | Shell Electron que abre la interfaz web en vistas aisladas. |
+| Aplicación móvil | [mobile](../mobile/ARCHITECTURE.md) | Cliente React Native/Expo que consume las APIs directas del panel. |
+| Escritorio | [desktop](../desktop/ARCHITECTURE.md) | Shell Electron que abre la interfaz web en vistas aisladas. |
 
-En el catálogo del asistente, MODULOS pertenece a BACKEND. No debe duplicar la
-ruta de WEB. Los componentes `floating-assistant`, `panel-files`,
-`floating-terminal`, `panel-mail`, `messenger` y `panel-releases` pueden tener
-subproyectos bajo Componentes UI, conservando sus directorios reales. Registrar
-un subproyecto no crea otro checkout, proceso ni módulo instalado.
+En el catálogo del asistente, Módulos del backend pertenece a Backend y
+Módulos del frontend pertenece a Rutas y páginas, dentro de Frontend. Cada
+proyecto usa una ruta física única: un módulo con código en ambas capas tiene
+un proyecto por capa y referencias cruzadas en sus contextos. Las rutas de
+`pages/panel` comparten componentes en `src/components`, cliente en `src/lib`
+y traducciones en `src/i18n`; la carpeta de la ruta no cubre por sí sola toda
+la interfaz. Las carpetas de dominio bajo Componentes de interfaz tienen
+subproyectos cuando concentran lógica propia, incluidos autenticación,
+respaldos, tareas programadas, alojamiento, desarrollo de módulos, catálogo
+de repositorios, usuarios y ajustes. Los componentes persistentes del
+asistente, archivos, terminal, correo, mensajería y versiones conservan sus
+subproyectos. Registrar un subproyecto no crea otro checkout, proceso ni
+módulo instalado.
+
+Algunos nombres de rutas difieren del backend: `assistant` usa `ai-assistant`,
+`backups` usa `backup`, `modules` y `repository-store` usan `admin`, y
+`terminal` se relaciona con `terminal` y `terminal-cli`. Cada contexto de ruta
+indica su backend y, cuando existe, la carpeta de componentes correspondiente.
+Mantener los títulos de proyecto en estilo oración: inicial mayúscula y las
+demás palabras en minúscula; conservar nombres propios y rutas técnicas en el
+código y en las referencias.
 
 La existencia de una carpeta no prueba que el módulo esté habilitado o que una
 pantalla antigua forme parte del runtime. Comprobar los registradores, entradas

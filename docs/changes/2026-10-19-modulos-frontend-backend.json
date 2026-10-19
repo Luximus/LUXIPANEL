@@ -1,0 +1,7 @@
+{
+  "title": "Organización del contexto de módulos",
+  "changes": [
+    "Los proyectos del asistente distinguen los servicios de los módulos y sus rutas de interfaz, con referencias entre ambas áreas.",
+    "Los nombres de los proyectos siguen un estilo uniforme y las nuevas rutas y áreas de componentes tienen contexto y guías de revisión propias."
+  ]
+}
