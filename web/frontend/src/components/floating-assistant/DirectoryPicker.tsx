@@ -98,16 +98,17 @@ export function DirectoryPicker({ initialPath = "/", onClose, onSelect }: Direct
       zIndexClass="z-[10000]"
       title={tt.title}
       closeLabel={i18n.drawer.close}
-      bodyClassName="flex min-h-0 flex-col gap-2 overflow-hidden p-3"
+      cardClassName="max-sm:pb-[env(safe-area-inset-bottom)]"
+      bodyClassName="flex min-h-0 flex-col gap-3 overflow-hidden p-3 sm:p-4"
       footer={
         <>
-          <button type="button" onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent">
+          <button type="button" onClick={onClose} className="min-h-11 rounded-md border border-border px-4 py-2 text-sm hover:bg-accent">
             {tt.cancel}
           </button>
           <button
             type="button"
             onClick={() => onSelect(cwd)}
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            className="min-h-11 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             {tt.select}
           </button>
@@ -119,12 +120,12 @@ export function DirectoryPicker({ initialPath = "/", onClose, onSelect }: Direct
               type="button"
               onClick={() => setCwd(parentOf(cwd))}
               disabled={cwd === "/" || loading}
-              className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:bg-accent disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent disabled:opacity-40"
               title={tt.goUp}
             >
               <i className="ti ti-arrow-up" aria-hidden></i>
             </button>
-            <code className="flex-1 truncate rounded-md bg-muted/50 px-2 py-1.5 font-mono text-xs" title={cwd}>
+            <code className="min-w-0 flex-1 break-all rounded-md bg-muted/50 px-3 py-2 font-mono text-xs leading-5" title={cwd}>
               {cwd}
             </code>
           </div>
@@ -144,7 +145,7 @@ export function DirectoryPicker({ initialPath = "/", onClose, onSelect }: Direct
                   <button
                     type="button"
                     onClick={() => setCwd(d.path)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent"
+                    className="flex min-h-11 w-full items-center gap-3 rounded px-3 py-2 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <i className="ti ti-folder text-amber-500" aria-hidden></i>
                     <span className="truncate">{d.name}</span>

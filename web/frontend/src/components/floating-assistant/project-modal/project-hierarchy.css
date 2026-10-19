@@ -6,13 +6,21 @@
 .lxp-tree-action { display: inline-flex; flex: none; width: 1.75rem; height: 1.75rem; align-items: center; justify-content: center; border-radius: .375rem; color: var(--muted-foreground); }
 .lxp-tree-action:hover:not(:disabled), .lxp-tree-action:focus-visible { background: var(--accent); color: var(--foreground); }
 .lxp-tree-action:disabled { opacity: .25; cursor: not-allowed; }
+.lxp-tree-action-label { display: none; }
+.lxp-tree-mobile-toggle { display: none; }
 .lxp-project-shredder { background: repeating-linear-gradient(90deg, transparent 0 12px, color-mix(in srgb, currentColor 5%, transparent) 12px 13px); }
 .lxp-project-shredder.is-active { color: var(--destructive); background-color: color-mix(in srgb, var(--destructive) 12%, transparent); border-color: var(--destructive); }
 .lxp-project-tree-row.is-shredding { animation: lxp-project-shred .5s ease-in forwards; mask-image: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px); }
 @keyframes lxp-project-shred { to { opacity: 0; transform: translateY(32px) scaleX(.72) skewX(5deg); filter: blur(2px); } }
 @media (max-width: 639px) {
-  .lxp-project-tree-row:not(.is-root) { flex-wrap: wrap; }
-  .lxp-project-tree-row:not(.is-root) .lxp-tree-name { flex: 1 1 calc(100% - 3.5rem); }
-  .lxp-project-tree-row:not(.is-root) .lxp-tree-actions { width: 100%; justify-content: flex-end; }
+  .lxp-project-tree-children { margin-left: .4rem; padding-left: .45rem; }
+  .lxp-project-tree-row { flex-wrap: wrap; min-height: 3rem; }
+  .lxp-project-tree-row .lxp-tree-name { flex: 1 1 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .875rem; }
+  .lxp-tree-mobile-toggle { display: inline-flex; width: 2.5rem; height: 2.5rem; flex: none; align-items: center; justify-content: center; border-radius: .375rem; }
+  .lxp-tree-mobile-toggle:hover, .lxp-tree-mobile-toggle:focus-visible { background: var(--accent); }
+  .lxp-project-tree-row .lxp-tree-actions { display: none; width: 100%; flex-wrap: wrap; justify-content: flex-start; border-top: 1px solid var(--border); padding-top: .4rem; }
+  .lxp-project-tree-row .lxp-tree-actions.is-mobile-open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lxp-project-tree-row .lxp-tree-actions .lxp-tree-action { width: 100%; min-width: 0; height: 2.75rem; gap: .35rem; border: 1px solid var(--border); font-size: .75rem; }
+  .lxp-tree-action-label { display: inline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .lxp-project-tree-row.is-shredding { animation: none; } }

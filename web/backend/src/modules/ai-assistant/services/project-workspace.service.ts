@@ -63,7 +63,7 @@ export const projectWorkspaceService = {
       }
       if (data.parentId) {
         const parent = await projectsRepository.get(executor, data.parentId);
-        if (!parent || parent.ownerId !== uid) throw new NotFoundError("Proyecto padre no encontrado");
+        if (!parent || (parent.ownerId != null && parent.ownerId !== uid)) throw new NotFoundError("Proyecto padre no encontrado");
         return { project: await projectsRepository.create(executor, { ...data, teamId: null, leaderAgentId: null }), created: true };
       }
       const project = await projectsRepository.create(executor, data);

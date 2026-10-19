@@ -23,6 +23,7 @@ export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreat
   const [dropKey, setDropKey] = useState<string | null>(null);
   const [shreddedId, setShreddedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mobileActionsId, setMobileActionsId] = useState<string | null>(null);
   useEffect(() => setProjects(allProjects), [allProjects]);
   useEffect(() => {
     let live = true;
@@ -173,15 +174,19 @@ export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreat
             {node.title}
           </button>
           <span className="hidden shrink-0 text-[10px] text-muted-foreground @2xl:inline">{children.length > 0 ? children.length : ""}</span>
-          <div className="lxp-tree-actions flex shrink-0 items-center gap-1">
+          <button type="button" className="lxp-tree-mobile-toggle" aria-label={`Acciones de ${node.title}`}
+            aria-expanded={mobileActionsId === node.id} onClick={() => setMobileActionsId(mobileActionsId === node.id ? null : node.id)}>
+            <i className="ti ti-dots-vertical" aria-hidden />
+          </button>
+          <div className={`lxp-tree-actions flex shrink-0 items-center gap-1 ${mobileActionsId === node.id ? "is-mobile-open" : ""}`}>
           <button type="button" onClick={() => onCreateChild(node)} disabled={!mutable(node)} aria-label={`Crear subproyecto en ${node.title}`}
-            className="lxp-tree-action" title="Crear subproyecto"><i className="ti ti-plus" aria-hidden /></button>
+            className="lxp-tree-action" title="Crear subproyecto"><i className="ti ti-plus" aria-hidden /><span className="lxp-tree-action-label">Crear</span></button>
           {!isRoot && <>
-            <button type="button" onClick={() => direction(node, -1)} disabled={busyId !== null || index === 0 || !mutable(node)} aria-label={`Subir ${node.title}`} className="lxp-tree-action" title="Subir"><i className="ti ti-arrow-up" aria-hidden /></button>
-            <button type="button" onClick={() => direction(node, 1)} disabled={busyId !== null || index === siblings.length - 1 || !mutable(node)} aria-label={`Bajar ${node.title}`} className="lxp-tree-action" title="Bajar"><i className="ti ti-arrow-down" aria-hidden /></button>
-            <button type="button" onClick={() => indent(node)} disabled={busyId !== null || !canIndent || !mutable(node)} aria-label={`Anidar ${node.title}`} className="lxp-tree-action" title="Anidar"><i className="ti ti-arrow-right" aria-hidden /></button>
-            <button type="button" onClick={() => outdent(node)} disabled={busyId !== null || !canOutdent || !mutable(node)} aria-label={`Subir de nivel ${node.title}`} className="lxp-tree-action" title="Subir de nivel"><i className="ti ti-arrow-left" aria-hidden /></button>
-            <button type="button" onClick={() => void remove(node)} disabled={busyId !== null || children.length > 0 || !mutable(node)} aria-label={`Eliminar ${node.title}`} className="lxp-tree-action hover:text-destructive" title={children.length ? "Mueve o elimina sus subproyectos primero" : "Eliminar proyecto"}><i className="ti ti-trash" aria-hidden /></button>
+            <button type="button" onClick={() => direction(node, -1)} disabled={busyId !== null || index === 0 || !mutable(node)} aria-label={`Subir ${node.title}`} className="lxp-tree-action" title="Subir"><i className="ti ti-arrow-up" aria-hidden /><span className="lxp-tree-action-label">Subir</span></button>
+            <button type="button" onClick={() => direction(node, 1)} disabled={busyId !== null || index === siblings.length - 1 || !mutable(node)} aria-label={`Bajar ${node.title}`} className="lxp-tree-action" title="Bajar"><i className="ti ti-arrow-down" aria-hidden /><span className="lxp-tree-action-label">Bajar</span></button>
+            <button type="button" onClick={() => indent(node)} disabled={busyId !== null || !canIndent || !mutable(node)} aria-label={`Anidar ${node.title}`} className="lxp-tree-action" title="Anidar"><i className="ti ti-arrow-right" aria-hidden /><span className="lxp-tree-action-label">Anidar</span></button>
+            <button type="button" onClick={() => outdent(node)} disabled={busyId !== null || !canOutdent || !mutable(node)} aria-label={`Subir de nivel ${node.title}`} className="lxp-tree-action" title="Subir de nivel"><i className="ti ti-arrow-left" aria-hidden /><span className="lxp-tree-action-label">Desanidar</span></button>
+            <button type="button" onClick={() => void remove(node)} disabled={busyId !== null || children.length > 0 || !mutable(node)} aria-label={`Eliminar ${node.title}`} className="lxp-tree-action hover:text-destructive" title={children.length ? "Mueve o elimina sus subproyectos primero" : "Eliminar proyecto"}><i className="ti ti-trash" aria-hidden /><span className="lxp-tree-action-label">Eliminar</span></button>
           </>}
           </div>
         </div>
@@ -198,7 +203,7 @@ export function ProjectHierarchyTree({ project, allProjects, onNavigate, onCreat
     <section className="space-y-2 border-t border-border pt-4" data-project-hierarchy>
       <div className="flex items-center justify-between gap-2">
         <div><span className="block text-xs font-medium text-foreground">Estructura de proyectos</span>
-          <p className="text-[11px] text-muted-foreground">{members.length - 1} subproyecto(s) · Arrastra para ordenar o anidar</p></div>
+          <p className="text-[11px] text-muted-foreground">{members.length - 1} subproyecto(s) · <span className="max-sm:hidden">Arrastra para ordenar o anidar</span><span className="sm:hidden">Usa Acciones para ordenar o anidar</span></p></div>
         <button type="button" onClick={() => onCreateChild(project)} disabled={!mutable(project)} className="rounded-md border border-primary/45 px-2.5 py-1.5 text-xs text-primary hover:bg-primary/10">+ Subproyecto</button>
       </div>
       {error && <p role="alert" className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{error}</p>}

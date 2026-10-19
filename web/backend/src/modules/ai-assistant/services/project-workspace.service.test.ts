@@ -110,6 +110,19 @@ describe("project workspace", () => {
     expect(agents.size).toBe(1);
   });
 
+  it("creates children under a legacy parent but rejects a parent owned by another user", async () => {
+    projects.set("legacy", { id: "legacy", ownerId: null, title: "WEB", path: "/project/web", provider: "codex" });
+    const child = await projectWorkspaceService.create(executor, {
+      title: "BACKEND", icon: "folder", path: "/project/web/backend", instructions: "", parentId: "legacy",
+    });
+    expect(child.project.parentId).toBe("legacy");
+    expect(child.project.ownerId).toBe(uid);
+    projects.set("foreign", { id: "foreign", ownerId: uid + 1, title: "Ajeno", path: "/other", provider: "codex" });
+    await expect(projectWorkspaceService.create(executor, {
+      title: "No autorizado", icon: "folder", path: "/other/child", instructions: "", parentId: "foreign",
+    })).rejects.toThrow("Proyecto padre no encontrado");
+  });
+
   it("repairs agent chats once while preserving a valid explicit project", async () => {
     projects.set("p1", { id: "p1", ownerId: uid, title: "Proyecto", provider: "codex" });
     projects.set("p2", { id: "p2", ownerId: uid, title: "Otro", provider: "codex" });
