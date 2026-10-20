@@ -141,6 +141,14 @@ export const assistantApi = {
     const res = await api.post<ProviderProbeResult>(`/api/ai/config/providers/${id}/test`);
     return unwrap(res, "Probe failed");
   },
+
+  async getProviderModels(id: AssistantProviderId, refresh = false): Promise<{ models: string[]; verified: boolean }> {
+    const res = await api.catalog<{ ok: boolean; catalog: { status: "verified" | "unverified" | "unavailable"; models: Array<{ id: string; available: boolean }> } }>(`/api/ai/config/providers/${id}/models${refresh ? "?refresh=1" : ""}`);
+    const catalog = unwrap(res, "Failed to load provider models").catalog;
+    if (catalog.status !== "verified") return { models: PROVIDER_MODELS[id], verified: false };
+    const models = catalog.models.filter((model) => model.available).map((model) => model.id);
+    return { models, verified: true };
+  },
 };
 
 export const PROVIDER_META: Record<

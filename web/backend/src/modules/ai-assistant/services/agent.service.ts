@@ -43,6 +43,8 @@ import type {
   AgentProvider,
 } from "./providers/provider.types.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
+import { providerModelCatalog, resolveCatalogModel } from "./provider-model-catalog.service.js";
+import { runWithProviderModelFallback } from "./provider-model-fallback.service.js";
 
 export type { AgentEvent, AgentMessage } from "./providers/provider.types.js";
 
@@ -312,6 +314,19 @@ export const agentService = {
     const savedEffort = !providerId || providerId === conversation?.provider ? conversation?.effort : undefined;
     if (options.effort || savedEffort) runEffort = options.effort || savedEffort || undefined;
 
+    const selectedSlot = config.providers[effId];
+    const selectedModel = selectedSlot?.mode === "api" ? selectedSlot.api?.model : selectedSlot?.cli?.model;
+    let modelCatalog: Awaited<ReturnType<typeof providerModelCatalog>> | undefined;
+    if (selectedModel && executor) {
+      modelCatalog = await providerModelCatalog(executor, config, effId);
+      const resolved = resolveCatalogModel(selectedModel, modelCatalog, effId);
+      if (resolved.model && resolved.model !== selectedModel) {
+        if (selectedSlot?.api) selectedSlot.api = { ...selectedSlot.api, model: resolved.model };
+        if (selectedSlot?.cli) selectedSlot.cli = { ...selectedSlot.cli, model: resolved.model };
+        yield { type: "text", delta: `ℹ️ ${selectedModel} no está disponible ahora; este chat usará ${resolved.model}. Tu preferencia guardada no cambia.\n\n` };
+      }
+    }
+
     // Agent explicitly set to multi-agent → force the orchestrator (API only),
     // regardless of auto-routing. Fan-out spreads across the agent's providers.
     if (agent?.agentMode === "multi" && config.providers[effId]?.mode === "api") {
@@ -544,6 +559,7 @@ export const agentService = {
       multiAllowed && decision
         ? orchestratorService.run({
             config,
+            executor: executor as Executor,
             providerId: effId,
             // Fan sub-agents across the agent's providers (primary + extras),
             // keeping only API-mode ones. Empty → orchestrator uses just effId.
@@ -558,7 +574,9 @@ export const agentService = {
             // Agent "multi" mode = replicate THIS agent N times (its copy count).
             ...(agent?.agentMode === "multi" && agent.multiAgentCount ? { copies: agent.multiAgentCount } : {}),
           })
-        : provider.run(effectiveMessages, { ...baseRunOpts, effort: runEffort });
+        : modelCatalog && selectedModel && executor
+          ? runWithProviderModelFallback({ config, executor, providerId: effId, model: (config.providers[effId]?.api?.model ?? config.providers[effId]?.cli?.model ?? selectedModel), catalog: modelCatalog, messages: effectiveMessages, options: { ...baseRunOpts, effort: runEffort }, english: false })
+          : provider.run(effectiveMessages, { ...baseRunOpts, effort: runEffort });
     for await (const ev of eventStream) {
       if (ev.type === "tool_use") {
         pending.set(ev.id, { tool: ev.name, startedAt: Date.now() });

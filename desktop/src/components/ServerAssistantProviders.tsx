@@ -16,7 +16,7 @@ const PROVIDER_ORDER = ["claude", "codex", "gemini", "deepseek", "grok", "minima
 /** Modelos canónicos por proveedor (mismo set que LUXIPANEL `assistant-api.ts`). */
 const PROVIDER_MODELS: Record<string, string[]> = {
   claude: ["claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5", "opus", "sonnet", "haiku"],
-  codex: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4.1", "gpt-4o"],
+  codex: ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"],
   gemini: ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
   minimax: ["MiniMax-M2.5", "MiniMax-M2.7", "MiniMax-M2.5-highspeed", "MiniMax-M2.1"],
@@ -175,13 +175,21 @@ export default function ServerAssistantProviders({
   const t = strings(language);
   type ViewState = { kind: "loading" } | { kind: "error" } | { kind: "ok"; config: AssistantConfig };
   const [state, setState] = useState<ViewState>({ kind: "loading" });
+  const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
 
   // Carga inicial (y al cambiar de panel): el setState ocurre solo en el
   // callback async, nunca síncrono dentro del efecto.
   useEffect(() => {
     let cancelled = false;
+    setAvailableModels({});
     void luxAssistantProxy<ConfigEnvelope>(panelId, token, "GET", "/api/ai/config").then((res) => {
-      if (!cancelled) setState(res?.config ? { kind: "ok", config: res.config } : { kind: "error" });
+      if (!cancelled && res?.config) {
+        setState({ kind: "ok", config: res.config });
+        void Promise.all(PROVIDER_ORDER.map(async (id) => {
+          const result = await luxAssistantProxy<{ ok?: boolean; catalog?: { status?: string; models?: Array<{ id: string; available: boolean }> } }>(panelId, token, "GET", `/api/ai/config/providers/${encodeURIComponent(id)}/models`);
+          if (!cancelled && result?.catalog?.status === "verified") setAvailableModels((current) => ({ ...current, [id]: (result.catalog?.models ?? []).filter((model) => model.available).map((model) => model.id) }));
+        }));
+      } else if (!cancelled) setState({ kind: "error" });
     });
     return () => { cancelled = true; };
   }, [panelId, token]);
@@ -227,6 +235,7 @@ export default function ServerAssistantProviders({
           key={id}
           id={id}
           state={config.providers[id]}
+          modelOptions={availableModels[id]}
           t={t}
           onPatch={async (patch) => {
             const res = await luxAssistantProxy<ConfigEnvelope>(
@@ -250,12 +259,14 @@ export default function ServerAssistantProviders({
 function ProviderCard({
   id,
   state,
+  modelOptions,
   t,
   onPatch,
   onTest,
 }: {
   id: string;
   state: ProviderState;
+  modelOptions?: string[];
   t: ProvidersStrings;
   onPatch: (patch: ProviderPatch) => Promise<AssistantConfig | null>;
   onTest: () => Promise<ProbeResult>;
@@ -355,6 +366,7 @@ function ProviderCard({
             <ModelSelect
               id={id}
               value={state.cli.model ?? ""}
+              models={modelOptions}
               t={t}
               onChange={(m) => { void onPatch({ cli: { model: m } }); }}
             />
@@ -364,7 +376,7 @@ function ProviderCard({
         <>
           <label className="server-assistant__pfield">
             <span>{t.model}</span>
-            <ModelSelect id={id} value={model} t={t} onChange={setModelOverride} />
+            <ModelSelect id={id} value={model} t={t} models={modelOptions} onChange={setModelOverride} />
           </label>
           <label className="server-assistant__pfield">
             <span>
@@ -419,15 +431,17 @@ function ProviderCard({
 function ModelSelect({
   id,
   value,
+  models,
   t,
   onChange,
 }: {
   id: string;
   value: string;
+  models?: string[];
   t: ProvidersStrings;
   onChange: (model: string) => void;
 }) {
-  const known = PROVIDER_MODELS[id] ?? [];
+  const known = models?.length ? models : PROVIDER_MODELS[id] ?? [];
   const options = value && !known.includes(value) ? [value, ...known] : known;
   const [custom, setCustom] = useState(false);
 

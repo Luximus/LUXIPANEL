@@ -22,7 +22,6 @@
 
 import { createModuleLogger } from "../../../shared/logger/index.js";
 import type { AgentTool } from "../../../shared/agent-capability/index.js";
-import { buildProvider } from "./providers/provider-factory.js";
 import { clampTier, effortForTier, resolveModel } from "./auto-router.service.js";
 import type {
   AgentEvent,
@@ -34,6 +33,9 @@ import type {
   AssistantProviderId,
   ComplexityTier,
 } from "../models/assistant-config.types.js";
+import type { Executor } from "../../../shared/executor/index.js";
+import { providerModelCatalog, resolveCatalogModel } from "./provider-model-catalog.service.js";
+import { runWithProviderModelFallback } from "./provider-model-fallback.service.js";
 
 const log = createModuleLogger("ai-orchestrator");
 
@@ -60,6 +62,7 @@ const CONCURRENCY = 3;
 
 interface OrchestratorArgs {
   config: AssistantConfig;
+  executor: Executor;
   providerId: AssistantProviderId;
   /**
    * Providers to FAN OUT the sub-agents across (round-robin). Lets a single
@@ -177,15 +180,16 @@ export const orchestratorService = {
     const task = lastUserText(messages);
 
     // Fallback: one capable single run (used when decomposition isn't viable).
-    const singleRun = (): AsyncGenerator<AgentEvent> => {
-      const provider = buildProvider(config, providerId, modelFor(tier));
-      return provider.run(messages, { ...baseOpts, effort: effortForTier(tier) });
+    const modelRun = async function* (pid: AssistantProviderId, model: string, input: AgentMessage[], options: ProviderRunOptions) {
+      const catalog = await providerModelCatalog(args.executor, config, pid);
+      const selected = resolveCatalogModel(model, catalog, pid).model ?? model;
+      yield* runWithProviderModelFallback({ config, executor: args.executor, providerId: pid, model: selected, catalog, messages: input, options, english: false });
     };
+    const singleRun = (): AsyncGenerator<AgentEvent> => modelRun(providerId, modelFor(tier), messages, { ...baseOpts, effort: effortForTier(tier) });
 
     // ── 1. Decompose ────────────────────────────────────────────────────────
     let subtasks: string[] = [];
     try {
-      const planner = buildProvider(config, providerId, modelFor("medium"));
       const countClause = copies
         ? `EXACTAMENTE ${copies} subtareas (ni más ni menos)`
         : `entre ${MIN_SUBTASKS} y ${MAX_SUBTASKS} subtareas`;
@@ -198,7 +202,7 @@ export const orchestratorService = {
         `Petición:\n${task}`;
       const sink: AgentEvent[] = [];
       const raw = await collectRun(
-        planner.run([{ role: "user", content: planPrompt }], {
+        modelRun(providerId, modelFor("medium"), [{ role: "user", content: planPrompt }], {
           ...baseOpts,
           systemPrompt: PLANNER_SYSTEM_PROMPT,
           systemContext: "",
@@ -239,9 +243,8 @@ export const orchestratorService = {
     try {
       fanned = await pool(subtasks, CONCURRENCY, async (st, i) => {
         const pid = fanProviders[i % fanProviders.length]!;
-        const sub = buildProvider(config, pid, modelForP(pid, "high"));
         return collectRun(
-          sub.run([{ role: "user", content: st }], { ...baseOpts, effort: effortForTier("high") }),
+          modelRun(pid, modelForP(pid, "high"), [{ role: "user", content: st }], { ...baseOpts, effort: effortForTier("high") }),
           sink,
         );
       });
@@ -253,7 +256,6 @@ export const orchestratorService = {
     for (const ev of sink) if (ev.type === "usage") yield ev; // count sub-agent tokens
 
     // ── 3. Synthesize ───────────────────────────────────────────────────────
-    const synthProvider = buildProvider(config, providerId, modelFor(tier));
     const subResults = subtasks
       .map((st, i) => `### Subtarea ${i + 1}: ${st}\n${fanned[i] ?? "(sin resultado)"}`)
       .join("\n\n");
@@ -263,7 +265,7 @@ export const orchestratorService = {
       "Integra estos resultados en UNA respuesta final, coherente y completa para " +
       "el usuario. No menciones el proceso interno de los agentes; entrega solo la " +
       "respuesta consolidada.";
-    yield* synthProvider.run([{ role: "user", content: synthMessage }], {
+    yield* modelRun(providerId, modelFor(tier), [{ role: "user", content: synthMessage }], {
       ...baseOpts,
       systemPrompt: SYNTH_SYSTEM_PROMPT + languageOverrideOf(baseOpts.systemPrompt),
       systemContext: "",

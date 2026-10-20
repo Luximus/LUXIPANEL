@@ -24,6 +24,7 @@ import {
   type TeamTemplateResyncResult,
   fetchAssociatableConnections,
   fetchTerminalSnippetFilterOptions,
+  assistantApi,
   type TerminalSnippetFilterOptions,
   PROVIDER_MODELS,
   type AgentTeam,
@@ -256,15 +257,18 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     void fetchTerminalSnippetFilterOptions().then(setSnippetOpts);
   }, []);
 
-  const modelOptions = useMemo(
-    // Dep on `providerId` (a primitive string), not the whole `draft` object —
-    // otherwise this re-runs on every keystroke and produces a new array
-    // reference, which the MermaidDiagram and other downstream consumers
-    // would treat as a fresh dep and could trigger a re-render → re-fetch → re-merge
-    // loop into React #300.
-    () => (draft ? PROVIDER_MODELS[draft.providerId] ?? [] : []),
-    [draft?.providerId],
-  );
+  const [verifiedModelOptions, setVerifiedModelOptions] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    setVerifiedModelOptions(null);
+    const providerId = draft?.providerId;
+    if (!providerId) return;
+    void assistantApi.getProviderModels(providerId)
+      .then((catalog) => { if (live && catalog.verified) setVerifiedModelOptions(catalog.models); })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [draft?.providerId]);
+  const modelOptions = verifiedModelOptions ?? (draft ? PROVIDER_MODELS[draft.providerId] ?? [] : []);
 
   // Hierarchy tree diagram (Mermaid) + per-node avatar images, memoized so the
   // diagram only re-renders when the agents change. Scoped to ONE work group:

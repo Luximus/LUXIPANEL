@@ -17,6 +17,7 @@ import { ValidationError } from "../../../shared/errors/index.js";
 import { assistantNotFound } from "./not-found-i18n.js";
 import { zodIssues } from "../../../shared/validators/index.js";
 import { assistantConfigRepository } from "../repositories/assistant-config.repository.js";
+import { providerModelCatalog } from "../services/provider-model-catalog.service.js";
 import { makeOpenAiVoice } from "../services/voice/openai-voice.js";
 import {
   PROVIDER_IDS,
@@ -239,5 +240,15 @@ export const assistantConfigController = {
         : "CLI no instalado — instálalo desde la terminal flotante",
       probedAt: new Date().toISOString(),
     });
+  }),
+
+  /** GET /api/ai/config/providers/:id/models — authenticated, target-scoped model catalog. */
+  getProviderModels: asyncHandler(async (req: Request, res: Response) => {
+    const id = req.params["id"];
+    if (!isAssistantProviderId(id)) throw assistantNotFound(res.locals.locale, "provider");
+    const executor = getExecutor(req);
+    const config = await assistantConfigRepository.load(executor);
+    const refresh = req.query["refresh"] === "1" || req.query["refresh"] === "true";
+    res.json({ ok: true, catalog: await providerModelCatalog(executor, config, id, { refresh }) });
   }),
 };

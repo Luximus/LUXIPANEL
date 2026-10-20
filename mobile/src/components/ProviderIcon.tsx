@@ -33,7 +33,7 @@ export const PROVIDER_ORDER: AssistantProviderId[] = ["claude", "codex", "gemini
  */
 export const PROVIDER_MODELS: Record<AssistantProviderId, string[]> = {
   claude: ["claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5", "opus", "sonnet", "haiku"],
-  codex: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4.1", "gpt-4o"],
+  codex: ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"],
   gemini: ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
   minimax: ["MiniMax-M2.5", "MiniMax-M2.7", "MiniMax-M2.5-highspeed", "MiniMax-M2.1"],

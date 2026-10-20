@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   assistantApi,
   PROVIDER_META,
@@ -37,6 +37,7 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
   const [prefs, setPrefs] = useState(() => uiPrefs.get());
   const [savingEffort, setSavingEffort] = useState(false);
   const [effortError, setEffortError] = useState<string | null>(null);
+  const [verifiedModelOptions, setVerifiedModelOptions] = useState<string[] | null>(null);
 
   // The persisted server value (config) is authoritative; fall back to the
   // localStorage mirror only while the backend hasn't returned the field yet.
@@ -64,10 +65,20 @@ export function GeneralTab({ config, onConfigChange }: GeneralTabProps) {
 
   // Model catalog for the currently selected default provider. When no explicit
   // provider is set we can't offer a scoped model list, so only "Auto" applies.
-  const modelOptions = useMemo<string[]>(() => {
+  const fallbackModelOptions = useMemo<string[]>(() => {
     const pid = providerValue as AssistantProviderId | "";
     return pid && PROVIDER_MODELS[pid] ? PROVIDER_MODELS[pid] : [];
   }, [providerValue]);
+  useEffect(() => {
+    let live = true;
+    setVerifiedModelOptions(null);
+    if (!providerValue || !PROVIDER_ORDER.includes(providerValue as AssistantProviderId)) return;
+    void assistantApi.getProviderModels(providerValue as AssistantProviderId)
+      .then((catalog) => { if (live && catalog.verified) setVerifiedModelOptions(catalog.models); })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [providerValue]);
+  const modelOptions = verifiedModelOptions ?? fallbackModelOptions;
 
   const setAgentsTabPref = (v: AgentsTabPref) => {
     uiPrefs.set({ defaultAgentsTab: v });

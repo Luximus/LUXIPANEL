@@ -114,6 +114,7 @@ protectedRouter.put("/config", assistantConfigController.patch);
 protectedRouter.put("/config/auto-routing", assistantConfigController.setAutoRouting);
 protectedRouter.put("/config/providers/:id", assistantConfigController.setProvider);
 protectedRouter.post("/config/providers/:id/test", assistantConfigController.testProvider);
+protectedRouter.get("/config/providers/:id/models", assistantConfigController.getProviderModels);
 
 // Third-party integration credentials (ElevenLabs). Same gate as
 // `PUT /config` — this router already carries requireAuth + requireModule.

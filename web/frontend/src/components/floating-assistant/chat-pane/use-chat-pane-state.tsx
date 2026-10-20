@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   assistantConversationsApi,
+  assistantApi,
   teamApi,
   attachmentSupport,
   type AssistantProject,
@@ -220,7 +221,17 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
   // auto-router picks the model/effort per turn). A non-empty value forces that
   // model for the next turns. Reset whenever the provider changes, since the
   // model catalog is per-provider.
-  const modelOptions = PROVIDER_MODELS[provider as AssistantProviderId] ?? [];
+  const [verifiedModelOptions, setVerifiedModelOptions] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    setVerifiedModelOptions(null);
+    if (!PROVIDER_MODELS[provider as AssistantProviderId]) return;
+    void assistantApi.getProviderModels(provider as AssistantProviderId)
+      .then((catalog) => { if (live && catalog.verified) setVerifiedModelOptions(catalog.models); })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [provider]);
+  const modelOptions = verifiedModelOptions ?? PROVIDER_MODELS[provider as AssistantProviderId] ?? [];
   const initialModelFor = (agentId: string | null, convId: string | null) =>
     !agentId && !convId && initialModel && modelOptions.includes(initialModel) ? initialModel : "";
   const conversationOptions = useConversationOptions({

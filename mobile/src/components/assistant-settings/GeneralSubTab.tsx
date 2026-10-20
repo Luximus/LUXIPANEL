@@ -26,6 +26,7 @@ export function GeneralSubTab({
 }) {
   const gt = t.generalTabs;
   const [config, setConfig] = useState<AssistantConfig | null>(null);
+  const [verifiedModelOptions, setVerifiedModelOptions] = useState<string[] | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [busy, setBusy] = useState(false);
 
@@ -64,6 +65,15 @@ export function GeneralSubTab({
     if (!config) return [];
     return PROVIDER_ORDER.filter((id) => config.providers?.[id]?.active);
   }, [config]);
+  const providerValue = config?.defaultChatProvider ?? "";
+  useEffect(() => {
+    let live = true;
+    setVerifiedModelOptions(null);
+    if (!providerValue || !PROVIDER_MODELS[providerValue as AssistantProviderId]) return;
+    void luxAssistantProxy<{ catalog?: { status?: string; models?: Array<{ id: string; available: boolean }> } }>(panelId, token, "GET", `/api/ai/config/providers/${encodeURIComponent(providerValue)}/models`)
+      .then((result) => { if (live && result?.catalog?.status === "verified") setVerifiedModelOptions((result.catalog.models ?? []).filter((model) => model.available).map((model) => model.id)); });
+    return () => { live = false; };
+  }, [panelId, token, providerValue]);
 
   if (status !== "ready" || !config) {
     return <LoadState t={t} tokens={tokens} mode={status === "error" ? "error" : "loading"} onRetry={load} />;
@@ -76,12 +86,11 @@ export function GeneralSubTab({
 
   const agentsTab: AgentsTabPref = config.defaultAgentsTab ?? "leaders";
   const conversationsTab: ConversationsTabPref = config.defaultConversationsTab ?? "agents";
-  const providerValue = config.defaultChatProvider ?? "";
   const rawModel = config.defaultChatModel ?? "";
   const modelValue = rawModel === "auto" ? "" : rawModel;
-  const modelOptions = providerValue && PROVIDER_MODELS[providerValue as AssistantProviderId]
+  const modelOptions = verifiedModelOptions ?? (providerValue && PROVIDER_MODELS[providerValue as AssistantProviderId]
     ? PROVIDER_MODELS[providerValue as AssistantProviderId]
-    : [];
+    : []);
 
   // Proveedor por defecto: "" = usar proveedor activo, + los "mostrar en chat".
   const providerItems: SegmentItem[] = [
@@ -94,6 +103,7 @@ export function GeneralSubTab({
   ];
   const modelItems: SegmentItem[] = [
     { key: "", label: gt.autoModel },
+    ...(modelValue && !modelOptions.includes(modelValue) ? [{ key: modelValue, label: modelValue }] : []),
     ...modelOptions.map((m) => ({ key: m, label: m })),
   ];
 
