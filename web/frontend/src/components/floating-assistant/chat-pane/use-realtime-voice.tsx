@@ -21,6 +21,7 @@ export function useRealtimeVoice(opts: Options) {
   const readOnlyMessage = useAssistantI18n().agentMarket.readOnly;
   const [phase, setPhase] = useState<"idle" | "connecting" | "live" | "closing">("idle");
   const [muted, setMuted] = useState(false);
+  const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [error, setError] = useState("");
   const [previousId, setPreviousId] = useState<string | null>(null);
   const [events, setEvents] = useState<VoiceEvent[]>([]);
@@ -54,6 +55,7 @@ export function useRealtimeVoice(opts: Options) {
   async function stop(s = current.current) {
     if (!s || s.canceled) return;
     s.canceled = true; clearTimeout(s.timer);
+    if (mounted.current && current.current === s) setAgentSpeaking(false);
     s.stream?.getTracks().forEach(t => t.stop()); s.peer?.close();
     if (s.audio) { s.audio.pause(); s.audio.srcObject = null; }
     if (mounted.current && current.current === s) setPhase("closing");
@@ -76,7 +78,7 @@ export function useRealtimeVoice(opts: Options) {
     // boolean cannot revive it; an established call stays available to End voice.
     if (s && (!opts.enabled || !matches(s) || (s.starting && !hasAdmission()))) void stop(s);
     if (owner.current && !matches(owner.current)) {
-      owner.current = null; setEvents([]); setError(""); setPreviousId(null);
+      owner.current = null; setEvents([]); setError(""); setPreviousId(null); setAgentSpeaking(false);
     }
   }, [opts.enabled, opts.canStart, opts.contextKey, opts.chatKey, opts.conversationId, scope]);
   async function poll(s: Session) {
@@ -115,7 +117,7 @@ export function useRealtimeVoice(opts: Options) {
       contextKey: options.contextKey, conversationId: options.conversationId, starting: true, refresh: options.refresh,
       canceled: false, seq: 0, release: lockChatInput(options.chatKey, "realtime") };
     current.current = s; owner.current = s;
-    setError(""); setPreviousId(null); setEvents([]); setMuted(false); setPhase("connecting");
+    setError(""); setPreviousId(null); setEvents([]); setMuted(false); setAgentSpeaking(false); setPhase("connecting");
     try {
       s.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       if (!continueStart(s)) { s.stream.getTracks().forEach(t => t.stop()); return; }
@@ -140,7 +142,20 @@ export function useRealtimeVoice(opts: Options) {
         void audio.play().catch(() => { if (valid(s)) showError(s, "Permite reproducir audio para escuchar al agente."); });
       };
       for (const track of s.stream.getTracks()) peer.addTrack(track, s.stream);
-      peer.createDataChannel("oai-events");
+      const channel = peer.createDataChannel("oai-events");
+      // NAVAI distinguishes playback from a connected microphone. Only audio
+      // buffer events describe actual agent speech; a stream's `playing` event
+      // fires just once when the remote track becomes available.
+      if (channel) {
+        channel.onmessage = event => {
+          if (!valid(s) || typeof event.data !== "string" || event.data.length > 4096) return;
+          let type: unknown;
+          try { type = JSON.parse(event.data)?.type; } catch { return; }
+          if (type === "output_audio_buffer.started") setAgentSpeaking(true);
+          if (type === "output_audio_buffer.stopped" || type === "output_audio_buffer.cleared") setAgentSpeaking(false);
+        };
+        channel.onclose = () => { if (valid(s)) setAgentSpeaking(false); };
+      }
       peer.onconnectionstatechange = () => {
         if (!valid(s)) return;
         if (peer.connectionState === "connected" && !s.starting) setPhase("live");
@@ -211,6 +226,7 @@ export function useRealtimeVoice(opts: Options) {
     if (e.type === "ask_resolved") asks.delete(e.taskId);
   }
   return { active: visible && phase !== "idle", phase: visible ? phase : "idle", muted: visible && muted,
+    agentSpeaking: visible && phase === "live" && agentSpeaking,
     error: visible ? error : "", previousId: visible ? previousId : null,
     canRespond: visible && hasAdmission(),
     toggle, toggleMuted, closePrevious, permissions: [...permissions.values()], asks: [...asks.values()], permission, answer };

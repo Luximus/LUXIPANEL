@@ -32,6 +32,26 @@ it("starts directly from the existing microphone, without selection or a second 
  expect(chatInputLocked("chat")).toBe(true);
  await act(async()=>hook.toggle());expect(chatInputLocked("chat")).toBe(false);
 });
+it("tracks agent playback from NAVAI-style audio buffer events only in the current session",async()=>{
+ const channel:{onmessage?:((event:{data:unknown})=>void);onclose?:(()=>void)}={};
+ vi.stubGlobal("RTCPeerConnection",class {
+  addTrack(){}createDataChannel(){return channel;}async createOffer(){return {sdp:"offer"};}
+  async setLocalDescription(){}async setRemoteDescription(){}close(){}
+ });
+ await act(async()=>hook.toggle());
+ expect(hook.agentSpeaking).toBe(false);
+ await act(async()=>channel.onmessage?.({data:JSON.stringify({type:"output_audio_buffer.started"})}));
+ expect(hook.agentSpeaking).toBe(true);
+ await act(async()=>channel.onmessage?.({data:"invalid json"}));
+ expect(hook.agentSpeaking).toBe(true);
+ await act(async()=>channel.onmessage?.({data:JSON.stringify({type:"output_audio_buffer.stopped"})}));
+ expect(hook.agentSpeaking).toBe(false);
+ await act(async()=>channel.onmessage?.({data:JSON.stringify({type:"output_audio_buffer.started"})}));
+ await act(async()=>hook.toggle());
+ expect(hook.agentSpeaking).toBe(false);
+ await act(async()=>channel.onmessage?.({data:JSON.stringify({type:"output_audio_buffer.started"})}));
+ expect(hook.agentSpeaking).toBe(false);
+});
 it("prevents duplicate starts while obtaining microphone permission",async()=>{
  let ready!:(value:any)=>void;m.media.mockReturnValue(new Promise(resolve=>{ready=resolve;}));
  let first!:Promise<void>;

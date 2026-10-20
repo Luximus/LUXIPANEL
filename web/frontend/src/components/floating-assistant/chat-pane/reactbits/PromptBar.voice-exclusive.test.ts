@@ -55,6 +55,7 @@ it("does not combine a draft with a recording and keeps text locked through audi
   const props = { onDictate, onSend, onChange, onAudioPhaseChange, models: [], efforts: [] };
   await act(async () => root.render(createElement(PromptBar, { ...props, value: "" })));
   await act(async () => (host.querySelector('[aria-label="Dictate"]') as HTMLButtonElement).click());
+  expect(host.querySelector('[data-voice-state="recording"]')).not.toBeNull();
   await act(async () => root.render(createElement(PromptBar, { ...props, value: "no enviar esto" })));
   await act(async () => host.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   expect(onSend).not.toHaveBeenCalled();
@@ -66,4 +67,19 @@ it("does not combine a draft with a recording and keeps text locked through audi
   expect(onAudioPhaseChange).toHaveBeenLastCalledWith(false);
   expect(host.querySelector("textarea")!.value).toBe("no enviar esto");
   await act(async () => root.unmount()); host.remove();
+});
+
+it("shows NAVAI voice feedback without replacing the realtime stop action", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const toggle = vi.fn();
+  try {
+    await act(async () => root.render(createElement(PromptBar, {
+      realtime: { active: true, phase: "live", agentSpeaking: true, toggle }, models: [], efforts: [],
+    })));
+    const button = host.querySelector<HTMLButtonElement>('[data-voice-state="speaking"]');
+    expect(button?.getAttribute("aria-label")).toBe("Terminar voz en tiempo real");
+    expect(host.querySelector("textarea")?.placeholder).toContain("El agente está hablando");
+    await act(async () => button!.click());
+    expect(toggle).toHaveBeenCalledOnce();
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });

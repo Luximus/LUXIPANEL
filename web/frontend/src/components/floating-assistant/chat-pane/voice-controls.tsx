@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAssistantI18n } from "../i18n";
 import { voiceApi } from "../assistant-api";
+import "./voice-button.css";
 
 /**
  * Speaker button for an assistant reply: turns the reply's text into speech via
@@ -21,8 +22,11 @@ export function SpeakButton({ text, voiceName, conversationId, autoPlay }: { tex
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const autoPlayedRef = useRef(false);
+  const playbackId = useRef(0);
+  const mounted = useRef(true);
 
   const stop = useCallback(() => {
+    playbackId.current += 1;
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
   }, []);
   const dispose = useCallback(() => {
@@ -34,6 +38,7 @@ export function SpeakButton({ text, voiceName, conversationId, autoPlay }: { tex
 
   const play = useCallback(async (manual: boolean) => {
     if (state === "playing") { stop(); setState("idle"); return; }
+    const id = ++playbackId.current;
     setState("loading");
     setError(null);
     try {
@@ -42,19 +47,23 @@ export function SpeakButton({ text, voiceName, conversationId, autoPlay }: { tex
       let url = urlRef.current;
       if (!url) {
         url = await voiceApi.speak(text, { voice: voiceName, conversationId });
+        if (!mounted.current || id !== playbackId.current) return;
         urlRef.current = url;
       }
       const audio = new Audio(url);
       audioRef.current = audio;
-      audio.onended = () => { setState("idle"); stop(); };
+      audio.onended = () => { if (mounted.current && id === playbackId.current) { setState("idle"); stop(); } };
       audio.onerror = () => {
+        if (!mounted.current || id !== playbackId.current) return;
         setState("idle");
         stop();
         if (manual) setError(ct.ttsError ?? "No se pudo reproducir el audio.");
       };
       await audio.play();
+      if (!mounted.current || id !== playbackId.current) { audio.pause(); return; }
       setState("playing");
     } catch (err) {
+      if (!mounted.current || id !== playbackId.current) return;
       setState("idle");
       stop();
       // Don't leave a silent dead spinner: surface WHY nothing played. The
@@ -81,7 +90,10 @@ export function SpeakButton({ text, voiceName, conversationId, autoPlay }: { tex
     }
   }, [autoPlay, text, play]);
 
-  useEffect(() => dispose, [dispose]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; dispose(); };
+  }, [dispose]);
 
   return (
     <span className="inline-flex items-center gap-1">
@@ -89,8 +101,12 @@ export function SpeakButton({ text, voiceName, conversationId, autoPlay }: { tex
         type="button"
         onClick={() => void play(true)}
         disabled={state === "loading"}
+        aria-label={state === "playing" ? (ct.ttsStop ?? "Detener") : (ct.ttsListenResponse ?? "Escuchar respuesta")}
+        aria-pressed={state === "playing"}
+        aria-busy={state === "loading"}
         title={state === "playing" ? (ct.ttsStop ?? "Detener") : (ct.ttsListenResponse ?? "Escuchar respuesta")}
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-60"
+        className="lxp-voice-control lxp-voice-control--reply"
+        data-voice-state={error ? "error" : state}
       >
         <i className={`ti ${state === "loading" ? "ti-loader-2 animate-spin" : state === "playing" ? "ti-player-stop" : "ti-volume"} text-[12px]`} aria-hidden></i>
         {state === "playing" ? (ct.ttsStop ?? "Detener") : (ct.ttsListen ?? "Escuchar")}

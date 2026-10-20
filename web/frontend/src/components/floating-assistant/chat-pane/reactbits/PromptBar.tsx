@@ -35,6 +35,7 @@ import {
   Tick02Icon
 } from '@hugeicons/core-free-icons';
 import './PromptBar.css';
+import '../voice-button.css';
 import type { PromptDictationResult } from '../use-prompt-dictation';
 
 export interface PromptBarSource {
@@ -121,7 +122,7 @@ export interface PromptBarProps {
   onEffortChange?: (effort: string) => void;
   busy?: boolean;
   readOnly?: boolean;
-  realtime?: { active: boolean; toggle: () => void; phase?: string; muted?: boolean; toggleMuted?: () => void;
+  realtime?: { active: boolean; toggle: () => void; phase?: string; muted?: boolean; agentSpeaking?: boolean; toggleMuted?: () => void;
     error?: string; previousId?: string | null; closePrevious?: () => void };
   onAudioPhaseChange?: (active: boolean) => void;
   onSend?: (text: string, detail: PromptBarSendDetail) => void;
@@ -796,7 +797,8 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const dictateButton = onDictate ? (
     <button
       type="button"
-      className="prompt-bar__tool"
+      className="prompt-bar__tool lxp-voice-control"
+      data-voice-state={transcribing ? 'transcribing' : listening ? 'recording' : 'idle'}
       aria-label={listening ? stopDictationLabel : dictateLabel}
       title={listening ? stopDictationLabel : (dictateHint ?? dictateLabel)}
       aria-pressed={listening}
@@ -853,22 +855,27 @@ const PromptBar: React.FC<PromptBarProps> = ({
   ) : null;
 
   const showDictateInSend = !!onDictate && (listening || transcribing || (!busy && !canSend));
+  const realtimeVisualState = realtime?.error ? 'error' : realtime?.phase === 'connecting' ? 'connecting'
+    : realtime?.phase === 'closing' ? 'closing' : realtime?.agentSpeaking ? 'speaking'
+    : realtime?.active ? realtime.muted ? 'muted' : 'live' : 'idle';
   // An idle voice feature must not hide Stop during a text/API/CLI run.
   const sendButton = realtime && (realtime.active || (!busy && !canSend)) ? (
-    <button type="button" className="prompt-bar__send" data-armed=""
+    <button type="button" className="prompt-bar__send lxp-voice-control" data-armed=""
+      data-voice-state={realtimeVisualState}
       aria-label={realtime.active ? "Terminar voz en tiempo real" : "Iniciar voz en tiempo real"}
       aria-pressed={realtime.active} aria-busy={realtime.phase === "connecting" || realtime.phase === "closing"}
       data-recording={realtime.active && !realtime.muted ? "" : undefined}
-      title={realtime.active ? (realtime.phase === "closing" ? "Terminando voz…" : realtime.phase === "connecting" ? "Conectando voz · pulsa para cancelar" : realtime.muted ? "Micrófono silenciado · pulsa para terminar" : "Voz activa · pulsa para terminar") : "Iniciar voz en tiempo real"}
+      title={realtime.active ? (realtime.phase === "closing" ? "Terminando voz…" : realtime.phase === "connecting" ? "Conectando voz · pulsa para cancelar" : realtime.agentSpeaking ? "El agente está hablando · pulsa para terminar" : realtime.muted ? "Micrófono silenciado · pulsa para terminar" : "Voz activa · pulsa para terminar") : "Iniciar voz en tiempo real"}
       onClick={realtime.toggle}>
       {realtime.active ? <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 2, background: "currentColor" }} /> : <HugeiconsIcon icon={Mic01Icon} size={18} strokeWidth={2} />}
     </button>
   ) : showDictateInSend ? (
     <button
       type="button"
-      className="prompt-bar__send"
+      className="prompt-bar__send lxp-voice-control"
       data-armed=""
       data-recording={listening ? "" : undefined}
+      data-voice-state={transcribing ? 'transcribing' : listening ? 'recording' : 'idle'}
       aria-label={listening ? stopDictationLabel : dictateLabel}
       title={listening ? stopDictationLabel : (dictateHint ?? dictateLabel)}
       aria-pressed={listening}
@@ -1110,7 +1117,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
             rows={1}
             value={draft}
             readOnly={readOnly}
-            placeholder={realtime?.active ? (realtime.phase === "closing" ? "Terminando voz…" : realtime.phase === "connecting" ? "Conectando voz…" : realtime.muted ? "Micrófono silenciado" : "Habla con el agente…") : listening ? (transcribing ? 'Transcribiendo audio…' : 'Grabando audio…') : placeholder}
+            placeholder={realtime?.active ? (realtime.phase === "closing" ? "Terminando voz…" : realtime.phase === "connecting" ? "Conectando voz…" : realtime.agentSpeaking ? "El agente está hablando…" : realtime.muted ? "Micrófono silenciado" : "Habla con el agente…") : listening ? (transcribing ? 'Transcribiendo audio…' : 'Grabando audio…') : placeholder}
             aria-label="Prompt"
             onChange={e => {
               setDraft(e.target.value);

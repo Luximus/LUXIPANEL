@@ -1,0 +1,7 @@
+{
+  "title": "Controles de voz más claros en el chat",
+  "changes": [
+    "El chat muestra con un diseño unificado cuándo graba un mensaje, conecta una conversación de voz o reproduce la respuesta del agente.",
+    "Durante la conversación en tiempo real, el control distingue cuándo habla el agente si la sesión proporciona esa señal."
+  ]
+}
