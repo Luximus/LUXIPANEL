@@ -232,6 +232,16 @@ it.each(["branch", "release"])("keeps a blocked %s update visible above long not
   expect(container.querySelector('dialog > [role="alert"]')).toBeNull();
 });
 
+it("identifies local files that blocked the update without starting installation", async () => {
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
+  vi.mocked(readPanelBranch).mockResolvedValue(branchDetails);
+  vi.mocked(readPanelReleasePreflight).mockResolvedValue({ ok: false, reason: "local-changes", changedFiles: ["AGENTS.md", "web/new\nfile.ts"] });
+  await render(); await open(); await selectBranch();
+  await act(async () => branchButton()!.click());
+  expect(container.querySelector('dialog > [role="alert"]')?.textContent).toBe(`${labels.community.localChangesBlocked} (AGENTS.md, web/new file.ts)`);
+  expect(installPanelBranch).not.toHaveBeenCalled();
+});
+
 it.each([
   ["assistant-active", "updateAssistantActive"],
   ["publication-pending", "updatePublicationPending"],

@@ -38,22 +38,24 @@ describe("maintainer contribution snapshots",()=>{
   expect(contributionFailure(error).message).not.toMatch(/private-value|private-source/);
  });
  it("excludes credentials, private projects, binaries and runtime files",()=>{
-  for(const p of ["web/backend/.env","web/backend/.env.production","web/backend/private/a.ts","web/backend/node_modules/pkg/index.js","web/frontend/dist/a.js","LP-LICENSE-SERVER/src/app.ts","../web/a.ts","web/backend/tokens.json","desktop/cert.p12"])expect(publishablePath(p),p).toBe(false);
-  for(const p of ["web/backend/src/app.ts","web/frontend/src/components/Credentials.tsx","mobile/src/app.tsx","docs/CHANGELOG.md"])expect(publishablePath(p),p).toBe(true);
+  for(const p of ["web/backend/.env","web/backend/.env.production","web/backend/private/a.ts","web/backend/node_modules/pkg/index.js","web/frontend/dist/a.js","LP-LICENSE-SERVER/src/app.ts","../web/a.ts","web/backend/tokens.json","desktop/cert.p12","AGENTS.override.md"])expect(publishablePath(p),p).toBe(false);
+  for(const p of ["web/backend/src/app.ts","web/frontend/src/components/Credentials.tsx","mobile/src/app.tsx","docs/CHANGELOG.md","AGENTS.md","CLAUDE.md","GEMINI.md"])expect(publishablePath(p),p).toBe(true);
  });
  it("records only the turn delta and preserves the live Git index",async()=>{
   const git=(...args:string[])=>execFileSync("git",args,{cwd:root,encoding:"utf8"});
   git("init","-q");git("config","user.email","test@example.invalid");git("config","user.name","Test");
   await fs.mkdir(path.join(root,"web/src"),{recursive:true});
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=1;\n");await fs.writeFile(path.join(root,"web/src/b.ts"),"export const b=1;\n");
+  await fs.writeFile(path.join(root,"AGENTS.md"),"Original guidance.\n");
   git("add",".");git("commit","-qm","baseline");git("branch","-M","developer");
   await fs.writeFile(path.join(root,"web/src/a.ts"),"export const a=2;\n");git("add","web/src/a.ts");
   const index=await fs.readFile(path.join(root,".git/index"));
   const before=await captureSource(root,path.join(root,"before.index"));
   await fs.writeFile(path.join(root,"web/src/b.ts"),"export const b=2;\n");
+  await fs.writeFile(path.join(root,"AGENTS.md"),"Updated guidance.\n");
   await fs.writeFile(path.join(root,"web/.env"),"secret=value");
   const after=await captureSource(root,path.join(root,"after.index"));
-  expect(git("diff","--name-only",before,after).trim()).toBe("web/src/b.ts");
+  expect(git("diff","--name-only",before,after).trim().split("\n")).toEqual(["AGENTS.md","web/src/b.ts"]);
   expect(await fs.readFile(path.join(root,".git/index"))).toEqual(index);
  });
  it("filters the committed recovery baseline just like the live snapshot without changing the index",async()=>{

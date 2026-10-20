@@ -17,9 +17,14 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
   const liveRequest = useRef(0);
   const readinessRequest = useRef(0);
   const installing = useRef(false);
-  const blockedMessage = useCallback((reason: PanelReleasePreflight["reason"]) => {
+  const blockedMessage = useCallback((readiness: PanelReleasePreflight) => {
+    const reason = readiness.reason;
     const keys = { "assistant-active": "updateAssistantActive", "publication-pending": "updatePublicationPending", "contribution-review": "updateContributionReview", "checkout-sync": "updateCheckoutSync", "local-changes": "localChangesBlocked" };
-    return (reason && labels[keys[reason]]) || labels.localChangesBlocked;
+    const message = (reason && labels[keys[reason]]) || labels.localChangesBlocked;
+    const files = reason === "local-changes" ? readiness.changedFiles ?? [] : [];
+    if (!files.length) return message;
+    const visible = files.slice(0, 3).map(file => file.replace(/\s+/g, " ").slice(0, 120));
+    return `${message} (${visible.join(", ")}${files.length > visible.length ? ` +${files.length - visible.length}` : ""})`;
   }, [labels]);
   useEffect(() => {
     const reset = () => { generation.current++; catalogRequest.current++; liveRequest.current = 0; setStatus(null); setError(""); setNotice(""); setBlockedReason(undefined); setCatalogError(""); setEpoch(value => value + 1); };
@@ -50,7 +55,7 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
       const next = await readPanelReleasePreflight();
       if (current !== generation.current || request !== readinessRequest.current) return;
       setBlockedReason(next.reason);
-      setError(next.ok ? "" : blockedMessage(next.reason));
+      setError(next.ok ? "" : blockedMessage(next));
       if (next.ok) await loadStatus(true);
     } catch { /* Preserve the last confirmed blocker until the next check. */ }
   }, [blockedMessage, loadStatus]);
@@ -85,7 +90,7 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
       const readiness = await readPanelReleasePreflight();
       if (current !== generation.current) return;
       setBlockedReason(readiness.reason);
-      if (!readiness.ok) { setError(blockedMessage(readiness.reason)); return; }
+      if (!readiness.ok) { setError(blockedMessage(readiness)); return; }
       await installPanelRelease(tag);
       if (current !== generation.current) return;
       await loadStatus(true);
@@ -103,7 +108,7 @@ export default function ReleaseBanner({ isAdmin, labels, locale }: { isAdmin: bo
       const readiness = await readPanelReleasePreflight();
       if (current !== generation.current) return;
       setBlockedReason(readiness.reason);
-      if (!readiness.ok) { setError(blockedMessage(readiness.reason)); return; }
+      if (!readiness.ok) { setError(blockedMessage(readiness)); return; }
       const next = await loadStatus(true);
       if (!next || current !== generation.current) return;
       const latestBranch = next.branches?.find(item => item.name === branch);

@@ -1,0 +1,7 @@
+{
+  "title": "Guías de agentes en aportes automáticos",
+  "changes": [
+    "Las guías de agentes de la raíz pueden incluirse en los aportes automáticos del proyecto.",
+    "La pantalla de actualización muestra qué archivos locales impiden instalar una revisión para facilitar su integración sin perder cambios."
+  ]
+}

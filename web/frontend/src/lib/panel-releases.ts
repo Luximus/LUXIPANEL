@@ -32,6 +32,7 @@ export async function readPanelReleases(fresh = false): Promise<PanelReleaseStat
 export interface PanelReleasePreflight {
   ok: boolean;
   reason?: "assistant-active" | "publication-pending" | "contribution-review" | "checkout-sync" | "local-changes";
+  changedFiles?: string[];
 }
 
 export async function readPanelReleasePreflight(): Promise<PanelReleasePreflight> {

@@ -35,7 +35,7 @@ export function publishablePath(file:string):boolean {
  if(!file || file.startsWith("/") || file.split("/").some(p=>p===".."||p===".git"||/^(?:node_modules|dist|build|coverage|private|logs|backups|\.releases|\.lxp|\.astro|\.next|\.env(?:\..*)?)$/i.test(p)))return false;
  if(/(?:^|\/)(?:credentials?|secrets?|tokens?)\.(?:json|ya?ml|ini|toml)$/i.test(file))return false;
  return /^(?:web\/|desktop\/|mobile\/|scripts\/|docs\/|\.github\/)/.test(file) && /\.(?:[cm]?[jt]sx?|astro|css|html|json|md|ya?ml|py|sh|toml)$/.test(file)
-   || /^(?:README(?:\.[\w-]+)?\.md|CONTRIBUTING\.md|CHANGELOG\.md|LICENSE|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|\.gitleaks\.toml)$/.test(file);
+   || /^(?:AGENTS\.md|CLAUDE\.md|GEMINI\.md|README(?:\.[\w-]+)?\.md|CONTRIBUTING\.md|CHANGELOG\.md|LICENSE|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|\.gitleaks\.toml)$/.test(file);
 }
 export interface ContributionJob {
  id:string; conversationId:string; root:string; user:SessionUser; before:string; head:string;
