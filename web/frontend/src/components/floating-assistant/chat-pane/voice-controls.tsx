@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAssistantI18n } from "../i18n";
 import { voiceApi } from "../assistant-api";
-import "./voice-button.css";
 
 /**
  * Speaker button for an assistant reply: turns the reply's text into speech via
@@ -105,7 +104,7 @@ export function SpeakButton({ text, voiceName, conversationId, autoPlay }: { tex
         aria-pressed={state === "playing"}
         aria-busy={state === "loading"}
         title={state === "playing" ? (ct.ttsStop ?? "Detener") : (ct.ttsListenResponse ?? "Escuchar respuesta")}
-        className="lxp-voice-control lxp-voice-control--reply"
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-60"
         data-voice-state={error ? "error" : state}
       >
         <i className={`ti ${state === "loading" ? "ti-loader-2 animate-spin" : state === "playing" ? "ti-player-stop" : "ti-volume"} text-[12px]`} aria-hidden></i>
