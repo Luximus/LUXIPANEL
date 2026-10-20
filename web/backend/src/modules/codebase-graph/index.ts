@@ -32,7 +32,7 @@ router.get("/api/codebase-graph/projects", asyncHandler(async (req: Request, res
   const availability = await graphIndexService.probeAvailability(executor);
   const projects = (await projectsRepository.list(executor))
     .filter((project) => canView(project.ownerId, res))
-    .map(({ id, title, path, graphIndex }) => ({ id, title, path, graphIndex }));
+    .map(({ id, title, path, parentId, graphIndex }) => ({ id, title, path, parentId, graphIndex }));
   res.json({ ok: true, data: { availability, projects } });
 }));
 

@@ -155,7 +155,19 @@ html[data-lxp-workspace-shell] #sidebar-mobile nav[data-lxp-subnav-open='true'] 
 /* module-topbar-runtime:start */
 .lxp-workspace-quick-header[data-module-topbar-runtime] > h2 { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .lxp-workspace-header-tabs { display: flex; flex: 1; min-width: 0; align-items: center; gap: .25rem; align-self: stretch; overflow-x: auto; scrollbar-width: thin; }
-.lxp-workspace-header-tabs:empty, .lxp-workspace-header-actions:empty { display: none; }
+.lxp-workspace-header-tabs:empty, .lxp-workspace-header-actions:empty, .lxp-workspace-header-controls:empty { display: none; }
+.lxp-workspace-header-controls { display: flex; min-width: 0; flex: 1; align-items: center; }
+.lxp-workspace-quick-drawer[data-module='codebase-graph'] .lxp-workspace-header-tabs { flex: none; }
+.lxp-codebase-header-controls { display: flex; min-width: 0; width: 100%; align-items: center; gap: .5rem; overflow-x: auto; scrollbar-width: thin; }
+.lxp-codebase-header-field { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; gap: .35rem; color: var(--muted-foreground); font-size: .6875rem; font-weight: 600; white-space: nowrap; }
+.lxp-codebase-header-select, .lxp-codebase-header-input { height: 2rem; min-width: 0; max-width: 11rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--background); padding: 0 .55rem; color: var(--foreground); font-size: .75rem; font-weight: 500; }
+.lxp-codebase-header-search { flex: 1 0 8rem; }
+.lxp-codebase-header-search .lxp-codebase-header-input { width: 100%; max-width: none; }
+.lxp-codebase-header-button { display: inline-flex; height: 2rem; flex: none; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: .5rem; background: var(--muted); padding: 0 .65rem; color: var(--foreground); font-size: .75rem; font-weight: 600; }
+.lxp-codebase-header-button:hover:not(:disabled) { background: var(--accent); }
+.lxp-codebase-header-button[aria-pressed='true'] { border-color: var(--primary); color: var(--primary); }
+.lxp-codebase-header-button:disabled, .lxp-codebase-header-select:disabled, .lxp-codebase-header-input:disabled { opacity: .5; cursor: not-allowed; }
+.lxp-codebase-header-controls :is(select, input, button):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .lxp-workspace-header-tab { display: inline-flex; flex: none; align-items: center; gap: .4rem; min-height: 2.25rem; margin-top: .25rem; padding: .35rem .7rem; border: 0; border-bottom: 2px solid transparent; border-radius: .45rem .45rem 0 0; background: transparent; color: var(--muted-foreground); font-size: .75rem; font-weight: 600; white-space: nowrap; }
 .lxp-workspace-header-tab:hover { background: var(--accent); color: var(--foreground); }
 .lxp-workspace-header-tab[data-active='true'] { border-bottom-color: var(--primary); color: var(--primary); }
@@ -186,6 +198,9 @@ html.dark [data-panel-content] :is(button, a):is(.btn-primary-solid, .btn-instal
   .lxp-workspace-quick-header:has(.lxp-workspace-header-tabs:not(:empty)) > .ml-auto { grid-column: 1; grid-row: 2; width: 100%; min-width: 0; margin-left: 0; justify-content: flex-end; }
   .lxp-workspace-quick-header:has(.lxp-workspace-header-tabs:not(:empty)) .lxp-workspace-quick-close { position: absolute; top: .25rem; right: .6rem; }
   .lxp-workspace-header-actions { flex: 1; max-width: none; gap: .2rem; }
+  .lxp-workspace-quick-header:has(.lxp-codebase-header-controls) { grid-template-rows: minmax(2rem, auto) minmax(2rem, auto) 2rem; }
+  .lxp-workspace-quick-header:has(.lxp-codebase-header-controls) .lxp-workspace-header-controls { grid-column: 1; grid-row: 2; width: 100%; }
+  .lxp-workspace-quick-header:has(.lxp-codebase-header-controls) > .ml-auto { grid-row: 3; }
 }
 /* module-topbar-runtime:end */
 .lxp-workspace-quick-close { display: grid; width: 2rem; height: 2rem; flex: none; place-items: center; border: 0; border-radius: .5rem; background: transparent; color: var(--muted-foreground); }

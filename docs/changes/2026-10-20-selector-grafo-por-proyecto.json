@@ -1,0 +1,7 @@
+{
+  "title": "Grafo del código organizado por proyecto",
+  "changes": [
+    "El grafo visual muestra primero los proyectos y después las indexaciones de cada proyecto en la barra superior.",
+    "Al cambiar de proyecto o indexación se limpia el grafo anterior y se carga la selección nueva."
+  ]
+}

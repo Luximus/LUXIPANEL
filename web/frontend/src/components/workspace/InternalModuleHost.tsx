@@ -531,6 +531,7 @@ export default function InternalModuleHost({
         <header className="lxp-workspace-quick-header">
           <h2 id="workspace-quick-title" className="sr-only">{title}</h2>
           <div data-module-header-tabs-slot className="lxp-workspace-header-tabs" />
+          <div data-module-header-controls-slot className="lxp-workspace-header-controls" />
           {active?.descriptor.id === "mail/[id]/inbox" &&
             mailAccounts.length > 1 && (
               <select

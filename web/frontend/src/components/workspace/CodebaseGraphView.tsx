@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -7,6 +8,7 @@ import { GraphOperations } from "./GraphOperations";
 import { scopeHeaders } from "@/lib/api-client";
 import { useModuleVisibility } from "./module-visibility";
 import { useViewContext } from "./view-context";
+import { indexesForProject, rootGraphProjects, type GraphIndex, type GraphProject } from "./graph-projects";
 type GraphNode = {
   id: string | number;
   name?: string;
@@ -138,13 +140,16 @@ function Scene({
 }
 /** Native graph surface. All reads go to authenticated JSON APIs, never HTML. */
 export default function CodebaseGraphView() {
-  const { messages } = useViewContext();
+  const { messages, scope } = useViewContext();
   const t = messages.codebaseGraph;
   const visible = useModuleVisibility();
-  const [projects, setProjects] = useState<
-    Array<{ name: string; root_path?: string }>
-  >([]);
+  const [projects, setProjects] = useState<GraphProject[]>([]);
+  const [indexes, setIndexes] = useState<GraphIndex[]>([]);
+  const [projectId, setProjectId] = useState("");
   const [project, setProject] = useState("");
+  const [catalogBusy, setCatalogBusy] = useState(true);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const [tools, setTools] = useState(false);
   const [layout, setLayout] = useState<GraphLayout | null>(null);
   const [query, setQuery] = useState("");
@@ -153,15 +158,87 @@ export default function CodebaseGraphView() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
+  const catalogGeneration = useRef(0);
+  const detailGeneration = useRef(0);
+  const selectedProject = projects.find((row) => row.id === projectId);
+  const projectIndexes = useMemo(() => indexesForProject(selectedProject, indexes), [selectedProject, indexes]);
+
+  useLayoutEffect(() => {
+    const drawer = scope.root.closest(".lxp-workspace-quick-drawer");
+    setHeaderTarget(visible ? drawer?.querySelector<HTMLElement>("[data-module-header-controls-slot]") ?? null : null);
+  }, [scope, visible]);
+
   useEffect(() => {
+    if (!visible) return;
     const controller = new AbortController();
-    void graphTool("list_projects", {}, controller.signal)
-      .then((data) => setProjects(data.projects || []))
+    const run = ++catalogGeneration.current;
+    setCatalogBusy(true);
+    void Promise.all([
+      fetch("/api/codebase-graph/projects", {
+        credentials: "include",
+        headers: scopeHeaders(false),
+        signal: controller.signal,
+      }).then(async (response) => {
+        if (!response.ok) throw new Error("Projects unavailable");
+        const result = await response.json();
+        if (!result.ok || !Array.isArray(result.data?.projects)) throw new Error("Projects unavailable");
+        return result.data.projects as GraphProject[];
+      }),
+      graphTool("list_projects", {}, controller.signal),
+    ])
+      .then(([visibleProjects, graphProjects]) => {
+        if (controller.signal.aborted || run !== catalogGeneration.current) return;
+        const roots = rootGraphProjects(visibleProjects);
+        const nextIndexes = Array.isArray(graphProjects.projects) ? graphProjects.projects : [];
+        setProjects(roots);
+        setIndexes(nextIndexes);
+        setProjectId((current) => current && roots.some((row) => row.id === current) ? current : "");
+        setProject((current) => current && nextIndexes.some((row: GraphIndex) => row.name === current) ? current : "");
+        setError("");
+      })
       .catch((error) => {
-        if (error.name !== "AbortError") setError(t.projectsLoadFailed);
+        if (error.name !== "AbortError" && run === catalogGeneration.current) setError(t.projectsLoadFailed);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && run === catalogGeneration.current) setCatalogBusy(false);
       });
-    return () => controller.abort();
-  }, [t.projectsLoadFailed]);
+    return () => {
+      controller.abort();
+      catalogGeneration.current++;
+    };
+  }, [visible, catalogRevision, t.projectsLoadFailed]);
+
+  useEffect(() => {
+    const onTargetChange = () => {
+      generation.current++;
+      catalogGeneration.current++;
+      detailGeneration.current++;
+      setProjectId("");
+      setProject("");
+      setProjects([]);
+      setIndexes([]);
+      setLayout(null);
+      setSelected(null);
+      setDetails(null);
+      setBusy(false);
+      setError("");
+      setCatalogRevision((current) => current + 1);
+    };
+    window.addEventListener("luxipanel:target-changed", onTargetChange);
+    return () => window.removeEventListener("luxipanel:target-changed", onTargetChange);
+  }, []);
+
+  useEffect(() => {
+    if (project && !projectIndexes.some((index) => index.name === project)) {
+      generation.current++;
+      detailGeneration.current++;
+      setProject("");
+      setLayout(null);
+      setSelected(null);
+      setDetails(null);
+      setBusy(false);
+    }
+  }, [project, projectIndexes]);
   const load = useCallback(async () => {
     if (!project) return;
     const run = ++generation.current;
@@ -183,66 +260,117 @@ export default function CodebaseGraphView() {
       if (run === generation.current) setBusy(false);
     }
   }, [project, t.graphUnavailable]);
+  useEffect(() => {
+    if (project && visible) void load();
+  }, [project, visible, load]);
+
+  const changeProject = (id: string) => {
+    generation.current++;
+    detailGeneration.current++;
+    setProjectId(id);
+    setProject("");
+    setLayout(null);
+    setSelected(null);
+    setDetails(null);
+    setBusy(false);
+    setError("");
+  };
+  const changeIndex = (name: string) => {
+    generation.current++;
+    detailGeneration.current++;
+    setProject(name);
+    setLayout(null);
+    setSelected(null);
+    setDetails(null);
+    setBusy(false);
+    setError("");
+  };
   const select = async (node: GraphNode) => {
+    const run = ++detailGeneration.current;
     setSelected(node);
     setDetails(null);
     if (node.qualified_name)
       try {
-        setDetails(
-          await graphTool("get_code_snippet", {
-            project,
-            qualified_name: node.qualified_name,
-            include_neighbors: true,
-          }),
-        );
+        const result = await graphTool("get_code_snippet", {
+          project,
+          qualified_name: node.qualified_name,
+          include_neighbors: true,
+        });
+        if (run === detailGeneration.current) setDetails(result);
       } catch {
-        setError(t.graphUnavailable);
+        if (run === detailGeneration.current) setError(t.graphUnavailable);
       }
   };
-  return (
-    <div className="flex h-full min-h-[500px] flex-col bg-card">
-      <div className="flex shrink-0 flex-wrap items-end gap-3 border-b border-border p-3">
-        <label className="text-xs">
-          {t.project}
-          <select
-            className="ml-2 rounded-lg border border-border bg-background px-2 py-2"
-            value={project}
-            onChange={(event) => setProject(event.target.value)}
-          >
-            <option value="">{t.selectProject}</option>
-            {projects.map((row) => (
-              <option key={row.name} value={row.name}>
-                {row.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          className="rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground"
-          disabled={!project || busy}
-          onClick={() => void load()}
+  const controls = (
+    <div className="lxp-codebase-header-controls">
+      <label className="lxp-codebase-header-field">
+        <span>{t.project}</span>
+        <select
+          className="lxp-codebase-header-select"
+          value={projectId}
+          disabled={catalogBusy}
+          onChange={(event) => changeProject(event.target.value)}
         >
-          {busy ? t.loadingProjects : t.visualGraph}
-        </button>
+          <option value="">{catalogBusy ? t.loadingProjects : t.selectProject}</option>
+          {projects.map((row) => (
+            <option key={row.id} value={row.id}>{row.title}</option>
+          ))}
+        </select>
+      </label>
+      <label className="lxp-codebase-header-field">
+        <span>{t.indexation}</span>
+        <select
+          className="lxp-codebase-header-select"
+          value={project}
+          disabled={!projectId || catalogBusy || !projectIndexes.length}
+          onChange={(event) => changeIndex(event.target.value)}
+        >
+          <option value="">{projectId && !projectIndexes.length ? t.noIndexes : t.selectIndex}</option>
+          {projectIndexes.map((row) => (
+            <option key={row.name} value={row.name}>
+              {row.root_path.replace(/\/+$/, "") === selectedProject?.path.replace(/\/+$/, "")
+                ? selectedProject?.title
+                : row.root_path.slice((selectedProject?.path.replace(/\/+$/, "") || "").length + 1)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="lxp-codebase-header-field lxp-codebase-header-search">
+        <span className="sr-only">{t.querySymbolPattern}</span>
         <input
-          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs"
+          type="search"
+          className="lxp-codebase-header-input"
           value={query}
+          disabled={!project}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t.querySymbolPattern}
         />
-        {layout && (
-          <span className="text-xs text-muted-foreground">
-            {layout.nodes.length} · {layout.edges.length}
-          </span>
-        )}
-        <button
-          className="rounded-lg border border-border px-3 py-2 text-xs"
-          aria-pressed={tools}
-          onClick={() => setTools((value) => !value)}
-        >
-          {t.architecture}
-        </button>
-      </div>
+      </label>
+      <button
+        className="lxp-codebase-header-button"
+        type="button"
+        disabled={!project || busy}
+        onClick={() => void load()}
+        aria-label={t.refreshGraph}
+        title={t.refreshGraph}
+      >
+        <i className={`ti ti-refresh ${busy ? "animate-spin" : ""}`} aria-hidden="true" />
+      </button>
+      <button
+        className="lxp-codebase-header-button"
+        type="button"
+        aria-pressed={tools}
+        onClick={() => setTools((value) => !value)}
+      >
+        {t.architecture}
+      </button>
+    </div>
+  );
+  return (
+    <div className="flex h-full min-h-[500px] flex-col bg-card">
+      {headerTarget
+        ? createPortal(controls, headerTarget)
+        : <div className="border-b border-border p-3">{controls}</div>}
       {error && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error}
@@ -251,15 +379,31 @@ export default function CodebaseGraphView() {
       {tools && (
         <GraphOperations
           project={project}
-          onChange={() =>
-            void graphTool("list_projects", {})
-              .then((data) => setProjects(data.projects || []))
-              .catch(() => setError(t.projectsLoadFailed))
-          }
+          onChange={() => setCatalogRevision((current) => current + 1)}
         />
       )}
       <div className="relative min-h-0 flex-1">
-        {layout && (
+        {(!layout || layout.nodes.length === 0) && !error && (
+          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
+            {catalogBusy
+              ? t.loadingProjects
+              : busy
+                ? t.loadingGraph
+                : !projects.length
+                  ? t.noVisibleProjects
+                  : !projectId
+                    ? t.chooseProjectHint
+                    : !project
+                      ? (projectIndexes.length ? t.chooseIndexHint : t.noIndexes)
+                      : t.noGraphData}
+          </div>
+        )}
+        {layout && layout.nodes.length > 0 && (
+          <span className="absolute left-3 top-3 z-10 rounded-md border border-border bg-card/90 px-2 py-1 text-xs text-muted-foreground">
+            {layout.nodes.length} {t.symbols} · {layout.edges.length} {t.relations}
+          </span>
+        )}
+        {layout && layout.nodes.length > 0 && (
           <Canvas
             frameloop={visible ? "always" : "never"}
             camera={{ position: [0, 0, 1500], near: 0.1, far: 100000 }}
