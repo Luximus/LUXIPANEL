@@ -24,6 +24,15 @@ import { useAssistantI18n } from "./i18n";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type XtermMods = { Terminal: any; FitAddon: any };
 let xtermMods: Promise<XtermMods> | null = null;
+// xterm keeps only 5,000 scrollback rows. Replaying an entire long-running CLI
+// buffer on first open blocks Chromium even though most rows are discarded.
+const INITIAL_TERMINAL_CHARS = 256_000;
+function recentTerminalOutput(output: string): string {
+  if (output.length <= INITIAL_TERMINAL_CHARS) return output;
+  const start = output.length - INITIAL_TERMINAL_CHARS;
+  const nextLine = output.indexOf("\n", start);
+  return output.slice(nextLine < 0 ? start : nextLine + 1);
+}
 
 function readDark(): boolean {
   return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
@@ -292,7 +301,7 @@ export function CliTerminalView({
       fitRef.current = fit;
       // Flush whatever output already accumulated before mount.
       if (outputRef.current) {
-        term.write(outputRef.current);
+        term.write(recentTerminalOutput(outputRef.current));
         written.current = outputRef.current.length;
       }
       lastLaneKey.current = selected;
@@ -315,13 +324,17 @@ export function CliTerminalView({
     if (!term) return;
     if (selected !== lastLaneKey.current) {
       term.clear();
-      written.current = 0;
       lastLaneKey.current = selected;
+      term.write(recentTerminalOutput(activeOutput));
+      written.current = activeOutput.length;
+      return;
     }
     if (activeOutput.length < written.current) {
       // Buffer was reset/replaced — clear and rewrite from scratch.
       term.clear();
-      written.current = 0;
+      term.write(recentTerminalOutput(activeOutput));
+      written.current = activeOutput.length;
+      return;
     }
     if (activeOutput.length > written.current) {
       term.write(activeOutput.slice(written.current));

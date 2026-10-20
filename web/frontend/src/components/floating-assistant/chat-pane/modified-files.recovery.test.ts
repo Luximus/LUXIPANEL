@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { extractModifiedFiles } from "./helpers";
 import { historyTurn } from "../chat-engine/history";
+import type { ChatTurn } from "../chat-engine";
 import { applyEvent } from "../chat-engine/stream-apply";
 import { chats } from "../chat-engine/state";
 import { ModifiedFilesView, TurnView } from "./turn-view";
@@ -77,6 +78,14 @@ it("preserves CLI modified and deleted files across the persisted log", () => {
   expect(extractModifiedFiles(turn, "/project")).toEqual([
     { path: "/project/src/review.ts", kind: "modified" }, { path: "/project/src/old.ts", kind: "deleted" },
   ]);
+});
+
+it("uses the chronological CLI transcript when lane buffers repeat earlier writes", () => {
+  const turn: ChatTurn = { role: "assistant", text: "", cli: true,
+    raw: "⏺ Write src/review.ts\n⏺ Bash rm src/review.ts",
+    tools: [{ id: "cli", name: "codex.cli", input: {}, terminal: "⏺ Write src/review.ts",
+      lanes: { main: { id: "main", title: "Orquestador", status: "running", output: "⏺ Write src/review.ts" } } }] };
+  expect(extractModifiedFiles(turn, "/project")).toEqual([{ path: "/project/src/review.ts", kind: "deleted" }]);
 });
 
 const locales = import.meta.glob<Partial<AssistantMessages>>("/src/i18n/*/assistant.ts", { eager: true, import: "default" });

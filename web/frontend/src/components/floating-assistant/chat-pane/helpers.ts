@@ -175,12 +175,15 @@ export function resolveModifiedPath(raw: string, base: string): string | null {
  *  shows as modified. */
 export function extractModifiedFiles(turn: ChatTurn, projectPath?: string): ModifiedFileEntry[] {
   const sources: string[] = [];
+  const cliTools = turn.tools.filter(tool => tool.name.endsWith(".cli"));
+  // Prefer the single chronological transcript. Terminal and lane buffers
+  // mirror it, so scanning all copies on every streamed fragment is costly.
   if (turn.cliHistoryLog) sources.push(turn.cliHistoryLog);
-  for (const tr of turn.tools ?? []) {
+  else if (turn.raw && (turn.cli || cliTools.length)) sources.push(turn.raw);
+  else for (const tr of cliTools) {
     if (tr.terminal) sources.push(tr.terminal);
     if (tr.lanes) for (const lane of Object.values(tr.lanes)) if (lane?.output) sources.push(lane.output);
   }
-  if (turn.raw && (turn.cli || turn.cliHistoryLog || turn.tools.some(tool => tool.name.endsWith(".cli")))) sources.push(turn.raw);
   const text = sources.join("\n").replace(ANSI_RE, "");
   const base = (projectPath ?? "").replace(/\/+$/, "");
   // (use of base is guarded below; projectPath is the only entry point that

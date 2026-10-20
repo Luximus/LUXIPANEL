@@ -1,0 +1,7 @@
+{
+  "title": "Consola del asistente más fluida",
+  "changes": [
+    "La consola del asistente se carga al abrir su historial, lo que reduce el trabajo del navegador durante las respuestas largas.",
+    "Al abrir una consola extensa, se procesan las líneas recientes para evitar bloqueos de la interfaz."
+  ]
+}

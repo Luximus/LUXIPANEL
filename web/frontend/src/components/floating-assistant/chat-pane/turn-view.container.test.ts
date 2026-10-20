@@ -82,6 +82,7 @@ describe("assistant message container", () => {
     expect(html).toContain("Ahora ajustaré la vista.");
     expect(html).toContain('data-message-section="console"');
     expect(html).toMatch(/<details(?![^>]*\bopen=)[^>]*><summary[^>]*>.*?Consola del servidor/s);
+    expect(html).not.toContain("cursor-zoom-in");
     expect(html).not.toContain("Consola del servidor</span></span>");
   });
 

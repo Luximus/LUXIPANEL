@@ -4,7 +4,7 @@
  * Tool-trace disclosures + reloaded CLI history console + CLI job timer.
  * Extracted verbatim from the original `ChatPane.tsx`.
  */
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useState, type ReactNode } from "react";
 
 import { useAssistantI18n } from "../i18n";
 import { humanizeToolName } from "../assistant-api";
@@ -17,6 +17,7 @@ import { apiToolStatus } from "./api-activity";
 import type { ThoughtLineEntryStatus } from "./reactbits/ThoughtLine";
 
 type ExecutionContentProps = { children?: ReactNode; attention?: ReactNode; contentOnly?: boolean };
+const ExecutionVisibilityContext = createContext(true);
 
 /**
  * One tool trace rendered as a collapsible `<details>`. For a CLI tool (the
@@ -43,6 +44,7 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
   // Keep manual toggles intact as the run changes state.
   const [consoleOpen, setConsoleOpen] = useState(false);
   const toolContentId = useId();
+  const executionOpen = useContext(ExecutionVisibilityContext);
 
   // CLI console: ONE box only — the console container itself is the
   // collapsible (the <details> carries the terminal chrome, mirroring
@@ -50,7 +52,8 @@ export function ToolDisclosure({ t, turn, uiMode, embedded = false, children, at
   if (isCliTool) {
     const content = <>
       <div id={toolContentId} className={`border-t border-border/60 p-1 ${embedded ? "bg-gray-200 dark:bg-black/95" : ""}`}>
-        <CliTerminalView bare output={t.terminal ?? ""} lanes={t.lanes} laneOrder={t.laneOrder} running={running} />
+        {executionOpen && (contentOnly || consoleOpen) &&
+          <CliTerminalView bare output={t.terminal ?? ""} lanes={t.lanes} laneOrder={t.laneOrder} running={running} />}
         {t.result && !t.result.success && (
           <p className="mt-1 px-1 text-[10px] text-amber-500">{t.result.output}</p>
         )}
@@ -180,7 +183,9 @@ export function ExecutionDisclosure({ children, attention, running = false, fail
         <ChevronRight className={`${source ? "" : "ml-auto "}size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`} aria-hidden />
         {attention}
       </summary>
-      <div id={contentId}>{children}</div>
+      <ExecutionVisibilityContext.Provider value={open}>
+        <div id={contentId}>{children}</div>
+      </ExecutionVisibilityContext.Provider>
     </details>
   );
 }
