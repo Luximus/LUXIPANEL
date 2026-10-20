@@ -1,0 +1,7 @@
+{
+  "title": "Índices de código por subproyecto",
+  "changes": [
+    "El asistente puede consultar grafos de código separados por subproyecto para ubicar fuentes con mayor precisión.",
+    "Los proyectos agrupadores usan los índices de sus hijos y evitan mezclar código de distintas áreas."
+  ]
+}

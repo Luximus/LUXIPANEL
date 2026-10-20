@@ -40,6 +40,17 @@ asistente, archivos, terminal, correo, mensajería y versiones conservan sus
 subproyectos. Registrar un subproyecto no crea otro checkout, proceso ni
 módulo instalado.
 
+El grafo de código se indexa por proyecto final: cada subproyecto sin hijos
+usa su propia ruta física como raíz del índice. Los proyectos agrupadores
+(Luxipanel, Web, Backend, Frontend, Módulos del backend, Módulos del frontend,
+Componentes de interfaz y Rutas y páginas) no mantienen un índice de toda su
+carpeta, porque abarcaría código de varios hijos y mezclaría sus alcances.
+El contexto de cada proyecto final indica el nombre de su grafo; el de cada
+agrupador dirige a los grafos de sus hijos. Antes de usar un índice, comprobar
+que esté habilitado y listo, que `indexedPath` coincida con `project.path` y
+que su fecha sea posterior al último cambio de código relevante. Si queda
+desactualizado, reindexar solo ese proyecto final y verificar el resultado.
+
 Algunos nombres de rutas difieren del backend: `assistant` usa `ai-assistant`,
 `backups` usa `backup`, `modules` y `repository-store` usan `admin`, y
 `terminal` se relaciona con `terminal` y `terminal-cli`. Cada contexto de ruta
