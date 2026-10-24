@@ -271,3 +271,18 @@ describe("trusted runtime usage", () => {
     expect(result.usage).toEqual({ executionSeconds: 17 });
   });
 });
+
+describe("immutable version inspection", () => {
+  it("returns only owned digests and source presence", async () => {
+    m.exists.mockImplementation(async (_executor, file) => file.endsWith("/source.zip") || file.endsWith("/manifest.json"));
+    m.read.mockResolvedValue(JSON.stringify(snapshot()));
+    expect(await service.snapshotInfo(provider, account, project, version)).toEqual({
+      versionId: version,
+      sourceDigest: snapshot().sourceDigest,
+      manifestDigest: snapshot().manifest.digest,
+      sourceReady: true,
+    });
+    m.owned.mockRejectedValue(new Error("foreign account"));
+    await expect(service.snapshotInfo(provider, account, project, version)).rejects.toThrow("foreign account");
+  });
+});

@@ -61,6 +61,19 @@ deploymentProviderRouter.put(
     });
   }),
 );
+deploymentProviderRouter.get(
+  base + "/versions/:version",
+  asyncHandler(async (req, res) => {
+    res.json({
+      ok: true,
+      data: await service.snapshotInfo(
+        provider(res, "deployments.read"),
+        ...refs(req),
+        String(req.params.version),
+      ),
+    });
+  }),
+);
 deploymentProviderRouter.put(
   base + "/versions/:version/source",
   raw({ type: "application/octet-stream", limit: "32mb" }),

@@ -300,6 +300,20 @@ export const deploymentProviderService = {
       return { versionId: version, sourceDigest: input.sourceDigest };
     });
   },
+  async snapshotInfo(provider: HostingProvider, account: string, project: string, version: string) {
+    uuid.parse(version);
+    const c = await context(provider, account, project);
+    const root = path.join(c.root, "versions", version);
+    const saved = await optionalJson(c.executor, path.join(root, "manifest.json"));
+    if (!saved) throw new NotFoundError("Versión de despliegue");
+    const snapshot = deploymentSnapshotSchema.parse(saved);
+    return {
+      versionId: version,
+      sourceDigest: snapshot.sourceDigest,
+      manifestDigest: snapshot.manifest.digest,
+      sourceReady: await pathExists(c.executor, path.join(root, "source.zip")),
+    };
+  },
   async source(
     provider: HostingProvider,
     account: string,
