@@ -197,6 +197,14 @@ describe("repository provider ownership and immutable snapshots", () => {
       }).success,
     ).toBe(false);
   });
+  it("accepts only a bounded, versioned execution budget", () => {
+    const input = { requestId: account, versionId: version, environment: "preview", variables: {} };
+    expect(deploymentJobSchema.safeParse({ ...input, executionBudget: { version: 1, maxExecutionSeconds: 900 } }).success).toBe(true);
+    for (const maxExecutionSeconds of [0, 1901, 1.5, "900"]) {
+      expect(deploymentJobSchema.safeParse({ ...input, executionBudget: { version: 1, maxExecutionSeconds } }).success).toBe(false);
+    }
+    expect(deploymentJobSchema.safeParse({ ...input, executionBudget: { version: 2, maxExecutionSeconds: 900 } }).success).toBe(false);
+  });
 });
 
 describe("private static artifact transfer", () => {
@@ -254,5 +262,14 @@ describe("private static artifact transfer", () => {
     m.exists.mockImplementation(async (_e, file: string) => file.endsWith("state.json"));
     expect(await service.deleteStaticArtifact(provider, account, project, version, "forms")).toEqual({ removed: true });
     expect(m.unlink).not.toHaveBeenCalled();
+  });
+});
+
+describe("trusted runtime usage", () => {
+  it.each(["finished", "failed"])("returns supervisor usage for %s jobs", async status => {
+    m.exists.mockResolvedValue(true);
+    m.read.mockResolvedValue(JSON.stringify({ id: version, versionId: version, environment: "preview", status, usage: { executionSeconds: 17 }, createdAt: new Date().toISOString() }));
+    const result = await service.job(provider, account, project, version);
+    expect(result.usage).toEqual({ executionSeconds: 17 });
   });
 });
