@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 """Restricted supervisor: metadata and systemd only; customer code runs as its
 hosting identity in rootless containers. Installed root-owned by install.sh."""
-import base64, fcntl, hashlib, json, os, pathlib, pwd, re, stat, subprocess, sys, time, signal
+import base64, fcntl, hashlib, json, math, os, pathlib, pwd, re, stat, subprocess, sys, time, signal
+sys.path.insert(0, '/usr/lib/luxipanel')
+from deployment_policy import healthy_components
 
 POLICY = '/etc/luxipanel-deployment-runtime.json'
 def require(condition, message):
@@ -33,15 +35,41 @@ require(len(sys.argv) in [2,3], 'invalid_arguments')
 file = regular(sys.argv[1], [0, service.pw_uid])
 root = pathlib.Path(policy['configRoot']) / 'hosting/deployments'
 relative = str(file.relative_to(root))
-require(re.fullmatch(r'[a-f0-9]{64}/(?:jobs/[a-f0-9-]{36}/(?:input|state)\.json|(?:retire|resume)\.json)', relative), 'invalid_job_path')
+require(re.fullmatch(r'[a-f0-9]{64}/(?:jobs/[a-f0-9-]{36}/(?:input|state)\.json|(?:retire|resume)\.json|data/[a-f0-9-]{36}\.json)', relative), 'invalid_job_path')
 task = json.loads(file.read_text())
 operation = sys.argv[2] if len(sys.argv) == 3 else 'run'
-require(operation in ['run','activate','cleanup','retire','resume'], 'invalid_operation')
+require(operation in ['run','activate','cleanup','retire','resume','data'], 'invalid_operation')
+budget = task.get('executionBudget') if operation == 'run' else None
+if budget is not None:
+    require(isinstance(budget, dict) and set(budget) == {'version', 'maxExecutionSeconds'}, 'invalid_execution_budget')
+    require(type(budget['version']) is int and budget['version'] == 1, 'invalid_execution_budget')
+    require(type(budget['maxExecutionSeconds']) is int and 1 <= budget['maxExecutionSeconds'] <= 1900, 'invalid_execution_budget')
 require(re.fullmatch(r'hp[a-f0-9]{20}', task['username']), 'invalid_hosting_identity')
 user = pwd.getpwnam(task['username'])
 require(user.pw_uid >= 1000 and user.pw_dir == task['home'] == '/home/'+user.pw_name, 'invalid_hosting_home')
-require(re.fullmatch(r'[a-f0-9-]{36}',task['projectId']), 'invalid_project')
+require(re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',task['projectId']), 'invalid_project')
+require(task.get('environment', 'preview') in ['preview', 'production'], 'invalid_environment')
+for key in ['versionId','requestId']:
+    if key in task: require(re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',task[key]), 'invalid_'+key)
+if operation == 'data':
+    require(re.fullmatch(r'[a-f0-9]{64}/data/[a-f0-9-]{36}\.json', relative), 'invalid_data_path')
+    require(task.get('request', {}).get('environment') == task.get('environment'), 'invalid_data_environment')
+    env=['/usr/sbin/runuser','-u',user.pw_name,'--','/usr/bin/env','-i',
+         'HOME='+user.pw_dir,'PATH=/usr/local/bin:/usr/bin:/bin','LANG=C.UTF-8',
+         'XDG_RUNTIME_DIR=/run/user/'+str(user.pw_uid),'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/'+str(user.pw_uid)+'/bus',
+         '/usr/bin/node','/usr/lib/luxipanel/deployment-data.mjs']
+    try:
+        result=run(env,input=json.dumps({'home':user.pw_dir,'projectId':task['projectId'],'request':task['request']}),text=True,capture_output=True,timeout=35)
+        sys.stdout.write(result.stdout)
+    except subprocess.CalledProcessError:
+        sys.stdout.write(json.dumps({'ok':False,'error':'project_data_unavailable'}))
+    finally:
+        file.unlink(missing_ok=True)
+    sys.exit(0)
 statefile = file.parent / 'state.json'
+execution_started = None
+def measured_usage():
+    return {'executionSeconds': max(0, math.ceil(time.monotonic() - execution_started))} if execution_started is not None else {'executionSeconds': 0}
 def save(patch):
     current = json.loads(statefile.read_text()) if statefile.exists() else {}
     current.update(patch)
@@ -81,13 +109,28 @@ try:
         # compilation and validation; platform build adapters share this lock.
         with open('/run/lock/luxisoft-heavy-build.lock','a') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)
-            result=run(env,input=json.dumps(payload),text=True,capture_output=True,timeout=1900)
+            execution_started = time.monotonic()
+            try:
+                result=run(env,input=json.dumps(payload),text=True,capture_output=True,
+                           timeout=budget['maxExecutionSeconds'] if budget else 1900)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError('deployment_time_budget_exceeded')
         if (file.parent.parent.parent/'retire.json').exists():
             cleanup={'operation':'retire','home':user.pw_dir,'username':user.pw_name,'projectId':task['projectId']}
             run(env,input=json.dumps(cleanup),text=True,capture_output=True,timeout=120)
             raise RuntimeError('deployment_retired')
         output=json.loads(result.stdout)
         require(output['ok'],'deployment_failed')
+        try:
+            healthy_components(output['result']['components'],task['snapshot']['manifest']['components'])
+        except Exception:
+            cleanup={'operation':'discard','home':user.pw_dir,'username':user.pw_name,'projectId':task['projectId'],'requestId':task['requestId']}
+            run(env,input=json.dumps(cleanup),text=True,capture_output=True,timeout=120)
+            raise
+        if task['environment'] == 'preview':
+            finalize={'operation':'finalize-preview','home':user.pw_dir,'username':user.pw_name,'projectId':task['projectId'],'requestId':task['requestId']}
+            previous=run(env,input=json.dumps(finalize),text=True,capture_output=True,timeout=120)
+            output['result']['evictedVersionIds']=json.loads(previous.stdout)['result']['evictedVersionIds']
         static_parts=[part for part in output['result']['components'] if part.get('surface')=='static']
         if static_parts:
             target=file.parent/'static'
@@ -111,7 +154,7 @@ try:
                 temporary.write_bytes(data);os.chmod(temporary,0o600);os.chown(temporary,service.pw_uid,service.pw_gid)
                 os.replace(temporary,destination)
                 source.unlink()
-        save({'status':'finished','result':output['result'],'logs':output.get('logs','')})
+        save({'status':'finished','result':output['result'],'logs':output.get('logs',''),'usage':measured_usage()})
     else:
         payload={'operation':operation,'home':user.pw_dir,'username':user.pw_name,'projectId':task['projectId'],'requestId':task.get('id','')}
         result=run(env,input=json.dumps(payload),text=True,capture_output=True,timeout=120)
@@ -124,7 +167,7 @@ except Exception as error:
         try:
             output=json.loads(error.stdout or '{}');code=output.get('error','deployment_process_failed');logs=output.get('logs','')
         except Exception: code='deployment_process_failed'
-    if operation=='run': save({'status':'failed','error':code[:500],'logs':logs[-24000:]})
+    if operation=='run': save({'status':'failed','error':code[:500],'logs':logs[-24000:],'usage':measured_usage()})
     sys.exit(1)
 finally:
     if operation=='run':

@@ -113,6 +113,10 @@ export const deploymentJobSchema = z
           ),
       )
       .default({}),
+    executionBudget: z.object({
+      version: z.literal(1),
+      maxExecutionSeconds: z.number().int().min(1).max(1900),
+    }).strict().optional(),
   })
   .strict();
 const hash = (value: string | Buffer) =>
@@ -138,6 +142,7 @@ function publicJob(state: any) {
     error,
     logs,
     result,
+    usage,
     createdAt,
     updatedAt,
   } = state;
@@ -149,6 +154,7 @@ function publicJob(state: any) {
     error,
     logs,
     result,
+    usage,
     createdAt,
     updatedAt,
   };
