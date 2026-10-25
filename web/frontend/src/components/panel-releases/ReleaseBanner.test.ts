@@ -150,6 +150,15 @@ it("opens branch changes without installing and pins an explicit update to the d
   await act(async () => finish()); expect(branchButton()?.disabled).toBe(true);
   expect(installPanelRelease).not.toHaveBeenCalled();
 });
+it("does not describe an installed branch revision as a pending development update", async () => {
+  const currentBranch = { ...branch, ahead: 0, updateAvailable: false };
+  vi.mocked(readPanelReleases).mockResolvedValue({ ...status, installed: { tag: "v2.0.3", commit: currentBranch.commit }, branches: [currentBranch] });
+  vi.mocked(readPanelBranch).mockResolvedValue({ ...branchDetails, ...currentBranch });
+  await render(); await open(); await selectBranch();
+  expect(container.textContent).toContain(labels.community.branchCurrent);
+  expect(container.textContent).not.toContain(labels.community.branchPreview);
+  expect(branchButton()).toBeUndefined();
+});
 it.each([false, true])("does not install an unsupported branch or allow a reader: reader=%s", async reader => {
   vi.mocked(readPanelReleases).mockResolvedValue({ ...status, branches: [branch] });
   vi.mocked(readPanelBranch).mockResolvedValue({ ...branchDetails, installable: reader });

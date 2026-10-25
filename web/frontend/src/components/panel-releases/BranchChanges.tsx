@@ -24,7 +24,7 @@ export default function BranchChanges({ branch, locale, status, labels: L, canIn
       </div>
       {ready?.installable && canInstall && onInstall && status.comparisonKnown === true && branch.updateAvailable && branch.ahead > 0 && !current && !unavailable && !error && !branch.error && <button type="button" className="lxp-community-action lxp-community-action--primary" disabled={busy || status.operation?.status === "running"} onClick={() => void onInstall(branch.name, branch.commit)}><i className="ti ti-download" aria-hidden="true" /><span>{busy || status.operation?.status === "running" ? L.updating : L.branchUpdate.replace("{branch}", branch.name)}</span></button>}
     </div>
-    <p className="text-sm text-muted-foreground">{L.branchPreview}</p>
+    {!current && <p className="text-sm text-muted-foreground">{L.branchPreview}</p>}
     {current && <p role="status" className="text-sm">{L.branchCurrent}</p>}
     {!current && status.comparisonKnown !== false && !branch.updateAvailable && !branch.error && <p className="text-sm text-muted-foreground">{L.noBranchChanges}</p>}
     {(error || branch.error || status.branchesError) && <p role="alert" className="text-sm text-red-500">{error || branch.error || status.branchesError}</p>}
