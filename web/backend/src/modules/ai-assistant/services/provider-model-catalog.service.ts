@@ -176,10 +176,15 @@ async function listApiModels(providerId: AssistantProviderId, config: AssistantC
 
 function cacheKey(executor: Executor, config: AssistantConfig, providerId: AssistantProviderId): string {
   const slot = config.providers[providerId];
-  const apiIdentity = slot.api
-    ? createHash("sha256").update(`${slot.api.apiKey}\0${slot.api.baseUrl ?? ""}`).digest("hex")
-    : "cli";
-  return [executor.target.id, getContextUserId() ?? "shared", providerId, slot.mode, apiIdentity].join(":");
+  // A catalogue may include the configured model when the provider cannot list
+  // its own inventory. Keep CLI login/install state and both configured model
+  // values in the cache identity so a credentials or `/model` change takes
+  // effect immediately instead of inheriting a stale five-minute catalogue.
+  const identity = slot.mode === "api"
+    ? `${slot.api?.apiKey ?? ""}\0${slot.api?.baseUrl ?? ""}\0${slot.api?.model ?? ""}`
+    : `${slot.cli?.installed ? "1" : "0"}\0${slot.cli?.loggedIn ? "1" : "0"}\0${slot.cli?.model ?? ""}\0${slot.cli?.binPath ?? ""}`;
+  const configIdentity = createHash("sha256").update(identity).digest("hex");
+  return [executor.target.id, getContextUserId() ?? "shared", providerId, slot.mode, configIdentity].join(":");
 }
 
 function statusReason(error: unknown): ProviderModelCatalog["reason"] {
@@ -203,11 +208,15 @@ export async function providerModelCatalog(
 
   const checkedAt = new Date().toISOString();
   if (slot.mode === "cli") {
+    // A detected binary is not a usable provider until its account/session is
+    // authenticated. The chat UI and provider picker must never advertise
+    // models that will only fail on the first prompt.
+    const ready = Boolean(slot.cli?.installed && slot.cli?.loggedIn);
     const catalog: ProviderModelCatalog = {
-      providerId, mode: slot.mode, status: slot.cli?.installed ? "unverified" : "unavailable",
+      providerId, mode: slot.mode, status: ready ? "unverified" : "unavailable",
       source: "curated", checkedAt,
-      models: curatedModels(providerId, config).map((model) => ({ ...model, available: Boolean(slot.cli?.installed) })),
-      ...(!slot.cli?.installed ? { reason: "provider_unavailable" as const } : {}),
+      models: curatedModels(providerId, config).map((model) => ({ ...model, available: ready })),
+      ...(!ready ? { reason: slot.cli?.installed ? "provider_authorization_failed" as const : "provider_unavailable" as const } : {}),
     };
     cache.set(key, { expiresAt: Date.now() + TTL_MS, catalog });
     return catalog;

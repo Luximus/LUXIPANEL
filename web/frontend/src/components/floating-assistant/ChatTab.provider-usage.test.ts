@@ -8,16 +8,21 @@ import type { AssistantConfigState } from "./assistant-api";
 
 let nextBarId = 0;
 vi.mock("./ChatPane", () => ({
-  ChatPane: ({ provider, active, mobileProviderNav }: {
+  ChatPane: ({ provider, active, mobileProviderNav, modelOptions }: {
     provider: string;
     active: boolean;
     mobileProviderNav: { onSelect(id: string): void };
+    modelOptions?: string[];
   }) => createElement("button", {
     type: "button",
     "data-pane": provider,
     "data-active": String(active),
+    "data-model-options": JSON.stringify(modelOptions ?? []),
     onClick: () => mobileProviderNav.onSelect(provider === "claude" ? "codex" : "claude"),
   }, provider),
+}));
+vi.mock("./PanelModulesDashboard", () => ({
+  PanelModulesDashboard: () => createElement("div", { "data-modules-dashboard": "" }),
 }));
 vi.mock("./CliUsageBars", () => ({
   CliUsageBars: ({ provider }: { provider: string }) => {
@@ -85,5 +90,51 @@ it("selects the requested provider when configuration arrives after the request"
   await act(async () => { root.render(createElement(ChatTab, { ...props, config })); });
   expect(host.querySelector("[data-usage-provider]")?.getAttribute("data-usage-provider")).toBe("codex");
   expect(host.querySelector('[data-pane="codex"]')?.getAttribute("data-active")).toBe("true");
+  await act(async () => { root.unmount(); });
+});
+
+it("passes only the live available catalogue to the existing model selector", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(createElement(ChatTab, {
+      enabled: true,
+      config,
+      onOpenProviders: vi.fn(),
+      operationalProviders: ["claude"],
+      selectableOperationalProviders: ["claude"],
+      providerCatalogs: {
+        claude: {
+          providerId: "claude", mode: "cli", status: "unverified", source: "curated", checkedAt: "2026-10-25T00:00:00.000Z",
+          models: [
+            { id: "configured-cli-model", label: "Configured CLI model", available: true },
+            { id: "not-entitled", label: "Not entitled", available: false },
+          ],
+        },
+      },
+    }));
+  });
+  expect(JSON.parse(host.querySelector('[data-pane="claude"]')?.getAttribute("data-model-options") ?? "[]"))
+    .toEqual(["configured-cli-model"]);
+  expect(host.querySelector('[data-pane="codex"]')).toBeNull();
+  await act(async () => { root.unmount(); });
+});
+
+it("replaces Chatbox with the panel-module dashboard when no provider is operational", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(createElement(ChatTab, {
+      enabled: true,
+      config,
+      onOpenProviders: vi.fn(),
+      operationalProviders: [],
+      selectableOperationalProviders: [],
+    }));
+  });
+  expect(host.querySelector("[data-modules-dashboard]")).not.toBeNull();
+  expect(host.querySelector("[data-pane]")).toBeNull();
   await act(async () => { root.unmount(); });
 });

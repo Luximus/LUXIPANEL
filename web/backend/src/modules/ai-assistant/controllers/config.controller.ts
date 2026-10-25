@@ -229,15 +229,16 @@ export const assistantConfigController = {
       });
       return;
     }
-    // mode === "cli". We trust that if the binary is present, the user
-    // has already authenticated it via the Terminal module's flow. If
-    // not, the CLI itself will surface the error on first chat use.
+    // A binary alone is not a usable provider. Keep this probe aligned with
+    // the model catalogue and chat admission rule: installation + login.
     const cli = provider.cli ?? { installed: false, loggedIn: false };
     res.json({
-      ok: Boolean(cli.installed),
-      detail: cli.installed
-        ? `Listo${cli.version ? ` · ${cli.version}` : ""}`
-        : "CLI no instalado — instálalo desde la terminal flotante",
+      ok: Boolean(cli.installed && cli.loggedIn),
+      detail: !cli.installed
+        ? "CLI no instalado — instálalo desde la terminal flotante"
+        : !cli.loggedIn
+          ? "CLI sin sesión — inicia sesión desde la terminal flotante"
+          : `Listo${cli.version ? ` · ${cli.version}` : ""}`,
       probedAt: new Date().toISOString(),
     });
   }),

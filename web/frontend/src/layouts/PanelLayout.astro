@@ -271,6 +271,7 @@ const workspaceToolGroups = navGroups.map((group) => ({
               {group.items.map((item) => (
                 <a
                   href={item.href}
+                  data-module={item.module}
                   aria-current={activeModule === item.module ? "page" : undefined}
                   class:list={[
                     "sidebar-mod-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",

@@ -20,6 +20,8 @@ export interface ChatPaneProps {
   mode: "api" | "cli";
   /** Active model id — gates attachment support by the model's real capability. */
   model?: string;
+  /** Models proven available by the selected provider transport. */
+  modelOptions?: string[];
   /** Default model to preselect in the composer for a NEW loose/project chat on
    *  THIS provider (per-server `defaultChatModel`, already validated & scoped by
    *  ChatTab). Undefined / "auto" → the composer starts on Auto. Never applied to

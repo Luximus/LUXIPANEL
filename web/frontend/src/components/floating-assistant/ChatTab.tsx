@@ -5,9 +5,10 @@ import { createPortal } from "react-dom";
 import { ChatPane } from "./ChatPane";
 import { chatUiState } from "./chat-ui-state";
 import { CliUsageBars } from "./CliUsageBars";
+import { PanelModulesDashboard } from "./PanelModulesDashboard";
 import { useChatCliTarget } from "./use-chat-cli-target";
 import { assistantConversationsApi } from "./assistant-api/conversations";
-import { assistantApi, PROVIDER_META, PROVIDER_ORDER, type AssistantConfigState, type AssistantProviderId, type ApprovalMode } from "./assistant-api";
+import { assistantApi, PROVIDER_META, PROVIDER_ORDER, type AssistantConfigState, type AssistantProviderId, type ApprovalMode, type ProviderModelCatalog } from "./assistant-api";
 import { type MobileNavController } from "./MobileNavModal";
 import { uiPrefs } from "./ui-prefs";
 import { useAssistantI18n } from "./i18n";
@@ -18,6 +19,15 @@ interface ChatTabProps {
   config: AssistantConfigState | null;
   /** True while the config is still being fetched (drawer just opened / target changed). */
   loading?: boolean;
+  /** True while provider transports are being checked against their live catalogue. */
+  availabilityLoading?: boolean;
+  /** Catalogues resolved once by the panel, shared by every provider pane. */
+  providerCatalogs?: Partial<Record<AssistantProviderId, ProviderModelCatalog>>;
+  /** Active providers proven usable by their selected API/CLI transport. */
+  operationalProviders?: AssistantProviderId[];
+  /** Usable providers available to the existing provider picker. */
+  selectableOperationalProviders?: AssistantProviderId[];
+  onRetryAvailability?(): void;
   onOpenProviders(): void;
   /** Propagate a config change made from within the chat (e.g. the approval-mode
    *  selector) up to the panel-level config state. */
@@ -66,7 +76,7 @@ interface ChatTabProps {
  * in-flight streams survive provider switches and multiple providers can keep
  * answering concurrently.
  */
-export function ChatTab({ enabled, config, loading, onOpenProviders, onConfigChange, openReq, onLaunchAgent, seedText, seedAutoSend, seedNewChat, seedProvider, seedNonce, onSeedConsumed, onCloseDrawer, chatVisible = true, assistantRequestOpenRequestId, assistantRequestPrompt, assistantRequestSubmit, assistantRequestServerEntries, assistantRequestNonce, onAssistantRequestConsumed }: ChatTabProps) {
+export function ChatTab({ enabled, config, loading, availabilityLoading = false, providerCatalogs = {}, operationalProviders, selectableOperationalProviders, onRetryAvailability, onOpenProviders, onConfigChange, openReq, onLaunchAgent, seedText, seedAutoSend, seedNewChat, seedProvider, seedNonce, onSeedConsumed, onCloseDrawer, chatVisible = true, assistantRequestOpenRequestId, assistantRequestPrompt, assistantRequestSubmit, assistantRequestServerEntries, assistantRequestNonce, onAssistantRequestConsumed }: ChatTabProps) {
   const t = useAssistantI18n().chatTab;
   // The composer is portaled into this slot on mobile so it sits between the
   // scroll area (order-1) and the provider sub-tabs (order-last), i.e. above
@@ -77,17 +87,19 @@ export function ChatTab({ enabled, config, loading, onOpenProviders, onConfigCha
   // Providers shown as chat tabs = strictly those toggled "Mostrar en chat"
   // (the switch in the Proveedores tab). No implicit fallback to the default
   // provider — the tabs must mirror the switches.
-  const activeProviders: AssistantProviderId[] = config
+  const configuredActiveProviders: AssistantProviderId[] = config
     ? (Object.keys(config.providers) as AssistantProviderId[]).filter(
         (id) => config.providers[id].active,
       )
     : [];
-  const selectableProviders = config
+  const configuredSelectableProviders = config
     ? PROVIDER_ORDER.filter((id) => {
         const state = config.providers[id];
         return state?.active || (state?.mode === "api" ? state.api.hasApiKey : state?.cli.installed && state.cli.loggedIn);
       })
     : [];
+  const activeProviders = operationalProviders ?? configuredActiveProviders;
+  const selectableProviders = selectableOperationalProviders ?? configuredSelectableProviders;
 
   // Restore the active provider sub-tab chosen before the drawer closed (the
   // tab unmounts on close). The auto-select effect below validates it against
@@ -213,7 +225,7 @@ export function ChatTab({ enabled, config, loading, onOpenProviders, onConfigCha
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedNonce]);
 
-  if (loading) {
+  if (loading || availabilityLoading) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-sm text-muted-foreground">
         <i className="ti ti-loader-2 animate-spin text-4xl text-primary/70" aria-hidden></i>
@@ -236,16 +248,11 @@ export function ChatTab({ enabled, config, loading, onOpenProviders, onConfigCha
   }
 
   if (activeProviders.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-sm text-muted-foreground">
-        <i className="ti ti-plug text-4xl text-muted-foreground/40" aria-hidden></i>
-        <p className="font-medium text-foreground">{t.noProvidersTitle}</p>
-        <p className="text-xs">{t.noProvidersDescription}</p>
-        <button type="button" onClick={onOpenProviders} className="mt-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
-          {t.goToProviders}
-        </button>
-      </div>
-    );
+    return <PanelModulesDashboard
+      onOpenProviders={onOpenProviders}
+      onRetryAvailability={onRetryAvailability ?? (() => undefined)}
+      checkingAvailability={availabilityLoading}
+    />;
   }
 
   // Provider selector controller consumed by the integrated composer select.
@@ -291,6 +298,7 @@ export function ChatTab({ enabled, config, loading, onOpenProviders, onConfigCha
                   ? defaultChatModel
                   : undefined
               }
+              modelOptions={(providerCatalogs[id]?.models ?? []).filter((entry) => entry.available).map((entry) => entry.id)}
               uiMode={config?.uiMode ?? "simple"}
               voice={config?.voice ?? null}
               approvalMode={config?.approval?.mode ?? "manual"}

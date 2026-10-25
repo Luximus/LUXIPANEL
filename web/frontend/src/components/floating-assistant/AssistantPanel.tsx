@@ -19,6 +19,7 @@ import {
 } from "@/lib/assistant-request";
 import { ChatTab } from "./ChatTab";
 import { ProviderIcon } from "./ProviderIcon";
+import { useProviderAvailability } from "./use-provider-availability";
 import { workspaceState } from "./workspace-state";
 import { chatUiState } from "./chat-ui-state";
 const ProjectAgentsDialog = lazy(() => import("./ProjectAgentsDialog").then((module) => ({ default: module.ProjectAgentsDialog })));
@@ -218,6 +219,7 @@ export default function AssistantPanel({
     [],
   );
   const [config, setConfig] = useState<AssistantConfigState | null>(null);
+  const providerAvailability = useProviderAvailability(config);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null);
   const agentLaunchSequence = useRef(0);
@@ -229,12 +231,9 @@ export default function AssistantPanel({
     events.forEach(event => window.addEventListener(event, invalidate));
     return () => events.forEach(event => window.removeEventListener(event, invalidate));
   }, []);
-  // Lista de proveedores visibles en chat, usada por `openAssistantRequest`.
-  // Debe declararse antes del callback que la consume.
-  const activeProviders = useMemo<AssistantProviderId[]>(() => {
-    if (!config) return [];
-    return (PROVIDER_ORDER as AssistantProviderId[]).filter((id) => config.providers[id]?.active);
-  }, [config]);
+  // Lista de proveedores visibles en chat, usada por los handoffs. A diferencia
+  // de `providers[id].active`, esta lista ya comprobó que API/CLI puede operar.
+  const activeProviders = providerAvailability.activeProviders;
   // Request from the Dashboard / Agents tab / bridge externo to drive the chat
   // tab. Un único slot tipado: el union `ChatOpenRequest` (kind:"conversation" |
   // "agent" | "new-assistant") reemplaza al anterior objeto ambiguo de 5
@@ -290,6 +289,11 @@ export default function AssistantPanel({
     const sequence = ++agentLaunchSequence.current;
     setAgentLaunchError(null);
     if (!config?.enabled) return;
+    if (providerAvailability.checking) return;
+    if (!providerAvailability.selectableProviders.includes(agent.providerId)) {
+      setAgentLaunchError(messages.assistantErrorBoundary.errorMessage);
+      return;
+    }
 
     const scope = () => JSON.stringify([resolveTargetScope(), scopeHeaders(true)]);
     const requestScope = scope();
@@ -338,7 +342,7 @@ export default function AssistantPanel({
         setAgentLaunchError(error instanceof Error ? error.message : messages.assistantErrorBoundary.errorMessage);
       }
     }
-  }, [config, messages.assistantErrorBoundary.errorMessage, messages.agentMarket, setTab]);
+  }, [config, messages.assistantErrorBoundary.errorMessage, messages.agentMarket, providerAvailability.checking, providerAvailability.selectableProviders, setTab]);
 
   const openSettings = useCallback((section?: AssistantSettingsSection | "agentes" | null, agentId?: string | null) => {
     if (section === "agentes" && !agentId) { setTab("market"); return; }
@@ -633,6 +637,11 @@ export default function AssistantPanel({
                   enabled={Boolean(config?.enabled)}
                   config={config}
                   loading={config === null && !loadError}
+                  availabilityLoading={providerAvailability.checking}
+                  providerCatalogs={providerAvailability.catalogs}
+                  operationalProviders={providerAvailability.activeProviders}
+                  selectableOperationalProviders={providerAvailability.selectableProviders}
+                  onRetryAvailability={providerAvailability.retry}
                   onOpenProviders={openProviderCredentials}
                   onConfigChange={setConfig}
                   openReq={openReq}

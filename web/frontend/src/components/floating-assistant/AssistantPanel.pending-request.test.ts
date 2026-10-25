@@ -9,8 +9,9 @@ vi.mock("./assistant-api", () => ({
   PROVIDER_ORDER: ["gemini", "codex"],
   assistantApi: {
     getConfig: async () => ({ enabled: true, activeProvider: "codex", providers: {
-      gemini: { active: true, mode: "api" }, codex: { active: true, mode: "api" },
+      gemini: { active: true, mode: "api", api: { hasApiKey: true } }, codex: { active: true, mode: "api", api: { hasApiKey: true } },
     } }),
+    getProviderModelCatalog: async (id: string) => ({ providerId: id, mode: "api", status: "verified", source: "provider-api", checkedAt: "2026-10-25T00:00:00.000Z", models: [{ id: "test-api-model", label: "Test API model", available: true }] }),
   },
 }));
 vi.mock("./ChatTab", () => ({

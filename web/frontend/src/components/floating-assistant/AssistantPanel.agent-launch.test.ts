@@ -12,7 +12,11 @@ vi.mock("@/i18n/client", () => ({ getClientMessages: async () => ({ assistant: {
 vi.mock("@/lib/api-client", async original => ({...await original<Record<string, unknown>>(), resolveTargetScope: () => m.scope, scopeHeaders: () => ({"X-CSRF-Token":m.session})}));
 vi.mock("./assistant-api", async original => ({
  ...await original<Record<string, unknown>>(),
- assistantApi: {getConfig: async () => config, setProvider: m.setProvider},
+ assistantApi: {
+  getConfig: async () => config,
+  setProvider: m.setProvider,
+  getProviderModelCatalog: async (id: string) => ({ providerId: id, mode: "cli", status: "unverified", source: "curated", checkedAt: "2026-10-25T00:00:00.000Z", models: [{ id: "test-cli-model", label: "Test CLI model", available: true }] }),
+ },
  assistantAgentsApi: {list: m.listAgents},
 }));
 vi.mock("./assistant-api/conversations", () => ({assistantConversationsApi:{setOptions:m.setOptions}}));

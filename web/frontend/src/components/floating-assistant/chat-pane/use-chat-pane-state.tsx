@@ -11,7 +11,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   assistantConversationsApi,
-  assistantApi,
   teamApi,
   attachmentSupport,
   type AssistantProject,
@@ -33,7 +32,6 @@ import {
   LOOSE_GROUP_ID,
   accordionToggle,
 } from "../conversation-grouping";
-import { PROVIDER_MODELS, type AssistantProviderId } from "../assistant-api";
 import { useIsMobile } from "./use-is-mobile";
 import { setFabAgentsScopeActive } from "./helpers";
 import { type ChatPaneProps, type ChatPaneActions } from "./vm-types";
@@ -45,6 +43,7 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
   provider,
   mode,
   model,
+  modelOptions: availableModelOptions = [],
   initialModel,
   uiMode = "simple",
   voice,
@@ -217,21 +216,9 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
   // shown while the draft starts with "/" and matches catalog commands.
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
-  // In-chat model override (composer selector). "" = Auto (the backend
-  // auto-router picks the model/effort per turn). A non-empty value forces that
-  // model for the next turns. Reset whenever the provider changes, since the
-  // model catalog is per-provider.
-  const [verifiedModelOptions, setVerifiedModelOptions] = useState<string[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    setVerifiedModelOptions(null);
-    if (!PROVIDER_MODELS[provider as AssistantProviderId]) return;
-    void assistantApi.getProviderModels(provider as AssistantProviderId)
-      .then((catalog) => { if (live && catalog.verified) setVerifiedModelOptions(catalog.models); })
-      .catch(() => undefined);
-    return () => { live = false; };
-  }, [provider]);
-  const modelOptions = verifiedModelOptions ?? PROVIDER_MODELS[provider as AssistantProviderId] ?? [];
+  // In-chat model override (composer selector). The list comes from the
+  // panel-wide availability pass; never substitute a marketing/static list.
+  const modelOptions = availableModelOptions;
   const initialModelFor = (agentId: string | null, convId: string | null) =>
     !agentId && !convId && initialModel && modelOptions.includes(initialModel) ? initialModel : "";
   const conversationOptions = useConversationOptions({
@@ -240,6 +227,17 @@ export function useChatPaneState(props: ChatPaneProps, actions: ChatPaneActions)
     defaultModel: initialModelFor(currentAgentId, null), onRestoreProvider: props.onRestoreProvider,
   });
   const { selectedModel, setSelectedModel, selectedEffort, setSelectedEffort } = conversationOptions;
+  const availableModelIds = modelOptions.join("\u0000");
+  // A remembered conversation/default can outlive a provider's entitlement.
+  // Reset it once rather than displaying a model the current transport cannot
+  // run, and persist the correction through the existing option path.
+  useEffect(() => {
+    if (!selectedModel || modelOptions.includes(selectedModel)) return;
+    setSelectedModel("");
+    chatUiState.patchConversationChoice(provider, activeId, { model: "" });
+  // `availableModelIds` avoids rerunning solely because ChatTab rebuilt the array.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModel, availableModelIds, provider, activeId]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);

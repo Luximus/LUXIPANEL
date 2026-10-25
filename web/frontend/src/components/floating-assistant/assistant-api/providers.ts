@@ -93,6 +93,30 @@ export interface ProviderProbeResult {
   probedAt: string;
 }
 
+/** Availability snapshot returned by the target-scoped provider catalogue. */
+export type ProviderModelCatalogStatus = "verified" | "unverified" | "unavailable";
+export type ProviderModelCatalogReason =
+  | "provider_not_configured"
+  | "provider_authorization_failed"
+  | "provider_unavailable";
+
+export interface ProviderModelOption {
+  id: string;
+  label: string;
+  reasoningEfforts?: Array<"low" | "medium" | "high" | "xhigh" | "max">;
+  available: boolean;
+}
+
+export interface ProviderModelCatalog {
+  providerId: AssistantProviderId;
+  mode: AssistantProviderMode;
+  status: ProviderModelCatalogStatus;
+  source: "provider-api" | "curated";
+  checkedAt: string;
+  models: ProviderModelOption[];
+  reason?: ProviderModelCatalogReason;
+}
+
 export interface ProviderPatchPayload {
   mode?: AssistantProviderMode;
   active?: boolean;
@@ -142,9 +166,18 @@ export const assistantApi = {
     return unwrap(res, "Probe failed");
   },
 
+  /** Raw provider inventory. Chatbox uses this instead of static marketing lists. */
+  async getProviderModelCatalog(id: AssistantProviderId, refresh = false): Promise<ProviderModelCatalog> {
+    const res = await api.catalog<{ ok: boolean; catalog: ProviderModelCatalog }>(`/api/ai/config/providers/${id}/models${refresh ? "?refresh=1" : ""}`);
+    return unwrap(res, "Failed to load provider models").catalog;
+  },
+
+  /**
+   * Legacy convenience for settings editors. Chatbox must use the raw catalogue
+   * above so unavailable providers never fall back to a hard-coded model list.
+   */
   async getProviderModels(id: AssistantProviderId, refresh = false): Promise<{ models: string[]; verified: boolean }> {
-    const res = await api.catalog<{ ok: boolean; catalog: { status: "verified" | "unverified" | "unavailable"; models: Array<{ id: string; available: boolean }> } }>(`/api/ai/config/providers/${id}/models${refresh ? "?refresh=1" : ""}`);
-    const catalog = unwrap(res, "Failed to load provider models").catalog;
+    const catalog = await this.getProviderModelCatalog(id, refresh);
     if (catalog.status !== "verified") return { models: PROVIDER_MODELS[id], verified: false };
     const models = catalog.models.filter((model) => model.available).map((model) => model.id);
     return { models, verified: true };
