@@ -18,6 +18,7 @@ import uuid
 
 MIB = 1024 * 1024
 SLICE = "luxipanel-assistant.slice"
+DEFAULT_ADMISSION_PERCENT = 85
 
 
 def memory_info():
@@ -32,13 +33,13 @@ def limits(total, cpus, kind, cap_mib=None):
         cap = min(cap, int(cap_mib) * MIB)
     maximum = min(cap, total * 45 // 100) // 4096 * 4096
     return {
-        "groupMax": total // 2 // 4096 * 4096,
-        "groupHigh": total * 35 // 100 // 4096 * 4096,
+        "groupMax": total * 70 // 100 // 4096 * 4096,
+        "groupHigh": total * 60 // 100 // 4096 * 4096,
         "max": maximum, "high": maximum * 80 // 100 // 4096 * 4096,
         "swap": min(512 * MIB, total // 16),
         "jobSwap": min(512 * MIB, total // 16, maximum // 4),
         "cpu": max(50, min(200, cpus * 50)),
-        "reserve": max(512 * MIB, total // 5),
+        "reserve": max(512 * MIB, total // 10),
     }
 
 
@@ -67,10 +68,33 @@ def lock_file(directory, name):
     return os.open(directory / name, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
 
 
-def admitted(mem, policy, used):
+def admission_percent(options):
+    path = options.get("admissionPolicyPath")
+    if not path:
+        return DEFAULT_ADMISSION_PERCENT
+    try:
+        try:
+            raw = Path(path).read_text()
+        except PermissionError:
+            result = subprocess.run(["sudo", "-A", "cat", "--", path], capture_output=True, text=True, timeout=5)
+            if result.returncode:
+                raise RuntimeError("assistant admission policy unreadable")
+            raw = result.stdout
+        value = json.loads(raw)["memPercent"]
+    except FileNotFoundError:
+        return DEFAULT_ADMISSION_PERCENT
+    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError("invalid assistant admission policy") from error
+    if type(value) is not int or not 50 <= value <= 90:
+        raise ValueError("invalid assistant admission policy")
+    return value
+
+
+def admitted(mem, policy, used, percent=DEFAULT_ADMISSION_PERCENT):
     # memory.high already throttles/reclaims every task in the shared slice.
     # Waiting until memory.max admits new chats into an already stalled group.
-    return mem["MemAvailable"] >= policy["reserve"] and used + 256 * MIB <= min(policy["groupHigh"], policy["groupMax"])
+    below_threshold = (mem["MemTotal"] - mem["MemAvailable"]) * 100 < mem["MemTotal"] * percent
+    return below_threshold and mem["MemAvailable"] >= policy["reserve"] and used + 256 * MIB <= min(policy["groupHigh"], policy["groupMax"])
 
 
 # Executed INSIDE the scope before the command. Verify kernel enforcement, not
@@ -113,7 +137,8 @@ def main(options, command):
         os.environ["XDG_RUNTIME_DIR"] = str(runtime)
         os.environ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(runtime / "bus")
         directory = private_directory(runtime)
-        policy = limits(memory_info()["MemTotal"], os.cpu_count() or 1, options["kind"], options.get("memoryMaxMiB"))
+        total_memory = memory_info()["MemTotal"]
+        policy = limits(total_memory, os.cpu_count() or 1, options["kind"], options.get("memoryMaxMiB"))
         config_lock = lock_file(directory, "configure.lock")
         locks.append(config_lock)
         config_deadline = time.monotonic() + 10
@@ -141,7 +166,7 @@ def main(options, command):
         deadline = time.monotonic() + options.get("queueSeconds", 300)
         announced = False
         while True:
-            available = admitted(memory_info(), policy, int((group / "memory.current").read_text()))
+            available = admitted(memory_info(), policy, int((group / "memory.current").read_text()), admission_percent(options))
             if available and browser_lock is not None:
                 try:
                     fcntl.flock(browser_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -150,9 +175,9 @@ def main(options, command):
             if available:
                 break
             if time.monotonic() >= deadline:
-                return fail("RESOURCE_GUARD_BUSY", "El servidor no tiene recursos libres suficientes o el navegador está ocupado. La tarea no llegó a iniciarse; inténtalo cuando termine el trabajo activo.", 75)
+                return fail("RESOURCE_GUARD_BUSY", "Otra ejecución IA ocupa la capacidad disponible, faltan recursos o el navegador está ocupado. La tarea no llegó a iniciarse; inténtalo cuando termine el trabajo activo.", 75)
             if not announced:
-                print("[LUXIPANEL] Esperando recursos disponibles para iniciar la tarea.", file=sys.stderr, flush=True)
+                print("[LUXIPANEL] Esperando capacidad disponible para iniciar la tarea IA.", file=sys.stderr, flush=True)
                 announced = True
             time.sleep(1)
         # Keep failed units until their Result is inspected; --collect would

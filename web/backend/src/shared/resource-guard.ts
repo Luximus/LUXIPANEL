@@ -2,6 +2,7 @@
 // Copyright (C) 2026 LUXISOFT
 import { readFileSync } from "node:fs";
 import { quoteArg, type Executor, type ExecResult } from "./executor/index.js";
+import { CONFIG_DIR } from "../config/paths.js";
 
 const runner = readFileSync(new URL("./resource-guard.py", import.meta.url)).toString("base64");
 export interface ResourceGuardOptions {
@@ -15,7 +16,8 @@ export interface ResourceGuardOptions {
 /** Run on the selected executor; no local-host probes or unguarded fallback. */
 export function guardCommand(command: string, options: ResourceGuardOptions): string {
   const bootstrap = `import base64; exec(compile(base64.b64decode('${runner}'), 'luxipanel-resource-guard', 'exec'))`;
-  return `python3 -c ${quoteArg(bootstrap)} ${quoteArg(JSON.stringify(options))} /bin/bash -c ${quoteArg(command)}`;
+  const admissionPolicyPath = `${CONFIG_DIR.replace(/\/+$/, "")}/monitor/assistant-admission.json`;
+  return `python3 -c ${quoteArg(bootstrap)} ${quoteArg(JSON.stringify({ ...options, admissionPolicyPath }))} /bin/bash -c ${quoteArg(command)}`;
 }
 
 export function resourceGuardFailure(output: string): string | null {

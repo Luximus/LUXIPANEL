@@ -5,6 +5,7 @@
  * general | model | hierarchy | tools | resources | access. Sin estado propio
  * (el `draft` lo posee AgentsModule y fluye por props vía `set`/`onChangeDraft`).
  */
+import { profileCopy } from "../agent-profiles/copy";
 import React, { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Plus, Sparkles, TriangleAlert, Wand2 } from "lucide-react-native";
@@ -107,6 +108,7 @@ export function GeneralTab({
   aiOpen,
   setAiOpen,
   runSuggest,
+  language,
 }: {
   draft: DraftAgent;
   set: (p: Partial<DraftAgent>) => void;
@@ -118,7 +120,9 @@ export function GeneralTab({
   aiOpen: boolean;
   setAiOpen: (v: boolean) => void;
   runSuggest: (brief: string) => void;
+  language: string;
 }) {
+  const labels = profileCopy(language);
   const avatarAttrs = [...AVATAR_ENUM_ATTRS, ...AVATAR_COLOR_ATTRS] as AvatarAttr[];
   return (
     <View style={{ gap: 12 }}>
@@ -197,6 +201,9 @@ export function GeneralTab({
         <Label text={str.editor.fieldDescription} tokens={tokens} />
         <Input value={draft.description} maxLength={500} onChangeText={(v) => set({ description: v })} placeholder={str.editor.descPlaceholder} />
       </View>
+      <Input label={labels.specialty} value={draft.specialty} maxLength={200} onChangeText={specialty => set({ specialty })} />
+      <Input label={labels.technologies} defaultValue={draft.technologies.join(", ")} onEndEditing={e => set({ technologies: e.nativeEvent.text.split(",").map(s => s.trim()).filter(Boolean) })} />
+      <Input label={labels.knowledge} value={draft.knowledge} multiline maxLength={12000} onChangeText={knowledge => set({ knowledge })} />
       <View style={s.field}>
         <Label text={str.editor.fieldSystemPrompt} tokens={tokens} />
         <Input value={draft.systemPrompt} maxLength={20000} onChangeText={(v) => set({ systemPrompt: v })} placeholder={str.editor.systemPromptPlaceholder} multiline />
@@ -559,6 +566,7 @@ export function ResourcesTab({
   snippetOptions,
   tokens,
   str,
+  privateProject = false,
 }: {
   draft: DraftAgent;
   set: (p: Partial<DraftAgent>) => void;
@@ -568,6 +576,7 @@ export function ResourcesTab({
   snippetOptions: SnippetFilterOptions | null;
   tokens: ThemeTokens;
   str: AgentsStrings;
+  privateProject?: boolean;
 }) {
   const projectChildren = useMemo(() => {
     const m = new Map<string, AssistantProject[]>();
@@ -641,8 +650,8 @@ export function ResourcesTab({
       <SectionCard tokens={tokens}>
         <Text style={[s.cardTitle, { color: tokens.textPrimary }]}>{str.editor.attachedProjects}</Text>
         <Hint text={str.editor.attachedProjectsDesc} tokens={tokens} />
-        {rootProjects.length === 0 ? <Hint text={str.editor.noParentProjects} tokens={tokens} /> : null}
-        {rootProjects.map((p) => renderProjectNode(p, 0))}
+        {!privateProject && rootProjects.length === 0 ? <Hint text={str.editor.noParentProjects} tokens={tokens} /> : null}
+        {privateProject ? <Text style={{ color: tokens.textPrimary }}>{projects.filter(p => draft.projectIds.includes(p.id)).map(p => p.title).join(" · ")}</Text> : rootProjects.map((p) => renderProjectNode(p, 0))}
         <View style={{ borderTopWidth: 1, borderTopColor: tokens.border, paddingTop: 8 }}>
           <CheckRow on={draft.autoCapture} label={str.editor.saveObsidian} onPress={() => set({ autoCapture: !draft.autoCapture })} tokens={tokens} />
         </View>

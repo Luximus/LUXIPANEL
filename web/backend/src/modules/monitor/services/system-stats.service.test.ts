@@ -26,12 +26,12 @@ describe("systemStatsService parsers (characterization)", () => {
     });
   });
 
-  describe("_parsePsLines (ps -eo pid,comm,%cpu,%mem → ProcLite[])", () => {
+  describe("_parsePsLines (ps -eo pid,%cpu,%mem,args → ProcLite[])", () => {
     it("parses pid/name/cpu/mem and honors the row limit", () => {
       const text = [
-        "  1234 nginx        12.3  4.5",
-        "   567 postgres      8.0  30.2",
-        "     1 systemd       0.0   0.1",
+        "  1234 12.3 4.5 nginx: worker",
+        "   567 8.0 30.2 postgres --password=secret",
+        "     1 0.0 0.1 /sbin/init",
       ].join("\n");
       expect(systemStatsService._parsePsLines(text, 2)).toEqual([
         { pid: 1234, name: "nginx", cpu: 12.3, mem: 4.5 },
@@ -39,8 +39,24 @@ describe("systemStatsService parsers (characterization)", () => {
       ]);
     });
 
+    it("identifies projects and Astro checks without storing tokens", () => {
+      const text = [
+        "385956 120.0 21.1 node ./node_modules/.bin/../astro/bin/astro.mjs check --token=secret",
+        "2230 5.0 4.0 node /var/www/LUXIPANEL/.releases/branch-abc/web/backend/dist/server.js --password=secret",
+      ].join("\n");
+      expect(systemStatsService._parsePsLines(text)).toEqual([
+        { pid: 385956, name: "Astro check", cpu: 120, mem: 21.1 },
+        { pid: 2230, name: "node LUXIPANEL/web/backend/dist/server.js", cpu: 5, mem: 4 },
+      ]);
+    });
+
+    it("does not persist unusual executable names or secret arguments", () => {
+      const rows = systemStatsService._parsePsLines("99 1.0 2.0 TOKEN=secret --password=private");
+      expect(rows).toEqual([{ pid: 99, name: "unknown", cpu: 1, mem: 2 }]);
+    });
+
     it("skips malformed lines (missing fields / non-numeric pid)", () => {
-      const text = ["garbage", "  42 sshd 1.0 2.0", "   x foo 1 1"].join("\n");
+      const text = ["garbage", "  42 1.0 2.0 sshd", "   x 1 1 foo"].join("\n");
       expect(systemStatsService._parsePsLines(text)).toEqual([
         { pid: 42, name: "sshd", cpu: 1, mem: 2 },
       ]);

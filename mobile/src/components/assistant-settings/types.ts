@@ -100,6 +100,11 @@ export type AssistantSkillsMap = Record<string, { enabled?: boolean; options?: R
  * devuelve solo `hasSecret`.
  */
 export type AssistantAgent = {
+  assignments?: { projectId: string; revision?: number; status?: string; sourceProfile?: import("./agent-profiles/types").ProfileSource }[];
+  context?: { effectiveAssignment?: { projectId: string; revision?: number; inheritedFrom?: string | null; sourceProfile?: import("./agent-profiles/types").ProfileSource } | null } | null;
+  specialty?: string;
+  technologies?: string[];
+  knowledge?: string;
   id: string;
   name: string;
   description: string;
@@ -211,6 +216,9 @@ export type AgentTeam = {
 // ── Payloads (calcan el schema del backend web) ──────────────────────────────
 
 export type AgentPayload = {
+  specialty?: string;
+  technologies?: string[];
+  knowledge?: string;
   name: string;
   description: string;
   systemPrompt: string;

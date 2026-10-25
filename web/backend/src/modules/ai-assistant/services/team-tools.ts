@@ -710,7 +710,9 @@ export async function buildTeamTools(ctx: TeamToolsCtx): Promise<BuiltTeamTools 
     "Astro con `rm -rf dist` previo + `NODE_OPTIONS=--max-old-space-size=2560`; si cambió un `.env` bajo pm2, restart " +
     "re-evaluando el ecosystem (`--update-env` con la ruta al ecosystem.config, no un restart simple); y verificación " +
     "post-restart (proceso online + servicio responde) antes de reportar éxito. Coordina para que dos tareas no compilen " +
-    "a la vez en la misma máquina. Si el usuario pidió explícitamente no compilar/reiniciar, respétalo.\n" +
+    "a la vez en la misma máquina. En shell directo, reserva durante toda la operación el lock " +
+    "`/run/lock/luxipanel-assistant-build.lock` con `flock -x -w 60`; `admin.bash` y `servers.exec` lo hacen automáticamente. " +
+    "Si el usuario pidió explícitamente no compilar/reiniciar, respétalo.\n" +
     `RECUERDA: ante un pedido de trabajo/análisis, tu PRIMERA acción debe ser registrar el plan con \`${names.plan}\` ` +
     "y delegar — no investigar por tu cuenta.";
 

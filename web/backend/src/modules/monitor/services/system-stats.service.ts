@@ -68,24 +68,40 @@ export interface StatsSnapshot {
 const TOP_PROCESS_COUNT = 25;
 
 /**
- * Parse `ps -eo pid,comm,%cpu,%mem` output (without header) into ProcLite[].
- * Lines look like: `  1234 nginx        12.3  4.5`. The command name (comm)
- * can contain no spaces (it's the executable basename), so a fixed 4-field
- * split from the left is safe.
+ * Historical process labels must be useful without persisting raw argv: CLI
+ * arguments may include access tokens, SQL, or customer data. Keep only the
+ * executable and a safe script/project identity.
  */
+function safeProcessName(args: string): string {
+  const words = args.trim().split(/\s+/);
+  const candidate = (words[0] ?? "").split("/").at(-1)?.replace(/:$/, "") || "";
+  const binary = /^[A-Za-z0-9._-]{1,64}$/.test(candidate) ? candidate : "unknown";
+  const script = words.slice(1, 6).find((word) => /^(?:\/var\/www\/|\.\/?)/.test(word) && /^[\w./-]+$/.test(word));
+  if (binary === "node" && script) {
+    if (/(?:^|\/)astro\/(?:bin\/)?astro\.mjs$/.test(script)) {
+      return words.includes("check") ? "Astro check" : words.includes("build") ? "Astro build" : "Astro";
+    }
+    if (/(?:^|\/)vitest(?:\.mjs)?$/.test(script)) return "Vitest";
+    if (/(?:^|\/)typescript\/bin\/tsc$/.test(script)) return "TypeScript";
+  }
+  const project = script?.match(/^\/var\/www\/([\w.-]+)\/(?:\.releases\/[^/]+\/)?(.+)$/);
+  if (project && ["node", "python", "python3", "bun", "deno"].includes(binary)) {
+    return `${binary} ${project[1]}/${project[2]}`.slice(0, 140);
+  }
+  return binary.slice(0, 64);
+}
+
+/** Parse `ps -eo pid,%cpu,%mem,args` without retaining arbitrary arguments. */
 function parsePsLines(text: string, limit = TOP_PROCESS_COUNT): ProcLite[] {
   const out: ProcLite[] = [];
   for (const line of (text ?? "").trim().split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const parts = trimmed.split(/\s+/);
-    if (parts.length < 4) continue;
-    const pid = Number.parseInt(parts[0] ?? "", 10);
-    const mem = Number.parseFloat(parts[parts.length - 1] ?? "0");
-    const cpu = Number.parseFloat(parts[parts.length - 2] ?? "0");
-    const name = parts.slice(1, parts.length - 2).join(" ");
-    if (!Number.isFinite(pid) || !name) continue;
-    out.push({ pid, name, cpu: Number.isFinite(cpu) ? cpu : 0, mem: Number.isFinite(mem) ? mem : 0 });
+    const parts = line.trim().match(/^(\d+)\s+([\d.]+)\s+([\d.]+)\s+(.+)$/);
+    if (!parts) continue;
+    const pid = Number.parseInt(parts[1] ?? "", 10);
+    const cpu = Number.parseFloat(parts[2] ?? "");
+    const mem = Number.parseFloat(parts[3] ?? "");
+    if (!Number.isFinite(pid) || !Number.isFinite(cpu) || !Number.isFinite(mem)) continue;
+    out.push({ pid, name: safeProcessName(parts[4] ?? ""), cpu, mem });
     if (out.length >= limit) break;
   }
   return out;
@@ -250,8 +266,8 @@ export const systemStatsService = {
       // process audit is appended with `;` separators: `ps | head` makes ps
       // exit with SIGPIPE, so chaining it with `&&` would abort the rest —
       // sequencing with `;` keeps it best-effort without breaking metrics.
-      const psCpu = `ps -eo pid,comm,%cpu,%mem --sort=-%cpu | tail -n +2 | head -n ${TOP_PROCESS_COUNT}`;
-      const psMem = `ps -eo pid,comm,%cpu,%mem --sort=-%mem | tail -n +2 | head -n ${TOP_PROCESS_COUNT}`;
+      const psCpu = `ps -ww -eo pid=,%cpu=,%mem=,args= --sort=-%cpu | head -n ${TOP_PROCESS_COUNT}`;
+      const psMem = `ps -ww -eo pid=,%cpu=,%mem=,args= --sort=-%mem | head -n ${TOP_PROCESS_COUNT}`;
       const command = [
         `${quoteCmd("cat", ["/proc/loadavg"])} && echo ${separator}`,
         `${quoteCmd("free", ["-b"])} && echo ${separator}`,

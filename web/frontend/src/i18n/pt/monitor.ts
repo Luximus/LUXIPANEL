@@ -1,4 +1,14 @@
 const monitor = {
+  "assistantAdmission": {
+    "title": "AI agent admission",
+    "hint": "Allow multiple agents while server RAM stays below the limit. Builds and deployments remain serial.",
+    "label": "RAM limit for new agents (%)",
+    "current": "Current RAM",
+    "save": "Save limit",
+    "saved": "Agent limit saved",
+    "error": "Could not save the limit",
+    "invalid": "Enter a whole number from 50 to 90.",
+  },
   "pageTitle": "Monitor do Sistema",
   "header": {
     "title": "Monitor do sistema",

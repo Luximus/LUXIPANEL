@@ -477,6 +477,25 @@ export default function pages_panel_monitor_index(props: any) {
                   <p className="text-xs text-muted-foreground">
                     {ms.saveProtectionHint}
                   </p>
+                  <div id="ai-admission-card" className="border-t border-border pt-5"
+                    data-saved={t.monitor.assistantAdmission.saved}
+                    data-error={t.monitor.assistantAdmission.error}
+                    data-invalid={t.monitor.assistantAdmission.invalid}
+                    data-current-prefix={t.monitor.assistantAdmission.current}
+                  >
+                    <h3 className="text-base font-semibold">{t.monitor.assistantAdmission.title}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{t.monitor.assistantAdmission.hint}</p>
+                    <label className="mt-4 block space-y-1 text-sm font-medium" htmlFor="ai-admission-percent">
+                      {t.monitor.assistantAdmission.label}
+                      <input id="ai-admission-percent" type="number" min="50" max="90" step="1"
+                        className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+                    </label>
+                    <p id="ai-admission-current" className="mt-2 text-xs text-muted-foreground" role="status"></p>
+                    <button id="ai-admission-save" type="button"
+                      className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                      {t.monitor.assistantAdmission.save}
+                    </button>
+                  </div>
                 </section>
                 <section
                   id="monitor-settings-diagnostics"

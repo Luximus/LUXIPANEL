@@ -39,7 +39,7 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.replaceChildren(); });
 async function mount(projectId: string | undefined = "child") {
-  await act(async () => root.render(createElement(AssistantI18nProvider, { value: mergeAssistantMessages({}), children: createElement(AgentMarket, { projectId }) })));
+  await act(async () => root.render(createElement(AssistantI18nProvider, { value: mergeAssistantMessages({}), children: createElement(AgentMarket, { projectId, onBack: () => undefined }) })));
 }
 function article(name: string) { return [...document.querySelectorAll("article")].find(item => item.querySelector("h3")?.textContent === name)!; }
 function button(name: string, within: ParentNode = document) { return [...within.querySelectorAll("button")].find(item => item.textContent?.trim() === name)!; }
@@ -135,7 +135,9 @@ it("discards old catalog results and project selection after target change", asy
   const old = deferred<AssistantAgent[]>(); mock.list.mockReturnValueOnce(old.promise); await mount();
   await act(async () => { mock.scope = "target-b"; records = [profile("Nuevo target")]; window.dispatchEvent(new Event("luxipanel:target-changed")); });
   await act(async () => old.resolve([profile("Target anterior")]));
-  expect(host.textContent).not.toContain("Target anterior"); expect(mock.list).toHaveBeenLastCalledWith({});
+  expect(host.textContent).not.toContain("Target anterior");
+  await click("Agentes privados");
+  expect(mock.list).toHaveBeenLastCalledWith({});
   expect(button("Incorporar al proyecto")).toBeUndefined();
 });
 it("does not mutate a different target after a delayed confirmation", async () => {

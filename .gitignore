@@ -1,6 +1,9 @@
 node_modules/
 **/dist*/
 **/.dist*/
+# Release output may be a symlink instead of a directory.
+/web/backend/dist
+/web/frontend/dist
 **/build/
 **/release/
 **/out/

@@ -30,6 +30,11 @@ import type { Messages } from "../../../i18n/messages";
 import { ProviderIcon } from "../../ProviderIcon";
 import { Button } from "../../ui/Button";
 import { Select } from "../../ui/Select";
+import { SegmentedControl } from "../../ui/SegmentedControl";
+import { GlobalProfiles, NativeProfileUpdate } from "../agent-profiles/GlobalProfiles";
+import { mobileProfilesApi } from "../agent-profiles/api";
+import { profileCopy } from "../agent-profiles/copy";
+import { getDirectSessionRevision, subscribeDirectSessions } from "../../../api/serverApi";
 import { s } from "../styles";
 import { LoadState } from "../parts";
 import type {
@@ -60,7 +65,13 @@ const COLOR_HEX: Record<string, string> = {
 };
 const colorHex = (c?: string): string => COLOR_HEX[c ?? "violet"] ?? COLOR_HEX.violet;
 
-export function AgentsModule({
+export function AgentsModule(props: Parameters<typeof AgentsWorkspace>[0]) {
+  const [revision, setRevision] = useState(() => getDirectSessionRevision(props.panelId));
+  useEffect(() => subscribeDirectSessions(() => setRevision(getDirectSessionRevision(props.panelId))), [props.panelId]);
+  return <AgentsWorkspace key={`${props.panelId}:${props.token}:${revision}`} {...props} />;
+}
+
+function AgentsWorkspace({
   panelId,
   token,
   language,
@@ -80,6 +91,12 @@ export function AgentsModule({
   initialEditAgentId?: string | null;
 }) {
   const str = useMemo(() => agentsStrings(language), [language]);
+  const labels = profileCopy(language);
+  const profileApi = useMemo(() => mobileProfilesApi(panelId, token), [panelId, token]);
+  const [profileTab, setProfileTab] = useState(initialEditAgentId ? "project" : "bazaar");
+  const [selectedProject, setSelectedProject] = useState("");
+  const [editContext, setEditContext] = useState<{ projectId: string; revision: number } | null>(null);
+  const [chooseAgent, setChooseAgent] = useState<AssistantAgent | null>(null);
 
   const [agents, setAgents] = useState<AssistantAgent[]>([]);
   const [roles, setRoles] = useState<AgentRole[]>([]);
@@ -118,13 +135,13 @@ export function AgentsModule({
   const firstLoad = useRef(true);
   const loadGen = useRef(0);
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const load = useCallback(() => {
     const gen = ++loadGen.current;
     if (firstLoad.current) setStatus("loading");
     void Promise.all([
-      agentsApi.list(panelId, token),
+      agentsApi.list(panelId, token, selectedProject || undefined),
       agentRolesApi.list(panelId, token),
       agentTeamsApi.list(panelId, token),
       modulesApi.list(panelId, token),
@@ -141,37 +158,48 @@ export function AgentsModule({
       if (!mounted.current || gen !== loadGen.current) return;
       if (firstLoad.current) setStatus("error");
     });
-  }, [panelId, token]);
+  }, [panelId, token, selectedProject]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => agentsEvents.subscribe(() => load()), [load]);
 
-  // Deep-link desde el chip del chat: abre el editor del agente pedido una vez.
+  const openPrivate = async (agent: AssistantAgent, projectId?: string) => {
+    const active = agent.assignments?.filter(a => a.status === "active").map(a => a.projectId) ?? agent.projectIds ?? [];
+    const chosen = projectId || selectedProject || (active.length === 1 ? active[0] : "");
+    if (!chosen && active.length > 1) { setChooseAgent(agent); return; }
+    setError(null);
+    try {
+      const result = chosen ? await profileApi.privateGet(agent.id, chosen) : null;
+      if (!mounted.current) return;
+      setEditContext(result ? { projectId: result.assignment.inheritedFrom || chosen, revision: result.assignment.revision ?? 1 } : null);
+      setDraft(toDraft(result?.agent ?? agent)); setChooseAgent(null); setProfileTab("project");
+    } catch (err) { if (mounted.current) setError((err as Error).message); }
+  };
+
+  // A deep link still requires an explicit project for agents shared by several projects.
   const initConsumed = useRef(false);
   useEffect(() => {
     if (!initialEditAgentId || initConsumed.current || status !== "ready") return;
     initConsumed.current = true;
-    const target = agents.find((a) => a.id === initialEditAgentId);
-    if (target) setDraft(toDraft(target));
+    const target = agents.find(a => a.id === initialEditAgentId);
+    if (target) void openPrivate(target);
   }, [initialEditAgentId, status, agents]);
 
-  // ── Mutaciones (cada una emite → recarga vía suscripción) ───────────────────
   const saveAgent = async () => {
     if (!draft || !draft.name.trim() || busy) return;
-    if (!draft.teamId) { setError(str.teams.groupRequired); return; }
     setBusy(true); setError(null);
     try {
-      // `luxAssistantProxy` NUNCA lanza: devuelve null ante fallo (red, validación
-      // del backend, sesión caída). Comprobamos el resultado para NO cerrar el
-      // editor ni descartar el borrador en un guardado fallido (paridad con el web,
-      // que lanza y mantiene el editor abierto con el error).
+      const payload = toPayload(draft);
       const saved = draft.id
-        ? await agentsApi.update(panelId, token, draft.id, toPayload(draft))
-        : await agentsApi.create(panelId, token, toPayload(draft));
+        ? editContext
+          ? await profileApi.privateSave(draft.id, editContext.projectId, editContext.revision, payload)
+          : await agentsApi.update(panelId, token, draft.id, payload)
+        : await agentsApi.create(panelId, token, { ...payload, projectIds: selectedProject ? [selectedProject] : payload.projectIds });
+      if (!mounted.current) return;
       if (!saved) { setError(str.saveFailed); return; }
-      setDraft(null);
-      agentsEvents.emit();
-    } finally { setBusy(false); }
+      setDraft(null); setEditContext(null); agentsEvents.emit();
+    } catch (err) { if (mounted.current) setError((err as Error).message); }
+    finally { if (mounted.current) setBusy(false); }
   };
 
   const removeAgent = async (a: AssistantAgent) => {
@@ -185,11 +213,18 @@ export function AgentsModule({
 
   const removeFromTeam = async (a: AssistantAgent) => {
     setBusy(true);
-    try { await agentsApi.update(panelId, token, a.id, { teamId: null }); agentsEvents.emit(); }
-    finally { setBusy(false); }
+    try {
+      if (!selectedProject) { await openPrivate(a); return; }
+      const current = await profileApi.privateGet(a.id, selectedProject);
+      await profileApi.privateSave(a.id, current.assignment.inheritedFrom || selectedProject, current.assignment.revision ?? 1, { teamId: null });
+      if (mounted.current) agentsEvents.emit();
+    } catch (err) { if (mounted.current) setError((err as Error).message); }
+    finally { if (mounted.current) setBusy(false); }
   };
 
   const duplicate = (a: AssistantAgent) => {
+    if (!selectedProject) { setError(labels.choose); return; }
+    setEditContext(null);
     setDraft({ ...toDraft(a), id: undefined, name: formatStr(str.duplicateName, { name: a.name }) });
   };
 
@@ -244,10 +279,16 @@ export function AgentsModule({
     if (!teamAddCtx) return;
     setBusy(true);
     try {
-      for (const id of ids) await agentsApi.update(panelId, token, id, { teamId: teamAddCtx.id });
+      if (!selectedProject) { setError(labels.choose); return; }
+      for (const id of ids) {
+        const current = await profileApi.privateGet(id, selectedProject);
+        if (current.assignment.inheritedFrom) throw new Error(labels.choose);
+        await profileApi.privateSave(id, selectedProject, current.assignment.revision ?? 1, { teamId: teamAddCtx.id });
+      }
       setTeamAddCtx(null);
       agentsEvents.emit();
-    } finally { setBusy(false); }
+    } catch (err) { if (mounted.current) setError((err as Error).message); }
+    finally { if (mounted.current) setBusy(false); }
   };
 
   const removeGroup = async () => {
@@ -314,8 +355,11 @@ export function AgentsModule({
       <ScrollView contentContainerStyle={st.viewPad} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <BackBar label={str.editor.backToList} onBack={() => setDraft(null)} tokens={tokens} />
         {errBanner}
+        <Text style={{ color: tokens.textMuted }}>{labels.privateHint}</Text>
+        <Text style={{ color: tokens.textPrimary }}>{projects.find(p => p.id === editContext?.projectId)?.title}</Text>
         <AgentEditor
           draft={draft}
+          privateProject={!!editContext || !!selectedProject}
           onChangeDraft={setDraft}
           agents={agents}
           roles={roles}
@@ -423,7 +467,7 @@ export function AgentsModule({
             {/* Plantillas: icono-solo (AgentsStrings no expone una clave de rótulo;
                 el asistente de plantillas trae sus propios textos). */}
             <IconBtn icon={<LayoutTemplate size={16} color={tokens.textSecondary} />} tokens={tokens} onPress={() => setShowTemplates(true)} />
-            <Button size="sm" variant="primary" label={str.list.newAgent} icon={<Plus size={15} color="#fff" />} onPress={() => setDraft(emptyDraft())} />
+            <Button size="sm" variant="primary" label={labels.createPrivate} disabled={!selectedProject} icon={<Plus size={15} color="#fff" />} onPress={() => { setEditContext(null); setDraft({ ...emptyDraft(), projectIds: [selectedProject] }); }} />
           </View>
         </View>
 
@@ -501,8 +545,7 @@ export function AgentsModule({
               >
                 <View style={{ padding: 10, gap: 10 }}>
                   {list.map((a) => (
-                    <AgentCard
-                      key={a.id}
+                    <View key={a.id} style={{ gap: 6 }}><AgentCard
                       a={a}
                       rank={ranks.get(a.id)}
                       roleName={a.roleId ? roleNameById.get(a.roleId) : undefined}
@@ -513,11 +556,13 @@ export function AgentsModule({
                       tokens={tokens}
                       str={str}
                       onLaunch={onLaunchAgent ? () => onLaunchAgent(a) : undefined}
-                      onEdit={() => setDraft(toDraft(a))}
+                      onEdit={() => void openPrivate(a)}
                       onDuplicate={() => duplicate(a)}
                       onRemoveFromTeam={() => removeFromTeam(a)}
                       onDelete={() => removeAgent(a)}
                     />
+                    {selectedProject && a.context?.effectiveAssignment?.sourceProfile && <NativeProfileUpdate panelId={panelId} token={token} agentId={a.id} projectId={selectedProject} locale={language} tokens={tokens} onUpdated={() => agentsEvents.emit()} />}
+                    </View>
                   ))}
                 </View>
               </CollapsibleSection>
@@ -531,7 +576,20 @@ export function AgentsModule({
   // ── Overlays (siempre montados) ─────────────────────────────────────────────
   return (
     <View style={{ flex: 1 }}>
-      {body}
+      {!draft && <SegmentedControl scroll items={[{ key: "bazaar", label: labels.bazaar }, { key: "mine", label: labels.mine }, { key: "project", label: labels.project }]} value={profileTab} onChange={setProfileTab} />}
+      {profileTab === "project" ? <>
+        {!draft && <View style={{ padding: 12, gap: 8 }}><Text style={{ color: tokens.textMuted }}>{labels.privateHint}</Text><Select value={selectedProject} placeholder={labels.choose} options={[{ value: "", label: labels.choose }, ...projects.map(p => ({ value: p.id, label: p.title }))]} onChange={value => { setSelectedProject(value); setError(null); }} /></View>}
+        {body}
+      </> : <GlobalProfiles key={profileTab} panelId={panelId} token={token} locale={language} mode={profileTab === "mine" ? "mine" : "bazaar"} projects={projects} modules={modules} tokens={tokens} onImported={(id, projectId) => {
+        setSelectedProject(projectId); setProfileTab("project"); agentsEvents.emit();
+        void profileApi.privateGet(id, projectId).then(result => {
+          if (!mounted.current) return;
+          setEditContext({ projectId, revision: result.assignment.revision ?? 1 }); setDraft(toDraft(result.agent));
+        }).catch(err => { if (mounted.current) setError(err.message); });
+      }} />}
+      <FormDrawer visible={!!chooseAgent} title={labels.choose} language={language} onClose={() => setChooseAgent(null)}>
+        <View style={{ padding: 16 }}><Select value="" placeholder={labels.choose} options={projects.filter(p => chooseAgent?.projectIds?.includes(p.id)).map(p => ({ value: p.id, label: p.title }))} onChange={id => { if (chooseAgent && id) void openPrivate(chooseAgent, id); }} />{errBanner}</View>
+      </FormDrawer>
 
       {/* Editor de rol */}
       <FormDrawer

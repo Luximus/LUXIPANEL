@@ -1,4 +1,14 @@
 const monitor = {
+  "assistantAdmission": {
+    "title": "Admisión de agentes IA",
+    "hint": "Permite iniciar varios agentes mientras la RAM del servidor esté por debajo del umbral. Los builds y despliegues siguen en serie.",
+    "label": "Límite de RAM para nuevos agentes (%)",
+    "current": "RAM actual",
+    "save": "Guardar límite",
+    "saved": "Límite de agentes guardado",
+    "error": "No se pudo guardar el límite",
+    "invalid": "Introduce un número entero entre 50 y 90.",
+  },
   "pageTitle": "Monitor del Sistema",
   "header": {
     "title": "Monitor del sistema",

@@ -361,7 +361,7 @@ La capa de equipos pasó de "coordinación de prompts" a pipeline de desarrollo:
   ahora SÍ registran uso (`makeUsageRecorder` en `startWorkerRun`, extraído a
   `usage-recorder.ts`) y `artifacts.tokens` se sella al cerrar.
 - **Cupo de workers** `ASSISTANT_MAX_WORKER_RUNS` (por usuario, aparte del cap
-  HTTP): sin hueco → tarea diferida (no falla). Contador in-process (se
+  HTTP; por defecto 0, sin límite fijo): sin hueco → tarea diferida (no falla). Contador in-process (se
   repuebla con runs nuevos tras reinicio; CLI recuperados no cuentan).
 - **Memoria compartida del plan**: `TeamPlan.sharedNotes` (≤4000; param
   `notes` de `team.plan` + tool **`team.note`**) se prependa SOLO-LECTURA al
@@ -755,7 +755,7 @@ Only active when the connected target ships the `codebase-memory-mcp` binary
   (`ownerId`); legacy ownerless projects are admin-only. Paths/instructions no
   longer leak between panel users of the same server.
 - Per-user concurrency cap: `ASSISTANT_MAX_CONCURRENT_RUNS_PER_USER` (default
-  3) live runs across all of a user's conversations → typed 409. Queued turns
+  0, unlimited) live runs across all of a user's conversations → typed 409 when explicitly configured. Queued turns
   on a live conversation don't count (they drain serially).
 - The MiniMax wrapper resolves the sudo user's HOME via `$SUDO_USER` (no
   hardcoded usernames) and the Subscription Key is written once, to the user's
@@ -840,10 +840,13 @@ all three flags). For the other CLI providers:
 - **codex:** runs through the native `codex app-server` JSON-RPC protocol.
   `plan` selects Codex's built-in Plan collaboration mode with a read-only
   sandbox; its complete `plan` item becomes the chat's expandable plan plus
-  approval question. `manual` uses read-only sandbox + `on-request` and relays
-  Codex command/file approval callbacks through the panel's permission broker.
-  `auto` selects Default mode with `never` approval and full access. Existing
-  Codex threads resume through `thread/resume`.
+  approval question. `manual` uses a `workspace-write` sandbox rooted at the
+  active project, with network disabled and `on-request` for operations outside
+  that workspace. Project file edits therefore work without extra approval.
+  `project.chats.list` and `project.chats.read` expose only the current user's
+  chats attached to the active project. `auto` selects Default mode with
+  `never` approval and full access. Existing Codex threads resume through
+  `thread/resume`.
 - **gemini:** uses `--yolo` (one-shot trust). Same caveat as codex.
 - **grok:** no approval flag. Same caveat.
 

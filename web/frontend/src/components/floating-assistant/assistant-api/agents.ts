@@ -31,6 +31,7 @@ export interface AssistantAgent {
   id: string;
   name: string;
   description: string;
+  knowledge?: string;
   specialty?: string;
   technologies?: string[];
   assignments?: AgentProjectAssignment[];
@@ -254,6 +255,7 @@ export function leaderAgentsOf(agents: AssistantAgent[]): AssistantAgent[] {
 export type AgentPayload = {
   name: string;
   description: string;
+  knowledge?: string;
   specialty?: string;
   technologies?: string[];
   systemPrompt: string;
@@ -315,6 +317,9 @@ export type AgentAssignmentPayload = {
   graphProjectIds?: string[] | null;
 };
 export type AgentProjectAssignment = AgentAssignmentPayload & {
+  privateConfig?: Partial<AgentPayload>;
+  sourceProfile?: import("../agent-profiles/types").ProfileSource;
+  revision?: number;
   projectId: string;
   status: "active" | "removed";
   source?: "legacy" | "explicit";

@@ -1,0 +1,8 @@
+{
+  "title": "Más agentes IA con control de RAM",
+  "changes": [
+    "El panel permite iniciar varios agentes IA cuando el servidor dispone de memoria suficiente.",
+    "Monitor permite configurar el porcentaje de RAM a partir del cual se detiene el inicio de agentes nuevos.",
+    "Los builds y despliegues iniciados con las herramientas administrativas del asistente comparten un turno exclusivo por servidor."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "title": "Perfiles globales y agentes privados por proyecto",
+  "changes": [
+    "El asistente separa los perfiles generales de conocimientos y herramientas de las adaptaciones privadas de cada proyecto.",
+    "El bazar permite explorar perfiles públicos revisados e importarlos a proyectos desde web, móvil y la vista web de escritorio.",
+    "Los modelos, rutas, credenciales y jerarquías se configuran en la adaptación privada y quedan fuera del contenido publicable.",
+    "Las actualizaciones del perfil global se revisan y aplican manualmente, conservando los ajustes privados.",
+    "Los creadores pueden enviar versiones para revisión y consultar su estado e historial.",
+    "La migración conserva los agentes existentes, sus jerarquías y un respaldo privado, sin publicarlos automáticamente."
+  ]
+}

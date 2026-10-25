@@ -35,6 +35,22 @@ describe("live authorization", () => {
     const next = await resolveLiveAuthorization(session({ bridgeSessionId: "second", mfaAuthenticated: false }), executor());
     expect(next.bridgeSessionId).toBe("second"); expect(next.mfaAuthenticated).toBe(false);
   });
+  it.each(["local", "ssh-identity"])("binds fresh and cached authorization to %s despite operation target changes", async source => {
+    const live = await resolveLiveAuthorization(session({ targetId: "panel-target", authorizationSourceTargetId: "stale-source" }), executor(source));
+    expect(live.authorizationSourceTargetId).toBe(source);
+    expect(live.authorizationRevision).toBe(String(state.revision));
+    // A mail-only override can change the execution host without changing
+    // the source of the user's grants, including on the next cache hit.
+    const cached = await resolveLiveAuthorization(session({ targetId: "mail-target", authorizationSourceTargetId: "untrusted-source" }), executor(source));
+    expect(cached.targetId).toBe("mail-target");
+    expect(cached.authorizationSourceTargetId).toBe(source);
+    expect(cached.authorizationRevision).toBe(live.authorizationRevision);
+    state.actions = [];
+    state.revision++;
+    const revoked = await resolveLiveAuthorization(session({ targetId: "mail-target" }), executor(source));
+    expect(revoked.authorizationSourceTargetId).toBe(source);
+    expect(revoked.permissions?.actions).toEqual([]);
+  });
   it("does not reuse one server's grants on another server", async () => {
     await resolveLiveAuthorization(session(), executor()); state.actions = [];
     expect((await resolveLiveAuthorization(session(), executor("two"))).permissions?.actions).toEqual([]);

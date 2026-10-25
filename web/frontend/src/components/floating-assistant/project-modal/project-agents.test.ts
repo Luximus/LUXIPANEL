@@ -10,6 +10,9 @@ import { AssistantI18nProvider, mergeAssistantMessages } from "../i18n";
 import { projectAgentScope, projectForAgent } from "./agent-scope";
 import { toPayload, emptyDraft } from "../agents-tab/draft";
 import "../AgentsTab";
+import { profilesApi } from "../agent-profiles/api";
+
+vi.mock("../agent-profiles/api", () => ({ profilesApi: { privateGet: vi.fn(), privateSave: vi.fn(), catalog: vi.fn().mockResolvedValue([]) } }));
 
 vi.mock("../assistant-api", async (original) => ({
   ...await original<typeof api>(),
@@ -50,6 +53,11 @@ beforeEach(() => {
   vi.mocked(api.assistantModulesApi.list).mockResolvedValue([]);
   vi.mocked(api.assistantAgentsApi.create).mockResolvedValue(agents[0]);
   vi.mocked(api.assistantAgentsApi.update).mockResolvedValue(agents[0]);
+  vi.mocked(profilesApi.privateGet).mockImplementation(async (id, projectId) => ({
+    agent: { ...agents.find(a => a.id === id)!, projectIds: [projectId] },
+    assignment: { projectId, status: "active", revision: 4 },
+  }));
+  vi.mocked(profilesApi.privateSave).mockResolvedValue(agents[0]);
 });
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
@@ -110,32 +118,34 @@ it("defaults to project membership, includes inherited agents and separates the 
   expect(names()).toEqual(["Agente leader-a", "Agente worker-a"]);
 });
 
-it("creates a reusable profile without implicitly assigning it or moving a team", async () => {
+it("creates a private agent in the selected project without moving the project team", async () => {
   await mount(createElement(ProjectModal, { project: child, allProjects: projects, initialTab: "agents", onClose: vi.fn(), onSaved: vi.fn() }));
-  await click("Crear perfil");
+  await click("Crear agente privado");
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   const input = document.querySelector('input[maxlength="120"]') as HTMLInputElement;
   expect(input).not.toBeNull(); await fill(input, "Especialista");
   await click("Crear agente");
   const payload = vi.mocked(api.assistantAgentsApi.create).mock.calls[0][0];
   expect(payload.name).toBe("Especialista");
-  expect(payload).not.toHaveProperty("teamId");
-  expect(payload).not.toHaveProperty("projectIds");
+  expect(payload.teamId).toBeNull();
+  expect(payload.projectIds).toEqual([child.id]);
   expect(api.assistantProjectsApi.update).not.toHaveBeenCalled();
 });
 
-it("opens a single global profile editor from a chip and preserves assignment fields on save", async () => {
+it("opens one private editor from a chip and saves to that project with its revision", async () => {
   await mount(createElement(ProjectAgentsDialog, { projectId: alpha.id, agentId: agents[2].id, locale: "es", onClose: vi.fn(), onLaunchAgent: vi.fn() }));
   expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
-  expect(document.body.textContent).toContain("Editar perfil global");
+  expect(document.body.textContent).toContain("Editar agente privado");
+  expect(profilesApi.privateGet).toHaveBeenCalledWith(agents[2].id, alpha.id);
   const input = [...document.querySelectorAll("input")].find(el => el.value === agents[2].name)!;
   expect(input).toBeDefined(); await fill(input, "Agente actualizado"); await click("Guardar cambios");
-  const payload = vi.mocked(api.assistantAgentsApi.update).mock.calls[0][1];
-  expect(payload.name).toBe("Agente actualizado"); expect(payload).not.toHaveProperty("teamId"); expect(payload).not.toHaveProperty("projectIds");
+  expect(profilesApi.privateSave).toHaveBeenCalledWith(agents[2].id, alpha.id, 4, expect.objectContaining({ name: "Agente actualizado" }));
+  expect(api.assistantAgentsApi.update).not.toHaveBeenCalled();
 });
 
 it("generic links offer an explicit project and subproject selector", async () => {
   await mount(createElement(ProjectAgentsDialog, { locale: "es", onClose: vi.fn(), onLaunchAgent: vi.fn() }));
+  await click("Agentes privados");
   expect(document.body.textContent).toContain("Selecciona un proyecto");
   expect(document.body.textContent).toContain(child.title);
   const select = document.querySelector("select")!;

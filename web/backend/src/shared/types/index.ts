@@ -15,6 +15,8 @@ export interface SessionUser {
   mfaAuthenticated?: boolean;
   direct?: boolean;
   local?: boolean;
+  /** Server that resolved the live authorization revision; independent of the operation target. */
+  authorizationSourceTargetId?: string;
   authorizationRevision?: string;
   hostingPolicy?: { capabilities?: { php: boolean }; expiresAt?: string | null; revision: number; state: "ready" | "pending"; runtime: boolean; security?: import("../../modules/hosting/models/hosting-template.model.js").HostingSecurity };
   userId: number;

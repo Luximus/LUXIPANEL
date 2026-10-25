@@ -115,8 +115,16 @@ function relayCodexApprovals(job: JobState, chunk: string): void {
     void (async () => {
       const tool = typeof event.tool === "string" ? event.tool : "Codex";
       const approval = job.conversationId ? agentRunRegistry.getApproval(job.conversationId) : null;
+      // An explicitly automatic run (including the one-turn override after a
+      // validated plan approval) already carries the user's authorization.
+      // Codex marks some callbacks `require_user_approval` for its own strict
+      // review flow; routing those back through the panel broker deadlocks a
+      // plan-approved turn when that callback has no interactive approval UI.
+      // Keep strict callbacks gated in manual mode; only the explicit auto
+      // policy bypasses them.
+      const autoApproved = approval?.mode === "auto" || (!event.require_user_approval && approval?.autoApprove.has(tool));
       const decision = approval?.mode === "plan" ? "deny" : job.conversationId
-        ? !event.require_user_approval && (approval?.autoApprove.has(tool) || approval?.mode === "auto") ? "allow" : await permissionBroker.request({
+        ? autoApproved ? "allow" : await permissionBroker.request({
             conversationId: job.conversationId,
             provider: "codex",
             tool,

@@ -12,6 +12,7 @@
 import { PROVIDER_IDS, type AssistantProviderId } from "./assistant-config.types.js";
 import type { AssistantProjectServer } from "../repositories/projects.repository.js";
 import type { AssistantSkillsMap } from "./assistant-skills.types.js";
+import type { ImportedAgentProfile } from "./global-agent-profile.js";
 
 /**
  * Credencial de PRUEBAS del agente (UNA sola por agente): usuario+clave que el
@@ -92,6 +93,9 @@ export interface AssistantAgentProjectRef {
 }
 
 export interface AssistantAgent {
+  /** All executable agents are private. Public templates use a separate contract/store. */
+  profileSchemaVersion?: 1;
+  knowledge?: string;
   specialty?: string;
   technologies?: string[];
   /** Explicit project links, including withdrawal markers. Legacy projectIds remain readable. */
@@ -333,8 +337,21 @@ export function sanitizeProjectIds(input: unknown): string[] {
   return out;
 }
 
-/** Local context and restrictions; never another copy of the persona. */
+export const PRIVATE_AGENT_FIELDS = [
+  "name", "description", "specialty", "technologies", "knowledge", "systemPrompt", "providerId", "providerIds",
+  "model", "agentMode", "multiAgentCount", "allowedTools", "icon", "color", "avatarConfig", "projectPaths",
+  "servers", "graphProjectIds", "autoCapture", "snippetCategory", "snippetTags", "credential", "skills",
+  "roleId", "teamId", "parentAgentId", "connections", "canSpawnChats", "realtime",
+] as const;
+export type AgentPrivateConfig = Partial<Pick<AssistantAgent, typeof PRIVATE_AGENT_FIELDS[number]>>;
+export function privateAgentConfig(agent: AssistantAgent): AgentPrivateConfig {
+  return Object.fromEntries(PRIVATE_AGENT_FIELDS.filter(key => agent[key] !== undefined).map(key => [key, agent[key]])) as AgentPrivateConfig;
+}
+/** Project-owned snapshot plus private execution settings. Never exported. */
 export interface AgentProjectAssignment {
+  privateConfig?: AgentPrivateConfig;
+  sourceProfile?: ImportedAgentProfile;
+  revision?: number;
   projectId: string;
   status: "active" | "removed";
   jobTitle?: string;
@@ -353,7 +370,7 @@ export interface AgentProjectAssignment {
 }
 export type AssignmentView = AgentProjectAssignment & { source: "legacy" | "explicit" };
 export type EffectiveAssignment = AssignmentView & { inheritedFrom: string | null };
-export type AssignmentPatch = Partial<Omit<AgentProjectAssignment, "projectId" | "status" | "createdAt" | "updatedAt" | "removedAt">>;
+export type AssignmentPatch = Partial<Omit<AgentProjectAssignment, "projectId" | "status" | "createdAt" | "updatedAt" | "removedAt" | "privateConfig" | "sourceProfile" | "revision">>;
 
 export function sanitizeTechnologies(input: unknown): string[] {
   if (!Array.isArray(input)) return [];

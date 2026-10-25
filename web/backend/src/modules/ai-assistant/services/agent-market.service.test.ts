@@ -17,6 +17,7 @@ vi.mock("../../../shared/executor/index.js", () => ({
 }));
 vi.mock("../repositories/agents.repository.js", () => ({
   agentsRepository: {
+    migratePrivate: async (agent: any) => agent,
     list: async () => [...state.agents.values()],
     get: async (id: string) => state.agents.get(id) ?? null,
     update: async (id: string, patch: any) => { const value = { ...state.agents.get(id), ...patch }; state.agents.set(id, value); return value; },
@@ -68,7 +69,7 @@ vi.mock("./graph-index.service.js", () => ({ graphIndexService: { probeAvailabil
 vi.mock("./providers/cli/cli-sudo-askpass.js", () => ({ hasSudoCredential: async () => false }));
 vi.mock("./system-prompt/blocks.js", () => ({
   BASE_SYSTEM_PROMPT: "BASE", PROJECT_LEAF_INSTRUCTIONS_MAX: 9999, PROJECT_ANCESTOR_INSTRUCTIONS_MAX: 9999,
-  buildCliModeBlock: () => "CLI", buildGraphPromptBlock: (graphs: any[]) => JSON.stringify(graphs),
+  buildCliModeBlock: () => "CLI", buildProjectWorkspaceBlock: () => "WORKSPACE", buildGraphPromptBlock: (graphs: any[]) => JSON.stringify(graphs),
   buildAssociatedServersBlock: (servers: any[]) => JSON.stringify(servers),
   collectGraphProjects: (projects: any[]) => projects.filter(p => p.graphIndex?.status === "ready").map(p => ({ name: p.graphIndex.project, path: p.path })),
   collectSystemContext: async () => "", capText: (s: string) => s,
@@ -102,11 +103,10 @@ beforeEach(() => {
 });
 
 describe("profile and project assignment contract", () => {
-  it("edits one shared persona across X/Y without duplicating the id", async () => {
-    await agentMarketService.updateProfile(executor, "a", { name: "Nuevo", specialty: "API", technologies: ["TS"] }, user);
-    expect((await resolveAgentContext(executor, "a", "X", user)).agent?.name).toBe("Nuevo");
-    expect((await resolveAgentContext(executor, "a", "Y", user)).agent?.name).toBe("Nuevo");
-    expect(state.agents.size).toBe(1);
+  it("requires a project to edit an agent assigned to several projects", async () => {
+    await expect(agentMarketService.updateProfile(executor, "a", { name: "Nuevo" }, user)).rejects.toMatchObject({ code: "ASSISTANT_PROJECT_REQUIRED" });
+    expect((await resolveAgentContext(executor, "a", "X", user)).agent?.name).toBe("Mateo");
+    expect((await resolveAgentContext(executor, "a", "Y", user)).agent?.name).toBe("Mateo");
   });
   it("editing X leaves Y virtual and does not change its instructions", async () => {
     await agentMarketService.put(executor, "a", "X", { jobTitle: "Backend X", instructions: "SOLO_X" }, user);
@@ -365,14 +365,10 @@ describe("Market capability parity and immutable conversation binding", () => {
     expect(shown.capabilities.canExecute).toBe(false);
     await expect(resolveAgentContext(executor, "a", "child", user)).rejects.toMatchObject({ statusCode: 403 });
   });
-  it("preserves shared catalog visibility without granting execution or editing", async () => {
+  it("does not expose another user's private adaptation", async () => {
     state.agents.get("a").ownerId = 99;
-    const shown = await agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "X" });
-    expect(shown.id).toBe("a");
-    expect(Object.values(shown.capabilities).every(v => v === false)).toBe(true);
-    expect(shown.context?.effectiveConfig).toBeNull();
-    expect(shown.execution.error).toMatchObject({ code: "ASSISTANT_PROJECT_FORBIDDEN", statusCode: 403 });
-    await expect(resolveAgentContext(executor, "a", "X", user)).rejects.toMatchObject(shown.execution.error!);
+    await expect(agentMarketService.present(executor, state.agents.get("a"), user, { contextProjectId: "X" })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(resolveAgentContext(executor, "a", "X", user)).rejects.toMatchObject({ statusCode: 403 });
     await expect(agentMarketService.remove(executor, "a", "X", user)).rejects.toMatchObject({ statusCode: 403 });
   });
   it("legacy shared profiles remain executable and editable by an admin only", async () => {
@@ -380,8 +376,7 @@ describe("Market capability parity and immutable conversation binding", () => {
     const admin = await agentMarketService.present(executor, state.agents.get("a"), user);
     expect(admin.capabilities).toMatchObject({ canExecute: true, canEditProfile: true });
     state.user = { userId: 8, role: "user" };
-    const viewer = await agentMarketService.present(executor, state.agents.get("a"), state.user);
-    expect(viewer.capabilities).toMatchObject({ canExecute: false, canEditProfile: false });
+    await expect(agentMarketService.present(executor, state.agents.get("a"), state.user)).rejects.toMatchObject({ statusCode: 403 });
     await expect(agentMarketService.put(executor, "a", "X", {}, state.user)).rejects.toMatchObject({ statusCode: 403 });
   });
   it("uses the supplied identity for profile mutations, not an unrelated ambient admin", async () => {
@@ -542,7 +537,7 @@ describe("post-review admission and contextual parity regressions", () => {
     expect(roster.map(agent => agent.id).sort()).toEqual(["a", "peer-X"]);
     expect(roster.find(agent => agent.id === "a")).toMatchObject({ parentAgentId: null, connections: ["peer-X"] });
     expect(JSON.stringify(state.agents.get("a"))).toBe(saved);
-    expect((await agentMarketService.present(executor, state.agents.get("other-owner"), user, { contextProjectId: projectId })).capabilities.canExecute).toBe(false);
+    await expect(agentMarketService.present(executor, state.agents.get("other-owner"), user, { contextProjectId: projectId })).rejects.toMatchObject({ statusCode: 403 });
   });
   it("retains a valid inherited superior and excludes the root leader once withdrawn", async () => {
     state.agents.set("leader", profile({ id: "leader", projectIds: ["X"] }));

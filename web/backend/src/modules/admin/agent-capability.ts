@@ -15,6 +15,7 @@
 
 import type { AgentCapability } from "../../shared/agent-capability/index.js";
 import { requireExecutor } from "../../shared/agent-capability/index.js";
+import { isBuildOrDeployCommand, withAssistantBuildLease } from "../../shared/assistant-build-lease.js";
 
 const BASH_MAX_OUTPUT = 8000;
 
@@ -49,7 +50,8 @@ export const adminAgentCapability: AgentCapability = {
         const cmd = String((input as { command?: unknown })?.command ?? "").trim();
         if (!cmd) return { ok: false, output: "Empty command" };
         const executor = requireExecutor();
-        const result = await executor.exec(cmd, { timeoutMs: 30_000 });
+        const exclusive = isBuildOrDeployCommand(cmd);
+        const result = await executor.exec(exclusive ? withAssistantBuildLease(cmd) : cmd, { timeoutMs: exclusive ? 600_000 : 30_000 });
         const out = [
           `$ ${cmd}`,
           result.stdout ? clamp(result.stdout, BASH_MAX_OUTPUT) : "",

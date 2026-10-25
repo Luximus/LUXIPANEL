@@ -51,6 +51,7 @@ import { PanelPeerMcpClient } from "./services/panel-peer-mcp-client.js";
 import { env } from "../../config/env.js";
 import { createModuleLogger } from "../../shared/logger/index.js";
 import { ServerAccessError, serverToolError, type ServerToolErrorContext } from "./services/server-tool-error.js";
+import { isBuildOrDeployCommand, withAssistantBuildLease } from "../../shared/assistant-build-lease.js";
 
 const log = createModuleLogger("servers-capability");
 
@@ -219,10 +220,13 @@ export const serversAgentCapability: AgentCapability = {
         if (!isValidServerId(serverId)) return { ok: false, output: "serverId inválido" };
         if (!command.trim()) return { ok: false, output: "command vacío" };
         const cwd = i.cwd != null && String(i.cwd).length > 0 ? String(i.cwd) : undefined;
-        const timeoutMs = Math.min(
+        const exclusive = isBuildOrDeployCommand(command);
+        const requestedTimeoutMs = Math.min(
           Math.max(Number(i.timeoutMs) || EXEC_DEFAULT_TIMEOUT_MS, 1_000),
           EXEC_MAX_TIMEOUT_MS,
         );
+        const timeoutMs = exclusive ? EXEC_MAX_TIMEOUT_MS : requestedTimeoutMs;
+        const targetCommand = exclusive ? withAssistantBuildLease(command) : command;
         const startedAt = Date.now();
         const errorContext: ServerToolErrorContext = { serverId };
         try {
@@ -234,14 +238,14 @@ export const serversAgentCapability: AgentCapability = {
           if (access.peer) {
             errorContext.peerAttempted = true;
             try {
-              r = await access.peer.exec(command, runOpts);
+              r = await access.peer.exec(targetCommand, runOpts);
               transport = "mcp";
             } catch (e) {
               if (!PanelPeerMcpClient.isReachableError(e)) throw e;
-              r = await access.ssh.exec(command, runOpts);
+              r = await access.ssh.exec(targetCommand, runOpts);
             }
           } else {
-            r = await access.ssh.exec(command, runOpts);
+            r = await access.ssh.exec(targetCommand, runOpts);
           }
           const success = r.exitCode === 0;
           await recordCrossServerAccess({

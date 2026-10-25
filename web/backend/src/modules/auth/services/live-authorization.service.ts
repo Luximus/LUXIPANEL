@@ -44,7 +44,8 @@ export async function resolveLiveAuthorization(user: SessionUser, executor: Exec
     if (!record || record.username !== user.username || !record.enabled) throw new AuthError("Account disabled or no longer exists");
     const groups = await systemAccountsService.userGroups(record.username);
     const principal = legacyOwner ? { kind: "hosting", role: "hosting", modules: legacyOwner.allowedModules, permissions: legacyOwner.permissionTemplate } : await authTokenService.buildTokenPayload({ ...record, groups } as Parameters<typeof authTokenService.buildTokenPayload>[0]);
-    const updated = { ...user, ...principal, userId: record.id, authorizationRevision: identityRevision } as SessionUser;
+    const updated = { ...user, ...principal, userId: record.id,
+      authorizationSourceTargetId: service.target.id, authorizationRevision: identityRevision } as SessionUser;
     const { rows } = await hostingAccountRepository.findAll({ limit: Number.MAX_SAFE_INTEGER }, service);
     const accounts = rows.filter(a => a.username === user.username || groups.includes(a.tenantGroup));
     if (accounts.length > 1) throw new ForbiddenError("Multiple hosting account memberships");

@@ -10,7 +10,7 @@
  * carries the SSR user kind).
  */
 
-import { api } from "/scripts/extracted/lib/api-client.js?v=20260506a";
+import { api, resolveTargetScope } from "/scripts/extracted/lib/api-client.js?v=20260506a";
 import { openConfirm } from "/scripts/extracted/lib/confirm.js?v=3";
 import { SCRIPT_INIT_COOLDOWN_MS as INIT_COOLDOWN_MS } from "/scripts/extracted/lib/script-init.js";
 import { showToast as showSharedToast } from "/scripts/extracted/lib/toast.js";
@@ -148,6 +148,56 @@ async function load(): Promise<void> {
   render(res.data.config, res.data.status);
 }
 
+async function loadAdmission(): Promise<void> {
+  const card = document.getElementById("ai-admission-card");
+  const field = document.getElementById("ai-admission-percent") as HTMLInputElement | null;
+  const button = document.getElementById("ai-admission-save") as HTMLButtonElement | null;
+  if (!card || !field || !button) return;
+  button.disabled = !isAdmin();
+  field.disabled = !isAdmin();
+  const scope = resolveTargetScope();
+  const config = await api.get<{ config: { memPercent: number } }>("/api/monitor/assistant-admission");
+  if (scope !== resolveTargetScope()) return;
+  if (!config.ok || !config.data) {
+    showToast(config.error || card.dataset.error || "Error", false);
+    return;
+  }
+  field.value = String(config.data.config.memPercent);
+  const system = await api.get<{ memory: { usagePercent: string } }>("/api/monitor/system");
+  if (scope !== resolveTargetScope()) return;
+  const current = document.getElementById("ai-admission-current");
+  if (current && system.ok && system.data) {
+    current.textContent = `${card.dataset.currentPrefix || "RAM"}: ${system.data.memory.usagePercent}%`;
+  }
+}
+
+async function saveAdmission(): Promise<void> {
+  if (!isAdmin()) return;
+  const card = document.getElementById("ai-admission-card");
+  const field = document.getElementById("ai-admission-percent") as HTMLInputElement | null;
+  const button = document.getElementById("ai-admission-save") as HTMLButtonElement | null;
+  if (!card || !field || !button || button.disabled) return;
+  const memPercent = Number(field.value);
+  if (!Number.isInteger(memPercent) || memPercent < 50 || memPercent > 90) {
+    showToast(card.dataset.invalid || "50–90%", false);
+    return;
+  }
+  button.disabled = true;
+  const scope = resolveTargetScope();
+  try {
+    const result = await api.put<{ config: { memPercent: number } }>("/api/monitor/assistant-admission", { memPercent });
+    if (scope !== resolveTargetScope()) return;
+    if (!result.ok || !result.data) {
+      showToast(result.error || card.dataset.error || "Error", false);
+      return;
+    }
+    field.value = String(result.data.config.memPercent);
+    showToast(card.dataset.saved || "Guardado");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function parseThreshold(raw: string): number | null | undefined {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -247,7 +297,9 @@ function bindOnce(): void {
     const target = ev.target as HTMLElement | null;
     if (target?.closest("#wd-save")) void save();
     if (target?.closest("#wd-settings-save")) void save();
+    if (target?.closest("#ai-admission-save")) void saveAdmission();
   });
+  window.addEventListener("luxipanel:target-changed", () => { void loadAdmission(); });
 }
 
 function init(): void {
@@ -256,6 +308,7 @@ function init(): void {
   if (Date.now() - initLastAt < INIT_COOLDOWN_MS) return;
   initLastAt = Date.now();
   void load();
+  void loadAdmission();
 }
 
 document.addEventListener("astro:page-load", init);

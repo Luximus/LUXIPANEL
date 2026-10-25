@@ -452,10 +452,11 @@ export async function applyStepsLive(
     assertHostingCreationLease();
     const actor = getContextUser();
     if (actor) {
-      // Non-admin recipes execute synchronously. A changed authorization
-      // epoch cancels the remaining steps instead of trusting queued claims.
-      const revision = await authorizationRevision(executor.target.id);
-      if (!actor.authorizationRevision || revision !== actor.authorizationRevision) throw new ForbiddenError("Mutation authorization changed");
+      // Identity grants belong to the authorization server, even when the
+      // recipe runs on a different panel target or independent mail server.
+      if (!actor.authorizationSourceTargetId || !actor.authorizationRevision) throw new ForbiddenError("Mutation authorization changed");
+      const revision = await authorizationRevision(actor.authorizationSourceTargetId);
+      if (revision !== actor.authorizationRevision) throw new ForbiddenError("Mutation authorization changed");
     }
     assertStepInputSafe(step);
     const handler = STEP_EXECUTORS.find((e) => e.match(step));

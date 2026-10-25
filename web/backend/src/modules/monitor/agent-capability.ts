@@ -14,6 +14,8 @@ import { systemStatsService } from "./services/system-stats.service.js";
 import { resourceWatchdogService } from "./services/resource-watchdog.service.js";
 import { watchdogRepository } from "./repositories/watchdog.repository.js";
 import { watchdogConfigSchema } from "./models/watchdog.model.js";
+import { assistantAdmissionRepository } from "./repositories/assistant-admission.repository.js";
+import { assistantAdmissionSchema } from "./models/assistant-admission.model.js";
 
 function topN(input: unknown): number {
   const raw = (input as { n?: unknown })?.n;
@@ -25,6 +27,31 @@ export const monitorAgentCapability: AgentCapability = {
   moduleId: "monitor",
   version: 1,
   tools: [
+    {
+      name: "monitor.assistant_admission_status",
+      title: "Límite de RAM para nuevos agentes IA",
+      description: "Read the connected server's RAM percentage limit for starting new AI agents.",
+      kind: "read",
+      inputSchema: { type: "object", properties: {} },
+      handler: async () => ({ ok: true, output: await assistantAdmissionRepository.load(requireExecutor()) }),
+    },
+    {
+      name: "monitor.assistant_admission_configure",
+      title: "Configurar límite de RAM para agentes IA",
+      description: "Set the connected server's RAM admission limit for new AI agents (50–90%, default 85%).",
+      kind: "action",
+      permission: "admin",
+      inputSchema: {
+        type: "object",
+        properties: { memPercent: { type: "number", description: "RAM usage limit, 50–90%" } },
+        required: ["memPercent"],
+      },
+      handler: async (input) => {
+        const config = assistantAdmissionSchema.parse(input);
+        await assistantAdmissionRepository.save(requireExecutor(), config);
+        return { ok: true, output: config };
+      },
+    },
     {
       name: "monitor.cpu_top",
       title: "Procesos con mayor CPU",

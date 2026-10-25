@@ -22,10 +22,10 @@ vi.mock("../ChatTab", () => ({ ChatTab: () => createElement("div", { "data-chat-
 vi.mock("../use-module-catalog", () => ({ useModuleCatalog: () => undefined }));
 vi.mock("../assistant-api", async original => ({
   ...await original<Record<string, unknown>>(),
-  assistantApi: { getConfig: m.config },
+  assistantApi: { getConfig: m.config, getProviderModels: async () => ({ verified: false, models: [] }) },
   assistantAgentsApi: { list: m.list, create: m.create, update: m.update },
   assistantAgentRolesApi: { list: async () => [] }, assistantAgentTeamsApi: { list: async () => [] },
-  assistantProjectsApi: { list: async () => [] }, fetchAssociatableConnections: async () => [],
+  assistantProjectsApi: { list: async () => [{ id: "project-a", title: "Project A" }] }, fetchAssociatableConnections: async () => [],
   fetchTerminalSnippetFilterOptions: async () => ({ ok: false }),
 }));
 let root: Root, host: HTMLDivElement, identity: HTMLAnchorElement, vm: AgentsTabVM, records: AssistantAgent[];
@@ -180,8 +180,13 @@ it("keeps the real Market profile editor blocked through close/reopen and Astro 
     await vi.waitFor(async () => { await act(async () => {}); assertion(); });
   };
   const openProfile = async () => {
-    await waitForUI(() => expect(button("Crear perfil")?.disabled).toBe(false));
-    await act(async () => button("Crear perfil")!.click());
+    await waitForUI(() => expect(button("Agentes privados")).toBeDefined());
+    await act(async () => button("Agentes privados")!.click());
+    await waitForUI(() => expect(document.querySelector('select[aria-label="Proyecto activo"]')).not.toBeNull());
+    const projects = document.querySelector<HTMLSelectElement>('select[aria-label="Proyecto activo"]')!;
+    await act(async () => { projects.value = "project-a"; projects.dispatchEvent(new Event("change", { bubbles: true })); });
+    await waitForUI(() => expect(button("Crear agente privado")?.disabled).toBe(false));
+    await act(async () => button("Crear agente privado")!.click());
     await waitForUI(() => expect(document.querySelector('[role="dialog"] input[maxlength="120"]')).not.toBeNull());
   };
   const nameProfile = async () => {

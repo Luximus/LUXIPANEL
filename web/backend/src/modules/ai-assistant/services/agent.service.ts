@@ -555,7 +555,7 @@ export const agentService = {
     // completo entre N sub-agentes ciegos entre sí sobre el mismo cwd; con
     // herramientas mutantes se degrada a run único (evita escrituras
     // concurrentes sin coordinación — para eso está team.assign+worktrees).
-    let multiAllowed = Boolean(decision?.multiAgent) && provider.mode === "api";
+    let multiAllowed = Boolean(decision?.multiAgent) && provider.mode === "api" && Boolean(executor);
     if (multiAllowed && hasMutatingTools(tools)) {
       multiAllowed = false;
       log.info(

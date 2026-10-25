@@ -1,3 +1,4 @@
+import { globalAgentProfilesController as profiles } from "../controllers/global-agent-profiles.controller.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { registerModuleOperations } from "../../../shared/module-operations/registry.js";
@@ -186,6 +187,18 @@ protectedRouter.get("/projects/:id/graph-index", graphIndexController.status);
 protectedRouter.delete("/projects/:id/graph-index", graphIndexController.disable);
 
 // Custom agents (CLI-subagent style): system prompt + tool subset + provider/model.
+// Portable templates are separate from executable, private agents.
+protectedRouter.get("/agent-profiles", profiles.list);
+protectedRouter.post("/agent-profiles", requireActionPermission("assistant.create"), profiles.save);
+protectedRouter.get("/agent-profiles/catalog", profiles.catalog);
+protectedRouter.post("/agent-profiles/import", requireActionPermission("assistant.create"), profiles.import);
+protectedRouter.get("/agent-profiles/update-preview", profiles.preview);
+protectedRouter.post("/agent-profiles/update", requireActionPermission("assistant.update"), profiles.update);
+protectedRouter.post("/agent-profiles/migrate", requireActionPermission("assistant.update"), profiles.migrate);
+protectedRouter.post("/agent-profiles/author/:action", requireActionPermission("assistant.update"), profiles.author);
+protectedRouter.get("/agents/:id/project-profile/:projectId", profiles.privateGet);
+protectedRouter.put("/agents/:id/project-profile/:projectId", requireActionPermission("assistant.update"), profiles.privateSave);
+
 protectedRouter.get("/agents", agentsController.list);
 protectedRouter.post("/agents/suggest", agentsController.suggest);
 protectedRouter.post("/agents/propose-from-folder", agentsController.proposeFromFolder);

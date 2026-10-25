@@ -4,8 +4,9 @@ import { AgentMarket } from "./AgentMarket";
 import type { AssistantAgent } from "./assistant-api";
 import { useAssistantI18n } from "./i18n";
 import { AgentProfileDialog } from "./AgentProfileDialog";
+import { profileCopy } from "./agent-profiles/copy";
 
-/** Agent chips edit the reusable profile; project tabs configure assignments. */
+/** Agent chips edit the private adaptation in their originating project. */
 export function ProjectAgentsDialog({ projectId, agentId, locale, onClose }: {
   projectId?: string;
   agentId?: string;
@@ -14,8 +15,8 @@ export function ProjectAgentsDialog({ projectId, agentId, locale, onClose }: {
   onLaunchAgent(agent: AssistantAgent, projectId?: string): void;
 }) {
   const t = useAssistantI18n();
-  if (agentId) return <AgentProfileDialog agentId={agentId} locale={locale} onClose={onClose} />;
-  return <ModalShell onClose={onClose} title={t.agentMarket.title} closeLabel={t.drawer.close}>
+  if (agentId) return <AgentProfileDialog agentId={agentId} projectId={projectId} locale={locale} onClose={onClose} />;
+  return <ModalShell onClose={onClose} title={projectId ? profileCopy(locale).project : profileCopy(locale).bazaar} closeLabel={t.drawer.close}>
     <AgentMarket projectId={projectId} initialEditAgentId={agentId} locale={locale} />
   </ModalShell>;
 }

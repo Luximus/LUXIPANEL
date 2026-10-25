@@ -25,6 +25,7 @@ const { agents, teams, projects, createCalls, updateCalls, identity } = vi.hoist
 
 vi.mock("../repositories/agents.repository.js", () => ({
   agentsRepository: {
+    async migratePrivate(agent: Agent) { return agent; },
     async list() { return [...agents.values()]; },
     async get(id: string) { return agents.get(id) ?? null; },
     async create(data: Record<string, unknown>) {
@@ -89,6 +90,7 @@ vi.mock("../repositories/agent-activity.repository.js", () => ({ agentActivityRe
 vi.mock("../repositories/agent-messages.repository.js", () => ({ agentMessagesRepository: { listPending: vi.fn(async () => []) } }));
 
 const { agentsController } = await import("./agents.controller.js");
+const { globalAgentProfilesController: profilesController } = await import("./global-agent-profiles.controller.js");
 
 async function invoke(
   handler: (req: unknown, res: unknown, next: unknown) => void,
@@ -237,16 +239,16 @@ describe("Market HTTP catalog contract", () => {
     agents.set("other", { id: "other", name: "Other", ownerId: 1, projectIds: ["Y"] });
     agents.set("shared", { id: "shared", name: "Shared", ownerId: 99, projectIds: ["X"] });
   });
-  it("contextProjectId returns the entire catalog while projectId returns inherited members", async () => {
+  it("contextProjectId returns owned profiles while projectId returns owned inherited members", async () => {
     const contextual = await invoke(agentsController.list, { query: { contextProjectId: "child" } });
     expect(contextual.error).toBeUndefined();
     const all = contextual.body?.agents as any[];
-    expect(all.map(a => a.id)).toEqual(["leader", "a", "other", "shared"]);
+    expect(all.map(a => a.id)).toEqual(["leader", "a", "other"]);
     expect(all.find(a => a.id === "a")).toMatchObject({ context: { membership: "inherited", effectiveAssignment: { inheritedFrom: "X" }, effectiveConfig: { parentAgentId: "leader" } }, capabilities: { canExecute: true } });
     expect(all.find(a => a.id === "other")).toMatchObject({ context: { membership: "none", effectiveConfig: null }, capabilities: { canExecute: false, canAssign: true } });
-    expect(all.find(a => a.id === "shared")).toMatchObject({ relation: "shared", capabilities: { canExecute: false, canEditProfile: false } });
+    expect(all.find(a => a.id === "shared")).toBeUndefined();
     const members = await invoke(agentsController.list, { query: { projectId: "child" } });
-    expect((members.body?.agents as Agent[]).map(a => a.id)).toEqual(["leader", "a", "shared"]);
+    expect((members.body?.agents as Agent[]).map(a => a.id)).toEqual(["leader", "a"]);
   });
   it("rejects different project/context IDs and malformed query inputs with 400", async () => {
     for (const query of [{ projectId: "X", contextProjectId: "Y" }, { contextProjectId: ["X", "Y"] }, { projectId: "" }]) {
@@ -279,11 +281,40 @@ describe("Market HTTP catalog contract", () => {
   it("reports 404 for an unknown contextual project", async () => {
     expect((await invoke(agentsController.list, { query: { contextProjectId: "missing" } })).error?.statusCode).toBe(404);
   });
+  it("returns only the requested private adaptation, including inherited origins", async () => {
+    agents.get("a")!.assignments = [
+      { projectId: "X", status: "active", privateConfig: { model: "model-x" } },
+      { projectId: "Y", status: "active", privateConfig: { model: "model-y" } },
+    ];
+    const result = await invoke(profilesController.privateGet, { params: { id: "a", projectId: "child" } });
+    expect(result.error).toBeUndefined();
+    expect(result.body?.agent).toMatchObject({ model: "model-x", projectIds: ["X"], assignments: [{ projectId: "X" }] });
+    expect(JSON.stringify(result.body)).not.toContain("model-y");
+    expect((await invoke(profilesController.privateGet, { params: { id: "shared", projectId: "X" } })).error).toBeDefined();
+  });
+  it("rejects membership changes through the private editor and execution fields in public drafts", async () => {
+    const privateResult = await invoke(profilesController.privateSave, {
+      params: { id: "a", projectId: "X" }, body: { revision: 1, config: { projectIds: ["Y"] } },
+    });
+    expect(privateResult.error?.statusCode).toBe(400);
+    const publicResult = await invoke(profilesController.save, { body: {
+      id: "11111111-1111-4111-8111-111111111111", revision: 0, manifest: {
+        schemaVersion: 1, name: "Portable", description: "", specialty: "", technologies: [],
+        knowledge: "", systemPrompt: "", allowedTools: null, model: "private-model",
+      },
+    } });
+    expect(publicResult.error?.statusCode).toBe(400);
+    expect(updateCalls).toHaveLength(0);
+  });
   it("redacts credentials in both the profile and the contextual DTO", async () => {
     agents.get("a")!.credential = { username: "qa", secret: "test-only-do-not-return" };
+    agents.get("a")!.assignments = [{ projectId: "X", status: "active",
+      privateConfig: { credential: { username: "private", secret: "nested-secret-must-stay-private" } } }];
     const result = await invoke(agentsController.list, { query: { contextProjectId: "X", q: "Backend" } });
     expect(JSON.stringify(result.body)).not.toContain("test-only-do-not-return");
-    expect((result.body?.agents as any[])[0].credential).toEqual({ username: "qa", hasSecret: true });
+    expect(JSON.stringify(result.body)).not.toContain("nested-secret-must-stay-private");
+    expect((result.body?.agents as any[])[0].credential).toEqual({ username: "private", hasSecret: true });
+    expect((result.body?.agents as any[])[0].assignments.find((a: any) => a.projectId === "X").privateConfig.credential).toEqual({ username: "private", hasSecret: true });
   });
   it("rejects editing or deleting an ownerless legacy profile for a non-admin", async () => {
     identity.role = "user";

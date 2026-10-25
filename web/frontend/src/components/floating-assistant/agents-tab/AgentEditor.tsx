@@ -1,3 +1,4 @@
+import { profileCopy } from "../agent-profiles/copy";
 import { CredentialsLink } from "../../workspace/credentials/CredentialsLink";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -156,6 +157,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
             (motion.css): remontado por tab, direccional según el orden. */}
         <ViewTransition viewKey={editorTab} direction={editorTabDirection} className="flex flex-col gap-4">
         {editorTab === "general" && (<>
+        <label className="flex flex-col gap-1 text-sm">{profileCopy(locale).knowledge}<textarea className="rounded border border-input bg-background p-2" rows={4} value={draft.knowledge} maxLength={12000} onChange={e => setDraft({ ...draft, knowledge: e.target.value })} /></label>
         {/* Ayuda de IA: bloque colapsable (colapsado por defecto) que redacta el
             agente con IA a partir de un arquetipo o la descripción actual. */}
         <CollapsibleSection
@@ -394,20 +396,20 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
             </span>
           </label>
 
-          {!vm.editorOnly && <div className="flex flex-col gap-1 text-xs">
+          {(!vm.editorOnly || vm.privateProjectId) && <div className="flex flex-col gap-1 text-xs">
             <span className="text-muted-foreground">
-              {t.teams.teamSelectorLabel} <span className="text-red-500" aria-hidden>*</span>
+              {t.teams.teamSelectorLabel} {!vm.privateProjectId && <span className="text-red-500" aria-hidden>*</span>}
             </span>
             <div className="flex items-center gap-1.5">
               <select
                 value={draft.teamId ?? ""}
                 disabled={Boolean(vm.projectScope)}
                 onChange={(e) => setDraft({ ...draft, teamId: e.target.value || null })}
-                aria-required="true"
+                aria-required={!vm.privateProjectId}
                 className={`flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none ${draft.teamId ? "border-input focus:border-primary" : "border-red-400/60 focus:border-red-500"}`}
               >
                 {/* Non-selectable placeholder: a group is now mandatory. */}
-                <option value="" disabled>{t.teams.teamSelectorPlaceholder}</option>
+                <option value="" disabled={!vm.privateProjectId}>{t.teams.teamSelectorPlaceholder}</option>
                 {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
               </select>
               {!vm.projectScope && <button
@@ -562,7 +564,7 @@ export function AgentEditor({ vm }: { vm: AgentsTabVM }) {
           {projects.length === 0 && <p className="text-[11px] text-muted-foreground">{t.editor.noParentProjects}</p>}
           <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
             {!vm.editorOnly && projects.filter((p) => !p.parentId).map((p) => renderProjectNode(p, 0))}
-            {vm.editorOnly && <p className="text-sm text-muted-foreground">{vm._i18n.agentMarket.assignmentHint}</p>}
+            {vm.editorOnly && <p className="text-sm text-muted-foreground">{projects.find(p => p.id === vm.privateProjectId)?.title ?? vm._i18n.agentMarket.assignmentHint}</p>}
           </div>
           <label className="flex items-center gap-2 border-t border-border pt-2 text-[11px] font-medium text-foreground">
             <input type="checkbox" checked={draft.autoCapture} onChange={(e) => setDraft({ ...draft, autoCapture: e.target.checked })} />

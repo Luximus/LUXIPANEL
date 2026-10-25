@@ -127,9 +127,9 @@ async function resolveAgentScope(executor: Executor | null | undefined, agentId?
     const closure = projectClosure(projects, [projectId]);
     contextProjects = projects.filter(p => p.id && closure.has(p.id));
   }
-  let agent = original ? { ...original } : null;
-  const baseRole = original?.roleId ? await agentRolesRepository.get(original.roleId) : null;
-  if (original?.roleId && !baseRole) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "No se pudo verificar el rol del perfil.", 403);
+  let agent = original ? { ...original, ...assignment?.privateConfig } : null;
+  const baseRole = agent?.roleId ? await agentRolesRepository.get(agent.roleId) : null;
+  if (agent?.roleId && !baseRole) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "No se pudo verificar el rol del perfil.", 403);
   let role = baseRole;
   if (agent && assignment) {
     const localRole = assignment.roleId ? await agentRolesRepository.get(assignment.roleId) : null;
@@ -143,20 +143,21 @@ async function resolveAgentScope(executor: Executor | null | undefined, agentId?
     if (role) role = { ...role, canSpawnChats: supervisor };
     agent = { ...agent, canSpawnChats: supervisor, roleId: assignment.roleId ?? agent.roleId,
       allowedTools: intersectToolLimits(agent.allowedTools, baseRole?.allowedTools, localRole?.allowedTools, assignment.allowedTools),
-      systemPrompt: [agent.systemPrompt, assignment.jobTitle ? "Cargo en este proyecto: " + assignment.jobTitle : "", assignment.instructions].filter(Boolean).join("\n\n"),
+      systemPrompt: [agent.systemPrompt, agent.knowledge, assignment.jobTitle ? "Cargo en este proyecto: " + assignment.jobTitle : "", assignment.instructions].filter(Boolean).join("\n\n"),
       projectIds: [projectId!],
       projectPaths: intersectPaths(intersectPaths(contextProjects.map(p => p.path).filter(Boolean), agent.projectPaths?.length ? agent.projectPaths : null), assignment.projectPaths),
       graphProjectIds: contextProjects.filter(p => p.id && (assignment.graphProjectIds == null || assignment.graphProjectIds.includes(p.id)) && (!agent!.graphProjectIds?.length || agent!.graphProjectIds.includes(p.id))).map(p => p.id!),
       servers: ancestors.flatMap(p => p.servers ?? []).filter((server,index,servers) =>
         servers.findIndex(s => s.id === server.id) === index &&
         (assignment.serverIds == null || assignment.serverIds.includes(server.id)) &&
-        (!original!.servers?.length || original!.servers.some(s => s.id === server.id))),
-      teamId: ancestors[0]?.teamId ?? (assignment.source === "legacy" ? agent.teamId : null),
+        (!agent!.servers?.length || agent!.servers.some(s => s.id === server.id))),
+      teamId: ancestors[0]?.teamId ?? assignment.privateConfig?.teamId ?? (assignment.source === "legacy" ? agent.teamId : null),
       parentAgentId: assignmentParentAgentId(agent, assignment, ancestors[0]),
       connections: assignment.connections ?? agent.connections,
 
     };
   }
+  if (agent && !assignment && agent.knowledge) agent = { ...agent, systemPrompt: [agent.systemPrompt, agent.knowledge].filter(Boolean).join("\n\n") };
   return { agent, role, projectId, assignment, projects, ancestors, contextProjects };
 }
 /** Fail closed. Fresh on every admission and protected tool dispatch. */

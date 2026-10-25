@@ -61,6 +61,8 @@ export function AgentEditor({
   onSuggest,
   tokens,
   str,
+  language,
+  privateProject = false,
 }: {
   draft: DraftAgent;
   onChangeDraft: (next: DraftAgent) => void;
@@ -82,6 +84,7 @@ export function AgentEditor({
   tokens: ThemeTokens;
   str: AgentsStrings;
   language: string;
+  privateProject?: boolean;
 }) {
   const [tab, setTab] = useState<EditorTab>("general");
   const [suggesting, setSuggesting] = useState(false);
@@ -138,6 +141,7 @@ export function AgentEditor({
           aiOpen={aiOpen}
           setAiOpen={setAiOpen}
           runSuggest={runSuggest}
+          language={language}
         />
       ) : null}
 
@@ -167,6 +171,7 @@ export function AgentEditor({
           projects={projects}
           skills={skills}
           snippetOptions={snippetOptions}
+          privateProject={privateProject}
           tokens={tokens}
           str={str}
         />
@@ -183,7 +188,7 @@ export function AgentEditor({
           variant="primary"
           label={busy ? str.saving : draft.id ? str.saveChanges : str.editor.createAgent}
           loading={busy}
-          disabled={busy || !draft.name.trim() || !draft.teamId}
+          disabled={busy || !draft.name.trim() || (!privateProject && !draft.teamId)}
           onPress={onSave}
         />
       </View>

@@ -17,7 +17,7 @@ describe("resource guard", () => {
     const built = guardCommand(command, { kind: "cli" });
     const parsed = JSON.parse(execFileSync("python3", ["-c", "import shlex,json,sys; print(json.dumps(shlex.split(sys.argv[1])))", built], { encoding: "utf8" }));
     expect(parsed.slice(-3)).toEqual(["/bin/bash", "-c", command]);
-    expect(JSON.parse(parsed[3])).toEqual({ kind: "cli" });
+    expect(JSON.parse(parsed[3])).toEqual({ kind: "cli", admissionPolicyPath: "/etc/luxipanel/monitor/assistant-admission.json" });
   });
 
   it("uses only the selected executor and reports refusal instead of accepting error JSON as DOM", async () => {

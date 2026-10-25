@@ -18,15 +18,28 @@ spec.loader.exec_module(guard)
 
 
 class PolicyTests(unittest.TestCase):
-    def test_limits_scale_down_and_leave_half_the_ram_outside_the_group(self):
+    def test_limits_scale_down_and_leave_ram_outside_the_group(self):
         for mib in (512, 1024, 2048, 8192, 65536):
             p = guard.limits(mib * guard.MIB, 4, "cli")
-            self.assertLessEqual(p["groupMax"], mib * guard.MIB // 2)
+            self.assertLessEqual(p["groupMax"], mib * guard.MIB * 70 // 100)
+            self.assertLess(p["groupHigh"], p["groupMax"])
             self.assertLessEqual(p["max"], p["groupMax"])
             self.assertLessEqual(p["max"], 3584 * guard.MIB)
             self.assertLess(p["high"], p["max"])
             self.assertLessEqual(p["swap"], 512 * guard.MIB)
             self.assertLessEqual(p["cpu"], 200)
+
+    def test_admission_policy_defaults_and_validates(self):
+        self.assertEqual(guard.admission_percent({}), 85)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "policy.json"
+            options = {"admissionPolicyPath": str(path)}
+            self.assertEqual(guard.admission_percent(options), 85)
+            path.write_text('{"memPercent": 75}')
+            self.assertEqual(guard.admission_percent(options), 75)
+            path.write_text('{"memPercent": 100}')
+            with self.assertRaises(ValueError):
+                guard.admission_percent(options)
 
     def test_browser_and_internal_override_cannot_raise_the_cap(self):
         p = guard.limits(8192 * guard.MIB, 64, "browser", 8192)
@@ -35,13 +48,19 @@ class PolicyTests(unittest.TestCase):
 
     def test_pressure_and_saturated_group_delay_admission(self):
         p = guard.limits(8192 * guard.MIB, 4, "cli")
-        self.assertFalse(guard.admitted({"MemAvailable": 128 * guard.MIB}, p, 0))
-        self.assertFalse(guard.admitted({"MemAvailable": 8192 * guard.MIB}, p, p["groupMax"]))
-        self.assertTrue(guard.admitted({"MemAvailable": 4096 * guard.MIB}, p, 0))
+        self.assertFalse(guard.admitted({"MemTotal": 8192 * guard.MIB, "MemAvailable": 128 * guard.MIB}, p, 0))
+        self.assertFalse(guard.admitted({"MemTotal": 8192 * guard.MIB, "MemAvailable": 8192 * guard.MIB}, p, p["groupMax"]))
+        self.assertTrue(guard.admitted({"MemTotal": 8192 * guard.MIB, "MemAvailable": 4096 * guard.MIB}, p, 0))
+
+    def test_admission_stops_at_configured_ram_percent(self):
+        p = guard.limits(8192 * guard.MIB, 4, "cli")
+        self.assertTrue(guard.admitted({"MemTotal": 1000 * guard.MIB, "MemAvailable": 160 * guard.MIB}, {**p, "reserve": 0}, 0, 85))
+        self.assertFalse(guard.admitted({"MemTotal": 1000 * guard.MIB, "MemAvailable": 150 * guard.MIB}, {**p, "reserve": 0}, 0, 85))
+        self.assertFalse(guard.admitted({"MemTotal": 1000 * guard.MIB, "MemAvailable": 260 * guard.MIB}, {**p, "reserve": 0}, 0, 70))
 
     def test_does_not_launch_into_shared_memory_throttling_with_host_ram_free(self):
         p = guard.limits(8192 * guard.MIB, 4, "cli")
-        free_host = {"MemAvailable": 4096 * guard.MIB}
+        free_host = {"MemTotal": 8192 * guard.MIB, "MemAvailable": 4096 * guard.MIB}
         self.assertFalse(guard.admitted(free_host, p, p["groupHigh"] + guard.MIB))
         self.assertFalse(guard.admitted(free_host, p, p["groupHigh"] - 128 * guard.MIB))
         self.assertTrue(guard.admitted(free_host, p, p["groupHigh"] - 512 * guard.MIB))
@@ -90,6 +109,23 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         status = Path('/proc') / r.stdout.strip() / 'stat'
         self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z')
+
+    def test_second_cli_can_run_on_small_server_with_capacity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "ready"
+            code = "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(3)"
+            first = subprocess.Popen([sys.executable, str(RUNNER), '{"kind":"cli","queueSeconds":0}', sys.executable, "-c", code, str(marker)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                deadline = time.monotonic() + 10
+                while not marker.exists() and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertTrue(marker.exists())
+                r = self.run_guard([sys.executable, "-c", "print('MUST_NOT_RUN')"])
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("MUST_NOT_RUN", r.stdout)
+            finally:
+                first.communicate(timeout=15)
+            self.assertEqual(first.returncode, 0)
 
     def test_browser_lock_prevents_overlapping_commands(self):
         with tempfile.TemporaryDirectory() as tmp:

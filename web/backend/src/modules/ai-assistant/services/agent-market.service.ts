@@ -10,8 +10,9 @@ import { projectsRepository, type AssistantProject } from "../repositories/proje
 import { agentActivityRepository } from "../repositories/agent-activity.repository.js";
 import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
 import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
+import { agentTeamsRepository } from "../repositories/agent-teams.repository.js";
 import { agentRolesRepository } from "../repositories/agent-roles.repository.js";
-import { agentAssignments, type AssistantAgent, type AssignmentPatch, type AgentProjectAssignment } from "../models/assistant-agent.types.js";
+import { agentAssignments, privateAgentConfig, providerSupportsRealtime, sanitizeAgentCredential, type AgentPrivateConfig, type AssistantAgent, type AssignmentPatch, type AgentProjectAssignment } from "../models/assistant-agent.types.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { permissionBroker } from "./permission-broker.js";
 import { assignmentError, assertProjectScope, effectiveAssignment, mayUseProject, resolveAgentContext, visibleProjects, intersectToolLimits, assignmentParentAgentId } from "./agent-context.service.js";
@@ -92,6 +93,7 @@ export const agentMarketService = {
   async present(executor: Executor, agent: AssistantAgent, user?: SessionUser,
     options: { contextProjectId?: string; projects?: AssistantProject[] } = {}): Promise<AgentMarketProfile> {
     assertAssignmentTarget(executor);
+    if (!mayUseProject(agent, user ?? getContextUser())) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "Este perfil es privado.", 403);
     const all = options.projects ?? await projectsRepository.list(executor);
     const visible = new Set(visibleProjects(all, user).map(p => p.id));
     const assignments = agentAssignments(agent).filter(a => visible.has(a.projectId));
@@ -122,8 +124,13 @@ export const agentMarketService = {
     }
     const inheritedFallback = projectId && direct?.status === "active" && ancestors.slice(0, -1)
       .some(p => assignments.some(a => a.projectId === p.id && a.status === "active"));
-    return { ...agent, specialty: agent.specialty ?? "", technologies: agent.technologies ?? [],
-      assignments, graphProjectIds: (agent.graphProjectIds ?? []).filter(id => visible.has(id)),
+    const origin = effective?.inheritedFrom || projectId;
+    const visibleAssignments = assignments.map(a => a.projectId === origin ? a : {
+      projectId: a.projectId, status: a.status, source: a.source, revision: a.revision,
+      createdAt: a.createdAt, updatedAt: a.updatedAt, removedAt: a.removedAt,
+    });
+    return { ...agent, ...effective?.privateConfig, specialty: effective?.privateConfig?.specialty ?? agent.specialty ?? "", technologies: effective?.privateConfig?.technologies ?? agent.technologies ?? [],
+      assignments: visibleAssignments, graphProjectIds: (effective?.privateConfig?.graphProjectIds ?? agent.graphProjectIds ?? []).filter(id => visible.has(id)),
       projectIds: assignments.filter(a => a.status === "active").map(a => a.projectId),
       capabilities: {
         canEditProfile: canModify, canDeleteProfile: canModify,
@@ -148,6 +155,45 @@ export const agentMarketService = {
     const presented = await this.present(executor, agent, user);
     return { assignments: presented.assignments, effective: projectId ? effectiveAssignment(agent, all, projectId) : null };
   },
+  async putPrivate(executor: Executor, id: string, projectId: string, revision: number, patch: AgentPrivateConfig, user?: SessionUser) {
+    return withAssignmentLock(executor, id, async () => {
+      let agent = await ownedAgent(id, user);
+      const all = await projectsRepository.list(executor);
+      assertProjectScope(all, projectId, user);
+      const effective = effectiveAssignment(agent, all, projectId);
+      if (!effective || effective.inheritedFrom) throw assignmentError("ASSISTANT_ASSIGNMENT_INHERITED", "Edita la adaptación desde el proyecto de origen.");
+      if ((effective.revision ?? 1) !== revision) throw assignmentError("ASSISTANT_CONTEXT_MISMATCH", "La adaptación cambió. Recarga antes de guardar.");
+      const previous = { ...privateAgentConfig(agent), ...effective.privateConfig };
+      // Preserve unavailable imported tool names, but reject new unknown names.
+      if (patch.allowedTools) {
+        const retained = patch.allowedTools.filter(name => previous.allowedTools?.includes(name));
+        const added = normalizeAllowedTools(patch.allowedTools.filter(name => !retained.includes(name)), { onUnknown: "reject", context: "private-profile" })!.valid;
+        patch = { ...patch, allowedTools: [...new Set([...retained, ...added])] };
+      }
+      await validatePatch(executor, id, projectId, { parentAgentId: patch.parentAgentId, connections: patch.connections,
+        roleId: patch.roleId, graphProjectIds: patch.graphProjectIds,
+        serverIds: patch.servers?.map(s => s.id) }, user);
+      if (patch.teamId) {
+        const team = await agentTeamsRepository.get(patch.teamId);
+        if (!team || !mayUseProject(team, user ?? getContextUser())) throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "Equipo no disponible.", 403);
+      }
+      await assertAssignmentIdle(executor, agent, agent.profileSchemaVersion === 1 ? [projectId] : agent.projectIds ?? []);
+      agent = await agentsRepository.migratePrivate(agent);
+      const assignments = rows(agent);
+      const assignment = assignments.find(a => a.projectId === projectId)!;
+      const config = { ...privateAgentConfig(agent), ...assignment.privateConfig, ...patch };
+      if (patch.credential !== undefined) config.credential = sanitizeAgentCredential(patch.credential);
+      if (!providerSupportsRealtime(config.providerId)) config.realtime = false;
+      assignment.privateConfig = config;
+      for (const key of ["parentAgentId", "connections", "roleId", "allowedTools", "canSpawnChats", "projectPaths", "graphProjectIds"] as const) {
+        if (patch[key] !== undefined && JSON.stringify(patch[key]) !== JSON.stringify(previous[key])) Object.assign(assignment, { [key]: patch[key] });
+      }
+      if (patch.servers !== undefined && JSON.stringify(patch.servers) !== JSON.stringify(previous.servers)) assignment.serverIds = patch.servers.map(s => s.id);
+      assignment.revision = revision + 1;
+      assignment.updatedAt = new Date().toISOString();
+      return persist(id, assignments);
+    });
+  },
   async put(executor: Executor, id: string, projectId: string, patch: AssignmentPatch, user?: SessionUser) {
     return withAssignmentLock(executor, id, async () => {
       const agent = await ownedAgent(id, user);
@@ -161,7 +207,11 @@ export const agentMarketService = {
       await assertAssignmentIdle(executor, agent, [projectId]);
       const now = new Date().toISOString();
       const legacyParent = prior && !agent.assignments?.some(a => a.projectId === projectId) ? { parentAgentId: agent.parentAgentId ?? null } : {};
-      const assignment: AgentProjectAssignment = { ...legacyParent, ...prior, ...clean, projectId, status: "active", createdAt: prior?.createdAt ?? now, updatedAt: now };
+      const effective = !prior ? effectiveAssignment(agent, await projectsRepository.list(executor), projectId) : null;
+      const inherited = effective?.inheritedFrom ? rows(agent).find(a => a.projectId === effective.inheritedFrom) : undefined;
+      const assignment: AgentProjectAssignment = { ...inherited,
+        privateConfig: prior?.privateConfig ?? inherited?.privateConfig ?? privateAgentConfig(agent),
+        ...legacyParent, ...prior, ...clean, revision: (prior?.revision ?? 0) + 1, projectId, status: "active", createdAt: prior?.createdAt ?? now, updatedAt: now };
       delete assignment.removedAt;
       if (index < 0) assignments.push(assignment); else assignments[index] = assignment;
       await persist(id, assignments);
@@ -179,28 +229,38 @@ export const agentMarketService = {
       if (!current || current.status === "removed") return;
       await assertAssignmentIdle(executor, agent, [projectId]);
       if (!agent.assignments?.some(a => a.projectId === projectId)) current.parentAgentId = agent.parentAgentId ?? null;
-      current.status = "removed"; current.removedAt = current.updatedAt = new Date().toISOString();
+      current.revision = (current.revision ?? 1) + 1; current.status = "removed"; current.removedAt = current.updatedAt = new Date().toISOString();
       await persist(id, assignments);
     });
   },
   /** Compatibility write is atomic: authorize every addition/removal before persisting any. */
   async updateProfile(executor: Executor, id: string, patch: Parameters<typeof agentsRepository.update>[1], user?: SessionUser) {
     return withAssignmentLock(executor, id, async () => {
-      const agent = await ownedAgent(id, user);
-      if (patch.projectIds === undefined) return agentsRepository.update(id, patch);
+      let agent = await ownedAgent(id, user);
+      if (patch.projectIds === undefined) {
+        const active = rows(agent).filter(a => a.status === "active");
+        if (active.length > 1) throw assignmentError("ASSISTANT_PROJECT_REQUIRED", "Selecciona el proyecto cuya adaptación quieres editar.", 400);
+        await assertAssignmentIdle(executor, agent, agent.projectIds ?? []);
+        await agentsRepository.migratePrivate(agent);
+        return agentsRepository.update(id, patch);
+      }
       const wanted = [...new Set(patch.projectIds)];
       const all = await projectsRepository.list(executor);
       for (const pid of wanted) assertProjectScope(all, pid, user);
-      const assignments = rows(agent), old = assignments.filter(a => a.status === "active").map(a => a.projectId);
+      const old = rows(agent).filter(a => a.status === "active").map(a => a.projectId);
+      const changed = Object.entries(patch).some(([key, value]) => key !== "projectIds" && value !== undefined && JSON.stringify(value) !== JSON.stringify(agent[key as keyof AssistantAgent]));
+      if (changed && Math.max(old.length, wanted.length) > 1) throw assignmentError("ASSISTANT_PROJECT_REQUIRED", "Selecciona el proyecto cuya adaptación quieres editar.", 400);
       const removed = old.filter(p => !wanted.includes(p)), added = wanted.filter(p => !old.includes(p));
       for (const pid of removed) assertProjectScope(all, pid, user);
-      if (removed.length || added.length) await assertAssignmentIdle(executor, agent, [...removed, ...added]);
+      await assertAssignmentIdle(executor, agent, [...new Set([...old, ...wanted])]);
+      agent = await agentsRepository.migratePrivate(agent);
+      const assignments = rows(agent);
       const now = new Date().toISOString();
       for (const a of assignments) if (removed.includes(a.projectId)) { if (!agent.assignments?.some(p => p.projectId === a.projectId)) a.parentAgentId = agent.parentAgentId ?? null; a.status = "removed"; a.removedAt = a.updatedAt = now; }
       for (const pid of added) {
         const a = assignments.find(a => a.projectId === pid);
         if (a) { a.status = "active"; a.updatedAt = now; delete a.removedAt; }
-        else assignments.push({ projectId: pid, status: "active", createdAt: now, updatedAt: now });
+        else assignments.push({ projectId: pid, status: "active", privateConfig: privateAgentConfig(agent), parentAgentId: agent.parentAgentId ?? null, revision: 1, createdAt: now, updatedAt: now });
       }
       const next = { ...agent, assignments, projectIds: wanted };
       for (const pid of removed) if (effectiveAssignment(next, all, pid)) throw assignmentError("ASSISTANT_ASSIGNMENT_INHERITED", "El proyecto conserva una asignación heredada.");

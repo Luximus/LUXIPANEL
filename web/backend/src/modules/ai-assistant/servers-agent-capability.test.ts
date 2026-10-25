@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../../config/env.js", () => ({ env: mocks.env }));
 vi.mock("../../shared/logger/index.js", () => ({ createModuleLogger: () => ({ warn: vi.fn() }) }));
-vi.mock("../../shared/executor/index.js", () => ({ getContextExecutor: () => ({}), getContextUser: () => ({ userId: 1, kind: "admin" }) }));
+vi.mock("../../shared/executor/index.js", () => ({ getContextExecutor: () => ({}), getContextUser: () => ({ userId: 1, kind: "admin" }), quoteArg: (value: string) => `'${value.replaceAll("'", "'\\''")}'` }));
 vi.mock("../../shared/executor/direct-ssh-executor.js", () => ({ DirectSshExecutor: class {
   exec = mocks.exec; readFile = mocks.readFile; readdir = mocks.readdir;
 } }));
@@ -67,6 +67,12 @@ describe("associated server tool failures", () => {
       mocks.exec.mockResolvedValue({ exitCode, stdout: "output", stderr: "details" });
       expect(await serversAgentCapability.tools[0]!.handler(input)).toEqual({ ok: exitCode === 0, output: { serverId: "server-1", exitCode, stdout: "output", stderr: "details" } });
     }
+  });
+
+  it("reserves the target build slot and grants a long timeout", async () => {
+    mocks.exec.mockResolvedValue({ exitCode: 0, stdout: "done", stderr: "" });
+    await serversAgentCapability.tools[0]!.handler({ serverId: "server-1", command: "pnpm run build" });
+    expect(mocks.exec).toHaveBeenCalledWith(expect.stringContaining("luxipanel-assistant-build-lease"), expect.objectContaining({ timeoutMs: 600_000 }));
   });
 
   it("does not report an unresponsive peer operation as never started", async () => {

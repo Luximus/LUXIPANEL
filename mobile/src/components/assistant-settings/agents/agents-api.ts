@@ -39,8 +39,8 @@ import type { AssistantSkill } from "../types";
 // ── Agentes ──────────────────────────────────────────────────────────────────
 
 export const agentsApi = {
-  async list(panelId: string, token: string): Promise<AssistantAgent[]> {
-    const body = await luxAssistantProxy<{ agents?: AssistantAgent[] }>(panelId, token, "GET", "/api/ai/agents");
+  async list(panelId: string, token: string, projectId?: string): Promise<AssistantAgent[]> {
+    const body = await luxAssistantProxy<{ agents?: AssistantAgent[] }>(panelId, token, "GET", `/api/ai/agents${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`);
     return Array.isArray(body?.agents) ? body!.agents : [];
   },
   async create(panelId: string, token: string, data: AgentPayload): Promise<AssistantAgent | null> {

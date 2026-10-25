@@ -4,6 +4,7 @@ import { Router, type Router as ExpressRouter, type RequestHandler } from "expre
 import { monitorController } from "../controllers/monitor.controller.js";
 import { alertsController } from "../controllers/alerts.controller.js";
 import { watchdogController } from "../controllers/watchdog.controller.js";
+import { assistantAdmissionController } from "../controllers/assistant-admission.controller.js";
 import { requireAuth } from "../../auth/middlewares/session.middleware.js";
 import { csrfProtection } from "../../auth/middlewares/csrf.middleware.js";
 import { requireModule } from "../../auth/middlewares/require-module.middleware.js";
@@ -39,6 +40,8 @@ router.post("/api/monitor/processes/:pid/kill", csrfProtection, monitorControlle
 // ---- Resource watchdog (auto-reboot on sustained CPU/RAM pressure) ----
 router.get("/api/monitor/watchdog", watchdogController.get);
 router.put("/api/monitor/watchdog", csrfProtection, watchdogController.update);
+router.get("/api/monitor/assistant-admission", assistantAdmissionController.get);
+router.put("/api/monitor/assistant-admission", csrfProtection, requireAdmin, assistantAdmissionController.update);
 
 // ---- WebSocket client count (informational) ----
 router.get("/api/monitor/ws/clients", alertsController.streamClients);

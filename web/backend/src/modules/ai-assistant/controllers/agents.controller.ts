@@ -45,6 +45,7 @@ import { panelUserRepository } from "../../auth/repositories/panel-user.reposito
 const providerSchema = z.enum(PROVIDER_IDS);
 
 const createSchema = z.object({
+  knowledge: z.string().max(12000).optional(),
   specialty: z.string().trim().max(200).optional(),
   technologies: z.array(z.string().trim().min(1).max(60)).max(40).optional(),
   name: z.string().min(1).max(120),
@@ -85,7 +86,8 @@ const createSchema = z.object({
     .optional(),
 });
 
-const updateSchema = z.object({
+export const privateAgentUpdateSchema = z.object({
+  knowledge: z.string().max(12000).optional(),
   specialty: z.string().trim().max(200).optional(),
   technologies: z.array(z.string().trim().min(1).max(60)).max(40).optional(),
   name: z.string().min(1).max(120).optional(),
@@ -202,12 +204,13 @@ function extractJsonArray(text: string): Record<string, unknown>[] | null {
  *  sustituye por `{label?, username, hasSecret:true}` (la UI muestra el estado
  *  y solo permite reemplazar/quitar). El valor real solo lo consume el runtime
  *  (system-prompt-builder) leyendo el repo directamente. */
-function redactAgent<T extends { credential?: AssistantAgent["credential"] }>(
+export function redactAgent<T extends object>(
   a: T,
 ): Omit<T, "credential"> & { credential: { label?: string; username: string; hasSecret: true } | null } {
-  const { credential, ...rest } = a;
+  const { credential, ...rest } = a as T & { credential?: AssistantAgent["credential"] };
   return {
-    ...rest,
+    ...JSON.parse(JSON.stringify(rest, (key, value) => key === "credential" ?
+      (value?.username ? { label: value.label, username: value.username, hasSecret: true } : null) : value)),
     credential: credential?.username
       ? { ...(credential.label ? { label: credential.label } : {}), username: credential.username, hasSecret: true as const }
       : null,
@@ -264,7 +267,7 @@ export async function loadAssistantAgents(req: Request, res: Response) {
   const all = await projectsRepository.list(executor);
   if (contextId) assertProjectScope(all, contextId, user);
   // Resolve the roster before search so a name/technology filter cannot change hierarchy.
-  const presented = await Promise.all((await agentsRepository.list()).map(a =>
+  const presented = await Promise.all((await agentsRepository.list()).filter(a => mayUseProject(a, user)).map(a =>
     agentMarketService.present(executor, a, user, { contextProjectId: contextId, projects: all })));
   const roster = contextId ? presented.filter(a => a.context?.effectiveConfig) : presented;
   const q = (parsed.data.q ?? "").toLocaleLowerCase();
@@ -292,13 +295,13 @@ export async function loadAssistantAgents(req: Request, res: Response) {
 export const agentsController = {
   assignments: asyncHandler(async (req: Request, res: Response) => {
     const result = await agentMarketService.assignments(getExecutor(req), String(req.params["id"]), typeof req.query["projectId"] === "string" ? req.query["projectId"] : undefined, res.locals["user"]);
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, ...redactAgent(result) });
   }),
   putAssignment: asyncHandler(async (req: Request, res: Response) => {
     const parsed = assignmentSchema.safeParse(req.body);
     if (!parsed.success) throw new ValidationError("Invalid body", zodIssues(parsed.error.issues, res.locals.locale));
     const assignment = await agentMarketService.put(getExecutor(req), String(req.params["id"]), String(req.params["projectId"]), parsed.data, res.locals["user"]);
-    res.json({ ok: true, assignment });
+    res.json({ ok: true, assignment: redactAgent(assignment) });
   }),
   removeAssignment: asyncHandler(async (req: Request, res: Response) => {
     await agentMarketService.remove(getExecutor(req), String(req.params["id"]), String(req.params["projectId"]), res.locals["user"]);
@@ -336,7 +339,7 @@ export const agentsController = {
 
   update: asyncHandler(async (req: Request, res: Response) => {
     const id = String(req.params["id"] ?? "");
-    const parsed = updateSchema.safeParse(req.body);
+    const parsed = privateAgentUpdateSchema.safeParse(req.body);
     if (!parsed.success) throw new ValidationError("Invalid body", zodIssues(parsed.error.issues, res.locals.locale));
     const cur = await agentsRepository.get(id);
     if (!cur) throw assistantNotFound(res.locals.locale, "agent");
@@ -404,7 +407,7 @@ export const agentsController = {
       '"description": string (≤200 chars, qué hace el agente), ' +
       '"systemPrompt": string (instrucciones completas, rol, tono, objetivos, límites y buenas prácticas; 600-1500 chars), ' +
       '"allowedTools": string[] (SOLO nombres EXACTOS del catálogo que el rol realmente necesita; [] si ninguna) }\n' +
-      "Reglas: el systemPrompt debe ser accionable y específico al rol; no inventes nombres de herramientas fuera del catálogo; " +
+      "Reglas: el perfil es general y portable; no incluye modelos, proveedores, rutas, jerarquías ni datos privados de proyectos. El systemPrompt debe ser accionable y específico al rol; no inventes nombres de herramientas fuera del catálogo; " +
       `elige el subconjunto mínimo de herramientas necesario para el rol. Escribe name, description y systemPrompt en ${aiOutputLanguage(res.locals.locale)}.\n\n` +
       `Catálogo de herramientas disponibles:\n${toolCatalog}`;
 
@@ -433,7 +436,7 @@ export const agentsController = {
     const allowedTools = rawTools
       ? (sanitizeAllowedTools(rawTools) ?? []).filter((n) => toolNames.has(n))
       : null;
-    const providerId = isAssistantProviderId(obj["providerId"]) ? (obj["providerId"] as string) : undefined;
+
 
     res.json({
       ok: true,
@@ -442,7 +445,7 @@ export const agentsController = {
         description: String(obj["description"] ?? "").slice(0, 500),
         systemPrompt: String(obj["systemPrompt"] ?? "").slice(0, 20000),
         allowedTools,
-        ...(providerId ? { providerId } : {}),
+
       },
     });
   }),

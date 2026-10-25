@@ -442,7 +442,7 @@ COOKIE_SECURE: boolStrTrue,
   /** Máximo de corridas del agente VIVAS a la vez por usuario del panel (entre
    *  todas sus conversaciones). Turnos sobre una conversación con run vivo se
    *  encolan (no cuentan). 0 = sin límite. */
-  ASSISTANT_MAX_CONCURRENT_RUNS_PER_USER: z.coerce.number().int().nonnegative().default(3),
+  ASSISTANT_MAX_CONCURRENT_RUNS_PER_USER: z.coerce.number().int().nonnegative().default(0),
   /** Credencial por-panel (`lxp_live_…`) para LP y el túnel del portal.
    *  Vacía (default) = funciones LP bloqueadas y túnel deshabilitado.
    *  Ver auth/middlewares/lp-panel-credential.middleware.ts. */
@@ -533,7 +533,7 @@ COOKIE_SECURE: boolStrTrue,
    *  HTTP ASSISTANT_MAX_CONCURRENT_RUNS_PER_USER — los workers NO cuentan ahí).
    *  Al chocar, la tarea queda `pending` encolada y despacha al liberarse hueco.
    *  0 = sin límite. */
-  ASSISTANT_MAX_WORKER_RUNS: z.coerce.number().int().nonnegative().default(4),
+  ASSISTANT_MAX_WORKER_RUNS: z.coerce.number().int().nonnegative().default(0),
   /** Reintentos de corrección cuando la verificación de una tarea falla (cada
    *  reintento = turno automático en el chat del worker con el log). */
   ASSISTANT_TEAM_VERIFY_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),

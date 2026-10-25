@@ -17,6 +17,8 @@ import { dataStore } from "../../../shared/data-store/index.js";
 import { getContextUserId } from "../../../shared/executor/index.js";
 import {
   AVATAR_CONFIG_KEYS,
+  privateAgentConfig,
+  agentAssignments,
   type AssistantAgent,
   type AvatarConfig,
   isAssistantProviderId,
@@ -43,7 +45,7 @@ function store() {
   return dataStore<AssistantAgent>(undefined, MODULE, COLLECTION, { idStrategy: "uuid" });
 }
 
-type CtxFields = "specialty" | "technologies" | "projectPaths" | "servers" | "projectIds" | "graphProjectIds" | "autoCapture" | "providerIds" | "agentMode" | "skills" | "roleId" | "teamId" | "parentAgentId" | "connections" | "canSpawnChats" | "multiAgentCount" | "realtime" | "templateId" | "templateNodeKey" | "credential" | "snippetCategory" | "snippetTags";
+type CtxFields = "knowledge" | "specialty" | "technologies" | "projectPaths" | "servers" | "projectIds" | "graphProjectIds" | "autoCapture" | "providerIds" | "agentMode" | "skills" | "roleId" | "teamId" | "parentAgentId" | "connections" | "canSpawnChats" | "multiAgentCount" | "realtime" | "templateId" | "templateNodeKey" | "credential" | "snippetCategory" | "snippetTags";
 
 /** Clamp the multi-agent copy count to a sane range (2–8); default 3. */
 function sanitizeMultiCount(v: unknown): number {
@@ -104,8 +106,9 @@ export const agentsRepository = {
     return doc ? stripLegacy({ ...doc, id: doc.id ?? id }) : null;
   },
 
-  async create(data: CreateInput): Promise<AssistantAgent> {
-    return store().create({
+  async create(data: CreateInput, internal?: { id: string; assignments: AgentProjectAssignment[] }): Promise<AssistantAgent> {
+    const clean: AssistantAgent = {
+        knowledge: (data.knowledge ?? "").slice(0, 12000),
         specialty: (data.specialty ?? "").trim().slice(0, 200),
         technologies: sanitizeTechnologies(data.technologies),
         name: (data.name || "").slice(0, 120) || "Agente",
@@ -143,11 +146,16 @@ export const agentsRepository = {
         ...(sanitizeAgentRef(data.templateId) ? { templateId: sanitizeAgentRef(data.templateId)! } : {}),
         ...(sanitizeAgentRef(data.templateNodeKey) ? { templateNodeKey: sanitizeAgentRef(data.templateNodeKey)! } : {}),
         ownerId: getContextUserId() ?? null,
-      });
+      };
+    const now = new Date().toISOString();
+    return store().create({ ...clean, ...(internal ? { id: internal.id } : {}), profileSchemaVersion: 1,
+      assignments: internal?.assignments ?? (clean.projectIds ?? []).map(projectId => ({ projectId, status: "active", privateConfig: privateAgentConfig(clean), parentAgentId: clean.parentAgentId ?? null, revision: 1, createdAt: now, updatedAt: now })),
+    });
   },
 
   async update(id: string, patch: UpdateInput, links?: { assignments: AgentProjectAssignment[]; projectIds: string[] }): Promise<AssistantAgent | null> {
     const clean: Partial<AssistantAgent> = {};
+    if (patch.knowledge !== undefined) clean.knowledge = patch.knowledge.slice(0, 12000);
     if (patch.specialty !== undefined) clean.specialty = patch.specialty.trim().slice(0, 200);
     if (patch.technologies !== undefined) clean.technologies = sanitizeTechnologies(patch.technologies);
     if (patch.name !== undefined) clean.name = patch.name.slice(0, 120);
@@ -190,7 +198,21 @@ export const agentsRepository = {
     }
     if (patch.templateId !== undefined) clean.templateId = sanitizeAgentRef(patch.templateId) ?? "";
     if (patch.templateNodeKey !== undefined) clean.templateNodeKey = sanitizeAgentRef(patch.templateNodeKey) ?? "";
+    const prior = await this.get(id);
+    const assignments = links?.assignments ?? prior?.assignments;
+    const active = assignments?.filter(a => a.status === "active") ?? [];
     if (links) Object.assign(clean, links);
+    if (prior && active.length === 1) clean.assignments = assignments!.map(a => {
+      if (a !== active[0]) return a;
+      const previous = { ...privateAgentConfig(prior), ...a.privateConfig };
+      const next = { ...a, privateConfig: { ...previous, ...privateAgentConfig(clean as AssistantAgent) },
+        revision: (a.revision ?? 1) + 1, updatedAt: new Date().toISOString() };
+      for (const key of ["parentAgentId", "connections", "roleId", "allowedTools", "canSpawnChats", "projectPaths", "graphProjectIds"] as const) {
+        if (clean[key] !== undefined && JSON.stringify(clean[key]) !== JSON.stringify(previous[key])) Object.assign(next, { [key]: clean[key] });
+      }
+      if (clean.servers !== undefined && JSON.stringify(clean.servers) !== JSON.stringify(previous.servers)) next.serverIds = clean.servers.map(s => s.id);
+      return next;
+    });
     return store().update(id, clean) as Promise<AssistantAgent | null>;
   },
 
@@ -201,6 +223,19 @@ export const agentsRepository = {
   /** Internal only: service authorizes and serializes before this atomic profile update. */
   async setAssignments(id: string, assignments: AgentProjectAssignment[], projectIds: string[]): Promise<AssistantAgent | null> {
     return store().update(id, { assignments, projectIds });
+  },
+
+  /** Called under the assignment lock after authorization and idle checks. */
+  async migratePrivate(agent: AssistantAgent): Promise<AssistantAgent> {
+    if (agent.profileSchemaVersion === 1) return agent;
+    const backups = dataStore<AssistantAgent>(undefined, MODULE, "agent-profile-migration-backups", { idStrategy: "uuid" });
+    if (!await backups.get(agent.id!)) await backups.set(agent.id!, agent);
+    const assignments = agentAssignments(agent).map(({ source, ...a }) => ({ ...a,
+      privateConfig: a.privateConfig ?? { ...privateAgentConfig(agent), teamId: source === "legacy" ? agent.teamId ?? null : null },
+      revision: a.revision ?? 1,
+      ...(a.parentAgentId === undefined && source === "legacy" ? { parentAgentId: agent.parentAgentId ?? null } : {}),
+    }));
+    return (await store().update(agent.id!, { assignments, profileSchemaVersion: 1 }))!;
   },
 
   async delete(id: string): Promise<boolean> {

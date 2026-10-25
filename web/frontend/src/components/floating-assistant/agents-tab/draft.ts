@@ -17,6 +17,7 @@ export interface DraftAgent {
   id?: string;
   name: string;
   description: string;
+  knowledge: string;
   specialty: string;
   technologies: string;
   systemPrompt: string;
@@ -58,6 +59,7 @@ export function emptyDraft(): DraftAgent {
   return {
     name: "",
     description: "",
+    knowledge: "",
     specialty: "",
     technologies: "",
     systemPrompt: "",
@@ -96,6 +98,7 @@ export function toDraft(a: AssistantAgent): DraftAgent {
     id: a.id,
     name: a.name,
     description: a.description,
+    knowledge: a.knowledge ?? "",
     specialty: a.specialty ?? "",
     technologies: (a.technologies ?? []).join(", "),
     systemPrompt: a.systemPrompt,
@@ -135,6 +138,7 @@ export function toPayload(d: DraftAgent): AgentPayload {
   return {
     name: d.name.trim(),
     description: d.description.trim(),
+    knowledge: d.knowledge,
     specialty: d.specialty.trim(),
     technologies: [...new Set(d.technologies.split(",").map(tag => tag.trim()).filter(Boolean))],
     systemPrompt: d.systemPrompt,

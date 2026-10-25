@@ -18,6 +18,8 @@ Real-time system metrics, SSE stream, and configurable alert rules.
 | GET | `/api/monitor/alerts/events` | Required | Alert event history (fired/resolved) |
 | GET | `/api/monitor/watchdog` | Required | Auto-reboot watchdog: stored config + live unit status |
 | PUT | `/api/monitor/watchdog` | Required + CSRF (admin) | Save thresholds and install/disable the on-box watchdog |
+| GET | `/api/monitor/assistant-admission` | Required | Read the connected server's RAM admission threshold for new AI agents |
+| PUT | `/api/monitor/assistant-admission` | Required + CSRF (admin) | Set that threshold to an integer from 50 to 90 (default 85) |
 
 ## Resource watchdog (auto-reboot)
 

@@ -1,3 +1,4 @@
+import { profilesApi } from "../agent-profiles/api";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
 import { AgentRequestError } from "../assistant-api/agents";
@@ -47,6 +48,8 @@ import type { ProjectAgentScope } from "../project-modal/agent-scope";
 
 export type AgentsTabProps = {
   editorOnly?: boolean;
+  privateProjectId?: string;
+  privateRevision?: number;
   initialAgent?: AssistantAgent;
   onEditorDone?: () => void;
   projectScope?: ProjectAgentScope;
@@ -59,7 +62,7 @@ export type AgentsTabProps = {
   initialEditAgentId?: string | null;
 };
 
-export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, initialAgent }: AgentsTabProps) {
+export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, initialAgent, privateProjectId, privateRevision }: AgentsTabProps) {
   const initialScope = useRef(profileCreationScope());
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -171,7 +174,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
     setLoading(true);
     try {
       const [ags, rls, tms] = await Promise.all([
-        assistantAgentsApi.list(projectScope ? { projectId: projectScope.project.id } : {}),
+        assistantAgentsApi.list(privateProjectId ? { projectId: privateProjectId } : projectScope ? { projectId: projectScope.project.id } : {}),
         assistantAgentRolesApi.list().catch(() => [] as AssistantAgentRole[]),
         assistantAgentTeamsApi.list().catch(() => [] as AgentTeam[]),
       ]);
@@ -367,12 +370,17 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
         return;
       }
       const payload = toPayload(draft);
-      if (editorOnly) { delete payload.projectIds; delete payload.teamId; }
+      if (editorOnly && !privateProjectId) { delete payload.projectIds; delete payload.teamId; }
       if (projectScope && !draft.id) {
         payload.projectIds = [...new Set([projectScope.project.id, ...(payload.projectIds ?? [])])];
       }
-      if (draft.id) await assistantAgentsApi.update(draft.id, payload);
+      if (draft.id && (privateProjectId || projectScope)) {
+        const pid = privateProjectId ?? projectScope!.project.id;
+        const rev = privateRevision ?? agents.find(a => a.id === draft.id)?.context?.effectiveAssignment?.revision ?? 1;
+        await profilesApi.privateSave(draft.id, pid, rev, payload);
+      } else if (draft.id) await assistantAgentsApi.update(draft.id, payload);
       else {
+        if (privateProjectId) payload.projectIds = [privateProjectId];
         markUnconfirmedCreation(key, true);
         await assistantAgentsApi.create(payload);
         markUnconfirmedCreation(key, false);
@@ -566,7 +574,7 @@ export function useAgentsTab({ onLaunchAgent, locale, initialEditAgentId, projec
   useEffect(() => () => setHeaderOverride?.(null), [setHeaderOverride]);
 
   return {
-    onLaunchAgent, locale, initialEditAgentId, projectScope, editorOnly, onEditorDone, newAgent, t, _i18n,
+    onLaunchAgent, locale, initialEditAgentId, projectScope, privateProjectId, editorOnly, onEditorDone, newAgent, t, _i18n,
     agents, setAgents, loading, setLoading, error, setError, draft, setDraft,
     editorTab, setEditorTab, saving, setSaving, creationReady, creationUncertain, recoverProfile, modules, setModules,
     suggesting, setSuggesting, suggestArchetype, setSuggestArchetype,

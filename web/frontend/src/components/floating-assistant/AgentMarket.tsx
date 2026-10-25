@@ -1,3 +1,6 @@
+import { GlobalProfiles } from "./agent-profiles/GlobalProfiles";
+import { profileCopy } from "./agent-profiles/copy";
+import { ProfileUpdate } from "./agent-profiles/ProfileUpdate";
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Search, Store, RefreshCw } from "lucide-react";
@@ -24,7 +27,16 @@ export function AgentMarket(props: { projectId?: string; initialEditAgentId?: st
     resetEvents.forEach(event => window.addEventListener(event, reset));
     return () => resetEvents.forEach(event => window.removeEventListener(event, reset));
   }, []);
-  return <MarketContent key={`${scopeKey()}:${epoch}:${props.projectId ?? ""}`} {...props} projectId={epoch ? undefined : props.projectId} initialEditAgentId={epoch ? undefined : props.initialEditAgentId} />;
+  return <ProfileWorkspace key={`${scopeKey()}:${epoch}:${props.projectId ?? ""}`} {...props} projectId={epoch ? undefined : props.projectId} initialEditAgentId={epoch ? undefined : props.initialEditAgentId} />;
+}
+
+function ProfileWorkspace(props: Parameters<typeof AgentMarket>[0]) {
+  const t = profileCopy(props.locale);
+  const [tab, setTab] = useState<"project" | "bazaar" | "mine">(props.projectId || props.initialEditAgentId ? "project" : "bazaar");
+  return <div className="flex min-h-0 flex-1 flex-col"><nav className="flex flex-wrap gap-2 border-b border-border p-3" aria-label={t.bazaar}>
+    {(["bazaar", "mine", "project"] as const).map(key => <button key={key} className={marketControl} aria-pressed={tab === key} onClick={() => setTab(key)}>{t[key]}</button>)}
+    {props.onBack && <button className={`${marketControl} ms-auto`} onClick={props.onBack}><ArrowLeft size={16} aria-label={t.cancel} /></button>}
+  </nav>{tab === "project" ? <MarketContent {...props} /> : <GlobalProfiles key={tab} mode={tab} locale={props.locale} projectId={props.projectId} />}</div>;
 }
 
 function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parameters<typeof AgentMarket>[0]) {
@@ -99,11 +111,11 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
     } finally { busy.current = false; if (current()) setPending(null); }
   }
   const visible = filterMarket(agents, projectView ? { ...filters, assignment: source === "project" ? "assigned" : "unassigned" } : filters, selected);
-  const viewTitle = projectView ? (source === "project" ? t.projectAgents : t.marketAgents) : t.title;
+  const viewTitle = profileCopy(locale).project;
   const projectTitle = (id: string) => projects.find(project => project.id === id)?.title ?? t.project;
   return <section aria-label={viewTitle} aria-busy={loading || !!pending} className={`flex min-h-0 flex-1 flex-col overflow-y-auto text-foreground ${projectView ? "" : "p-4 sm:p-6"}`}>
     {!projectView && <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="flex items-center gap-2 text-xl font-semibold"><Store size={22} aria-hidden />{t.title}</h2><p className="mt-1 text-sm text-muted-foreground">{t.description}</p></div>
+      <div><h2 className="flex items-center gap-2 text-xl font-semibold"><Store size={22} aria-hidden />{profileCopy(locale).project}</h2><p className="mt-1 text-sm text-muted-foreground">{profileCopy(locale).privateHint}</p></div>
       {onBack && <button type="button" className={marketControl} onClick={onBack}><ArrowLeft className="me-2 inline" size={16} aria-hidden />{t.back}</button>}
     </header>}
     <div data-agent-filters className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
@@ -112,7 +124,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
         <input type="search" aria-label={t.search} title={t.search} placeholder={t.search} value={filters.query} onChange={event => setFilters({ ...filters, query: event.target.value })} className={`${marketControl} w-full ps-10`} />
       </div>
       {projectView ? <select aria-label={t.agentSource} className={`${marketControl} w-44 shrink-0`} value={source} disabled={!!pending} onChange={event => { setSource(event.target.value as "project" | "market"); setEditor(null); setNotice(""); }}>
-        <option value="project">{t.projectAgents}</option><option value="market">{t.marketAgents}</option>
+        <option value="project">{t.projectAgents}</option><option value="market">{profileCopy(locale).otherPrivate}</option>
       </select> : <select aria-label={t.project} className={`${marketControl} w-44 shrink-0`} value={selected} disabled={!!pending} onChange={event => { setSelected(event.target.value); setEditor(null); setNotice(""); setAgents([]); }}>
         <option value="">{t.chooseProject}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.parentId ? `${projectTitle(project.parentId)} / ` : ""}{project.title}</option>)}
       </select>}
@@ -125,7 +137,7 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
       {!projectView && <select aria-label={t.allAssignments} className={`${marketControl} w-44 shrink-0`} disabled={!selected} value={filters.assignment} onChange={event => setFilters({ ...filters, assignment: event.target.value })}>
         <option value="">{t.allAssignments}</option><option value="assigned">{t.assigned}</option><option value="unassigned">{t.unassigned}</option>
       </select>}
-      <button type="button" className={`${marketControl} shrink-0 whitespace-nowrap`} disabled={!!pending || loading} onClick={() => setProfile("new")}>{t.newProfile}</button>
+      <button type="button" className={`${marketControl} shrink-0 whitespace-nowrap`} disabled={!!pending || loading || !selected} onClick={() => setProfile("new")}>{profileCopy(locale).createPrivate}</button>
     </div>
     {!selected && <p className="mb-4 text-sm text-muted-foreground">{t.chooseProject}</p>}
     {error && <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-destructive p-3 text-sm"><p>{error}</p><button className={marketControl} disabled={!!pending} onClick={() => void reload()}><RefreshCw size={16} className="me-2 inline" aria-hidden />{t.retry}</button></div>}
@@ -143,7 +155,8 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
             {context && agent.capabilities?.canAssign && <button className={marketControl} disabled={!!pending || !!error} onClick={() => assigned ? setEditor(agent) : void mutate(agent, "add")}>{assigned ? t.configure : t.add}</button>}
             {selected && agent.capabilities?.canUpdateAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => setEditor(agent)}>{t.configure}</button>}
             {selected && agent.capabilities?.canRemoveAssignment && <button className={marketControl} disabled={!!pending || !!error} onClick={() => void mutate(agent, "remove")}>{t.remove}</button>}
-            {agent.capabilities?.canEditProfile ? <button className={marketControl} disabled={!!pending || !!error} onClick={() => setProfile(agent.id)}>{t.editProfile}</button> : <span className="self-center text-sm text-muted-foreground">{t.readOnly}</span>}
+            {selected && context?.effectiveAssignment?.sourceProfile && <ProfileUpdate agentId={agent.id} projectId={selected} locale={locale} onUpdated={() => void reload()} />}
+            {agent.capabilities?.canEditProfile ? <button className={marketControl} disabled={!!pending || !!error} onClick={() => setProfile(agent.id)}>{profileCopy(locale).editPrivate}</button> : <span className="self-center text-sm text-muted-foreground">{t.readOnly}</span>}
           </div>
         </article>;
       })}
@@ -152,6 +165,6 @@ function MarketContent({ projectId, initialEditAgentId, locale, onBack }: Parame
       {error && <div role="alert" className="flex flex-wrap items-center gap-2 px-4 pt-4 text-sm text-destructive"><p>{error}</p><button type="button" className={marketControl} disabled={!!pending} onClick={() => { setEditor(null); void reload(); }}>{t.retry}</button></div>}
       <AgentAssignmentEditor agent={editor} agents={agents} projects={projects} roles={roles} pending={!!pending} blocked={!!error} onSave={data => void mutate(editor, editor.capabilities?.canUpdateAssignment ? "configure" : "add", data)} />
     </ModalShell>}
-    {profile && <AgentProfileDialog agentId={profile === "new" ? undefined : profile} locale={locale} onClose={() => setProfile(null)} onSaved={() => void reload()} />}
+    {profile && <AgentProfileDialog agentId={profile === "new" ? undefined : profile} projectId={selected || undefined} locale={locale} onClose={() => setProfile(null)} onSaved={() => void reload()} />}
   </section>;
 }
