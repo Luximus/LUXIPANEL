@@ -397,7 +397,11 @@ try {
   send({ method: 'initialized', params: {} });
   const mode = config.approvalMode;
   const policy = mode === 'manual' ? 'on-request' : 'never';
-  const sandbox = mode === 'auto' ? 'danger-full-access' : 'read-only';
+  // Plan approval grants automatic execution of the planned source edits, while
+  // a repo-bound Luxisoft run remains in Codex's workspace sandbox. Other auto
+  // sessions retain their established full-access behavior.
+  const workspaceWriteOnly = config.workspaceWriteOnly === true;
+  const sandbox = mode === 'auto' && !workspaceWriteOnly ? 'danger-full-access' : mode === 'plan' ? 'read-only' : 'workspace-write';
   startup(config.resume ? 'resuming' : 'creating');
   const session = config.resume
     ? await rpc('thread/resume', { threadId: config.sessionId, cwd: config.cwd, config: config.projectConfig ?? {}, approvalPolicy: policy, sandbox })
@@ -409,9 +413,11 @@ try {
   const collaborationMode = { mode: mode === 'plan' ? 'plan' : 'default', settings: {
     model, reasoning_effort: config.effort || (mode === 'plan' ? 'medium' : null), developer_instructions: null,
   } };
-  const sandboxPolicy = mode === 'auto'
+  const sandboxPolicy = mode === 'auto' && !workspaceWriteOnly
     ? { type: 'dangerFullAccess' }
-    : { type: 'readOnly', networkAccess: false };
+    : mode === 'plan'
+      ? { type: 'readOnly', networkAccess: false }
+      : { type: 'workspaceWrite', networkAccess: false };
   startup('submitting');
   turnTemplate = {
     threadId, input: [{ type: 'text', text: prompt }], collaborationMode,

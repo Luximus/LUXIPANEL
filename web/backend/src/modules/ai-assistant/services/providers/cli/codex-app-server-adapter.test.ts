@@ -18,6 +18,7 @@ interface FakeOptions {
   plan?: boolean;
   recoveryApproval?: boolean;
   recoveryTool?: boolean;
+  workspaceWriteOnly?: boolean;
 }
 function runAdapter(finalAnswer: string, effort?: string, options: FakeOptions = {}): { status: number; events: Array<Record<string, unknown>>; calls: any[] } {
   const dir = mkdtempSync(join(tmpdir(), "lxp-codex-final-"));
@@ -61,7 +62,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const promptFile = join(dir, "prompt.txt");
   const configFile = join(dir, "config.json");
   writeFileSync(promptFile, "Verificar despliegue");
-  writeFileSync(configFile, JSON.stringify({ promptFile, approvalDir: dir, approvalMode: options.plan ? "plan" : "auto", resume: false, cwd: dir, model: "gpt-6-astra", effort, speed: options.speed }));
+  writeFileSync(configFile, JSON.stringify({ promptFile, approvalDir: dir, approvalMode: options.plan ? "plan" : "auto", resume: false, cwd: dir, model: "gpt-6-astra", effort, speed: options.speed, workspaceWriteOnly: options.workspaceWriteOnly }));
   const callsFile = join(dir, "calls.jsonl");
   const adapter = new URL("./codex-app-server-adapter.mjs", import.meta.url).pathname;
   let status = 0;
@@ -81,6 +82,16 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 }
 
 describe("Codex app-server final answer", () => {
+  it("keeps approved automatic edits in the selected workspace when requested", () => {
+    const { status, calls } = runAdapter("Cambios guardados.", undefined, { workspaceWriteOnly: true });
+    expect(status).toBe(0);
+    expect(calls.find(call => call.method === "thread/start")?.params).toMatchObject({ sandbox: "workspace-write", approvalPolicy: "never" });
+    expect(calls.find(call => call.method === "turn/start")?.params).toMatchObject({
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+    });
+  });
+
   it("sends Astra with exact max reasoning to the native Codex turn", () => {
     const { status, events } = runAdapter("Verificado.", "max");
     expect(status).toBe(0);

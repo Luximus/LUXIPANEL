@@ -143,6 +143,8 @@ export interface ProviderRunOptions {
    * Omitted → defaults to "manual" inside the bridge.
    */
   approvalMode?: "auto" | "manual" | "plan";
+  /** Keep approved automatic code edits inside the selected repository workspace. */
+  workspaceWriteOnly?: boolean;
   /**
    * Reasoning effort chosen by the auto-router for this run. Each provider maps
    * it to its own wire param ONLY when its current model supports it (Anthropic

@@ -52,6 +52,24 @@ vi.mock("./agent-messages.service.js", () => ({
   buildSendMessageToolForConversation: (args: unknown) => mockBuildMessages(args),
 }));
 
+const mockProjectChatScope = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<any> => null));
+const mockBuildProjectChatTools = vi.hoisted(() => vi.fn((..._args: unknown[]) => [] as any[]));
+vi.mock("./project-chats.service.js", () => ({
+  PROJECT_CHAT_LIST_TOOL: "project.chats.list",
+  PROJECT_CHAT_READ_TOOL: "project.chats.read",
+  activeProjectChatScope: (...args: unknown[]) => mockProjectChatScope(...args),
+  buildProjectChatTools: (...args: unknown[]) => mockBuildProjectChatTools(...args),
+}));
+
+const mockBuildLuxisoftChatTools = vi.hoisted(() => vi.fn((..._args: unknown[]) => [] as any[]));
+const mockIsLuxisoftWorkspacePath = vi.hoisted(() => vi.fn((value: string) => value === "/var/www/luxisoft"));
+vi.mock("./luxisoft-chat-history.service.js", () => ({
+  LUXISOFT_CHAT_LIST_TOOL: "luxisoft.chats.list",
+  LUXISOFT_CHAT_READ_TOOL: "luxisoft.chats.read",
+  isLuxisoftWorkspacePath: (value: string) => mockIsLuxisoftWorkspacePath(value),
+  buildLuxisoftChatTools: (...args: unknown[]) => mockBuildLuxisoftChatTools(...args),
+}));
+
 import { mcpServerService as rawMcpServerService } from "./mcp-server.service.js";
 
 const mcpServerService = {
@@ -128,6 +146,10 @@ function registerPreviewCap(ownerUserId: string): void {
 describe("mcpServerService", () => {
   beforeEach(() => {
     mockBuildMessages.mockReset().mockResolvedValue(null);
+    mockProjectChatScope.mockReset().mockResolvedValue(null);
+    mockBuildProjectChatTools.mockReset().mockReturnValue([]);
+    mockBuildLuxisoftChatTools.mockReset().mockReturnValue([]);
+    mockIsLuxisoftWorkspacePath.mockReset().mockImplementation(value => value === "/var/www/luxisoft");
     agentCapabilityRegistry._resetForTest();
     communityPreviewRegistry._resetForTest();
     agentCapabilityRegistry.register(mkCap());
@@ -181,6 +203,55 @@ describe("mcpServerService", () => {
     );
     const result = r?.result as { tools: Array<{ name: string }> };
     expect(result.tools.map((t) => t.name)).toEqual(["ping__echo"]);
+  });
+
+  it("advertises project chat history as read-only so Codex does not request approval", async () => {
+    mockProjectChatScope.mockResolvedValue({ projectId: "luxisoft", conversationId: "current-chat" });
+    mockBuildProjectChatTools.mockReturnValue([
+      { name: "project.chats.list", description: "List project chats", inputSchema: { type: "object", properties: {}, required: [] } },
+      { name: "project.chats.read", description: "Read a project chat", inputSchema: { type: "object", properties: { conversationId: { type: "string" } }, required: ["conversationId"] } },
+    ]);
+    const channel = { ...ctx, user: mkUser(1), toolNamePrefix: "servers.", permissionConversationId: "current-chat" };
+    const r = await mcpServerService.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" }, channel);
+    const tools = (r?.result as { tools: Array<{ name: string; annotations?: object }> }).tools;
+    for (const name of ["project__chats__list", "project__chats__read"]) {
+      expect(tools.find(tool => tool.name === name)?.annotations).toEqual({
+        readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true,
+      });
+    }
+  });
+
+  it("advertises Luxisoft product chat tools only inside its local workspace", async () => {
+    mockProjectChatScope.mockResolvedValue({ projectId: "luxisoft", conversationId: "current-chat", projectPath: "/var/www/luxisoft", projectOwnerId: 1 });
+    mockBuildLuxisoftChatTools.mockReturnValue([
+      { name: "luxisoft.chats.list", description: "List Luxisoft chats", inputSchema: { type: "object", properties: {}, required: [] } },
+      { name: "luxisoft.chats.read", description: "Read a Luxisoft chat", inputSchema: { type: "object", properties: { conversationId: { type: "string" } }, required: ["conversationId"] } },
+    ]);
+    const channel = { ...ctx, user: mkUser(1), toolNamePrefix: "servers.", permissionConversationId: "current-chat" };
+    const r = await mcpServerService.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" }, channel);
+    const tools = (r?.result as { tools: Array<{ name: string; annotations?: object }> }).tools;
+    for (const name of ["luxisoft__chats__list", "luxisoft__chats__read"]) {
+      expect(tools.find(tool => tool.name === name)?.annotations).toEqual({
+        readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
+      });
+    }
+    expect(mockBuildLuxisoftChatTools).toHaveBeenCalledWith({ projectPath: "/var/www/luxisoft", projectOwnerId: 1, userId: 1 });
+  });
+
+  it("dispatches Luxisoft chat reads through the local workspace scope", async () => {
+    mockProjectChatScope.mockResolvedValue({ projectId: "luxisoft", conversationId: "current-chat", projectPath: "/var/www/luxisoft", projectOwnerId: 1 });
+    const handler = vi.fn(async () => ({ ok: true, output: { chats: [{ id: "chat-1" }] } }));
+    mockBuildLuxisoftChatTools.mockReturnValue([
+      { name: "luxisoft.chats.list", description: "List Luxisoft chats", inputSchema: { type: "object", properties: {}, required: [] }, handler },
+    ]);
+    const channel = { ...ctx, user: mkUser(1), toolNamePrefix: "servers.", permissionConversationId: "current-chat" };
+    const r = await mcpServerService.handle({
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "luxisoft__chats__list", arguments: { projectUrl: "https://luxisoft.com/?project=project-id", ownerEmail: "owner@example.com" } },
+    }, channel);
+    expect(handler).toHaveBeenCalledWith({ projectUrl: "https://luxisoft.com/?project=project-id", ownerEmail: "owner@example.com" });
+    expect((r?.result as any).content[0].text).toContain("chat-1");
+    expect((r?.result as any).isError).toBe(false);
   });
 
   it("tools/call invokes handler by wire name and returns text content", async () => {

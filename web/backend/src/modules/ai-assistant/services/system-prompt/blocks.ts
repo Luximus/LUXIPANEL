@@ -113,6 +113,7 @@ Reglas:
 - Las herramientas se ejecutan SIEMPRE sobre el servidor target conectado, no sobre el host del panel.
 - Si falla una conexión, explica en lenguaje sencillo qué servidor no responde, qué tarea quedó pendiente y qué se puede comprobar. Un timeout significa que no respondió a tiempo: no confirma que esté apagado, que falten permisos del proyecto o que haya que habilitar MCP. Distingue falta de respuesta, conexión rechazada, credenciales rechazadas y permisos insuficientes según la evidencia. No atribuyas el fallo a disco, memoria o firewall sin comprobarlo. Usa el mensaje y el siguiente paso del error estructurado; evita mostrar códigos internos o errores crudos en inglés salvo que pidan detalle. Si operationStatus es not_started, indica que la operación no llegó a iniciarse; si es unconfirmed, explica que no pudiste confirmar el resultado y verifica su estado antes de repetir una acción que pueda aplicar cambios. No des un despliegue por terminado sin verificarlo. Ejemplo: «FRONTEND no responde en este momento. No pude iniciar el despliegue. Hay que recuperar la conexión y volver a intentarlo».
 - SÍ puedes ejecutar builds de despliegue (\`npm run build\`, \`pnpm build\`, \`astro build\`) y gestión de procesos (\`pm2 restart|reload\`, \`systemctl restart\`) cuando la tarea lo requiera — tanto en el servidor conectado como en los servidores remotos asociados (vía \`servers.exec\`). Trampas OBLIGATORIAS al hacerlo: (1) UN solo build a la vez por máquina (dos simultáneos agotan la RAM y pueden tumbar el host); (2) en frontends Astro compila LIMPIO: \`rm -rf dist\` previo y \`NODE_OPTIONS=--max-old-space-size=2560\` (sin el heap extra la build muere por OOM); (3) si cambió un \`.env\` bajo pm2, reinicia RE-EVALUANDO el ecosystem (\`pm2 restart <ruta al ecosystem.config> --only <app> --update-env\` — un restart simple usa la config cacheada y el cambio NO aplica); (4) tras todo build va SIEMPRE su \`pm2 restart\`, y tras todo restart verifica que el proceso quede \`online\` y el servicio responda ANTES de reportar éxito; (5) para builds vía \`servers.exec\` pasa un \`timeoutMs\` generoso (300000-600000 — el default de 120s corta un build largo a medias). Si el usuario pide explícitamente no compilar/reiniciar, respétalo y deja los comandos indicados.
+- Para builds o despliegues con shell directo, toma antes el bloqueo compartido \`/run/lock/luxipanel-assistant-build.lock\` con \`flock -x -w 60\` durante toda la operación. \`admin.bash\` y \`servers.exec\` reservan ese turno automáticamente.
 - Tu respuesta FINAL (la que ve el usuario en el chat) debe ser SIEMPRE simple y resumida: un solo párrafo de como máximo 250 caracteres, en lenguaje claro, que digan qué hiciste o encontraste y el resultado. Resume el resultado y lo pendiente en ese mismo párrafo, sin listas ni saltos de línea. NO incluyas desgloses técnicos largos, listas exhaustivas de archivos/pasos/comandos, fragmentos de código, ni secciones tipo "Causa raíz / Solución / Verificado" salvo que el usuario lo pida explícitamente. El detalle del proceso se consulta aparte; no lo repitas. Si se pide expresamente un documento, código o un plan completo para aprobar, conserva ese contenido íntegro y empieza con un resumen breve. Entre agentes usa TOON obligatorio: kind=request|progress|result|blocked|question, summary de un párrafo (≤240 caracteres), data con solo instrucciones o hechos nuevos y refs como lista. Cada envío, incluidas las notas compartidas, admite como máximo 2000 caracteres; no copies informes ni antecedentes. Guarda la evidencia extensa y referencia dónde leerla; nunca omitas restricciones para cumplir el límite. Esto no cambia los permisos ni confirma resultados pendientes.`;
 
 /**
@@ -146,6 +147,15 @@ export function capText(text: string, max: number): string {
   return `${text.slice(0, head)}\n…[recortado ${text.length - max} caracteres]…\n${text.slice(-tail)}`;
 }
 
+export function buildProjectWorkspaceBlock(input: { path: string; status: string }): string {
+  return "## Workspace de código del proyecto activo\n" +
+    `Ruta asignada: ${input.path}\n` +
+    `Comprobación del servidor: ${input.status}\n` +
+    "Edita el código directamente en esta ruta usando las herramientas de archivos o terminal disponibles. " +
+    "Un enlace web que pida inicio de sesión o una herramienta de historial que no aplique no significa que falte el workspace. " +
+    "Solo informa que no puedes acceder si una herramienta devuelve un error concreto sobre esta ruta; cita ese motivo con claridad.";
+}
+
 /**
  * Bloque CLI del system prompt (puro, testeable). `sudoAvailable` refleja la
  * detección real del askpass (misma que `setupSudoAskpass`): con credencial se
@@ -162,9 +172,12 @@ export function buildCliModeBlock(opts: { sudoAvailable: boolean }): string {
       "permisos del usuario actual y, si algo requiere privilegios, decláralo explícitamente como «no verificable sin sudo» " +
       "en tu respuesta final en lugar de reintentar.";
   return (
-    "MODO CLI ACTIVO: las operaciones de módulos del panel se gestionan mediante el canal protegido de tools " +
-    "que se adjunta a este run. Descubre módulos y operaciones antes de ejecutarlas. Si el canal no está disponible, " +
-    "informa de esa limitación. Las confirmaciones y permisos del panel siguen vigentes.\n" +
+    "MODO CLI ACTIVO: las herramientas `modules.*` administran módulos instalados de LUXIPANEL y no dan acceso a código fuente. " +
+    "Las herramientas `project.chats.list/read` consultan solo conversaciones internas de LUXIPANEL del mismo proyecto. " +
+    "Si están disponibles `luxisoft.chats.list/read`, úsalas para leer el historial local de Luxisoft a partir del enlace y el correo indicados; " +
+    "son de solo lectura y no llaman a la web de Luxisoft. Nunca afirmes que falta el workspace por un inicio de sesión web o por el alcance " +
+    "de `project.chats.*`. Para cambios de código trabaja sobre los archivos de `cwd`, sin usar APIs del producto para editar código. " +
+    "Respeta el modo de aprobación seleccionado por el usuario; cuando la ejecución esté aprobada, usa el workspace directamente.\n" +
     sudoBlock +
     "\nFORMATO DE HERRAMIENTAS: nunca envíes parámetros opcionales vacíos — en `Read`, `pages: \"\"` es un error: " +
     "omite `pages` salvo que leas un PDF. En bash prefiere comandos simples y directos; evita anidar comillas " +

@@ -1,5 +1,6 @@
 import { projectStorageRoot } from "../project-storage.service.js";
 import { projectDocumentService } from "../project-document.service.js";
+import { isLuxisoftSourceRepositoryWorkspace } from "../luxisoft-code-workspace.service.js";
 import { resolveAgentContext, scopedAgents, intersectPaths, assignmentError } from "../agent-context.service.js";
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 LUXISOFT
@@ -50,6 +51,7 @@ import {
   buildCliModeBlock,
   buildGraphPromptBlock,
   buildAssociatedServersBlock,
+  buildProjectWorkspaceBlock,
   collectGraphProjects,
   collectSystemContext,
   capText,
@@ -209,6 +211,8 @@ export async function buildSystemPrompt(
   // non-empty: the file tools may only touch paths under these.
   const jailPaths: string[] = [];
   let projectStoragePath: string | undefined;
+  let projectWorkspaceStatus: string | undefined;
+  let luxisoftRepositoryWorkspace = false;
   if (cwdOverride && !context.projectId) {
     cwd = cwdOverride;
     jailPaths.push(cwdOverride);
@@ -226,6 +230,22 @@ export async function buildSystemPrompt(
     projectStoragePath = projectStorageRoot(project);
     jailPaths.push(...context.ancestors.map(projectStorageRoot));
     cwd = project.path && intersectPaths([project.path], scopedPaths).includes(project.path) ? project.path : scopedPaths[0];
+    luxisoftRepositoryWorkspace = provider.mode === "cli" && Boolean(cwd)
+      ? await isLuxisoftSourceRepositoryWorkspace(executor, cwd)
+      : false;
+    if (cwd && executor && typeof executor.stat === "function") {
+      try {
+        const workspace = await executor.stat(cwd);
+        if (!workspace.isDir || !workspace.isReadable) {
+          throw new Error("la ruta no es un directorio legible por el usuario del servidor");
+        }
+        projectWorkspaceStatus = `directorio legible${workspace.isWritable ? " y escribible" : " (sin permiso de escritura en la carpeta raíz)"}`;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message.slice(0, 240) : "error de acceso no identificado";
+        log.warn({ projectId, cwd, reason }, "Project workspace preflight failed");
+        throw assignmentError("ASSISTANT_WORKSPACE_UNAVAILABLE", `No se pudo acceder al directorio del proyecto ${cwd}: ${reason}`, 409);
+      }
+    }
     if (cwdOverride && !intersectPaths([cwdOverride], scopedPaths).includes(cwdOverride)) {
       throw assignmentError("ASSISTANT_PROJECT_FORBIDDEN", "El directorio solicitado está fuera del proyecto activo.", 403);
     }
@@ -239,6 +259,13 @@ export async function buildSystemPrompt(
     projectSkillsOverride = mergedSkills;
     systemPrompt += `\n\n## Contexto del proyecto "${project.title}"\n${capText(await projectDocumentService.prompt(executor ?? undefined, project), PROJECT_LEAF_INSTRUCTIONS_MAX)}`;
     if (project.profile) systemPrompt += "\nPerfil del proyecto: " + project.profile;
+    if (luxisoftRepositoryWorkspace) {
+      systemPrompt +=
+        "\n\n## Código fuente Luxisoft verificado\n" +
+        "El directorio activo es el checkout local del repositorio Luxisoft/LuxiSoft. " +
+        "Lee y modifica sus archivos directamente con Codex en `cwd`; el historial del producto se consulta con `luxisoft.chats.*`. " +
+        "No uses herramientas de módulos de LUXIPANEL ni APIs del producto para cambiar este código.";
+    }
     if (project.technologies?.length) systemPrompt += "\nTecnologías declaradas: " + project.technologies.join(", ");
     const children = context.contextProjects.filter(p => p.id !== projectId);
     if (children.length) systemPrompt += "\n\n## Subproyectos autorizados\n" + children.map(c => `- ${c.title}${c.path ? " · " + c.path : ""}`).join("\n");
@@ -325,6 +352,12 @@ export async function buildSystemPrompt(
     systemPrompt += "\n\n## Directorios de trabajo del agente\n" +
       [...new Set(jailPaths)].map(p => "- " + p).join("\n") +
       "\nRespeta estas rutas. Los controles del panel no constituyen aislamiento del sistema operativo del CLI.";
+  }
+  if (projectId && cwd) {
+    systemPrompt += "\n\n" + buildProjectWorkspaceBlock({
+      path: cwd,
+      status: projectWorkspaceStatus ?? "ruta asignada al CLI; verifica con sus herramientas de archivos antes de editar",
+    });
   }
   // Grafo de código — bloque en el prompt ESTABLE (determinista por proyecto/
   // agente + target: el probe está cacheado, así que el prefijo cacheable no
@@ -588,5 +621,6 @@ export async function buildSystemPrompt(
     jailPaths.splice(0,jailPaths.length,workspace,env.ASSISTANT_BROWSER_SHOT_DIR);
     systemPrompt+="\nLa única ruta editable de esta tarea es "+workspace+". Las rutas originales del proyecto son referencias de contexto: resuelve sus archivos dentro de esta copia. El envío a GitHub lo confirma el panel; no lo anuncies como terminado desde el agente.";
   }
-  return { systemPrompt, systemContext, tools, cwd, jailPaths, projectStoragePath, cliTeamLeader, ...(graphMcp ? { graphMcp } : {}) };
+  return { systemPrompt, systemContext, tools, cwd, jailPaths, projectStoragePath, cliTeamLeader,
+    ...(luxisoftRepositoryWorkspace ? { luxisoftRepositoryWorkspace: true } : {}), ...(graphMcp ? { graphMcp } : {}) };
 }

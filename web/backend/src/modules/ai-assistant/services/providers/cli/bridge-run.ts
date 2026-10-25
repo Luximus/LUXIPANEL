@@ -431,6 +431,7 @@ export function makeCliBridgeProvider(args: {
             await executor.writeFile(codexConfigFile, Buffer.from(JSON.stringify({
               promptFile, approvalDir, cwd, model: args.model, effort: opts.effort, speed: opts.speed,
               approvalMode, resume: attemptResume, sessionId,
+              workspaceWriteOnly: opts.workspaceWriteOnly === true,
               projectConfig: codexProjectOverrides(projectSettings.codex ?? {}),
             })), { mode: 0o600 });
             codexAdapterCleanup = `rm -rf ${quoteArg(codexAdapterFile)} ${quoteArg(codexConfigFile)} ${quoteArg(approvalDir)}`;

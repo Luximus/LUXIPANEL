@@ -33,6 +33,8 @@ import { permissionBroker } from "./permission-broker.js";
 import { agentRunRegistry } from "./agent-run-registry.js";
 import { agentService } from "./agent.service.js";
 import { buildTeamToolsForConversation } from "./team-tools.js";
+import { activeProjectChatScope, buildProjectChatTools, PROJECT_CHAT_LIST_TOOL, PROJECT_CHAT_READ_TOOL } from "./project-chats.service.js";
+import { buildLuxisoftChatTools, isLuxisoftWorkspacePath, LUXISOFT_CHAT_LIST_TOOL, LUXISOFT_CHAT_READ_TOOL } from "./luxisoft-chat-history.service.js";
 import { buildSendMessageToolForConversation, SEND_MESSAGE_TOOL, READ_MESSAGE_TOOL } from "./agent-messages.service.js";
 import { createModuleLogger } from "../../../shared/logger/index.js";
 import { MCP_INVALID_REQUEST, MCP_METHOD_NOT_FOUND } from "../../../shared/mcp/rpc-codes.js";
@@ -517,6 +519,34 @@ async function listTools(
       });
     }
     // send.state === "none" → nada (esta conversación no tiene agentes relacionados).
+
+    // Project chat history is available to every project conversation, not only
+    // to team leaders. Scope is read from this run's persisted conversation.
+    const chatScope = ctx.permissionConversationId
+      ? await activeProjectChatScope(ctx.executor, ctx.permissionConversationId).catch(() => null)
+      : null;
+    if (ctx.user && chatScope && ctx.permissionConversationId) {
+      for (const tool of buildProjectChatTools({ executor: ctx.executor, conversationId: ctx.permissionConversationId, projectId: chatScope.projectId })) {
+        tools.push({
+          name: toOpenAiName(tool.name), description: tool.description,
+          annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+          inputSchema: {
+            type: "object", properties: tool.inputSchema.properties ?? {}, required: tool.inputSchema.required ?? [],
+          } as object,
+        });
+      }
+      if (chatScope.projectOwnerId === ctx.user.userId) for (const tool of buildLuxisoftChatTools({
+        projectPath: chatScope.projectPath, projectOwnerId: chatScope.projectOwnerId, userId: ctx.user.userId,
+      })) {
+        tools.push({
+          name: toOpenAiName(tool.name), description: tool.description,
+          annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+          inputSchema: {
+            type: "object", properties: tool.inputSchema.properties ?? {}, required: tool.inputSchema.required ?? [],
+          } as object,
+        });
+      }
+    }
   }
   return { tools };
 }
@@ -539,6 +569,54 @@ async function callTool(
   // Resolved BEFORE the allowedTools gate since it governs permission itself.
   if (realName === PERMISSION_TOOL) {
     return handlePermissionRequest(ctx, args);
+  }
+  if ((realName === PROJECT_CHAT_LIST_TOOL || realName === PROJECT_CHAT_READ_TOOL) && ctx.toolNamePrefix === "servers.") {
+    const chatScope = ctx.permissionConversationId
+      ? await activeProjectChatScope(ctx.executor, ctx.permissionConversationId).catch(() => null)
+      : null;
+    if (!ctx.user || !ctx.permissionConversationId || !chatScope) {
+      return { content: [{ type: "text", text: "Esta conversación no está vinculada a un proyecto." }], isError: true };
+    }
+    const startedAt = Date.now();
+    try {
+      const tool = buildProjectChatTools({ executor: ctx.executor, conversationId: ctx.permissionConversationId, projectId: chatScope.projectId }).find(t => t.name === realName);
+      if (!tool) return { content: [{ type: "text", text: "Herramienta de chats no disponible." }], isError: true };
+      const result = await tool.handler(args);
+      const text = asText(result.output);
+      void assistantAuditRepository.append({
+        ts: new Date().toISOString(), provider: "mcp:cross", tool: realName,
+        success: result.ok, durationMs: Date.now() - startedAt, userId: ctx.userId,
+        outputPreview: text.slice(0, 200),
+      }, ctx.executor);
+      return { content: [{ type: "text", text }], isError: !result.ok };
+    } catch (err) {
+      return { content: [{ type: "text", text: (err as Error).message ?? "No se pudieron leer los chats del proyecto." }], isError: true };
+    }
+  }
+  if ((realName === LUXISOFT_CHAT_LIST_TOOL || realName === LUXISOFT_CHAT_READ_TOOL) && ctx.toolNamePrefix === "servers.") {
+    const chatScope = ctx.permissionConversationId
+      ? await activeProjectChatScope(ctx.executor, ctx.permissionConversationId).catch(() => null)
+      : null;
+    if (!ctx.user || !chatScope || chatScope.projectOwnerId !== ctx.user.userId || !isLuxisoftWorkspacePath(chatScope.projectPath)) {
+      return { content: [{ type: "text", text: "Esta conversación no está vinculada al workspace local de Luxisoft." }], isError: true };
+    }
+    const startedAt = Date.now();
+    try {
+      const tool = buildLuxisoftChatTools({
+        projectPath: chatScope.projectPath, projectOwnerId: chatScope.projectOwnerId, userId: ctx.user.userId,
+      }).find(t => t.name === realName);
+      if (!tool) return { content: [{ type: "text", text: "Herramienta de chats Luxisoft no disponible." }], isError: true };
+      const result = await tool.handler(args);
+      const text = asText(result.output);
+      void assistantAuditRepository.append({
+        ts: new Date().toISOString(), provider: "mcp:cross", tool: realName,
+        success: result.ok, durationMs: Date.now() - startedAt, userId: ctx.userId,
+        outputPreview: text.slice(0, 200),
+      }, ctx.executor);
+      return { content: [{ type: "text", text }], isError: !result.ok };
+    } catch (err) {
+      return { content: [{ type: "text", text: "No se pudo consultar el historial local de Luxisoft; el workspace sigue disponible." }], isError: true };
+    }
   }
   // Team toolkit (CLI leaders): channel-scoped, resolved per call from the
   // channel's conversation → its leader agent. NOT in the capability registry

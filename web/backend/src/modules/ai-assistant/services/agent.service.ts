@@ -8,6 +8,8 @@ import { assertCoreDeveloper, beginOwnerContribution, finishOwnerContribution, s
 import { modelAttachments, type ChatAttachment } from "../models/chat-attachment.js";
 import { redactModuleData } from "../../../shared/module-operations/redact.js";
 import { moduleDiscoveryTools, bindModuleToolRun } from "./module-tools.service.js";
+import { activeProjectChatScope, buildProjectChatTools } from "./project-chats.service.js";
+import { buildLuxisoftChatTools } from "./luxisoft-chat-history.service.js";
 import { mintModuleMcpToken } from "./mcp-run-tokens.js";
 import { agentCapabilityRegistry } from "../../../shared/agent-capability/registry.js";
 /**
@@ -394,16 +396,26 @@ export const agentService = {
       runAgent: (msgs, opts) => agentService.run(msgs, opts),
     });
     tools = built.tools;
+    if (provider.mode === "api" && runExecutor && conversationId && projectId) {
+      tools.push(...buildProjectChatTools({ executor: runExecutor, conversationId, projectId }));
+    }
+    if (provider.mode === "api" && runExecutor && built.cwd && conversationId && projectId && user) {
+      const chatScope = await activeProjectChatScope(runExecutor, conversationId).catch(() => null);
+      if (chatScope?.projectId === projectId) {
+        tools.push(...buildLuxisoftChatTools({ projectPath: built.cwd, projectOwnerId: chatScope.projectOwnerId, userId: user.userId }));
+      }
+    }
     if (options.toolAllowlist) tools = tools.filter((tool) => options.toolAllowlist!.includes(tool.name));
     const moduleScope = { executor: runExecutor, user, conversationId, agentId, projectId, signal, allowlists: moduleAllowlists };
-    tools = [...tools.filter(tool => !agentCapabilityRegistry.findTool(tool.name)), ...moduleDiscoveryTools(moduleScope)];
+    tools = [...tools.filter(tool => !agentCapabilityRegistry.findTool(tool.name)),
+      ...(built.luxisoftRepositoryWorkspace ? [] : moduleDiscoveryTools(moduleScope))];
     const { systemContext, cwd, jailPaths, cliTeamLeader } = built;
     if (cwd && runExecutor) await assertCoreDeveloper(user, cwd, runExecutor.target.id);
     const contributionRoot = await onWorkspaceResolved?.(cwd, effectiveApprovalMode);
     const contributionPrompt = contributionRoot
       ? `\n\nTrabaja sobre el proyecto original de LUXIPANEL en ${contributionRoot}, rama developer, sin crear copias temporales ni cambiar de rama. El panel guarda y publica automáticamente el aporte al terminar correctamente: no hagas commit ni push manuales durante este turno. El envío a GitHub lo confirma el panel; no lo anuncies como terminado desde el agente. Si cambias el producto, añade un archivo NUEVO docs/changes/AAAA-MM-DD-descripcion-breve.json dentro del proyecto, con {"title":"Título de la mejora","changes":["Qué mejora para el usuario y qué problema resuelve"]}. Consulta docs/changes/README.md si existe. Escribe de una a ocho frases verificadas y aptas para publicación; no incluyas conversaciones, datos privados, servidores, rutas internas, identificadores de tareas ni códigos de commits. Las tareas de solo lectura no requieren notas.`
       : "";
-    const systemPrompt = built.systemPrompt + contributionPrompt + "\n\nModule management: call modules.list, then modules.describe, then modules.read or modules.execute with the discovered revision and exact tool input. These tools enforce the module manager's current state and user permissions. Use these tools for panel module operations.";
+    const systemPrompt = built.systemPrompt + contributionPrompt + "\n\nLas herramientas `modules.*` administran exclusivamente módulos instalados en LUXIPANEL. Para código del proyecto activo usa los archivos de `cwd`; para chats de LUXIPANEL usa `project.chats.*`, y para chats del producto Luxisoft usa `luxisoft.chats.*` cuando estén disponibles.";
 
     log.info(
       {
@@ -491,7 +503,9 @@ export const agentService = {
           }
         : undefined;
 
-    const moduleToken = provider.mode === "cli" ? mintModuleMcpToken(user, conversationId) : undefined;
+    const moduleToken = provider.mode === "cli" && !built.luxisoftRepositoryWorkspace
+      ? mintModuleMcpToken(user, conversationId)
+      : undefined;
     const modulesMcp = moduleToken && crossChannelOrigin ? { url: `${crossChannelOrigin}/api/ai/mcp/modules`, token: moduleToken } : undefined;
     const baseRunOpts = {
       ...(built.projectStoragePath ? { projectStoragePath: built.projectStoragePath } : {}),
@@ -518,6 +532,7 @@ export const agentService = {
       // over the user's global `config.approval.mode` — background callers
       // must NOT inherit an interactive "auto".
       approvalMode: effectiveApprovalMode,
+      ...(built.luxisoftRepositoryWorkspace ? { workspaceWriteOnly: true } : {}),
       attachments: effectiveAttachments,
       conversationId,
       ...(crossServerMcp ? { crossServerMcp } : {}),

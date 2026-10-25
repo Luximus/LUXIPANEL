@@ -43,6 +43,8 @@ const envSchema = z.object({
   // DATABASE_URL/POOL/SSL are intentionally REMOVED. LUXIPANEL persists
   // everything as JSON sidecars on the connected server (see `kv-store` +
   // `LUXIPANEL_CONFIG_DIR`).
+  /** Local env file used only for read-only lookup of Luxisoft project chats. */
+  LUXISOFT_CHAT_DATABASE_ENV_FILE: z.string().default("/var/www/luxisoft/backend/.env"),
 
   // --- Redis ---
   REDIS_URL: z.string().default("redis://localhost:6379/0"),
