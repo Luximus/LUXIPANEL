@@ -180,9 +180,17 @@ export const orchestratorService = {
     const task = lastUserText(messages);
 
     // Fallback: one capable single run (used when decomposition isn't viable).
-    const modelRun = async function* (pid: AssistantProviderId, model: string, input: AgentMessage[], options: ProviderRunOptions) {
+    const modelRun = async function* (pid: AssistantProviderId, model: string, input: AgentMessage[], options: ProviderRunOptions): AsyncGenerator<AgentEvent> {
       const catalog = await providerModelCatalog(args.executor, config, pid);
-      const selected = resolveCatalogModel(model, catalog, pid).model ?? model;
+      if (catalog.status !== "verified" || !catalog.models.some((entry) => entry.available)) {
+        yield { type: "error", message: `No se pudo confirmar un modelo disponible para ${pid}.` };
+        return;
+      }
+      const selected = resolveCatalogModel(model, catalog, pid).model;
+      if (!selected) {
+        yield { type: "error", message: `No hay un modelo disponible para ${pid}.` };
+        return;
+      }
       yield* runWithProviderModelFallback({ config, executor: args.executor, providerId: pid, model: selected, catalog, messages: input, options, english: false });
     };
     const singleRun = (): AsyncGenerator<AgentEvent> => modelRun(providerId, modelFor(tier), messages, { ...baseOpts, effort: effortForTier(tier) });

@@ -321,7 +321,21 @@ export const agentService = {
     let modelCatalog: Awaited<ReturnType<typeof providerModelCatalog>> | undefined;
     if (selectedModel && executor) {
       modelCatalog = await providerModelCatalog(executor, config, effId);
+      if (modelCatalog.status !== "verified" || !modelCatalog.models.some((entry) => entry.available)) {
+        yield {
+          type: "error",
+          message: `No se pudo confirmar un modelo disponible para ${effId}. Actualiza la disponibilidad del proveedor antes de iniciar el chat.`,
+        };
+        return;
+      }
       const resolved = resolveCatalogModel(selectedModel, modelCatalog, effId);
+      if (!resolved.model) {
+        yield {
+          type: "error",
+          message: `No hay un modelo disponible para ${effId}. Actualiza la disponibilidad del proveedor antes de iniciar el chat.`,
+        };
+        return;
+      }
       if (resolved.model && resolved.model !== selectedModel) {
         if (selectedSlot?.api) selectedSlot.api = { ...selectedSlot.api, model: resolved.model };
         if (selectedSlot?.cli) selectedSlot.cli = { ...selectedSlot.cli, model: resolved.model };

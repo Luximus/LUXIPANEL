@@ -106,7 +106,7 @@ it("passes only the live available catalogue to the existing model selector", as
       selectableOperationalProviders: ["claude"],
       providerCatalogs: {
         claude: {
-          providerId: "claude", mode: "cli", status: "unverified", source: "curated", checkedAt: "2026-10-25T00:00:00.000Z",
+          providerId: "claude", mode: "cli", status: "verified", source: "cli", checkedAt: "2026-10-25T00:00:00.000Z",
           models: [
             { id: "configured-cli-model", label: "Configured CLI model", available: true },
             { id: "not-entitled", label: "Not entitled", available: false },

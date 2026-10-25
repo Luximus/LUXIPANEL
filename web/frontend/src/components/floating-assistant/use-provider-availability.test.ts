@@ -3,7 +3,7 @@ import { isProviderOperational } from "./use-provider-availability";
 import type { AssistantProviderState, ProviderModelCatalog } from "./assistant-api";
 
 const cliCatalog: ProviderModelCatalog = {
-  providerId: "codex", mode: "cli", status: "unverified", source: "curated", checkedAt: "2026-10-25T00:00:00.000Z",
+  providerId: "codex", mode: "cli", status: "verified", source: "cli", checkedAt: "2026-10-25T00:00:00.000Z",
   models: [{ id: "gpt-cli", label: "GPT CLI", available: true }],
 };
 
@@ -19,6 +19,7 @@ describe("provider availability", () => {
     const signedOut = { ...ready, cli: { installed: true, loggedIn: false } } as AssistantProviderState;
     expect(isProviderOperational(ready, cliCatalog)).toBe(true);
     expect(isProviderOperational(signedOut, cliCatalog)).toBe(false);
+    expect(isProviderOperational(ready, { ...cliCatalog, status: "unverified", source: "curated" })).toBe(false);
   });
 
   it("never treats an unverified API inventory as usable", () => {

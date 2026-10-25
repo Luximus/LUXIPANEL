@@ -684,10 +684,10 @@ export function ChatMain({ vm, attachmentImages }: { vm: ChatPaneVM; attachmentI
             inputLeading={mobileNavigation ? null : <a href="/panel/preferences#pref-profile" className="prompt-bar__profile-avatar" aria-label={`${ct.openProfile ?? "Abrir perfil"}${userInitials ? ` (${userInitials})` : ""}`} title={ct.openProfile ?? "Abrir perfil"}><span aria-hidden="true">{userInitials ?? <i className="ti ti-user" aria-hidden="true" />}</span></a>}
             commands={SLASH_COMMANDS.map((command) => ({ key: command.cmd, name: command.cmd, description: command.desc }))}
             models={[
-              { key: "", name: currentAgent?.model && provider === currentAgent.providerId ? `${ct.agentBadgeModel ?? "Agente"} · ${currentAgent.model}` : (ct.modelAuto ?? "Auto") },
+              { key: "", name: currentAgent?.model && provider === currentAgent.providerId && modelOptions.includes(currentAgent.model) ? `${ct.agentBadgeModel ?? "Agente"} · ${currentAgent.model}` : (ct.modelAuto ?? "Auto") },
               ...modelOptions.map((name) => ({ key: name, name })),
             ]}
-            defaultModel={selectedModel}
+            defaultModel={modelOptions.includes(selectedModel) ? selectedModel : ""}
             onModelChange={(value) => {
               setSelectedModel(value);
               chatUiState.patchConversationChoice(provider, activeId, { model: value });

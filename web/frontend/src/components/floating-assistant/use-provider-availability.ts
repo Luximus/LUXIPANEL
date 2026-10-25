@@ -16,7 +16,7 @@ export function isProviderOperational(
   catalog: ProviderModelCatalog | undefined,
 ): boolean {
   if (!provider || !catalog || provider.mode !== catalog.mode || !catalog.models.some((model) => model.available)) return false;
-  if (provider.mode === "cli") return Boolean(provider.cli.installed && provider.cli.loggedIn);
+  if (provider.mode === "cli") return Boolean(provider.cli.installed && provider.cli.loggedIn && catalog.status === "verified");
   return Boolean(provider.api?.hasApiKey && catalog.status === "verified");
 }
 

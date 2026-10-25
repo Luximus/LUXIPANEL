@@ -104,6 +104,7 @@ export interface ProviderModelOption {
   id: string;
   label: string;
   reasoningEfforts?: Array<"low" | "medium" | "high" | "xhigh" | "max">;
+  isDefault?: boolean;
   available: boolean;
 }
 
@@ -111,7 +112,7 @@ export interface ProviderModelCatalog {
   providerId: AssistantProviderId;
   mode: AssistantProviderMode;
   status: ProviderModelCatalogStatus;
-  source: "provider-api" | "curated";
+  source: "provider-api" | "cli" | "curated";
   checkedAt: string;
   models: ProviderModelOption[];
   reason?: ProviderModelCatalogReason;

@@ -15,7 +15,7 @@ vi.mock("./assistant-api", async original => ({
  assistantApi: {
   getConfig: async () => config,
   setProvider: m.setProvider,
-  getProviderModelCatalog: async (id: string) => ({ providerId: id, mode: "cli", status: "unverified", source: "curated", checkedAt: "2026-10-25T00:00:00.000Z", models: [{ id: "test-cli-model", label: "Test CLI model", available: true }] }),
+  getProviderModelCatalog: async (id: string) => ({ providerId: id, mode: "cli", status: "verified", source: "cli", checkedAt: "2026-10-25T00:00:00.000Z", models: [{ id: "test-cli-model", label: "Test CLI model", available: true }] }),
  },
  assistantAgentsApi: {list: m.listAgents},
 }));
