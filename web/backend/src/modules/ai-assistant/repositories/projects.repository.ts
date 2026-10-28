@@ -371,6 +371,16 @@ export const projectsRepository = {
     return store(executor).update(id, { suggestions: sanitizeSuggestions(suggestions) });
   },
 
+  /** Internal ownership transfer used by the workspace sharing service. This
+   * intentionally is not part of the client-controlled `update` patch. */
+  async setOwner(
+    executor: Executor | null | undefined,
+    id: string,
+    ownerId: number | null,
+  ): Promise<AssistantProject | null> {
+    return store(executor).update(id, { ownerId });
+  },
+
   async delete(executor: Executor | null | undefined, id: string): Promise<boolean> {
     return store(executor).delete(id);
   },

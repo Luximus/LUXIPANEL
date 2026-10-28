@@ -6,6 +6,7 @@
  *   GET    /api/ai/projects          list
  *   POST   /api/ai/projects          create
  *   PATCH  /api/ai/projects/:id      update
+ *   POST   /api/ai/projects/:id/share-with-admins
  *   DELETE /api/ai/projects/:id      delete
  */
 
@@ -15,9 +16,9 @@ import type { Request, Response } from "express";
 import { asyncHandler, type SessionUser } from "../../../shared/types/index.js";
 import { zodIssues } from "../../../shared/validators/index.js";
 import { serverSchema, skillsSchema } from "./shared-schemas.js";
-import { assertOwner } from "./ownership.js";
+import { assertOwner, isAssistantAdministrator } from "./ownership.js";
 import { getExecutor, getContextUserId } from "../../../shared/executor/index.js";
-import { ConflictError, ValidationError } from "../../../shared/errors/index.js";
+import { ConflictError, ForbiddenError, ValidationError } from "../../../shared/errors/index.js";
 import { assistantNotFound } from "./not-found-i18n.js";
 import { apiModuleMessage } from "../../../shared/i18n/module-messages.js";
 import { eventBus, Events } from "../../../shared/events/index.js";
@@ -111,8 +112,8 @@ const updateSchema = z.object({
 
 /** El proyecto es del usuario actual (o legacy sin dueño) → puede editar/borrar.
  *  Exportado: graph-index.controller aplica la misma regla. */
-export function assertCanModify(ownerId: number | null | undefined, locale: unknown): void {
-  assertOwner(ownerId, locale);
+export function assertCanModify(ownerId: number | null | undefined, locale: unknown, user?: SessionUser): void {
+  assertOwner(ownerId, locale, user);
 }
 
 async function validateFileProjectRef(req: Request, res: Response, ref: { targetId: string; path: string } | null | undefined, exceptId?: string): Promise<{ targetId: string; path: string } | null | undefined> {
@@ -176,7 +177,7 @@ export const projectsController = {
     if (parsed.data.parentId) {
       const parent = await projectsRepository.get(executor, parsed.data.parentId);
       if (!parent) throw new ValidationError("El proyecto padre ya no existe.");
-      assertCanModify(parent.ownerId, res.locals.locale);
+      assertCanModify(parent.ownerId, res.locals.locale, res.locals["user"] as SessionUser | undefined);
       if (!isWithinProjectDirectory(parsed.data.path, parent.path)) {
         throw new ValidationError("El subproyecto debe estar dentro del directorio del proyecto padre.");
       }
@@ -218,7 +219,7 @@ export const projectsController = {
     // A missing project must 404 — not silently pass `assertCanModify(undefined)`
     // and return `{ ok: true, project: null }`, masking the error to the client.
     if (!cur) throw assistantNotFound(res.locals.locale, "project");
-    assertCanModify(cur.ownerId, res.locals.locale);
+    assertCanModify(cur.ownerId, res.locals.locale, res.locals["user"] as SessionUser | undefined);
     parsed.data.fileProjectRef = await validateFileProjectRef(req, res, parsed.data.fileProjectRef, id);
     if (parsed.data.expectedPath !== undefined && parsed.data.expectedPath !== cur.path) {
       throw new ConflictError("El directorio cambió. Vuelve a abrir el proyecto antes de guardar.");
@@ -229,7 +230,7 @@ export const projectsController = {
       const byId = new Map(all.map((item) => [item.id, item]));
       const parent = byId.get(nextParentId);
       if (!parent) throw new ValidationError("El proyecto padre ya no existe.");
-      assertCanModify(parent.ownerId, res.locals.locale);
+      assertCanModify(parent.ownerId, res.locals.locale, res.locals["user"] as SessionUser | undefined);
       if (!isWithinProjectDirectory(parsed.data.path ?? cur.path, parent.path)) {
         throw new ValidationError("El subproyecto debe estar dentro del directorio del proyecto padre.");
       }
@@ -266,12 +267,26 @@ export const projectsController = {
     res.json({ ok: true, project });
   }),
 
+  shareWithAdministrators: asyncHandler(async (req: Request, res: Response) => {
+    const id = String(req.params["id"] ?? "");
+    const executor = getExecutor(req);
+    const current = await projectsRepository.get(executor, id);
+    if (!current) throw assistantNotFound(res.locals.locale, "project");
+    const user = res.locals["user"] as SessionUser | undefined;
+    if (!isAssistantAdministrator(user)) {
+      throw new ForbiddenError("Solo los administradores pueden compartir un espacio de trabajo.");
+    }
+    assertCanModify(current.ownerId, res.locals.locale, user);
+    const project = await projectWorkspaceService.shareWithAdministrators(executor, current);
+    res.json({ ok: true, project });
+  }),
+
   remove: asyncHandler(async (req: Request, res: Response) => {
     const id = String(req.params["id"] ?? "");
     const executor = getExecutor(req);
     const cur = await projectsRepository.get(executor, id);
     if (!cur) throw assistantNotFound(res.locals.locale, "project");
-    assertCanModify(cur.ownerId, res.locals.locale);
+    assertCanModify(cur.ownerId, res.locals.locale, res.locals["user"] as SessionUser | undefined);
     const ok = await projectWorkspaceService.remove(executor, cur);
     res.json({ ok });
   }),

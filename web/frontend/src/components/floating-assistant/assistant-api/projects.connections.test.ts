@@ -21,3 +21,14 @@ describe("associatable servers", () => {
     expect((await fetchAssociatableConnections()).map(s => s.id)).toEqual(targets.filter(s => s.id !== activeId).map(s => s.id));
   });
 });
+
+describe("workspace sharing", () => {
+  it("uses the administrator-only sharing endpoint", async () => {
+    const project = { id: "realityos", title: "RealityOS", icon: "folder", path: "/workspace", instructions: "", provider: "codex", ownerId: null };
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true, data: { project } })));
+    const { assistantProjectsApi } = await import("./projects");
+    await expect(assistantProjectsApi.shareWithAdministrators(project.id)).resolves.toEqual(project);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`/api/ai/projects/${project.id}/share-with-admins`);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
+});

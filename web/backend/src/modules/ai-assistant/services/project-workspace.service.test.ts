@@ -13,7 +13,11 @@ const markers = new Map<string, Record<string, any>>();
 
 vi.mock("../../../shared/executor/index.js", async importOriginal => {
   const actual = await importOriginal<typeof import("../../../shared/executor/index.js")>();
-  return { ...actual, getContextUserId: () => uid };
+  return {
+    ...actual,
+    getContextUserId: () => uid,
+    getContextUser: () => ({ userId: uid, username: "admin", displayName: "Admin", role: "admin", kind: "admin", modules: ["admin"] }),
+  };
 });
 vi.mock("../../../shared/data-store/index.js", () => ({
   dataStore: () => ({
@@ -37,6 +41,12 @@ vi.mock("../repositories/projects.repository.js", () => ({
       Object.assign(doc, patch);
       return doc;
     },
+    setOwner: async (_executor: unknown, id: string, ownerId: number | null) => {
+      const doc = projects.get(id);
+      if (!doc) return null;
+      doc.ownerId = ownerId;
+      return doc;
+    },
     delete: async (_executor: unknown, id: string) => projects.delete(id),
   },
 }));
@@ -48,12 +58,20 @@ vi.mock("../repositories/agent-teams.repository.js", () => ({
       teams.set(doc.id, doc);
       return doc;
     },
+    get: async (id: string) => teams.get(id) ?? null,
+    setOwner: async (id: string, ownerId: number | null) => {
+      const doc = teams.get(id);
+      if (!doc) return null;
+      doc.ownerId = ownerId;
+      return doc;
+    },
     delete: async (id: string) => teams.delete(id),
   },
 }));
 vi.mock("../repositories/agents.repository.js", () => ({
   agentsRepository: {
     list: async () => [...agents.values()],
+    get: async (id: string) => agents.get(id) ?? null,
     create: async (data: Record<string, any>) => {
       const doc = { id: `a${++serial}`, ownerId: uid, ...data };
       agents.set(doc.id, doc);
@@ -63,6 +81,12 @@ vi.mock("../repositories/agents.repository.js", () => ({
       const doc = agents.get(id);
       if (!doc) return null;
       Object.assign(doc, patch);
+      return doc;
+    },
+    setOwner: async (id: string, ownerId: number | null) => {
+      const doc = agents.get(id);
+      if (!doc) return null;
+      doc.ownerId = ownerId;
       return doc;
     },
     delete: async (id: string) => agents.delete(id),
@@ -85,6 +109,24 @@ vi.mock("../repositories/conversations.repository.js", () => ({
     },
   },
 }));
+vi.mock("../repositories/agent-activity.repository.js", () => ({
+  agentActivityRepository: {
+    forAssignment: async (_executor: unknown, agentId: string, projectsInScope: Set<string>) =>
+      [...chats.values()]
+        .filter((chat) => chat.agentId === agentId && (!chat.projectId || projectsInScope.has(chat.projectId)))
+        .map((chat) => ({ conversationId: chat.id, pendingQuestion: false, pendingCliJob: false })),
+  },
+}));
+vi.mock("../repositories/agent-messages.repository.js", () => ({
+  agentMessagesRepository: { listPending: async () => [] },
+}));
+vi.mock("../repositories/agent-queue.repository.js", () => ({
+  agentQueueRepository: { listPending: async () => [] },
+}));
+vi.mock("../repositories/team-tasks.repository.js", () => ({
+  teamTasksRepository: { listActive: async () => [] },
+}));
+vi.mock("./agent-assignment-lock.js", () => ({ hasAssignmentAdmission: () => false }));
 
 const { projectWorkspaceService } = await import("./project-workspace.service.js");
 const executor = { target: { id: "server-one" } } as never;
@@ -174,6 +216,36 @@ describe("project workspace", () => {
     expect(teams.size).toBe(1);
     expect(agents.size).toBe(1);
     expect([...agents.values()][0]?.projectIds).toEqual([]);
+  });
+
+  it("removes the factory-created leader and team when a fresh root is deleted", async () => {
+    const root = (await projectWorkspaceService.create(executor, { title: "Temporal", icon: "folder", path: "", instructions: "" })).project;
+    await projectWorkspaceService.remove(executor, root);
+    expect(projects.has(root.id!)).toBe(false);
+    expect(agents.size).toBe(0);
+    expect(teams.size).toBe(0);
+  });
+
+  it("shares an exclusive root, its descendants, leader and team with administrators", async () => {
+    const root = (await projectWorkspaceService.create(executor, { title: "RealityOS", icon: "folder", path: "/var/www/realityos", instructions: "" })).project;
+    const child = (await projectWorkspaceService.create(executor, {
+      title: "API", icon: "folder", path: "/var/www/realityos/api", instructions: "", parentId: root.id,
+    })).project;
+    const shared = await projectWorkspaceService.shareWithAdministrators(executor, root);
+    expect(shared.ownerId).toBeNull();
+    expect(projects.get(root.id!)?.ownerId).toBeNull();
+    expect(projects.get(child.id!)?.ownerId).toBeNull();
+    expect(agents.get(root.leaderAgentId!)?.ownerId).toBeNull();
+    expect(teams.get(root.teamId!)?.ownerId).toBeNull();
+  });
+
+  it("does not share a root whose default team has another member", async () => {
+    const root = (await projectWorkspaceService.create(executor, { title: "Aislado", icon: "folder", path: "", instructions: "" })).project;
+    agents.set("extra", { id: "extra", ownerId: uid, name: "Otro", teamId: root.teamId, projectIds: [] });
+    await expect(projectWorkspaceService.shareWithAdministrators(executor, root)).rejects.toThrow("no es exclusivo");
+    expect(projects.get(root.id!)?.ownerId).toBe(uid);
+    expect(agents.get(root.leaderAgentId!)?.ownerId).toBe(uid);
+    expect(teams.get(root.teamId!)?.ownerId).toBe(uid);
   });
 });
 

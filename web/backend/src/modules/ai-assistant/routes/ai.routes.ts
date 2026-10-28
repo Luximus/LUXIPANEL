@@ -177,6 +177,7 @@ protectedRouter.get("/projects", projectsController.list);
 protectedRouter.post("/projects", projectsController.create);
 protectedRouter.post("/projects/repair-workspace", projectsController.repairWorkspace);
 protectedRouter.patch("/projects/:id", projectsController.update);
+protectedRouter.post("/projects/:id/share-with-admins", projectsController.shareWithAdministrators);
 protectedRouter.delete("/projects/:id", projectsController.remove);
 
 // Codebase-graph indexing (solo si el target trae codebase-memory-mcp; la UI

@@ -61,6 +61,11 @@ export const agentTeamsRepository = {
     return runOnPanelHost(() => store().update(id, clean) as Promise<AgentTeam | null>);
   },
 
+  /** Internal ownership transfer used by the workspace sharing service. */
+  async setOwner(id: string, ownerId: number | null): Promise<AgentTeam | null> {
+    return runOnPanelHost(() => store().update(id, { ownerId }) as Promise<AgentTeam | null>);
+  },
+
   async delete(id: string): Promise<boolean> {
     return runOnPanelHost(() => store().delete(id));
   },

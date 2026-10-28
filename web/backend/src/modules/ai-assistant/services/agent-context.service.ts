@@ -18,7 +18,10 @@ export function assignmentError(code: ErrorCode, message: string, status = 409):
 }
 export function mayUseProject(project: { ownerId?: number | null }, user: SessionUser | null | undefined = getContextUser()): boolean {
   const uid = user?.userId ?? getContextUserId();
-  return uid != null && (project.ownerId === uid || (project.ownerId == null && user?.role === "admin"));
+  // Ownerless rows are deliberately global administrator workspaces. They
+  // must never become visible to an ordinary user due to a missing owner id.
+  const isAdministrator = user?.kind === "admin" || user?.role === "admin";
+  return uid != null && (project.ownerId === uid || (project.ownerId == null && isAdministrator));
 }
 export function assertProjectAccess(project: AssistantProject | null | undefined, user?: SessionUser): asserts project is AssistantProject {
   if (!project) throw assignmentError("ASSISTANT_PROJECT_NOT_FOUND", "Proyecto no encontrado.", 404);

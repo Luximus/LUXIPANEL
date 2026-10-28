@@ -225,6 +225,12 @@ export const agentsRepository = {
     return store().update(id, { assignments, projectIds });
   },
 
+  /** Internal ownership transfer used by the workspace sharing service. The
+   * public profile patch must never let a client nominate an owner. */
+  async setOwner(id: string, ownerId: number | null): Promise<AssistantAgent | null> {
+    return store().update(id, { ownerId }) as Promise<AssistantAgent | null>;
+  },
+
   /** Called under the assignment lock after authorization and idle checks. */
   async migratePrivate(agent: AssistantAgent): Promise<AssistantAgent> {
     if (agent.profileSchemaVersion === 1) return agent;

@@ -12,6 +12,15 @@ export interface AssignmentActivity {
   pendingQuestion: boolean;
   pendingCliJob: boolean;
 }
+export interface AssignmentActivityOptions {
+  /**
+   * A recovery guard normally treats a CLI job without conversation metadata as
+   * busy because it cannot safely prove who owns it. Workspace cleanup can opt
+   * out after it has already established that the job is unrelated to the
+   * exclusive default leader it is about to remove.
+   */
+  includeUnattributedCliJobs?: boolean;
+}
 /**
  * Internal withdrawal guard, never a history endpoint. Shared legacy profiles
  * may have work under another administrator's user namespace. Read only the
@@ -19,7 +28,12 @@ export interface AssignmentActivity {
  * Errors propagate: an unreadable activity index cannot prove idleness.
  */
 export const agentActivityRepository = {
-  async forAssignment(executor: Executor, agentId: string, projects: Set<string>): Promise<AssignmentActivity[]> {
+  async forAssignment(
+    executor: Executor,
+    agentId: string,
+    projects: Set<string>,
+    options: AssignmentActivityOptions = {},
+  ): Promise<AssignmentActivity[]> {
     const entries = await executor.readdir(path.posix.join(CONFIG_DIR, "assistant"));
     const suffixes = new Set(["", getContextUserId() ? "-u" + getContextUserId() : ""]);
     for (const entry of entries) {
@@ -48,7 +62,7 @@ export const agentActivityRepository = {
       }
       // A surviving CLI job without its metadata cannot be safely attributed.
       // Preserve it until recovery restores that binding, without exposing it.
-      for (const job of jobs) if (!metas.some(meta => meta.id === job.conversationId)) {
+      for (const job of jobs) if (options.includeUnattributedCliJobs !== false && !metas.some(meta => meta.id === job.conversationId)) {
         out.push({ conversationId: job.conversationId, pendingQuestion: false, pendingCliJob: true });
       }
     }

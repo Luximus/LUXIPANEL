@@ -197,6 +197,12 @@ export const assistantProjectsApi = {
     const res = await api.patch<{ ok: boolean; project: AssistantProject }>(`/api/ai/projects/${id}`, data);
     return unwrap(res, "Failed to update project").project;
   },
+  /** Makes the root workspace available to every panel administrator. The
+   * backend transfers its exclusive default team and leader as one unit. */
+  async shareWithAdministrators(id: string): Promise<AssistantProject> {
+    const res = await api.post<{ ok: boolean; project: AssistantProject }>(`/api/ai/projects/${id}/share-with-admins`, {});
+    return unwrap(res, "Failed to share project with administrators").project;
+  },
   async remove(id: string): Promise<void> {
     const res = await api.delete(`/api/ai/projects/${id}`);
     if (!res.ok) throw new Error(res.error ?? "Failed to delete project");

@@ -54,6 +54,12 @@ describe("assignment activity across user namespaces", () => {
     state.docs.set("cli-jobs-u7", [{ conversationId: "orphan" }]);
     expect((await agentActivityRepository.forAssignment(executor, "a", new Set(["X"])))[0]?.pendingCliJob).toBe(true);
   });
+  it("can ignore an unattributable job during exclusive workspace cleanup", async () => {
+    state.docs.set("cli-jobs-u7", [{ conversationId: "orphan" }]);
+    expect(await agentActivityRepository.forAssignment(executor, "a", new Set(["X"]), {
+      includeUnattributedCliJobs: false,
+    })).toEqual([]);
+  });
   it("does not treat an answered question as pending", async () => {
     state.docs.set("conversations-u7", [{ id: "chat", agentId: "a", projectId: "X" }]);
     state.docs.set("conv-u7-chat", [{ id: MSG_DOC_ID, messages: [{ role: "assistant", ask: [{ id: "q" }] }, { role: "user", content: "answer" }] }]);

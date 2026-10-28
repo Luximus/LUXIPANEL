@@ -7,10 +7,16 @@ import { NotFoundError, ValidationError } from "../../../shared/errors/index.js"
 import { agentsRepository } from "../repositories/agents.repository.js";
 import { agentTeamsRepository } from "../repositories/agent-teams.repository.js";
 import { conversationsRepository } from "../repositories/conversations.repository.js";
+import { agentActivityRepository } from "../repositories/agent-activity.repository.js";
+import { agentMessagesRepository } from "../repositories/agent-messages.repository.js";
+import { agentQueueRepository } from "../repositories/agent-queue.repository.js";
+import { teamTasksRepository } from "../repositories/team-tasks.repository.js";
 import { projectsRepository, type AssistantProject } from "../repositories/projects.repository.js";
 import { agentAssignments, type AssistantAgent } from "../models/assistant-agent.types.js";
-import { assignmentError, effectiveAssignment } from "./agent-context.service.js";
+import { assignmentError, effectiveAssignment, mayUseProject } from "./agent-context.service.js";
 import type { AgentTeam } from "../models/assistant-team.types.js";
+import { hasAssignmentAdmission } from "./agent-assignment-lock.js";
+import { projectClosure, projectsOfClosure } from "./project-closure.js";
 
 type CreateProject = Parameters<typeof projectsRepository.create>[1] & {
   teamName?: string;
@@ -28,6 +34,66 @@ async function serial<T>(key: string, work: () => Promise<T>): Promise<T> {
 
 function own(ownerId: number | null | undefined, uid: number): boolean {
   return ownerId === uid;
+}
+
+function activeProjectIds(agent: AssistantAgent): string[] {
+  return agentAssignments(agent).filter((assignment) => assignment.status === "active").map((assignment) => assignment.projectId);
+}
+
+/**
+ * The project creation flow creates exactly one team and leader for a root.
+ * Only that narrow, unused shape is safe to remove automatically: a custom
+ * team or an agent reused elsewhere must stay untouched when a project folder
+ * is deleted.
+ */
+function isExclusiveDefaultWorkspace(
+  project: AssistantProject,
+  leader: AssistantAgent | null,
+  agents: AssistantAgent[],
+  allProjects: AssistantProject[],
+): leader is AssistantAgent {
+  if (!project.id || !project.teamId || !project.leaderAgentId || !leader?.id) return false;
+  if (leader.id !== project.leaderAgentId || leader.teamId !== project.teamId) return false;
+  if (agents.filter((agent) => agent.teamId === project.teamId).length !== 1) return false;
+  if (allProjects.some((candidate) => candidate.id !== project.id && candidate.teamId === project.teamId)) return false;
+  const active = activeProjectIds(leader);
+  return active.length === 1 && active[0] === project.id;
+}
+
+/**
+ * Deleting an unused default leader is safe only when it has no durable
+ * activity. This is deliberately narrower than `assertAssignmentIdle`: an
+ * orphaned CLI job belonging to an unrelated historical profile must not stop
+ * cleanup of a brand-new, otherwise isolated workspace.
+ */
+async function assertExclusiveWorkspaceUnused(
+  executor: Executor,
+  project: AssistantProject,
+  leader: AssistantAgent,
+  allProjects: AssistantProject[],
+): Promise<void> {
+  const scope = projectClosure(allProjects, [project.id!]);
+  const busy = () => {
+    throw assignmentError(
+      "ASSISTANT_ASSIGNMENT_BUSY",
+      "El espacio tiene actividad o historial asociado. Retira el líder manualmente antes de eliminar el proyecto.",
+    );
+  };
+  if (hasAssignmentAdmission(executor, leader.id!, scope)) busy();
+  const [tasks, pending, messages, activity] = await Promise.all([
+    teamTasksRepository.listActive(executor),
+    agentQueueRepository.listPending(executor),
+    agentMessagesRepository.listPending(executor),
+    agentActivityRepository.forAssignment(executor, leader.id!, scope, { includeUnattributedCliJobs: false }),
+  ]);
+  const touches = (projectId?: string | null) => !projectId || scope.has(projectId);
+  if (tasks.some((task) => (task.leaderAgentId === leader.id || task.workerAgentId === leader.id) && touches(task.projectId))) busy();
+  if (pending.some((turn) => turn.agentId === leader.id && touches(turn.projectId))) busy();
+  if (messages.some((message) => (message.fromAgentId === leader.id || message.toAgentId === leader.id) && touches(message.projectId))) busy();
+  // A conversation tied to the leader is preserved rather than silently
+  // orphaned. A fresh workspace has no activity records, which is the case
+  // eligible for automatic cleanup.
+  if (activity.length > 0) busy();
 }
 
 async function addLeader(project: AssistantProject, team: AgentTeam, name?: string): Promise<AssistantAgent> {
@@ -63,7 +129,7 @@ export const projectWorkspaceService = {
       }
       if (data.parentId) {
         const parent = await projectsRepository.get(executor, data.parentId);
-        if (!parent || (parent.ownerId != null && parent.ownerId !== uid)) throw new NotFoundError("Proyecto padre no encontrado");
+        if (!parent || !mayUseProject(parent)) throw new NotFoundError("Proyecto padre no encontrado");
         return { project: await projectsRepository.create(executor, { ...data, teamId: null, leaderAgentId: null }), created: true };
       }
       const project = await projectsRepository.create(executor, data);
@@ -228,30 +294,110 @@ export const projectWorkspaceService = {
     });
   },
 
-  async remove(executor: Executor, project: AssistantProject): Promise<boolean> {
-    const uid = getContextUserId();
-    const all = await projectsRepository.list(executor);
-    if (all.some((p) => p.parentId === project.id)) {
-      throw new ValidationError("Mueve o elimina los subproyectos antes de borrar este proyecto");
-    }
-    // Deletion must not bypass guarded withdrawal or silently make a formerly
-    // assigned profile runnable as an unassigned agent.
-    const agents = await agentsRepository.list();
-    if (agents.some(agent => effectiveAssignment(agent, all, project.id!))) {
-      throw assignmentError("ASSISTANT_ASSIGNMENT_BUSY", "Retira las asignaciones de agentes (incluidas las heredadas) antes de eliminar el proyecto.");
-    }
-    // Preserve bound agent history with its original project identity. A
-    // deleted project remains unreadable for NEW runs, while history is kept.
-    const ids = await conversationsRepository.listIds(executor);
-    for (const id of ids) {
-      const chat = await conversationsRepository.getMeta(executor, id);
-      if (chat && chat.projectId === project.id && !chat.agentId) await conversationsRepository.moveToLoose(executor, id);
-    }
-    for (const agent of agents.filter((a) => own(a.ownerId, uid ?? -1))) {
-      if (agent.projectIds?.includes(project.id!)) {
-        await agentsRepository.update(agent.id!, { projectIds: agent.projectIds.filter((id) => id !== project.id) });
+  /**
+   * Make a root workspace available to every panel administrator. Ownership is
+   * transferred as one bounded unit (root/descendants, default leader and its
+   * exclusive team), never via a generic client patch. This lets a portal
+   * credential and the local panel operate the same RealityOS workspace.
+   */
+  async shareWithAdministrators(executor: Executor, project: AssistantProject): Promise<AssistantProject> {
+    if (!project.id) throw new ValidationError("El proyecto no tiene una identidad válida.");
+    return serial(`${executor.target.id}:project:${project.id}:share`, async () => {
+      const current = await projectsRepository.get(executor, project.id!);
+      if (!current) throw new NotFoundError("Proyecto no encontrado");
+      if (current.parentId) throw new ValidationError("Solo un proyecto raíz puede compartirse con administradores.");
+      if (!current.teamId || !current.leaderAgentId) {
+        throw new ValidationError("El proyecto no tiene un espacio de trabajo completo para compartir.");
       }
-    }
-    return projectsRepository.delete(executor, project.id!);
+
+      const [allProjects, allAgents, team, leader] = await Promise.all([
+        projectsRepository.list(executor),
+        agentsRepository.list(),
+        agentTeamsRepository.get(current.teamId),
+        agentsRepository.get(current.leaderAgentId),
+      ]);
+      if (!team || !leader || !isExclusiveDefaultWorkspace(current, leader, allAgents, allProjects)) {
+        throw new ValidationError("El equipo o líder del proyecto no es exclusivo. Sepáralo antes de compartir este espacio.");
+      }
+
+      const workspaceIds = projectClosure(allProjects, [current.id!]);
+      const workspaceProjects = projectsOfClosure(allProjects, workspaceIds);
+      const compatibleOwner = (ownerId: number | null | undefined) => ownerId == null || ownerId === current.ownerId;
+      if (!compatibleOwner(team.ownerId) || !compatibleOwner(leader.ownerId) || workspaceProjects.some((item) => !compatibleOwner(item.ownerId))) {
+        throw new ValidationError("El espacio contiene recursos de otro propietario y no puede compartirse de forma segura.");
+      }
+
+      // Update private support records first and expose the root last: no caller
+      // can observe a global project whose leader/team remain private. On a
+      // storage failure, restore each record best-effort before propagating it.
+      const restore: Array<() => Promise<unknown>> = [];
+      try {
+        if (team.ownerId != null) {
+          const saved = await agentTeamsRepository.setOwner(team.id!, null);
+          if (!saved) throw new Error("No se pudo compartir el equipo del proyecto.");
+          restore.unshift(() => agentTeamsRepository.setOwner(team.id!, team.ownerId ?? null));
+        }
+        if (leader.ownerId != null) {
+          const saved = await agentsRepository.setOwner(leader.id!, null);
+          if (!saved) throw new Error("No se pudo compartir el líder del proyecto.");
+          restore.unshift(() => agentsRepository.setOwner(leader.id!, leader.ownerId ?? null));
+        }
+        const ordered = [...workspaceProjects].sort((a, b) => Number(a.id === current.id) - Number(b.id === current.id));
+        let sharedRoot: AssistantProject | null = null;
+        for (const item of ordered) {
+          if (item.ownerId == null) {
+            if (item.id === current.id) sharedRoot = item;
+            continue;
+          }
+          const saved = await projectsRepository.setOwner(executor, item.id!, null);
+          if (!saved) throw new Error("No se pudo compartir el proyecto.");
+          restore.unshift(() => projectsRepository.setOwner(executor, item.id!, item.ownerId ?? null));
+          if (item.id === current.id) sharedRoot = saved;
+        }
+        return sharedRoot ?? current;
+      } catch (error) {
+        for (const undo of restore) await undo().catch(() => undefined);
+        throw error;
+      }
+    });
+  },
+
+  async remove(executor: Executor, project: AssistantProject): Promise<boolean> {
+    if (!project.id) return false;
+    return serial(`${executor.target.id}:project:${project.id}:remove`, async () => {
+      const uid = getContextUserId();
+      const all = await projectsRepository.list(executor);
+      if (all.some((p) => p.parentId === project.id)) {
+        throw new ValidationError("Mueve o elimina los subproyectos antes de borrar este proyecto");
+      }
+      const agents = await agentsRepository.list();
+      const leader = project.leaderAgentId ? await agentsRepository.get(project.leaderAgentId) : null;
+      const removableDefault = isExclusiveDefaultWorkspace(project, leader, agents, all);
+      const assigned = agents.filter((agent) => effectiveAssignment(agent, all, project.id!));
+      if (assigned.some((agent) => !removableDefault || agent.id !== leader?.id)) {
+        throw assignmentError("ASSISTANT_ASSIGNMENT_BUSY", "Retira las asignaciones de agentes (incluidas las heredadas) antes de eliminar el proyecto.");
+      }
+      if (removableDefault) await assertExclusiveWorkspaceUnused(executor, project, leader, all);
+
+      // Preserve loose-chat history by detaching it; any leader activity would
+      // have blocked the automatic cleanup above, so no bound history is lost.
+      const ids = await conversationsRepository.listIds(executor);
+      for (const id of ids) {
+        const chat = await conversationsRepository.getMeta(executor, id);
+        if (chat && chat.projectId === project.id && !chat.agentId) await conversationsRepository.moveToLoose(executor, id);
+      }
+      for (const agent of agents.filter((a) => own(a.ownerId, uid ?? -1))) {
+        if (agent.id !== leader?.id && agent.projectIds?.includes(project.id!)) {
+          await agentsRepository.update(agent.id!, { projectIds: agent.projectIds.filter((id) => id !== project.id) });
+        }
+      }
+      if (removableDefault) {
+        // This branch is only reached for a factory-created, unreferenced
+        // workspace. Deliberately keep context/vault files for recovery.
+        await agentsRepository.delete(leader.id!);
+        await agentTeamsRepository.delete(project.teamId!);
+      }
+      return projectsRepository.delete(executor, project.id!);
+    });
   },
 };
