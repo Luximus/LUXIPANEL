@@ -1,0 +1,8 @@
+{
+  "title": "Sitios publicados independientes del panel",
+  "changes": [
+    "Los proyectos publicados continúan atendiendo visitas aunque el panel, su asistente de IA o su base central estén temporalmente fuera de servicio.",
+    "Cada publicación conserva sus rutas y artefactos verificados en el servidor del proyecto hasta que se publique otra versión o se retire explícitamente.",
+    "Una falla de un proyecto afecta únicamente a ese proyecto y no al resto de sitios gestionados."
+  ]
+}

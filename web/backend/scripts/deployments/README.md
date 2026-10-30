@@ -4,6 +4,12 @@ Fuente directa del supervisor root y runner rootless, publicada en este repo.
 El contrato HTTP permanece en `../../src/modules/hosting/REPOSITORY_DEPLOYMENTS_API.md`.
 No aplicar una copia local ni reconstruir todo el panel para instalar el runtime.
 
+`deployment-gateway.mjs` es el plano de datos de producción. Sirve HTTP y ZIP
+estáticos desde el estado durable del proveedor en `:3460`; no importa módulos
+del panel ni depende de la disponibilidad de Luxisoft. `:3400` permanece para
+previews/compatibilidad durante la migración. Validar además
+`node --test deployment-gateway.test.mjs`.
+
 Validar `python3 deployment_policy_test.py`, `python3 -m py_compile deployment-helper.py`
 y `node --check deployment-tenant.mjs`. Instalar `sudo bash install.sh` desde el
 commit publicado, conservar el respaldo generado y verificar hashes instalados.

@@ -9,13 +9,21 @@ fi
 service_user=${service_user:-${SUDO_USER:?Set LUXISOFT_DEPLOY_SERVICE_USER}}
 [[ "$service_user" != root && "$service_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 1
 config_root=${LUXIPANEL_CONFIG_DIR:-/etc/luxipanel}
+gateway_port=${LUXISOFT_PROJECT_GATEWAY_PORT:-3460}
+previous_gateway_ips=""
+if [[ -r /etc/luxipanel-project-gateway.env ]]; then
+  previous_gateway_ips=$(sed -n 's/^PROJECT_GATEWAY_TRUSTED_IPS=//p' /etc/luxipanel-project-gateway.env | tail -n 1)
+fi
+gateway_trusted_ips=${LUXISOFT_PROJECT_GATEWAY_TRUSTED_IPS:-${previous_gateway_ips:-127.0.0.1,::1}}
 getent passwd "$service_user" >/dev/null
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y podman uidmap passt slirp4netns fuse-overlayfs
 install -d -m 0755 /usr/lib/luxipanel
 install -m 0755 "$script_dir/deployment-helper.py" /usr/lib/luxipanel/deployment-helper
 install -m 0755 "$script_dir/deployment-tenant.mjs" /usr/lib/luxipanel/deployment-tenant.mjs
+install -m 0755 "$script_dir/deployment-gateway.mjs" /usr/lib/luxipanel/deployment-gateway.mjs
 install -d -m 0755 /etc/luxipanel
+install -d -o "$service_user" -g "$service_user" -m 0700 /var/lib/luxipanel/project-gateway
 DEPLOY_SERVICE_USER="$service_user" DEPLOY_CONFIG_ROOT="$config_root" python3 - <<'PY'
 import json,os
 file='/etc/luxipanel-deployment-runtime.json'
@@ -29,5 +37,39 @@ printf 'f /run/lock/luxisoft-heavy-build.lock 0644 root root -\n' > /etc/tmpfile
 systemd-tmpfiles --create /etc/tmpfiles.d/luxisoft-builds.conf
 touch /run/lock/luxisoft-heavy-build.lock
 chmod 0644 /run/lock/luxisoft-heavy-build.lock
+cat > /etc/luxipanel-project-gateway.env <<EOF
+PROJECT_GATEWAY_PORT=$gateway_port
+PROJECT_GATEWAY_HOST=0.0.0.0
+PROJECT_GATEWAY_TRUSTED_IPS=$gateway_trusted_ips
+PROJECT_GATEWAY_CACHE_ROOT=/var/lib/luxipanel/project-gateway
+LUXIPANEL_DEPLOYMENT_RUNTIME_CONFIG=/etc/luxipanel-deployment-runtime.json
+EOF
+chmod 0644 /etc/luxipanel-project-gateway.env
+cat > /etc/systemd/system/luxisoft-project-gateway.service <<EOF
+[Unit]
+Description=Luxisoft published project data-plane gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$service_user
+Group=$service_user
+EnvironmentFile=/etc/luxipanel-project-gateway.env
+ExecStart=/usr/bin/node /usr/lib/luxipanel/deployment-gateway.mjs
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/luxipanel/project-gateway
+ReadOnlyPaths=$config_root /etc/luxipanel-deployment-runtime.json
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now luxisoft-project-gateway.service
 podman --version
-echo 'Runtime de despliegues instalado. Activa deployments.read/write/build/publish en el proveedor de Luxisoft.'
+echo 'Runtime y gateway de proyectos instalados. Activa deployments.read/write/build/publish en el proveedor de Luxisoft.'

@@ -13,6 +13,7 @@ import {
   deploymentProviderService as service,
   deploymentSnapshotSchema,
   deploymentJobSchema,
+  deploymentProductionRoutesSchema,
 } from "../services/deployment-provider.service.js";
 export const deploymentProviderRouter = Router();
 const base = "/api/hosting/v1/accounts/:account/deployments/:project";
@@ -97,6 +98,31 @@ deploymentProviderRouter.post(
       });
   }),
 );
+deploymentProviderRouter.put(
+  base + "/routes/production",
+  asyncHandler(async (req, res) => {
+    res.json({
+      ok: true,
+      data: await service.replaceProductionRoutes(
+        provider(res, "deployments.publish"),
+        ...refs(req),
+        deploymentProductionRoutesSchema.parse(req.body),
+      ),
+    });
+  }),
+);
+deploymentProviderRouter.delete(
+  base + "/routes/production",
+  asyncHandler(async (req, res) => {
+    res.json({
+      ok: true,
+      data: await service.removeProductionRoutes(
+        provider(res, "deployments.publish"),
+        ...refs(req),
+      ),
+    });
+  }),
+);
 deploymentProviderRouter.get(
   base + "/jobs/:job",
   asyncHandler(async (req, res) => {
@@ -135,6 +161,15 @@ deploymentProviderRouter.get(
     res.setHeader("Content-Length", artifact.bytes.length);
     res.setHeader("X-Luxi-Static-Sha256", artifact.sha256);
     res.send(artifact.bytes);
+  }),
+);
+deploymentProviderRouter.put(
+  base + "/jobs/:job/static/:component/retained",
+  raw({ type: "application/octet-stream", limit: "32mb" }),
+  asyncHandler(async (req, res) => {
+    res.json({ ok: true, data: await service.retainStaticArtifact(
+      provider(res, "deployments.publish"), ...refs(req), String(req.params.job), String(req.params.component), req.body,
+    ) });
   }),
 );
 deploymentProviderRouter.delete(

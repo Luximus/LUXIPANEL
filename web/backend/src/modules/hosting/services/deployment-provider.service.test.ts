@@ -209,7 +209,7 @@ describe("repository provider ownership and immutable snapshots", () => {
 
 describe("private static artifact transfer", () => {
   const bytes = Buffer.from("fixture static ZIP bytes"), sha256 = createHash("sha256").update(bytes).digest("hex");
-  const state = () => ({ status: "finished", result: { components: [
+  const state = () => ({ status: "finished", versionId: version, result: { components: [
     { name: "forms", surface: "static", port: null, staticArchive: { sha256, bytes: bytes.length } },
   ] } });
   beforeEach(() => {
@@ -255,6 +255,22 @@ describe("private static artifact transfer", () => {
     m.read.mockImplementation(async (file: string) => file.endsWith("state.json") ? JSON.stringify(state()) : Buffer.alloc(bytes.length));
     await expect(service.staticArtifact(provider, account, project, version, "forms")).rejects.toThrow("inválido");
   });
+  it("retains verified recovery bytes atomically for a published release", async () => {
+    m.exists.mockImplementation(async (_executor: unknown, file: string) => file.endsWith("state.json"));
+    m.exec.mockResolvedValue({ exitCode: 0 });
+    expect(await service.retainStaticArtifact(provider, account, project, version, "forms", bytes)).toEqual({
+      retained: true, versionId: version, component: "forms", sha256,
+    });
+    expect(m.write).toHaveBeenCalledWith(
+      expect.stringMatching(/\/releases\/[^/]+\/forms-[a-f0-9]{64}\.zip\.next$/), bytes, { mode: 0o600 },
+    );
+    expect(m.exec).toHaveBeenCalledWith(expect.stringContaining("mv -f"), { timeoutMs: 5000 });
+  });
+  it("rejects recovery bytes that do not match immutable job metadata", async () => {
+    await expect(service.retainStaticArtifact(provider, account, project, version, "forms", Buffer.from("other")))
+      .rejects.toThrow("inválido");
+    expect(m.write).not.toHaveBeenCalled();
+  });
   it("removes only the requested owned staged artifact, idempotently", async () => {
     expect(await service.deleteStaticArtifact(provider, account, project, version, "forms")).toEqual({ removed: true });
     expect(m.unlink).toHaveBeenCalledWith(expect.stringMatching(/\/jobs\/[a-f0-9-]+\/static\/forms\.zip$/));
@@ -262,6 +278,41 @@ describe("private static artifact transfer", () => {
     m.exists.mockImplementation(async (_e, file: string) => file.endsWith("state.json"));
     expect(await service.deleteStaticArtifact(provider, account, project, version, "forms")).toEqual({ removed: true });
     expect(m.unlink).not.toHaveBeenCalled();
+  });
+});
+
+describe("durable production routes", () => {
+  const requestId = "00000000-0000-4000-8000-000000000004";
+  beforeEach(() => {
+    m.exists.mockResolvedValue(false);
+    m.exec.mockResolvedValue({ exitCode: 0 });
+    m.read.mockImplementation(async (file: string) => file.endsWith("state.json")
+      ? JSON.stringify({ status: "finished", environment: "production", versionId: version,
+          result: { versionId: version, components: [{ name: "app", surface: "http", port: 18080 }] } })
+      : JSON.stringify(snapshot()));
+  });
+  it("atomically materializes only provider-local routing metadata", async () => {
+    const result = await service.replaceProductionRoutes(provider, account, project, {
+      requestId, versionId: version, versionNumber: 4,
+      hosts: [{ hostname: "demo.luxisoft.com", defaultComponent: "app" }],
+    });
+    expect(result).toMatchObject({ versionId: version, hosts: 1 });
+    const write = m.write.mock.calls.find(([file]) => String(file).endsWith("routes.json.next"));
+    expect(write).toBeTruthy();
+    const route = JSON.parse(String(write![1]));
+    expect(route.components).toEqual([{ name: "app", surface: "http", port: 18080, routePrefix: null }]);
+    expect(JSON.stringify(route)).not.toMatch(/password|secret|database_url/i);
+    expect(m.exec).toHaveBeenCalledWith(expect.stringContaining("routes.json.next"), { timeoutMs: 5000 });
+  });
+  it("does not replace the active route for an unfinished publication", async () => {
+    m.read.mockImplementation(async (file: string) => file.endsWith("state.json")
+      ? JSON.stringify({ status: "running", environment: "production", versionId: version })
+      : JSON.stringify(snapshot()));
+    await expect(service.replaceProductionRoutes(provider, account, project, {
+      requestId, versionId: version, versionNumber: 4,
+      hosts: [{ hostname: "demo.luxisoft.com", defaultComponent: "app" }],
+    })).rejects.toThrow("no preparada");
+    expect(m.write).not.toHaveBeenCalled();
   });
 });
 
