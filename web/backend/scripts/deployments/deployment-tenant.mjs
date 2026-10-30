@@ -458,11 +458,12 @@ try {
       timeout: 180000,
       record: false,
     });
-    const image = await command(
+    let image = await command(
       "/usr/bin/podman",
       ["image", "inspect", "--format", "{{.Id}}", recipe.image],
       { record: false },
     );
+    if (/^[a-f0-9]{64}$/.test(image)) image = "sha256:" + image;
     await startContainer(unit, image, {
       environment: recipe.environment,
       network,
@@ -562,6 +563,7 @@ try {
         ["image", "inspect", "--format", "{{.Id}}", tag],
         { record: false },
       );
+      if (/^[a-f0-9]{64}$/.test(image)) image = "sha256:" + image;
       if (!/^sha256:[a-f0-9]{64}$/.test(image))
         throw new Error("image_digest_invalid");
       images[part.name] = image;
