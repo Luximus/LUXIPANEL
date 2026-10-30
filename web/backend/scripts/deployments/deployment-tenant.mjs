@@ -346,7 +346,7 @@ try {
     record: false,
   });
   const disk = Number(
-    await command("/usr/bin/du", ["-sm", job.home], {
+    await command("/usr/bin/du", ["-sm", "--exclude=.local/share/containers/storage/volumes", job.home], {
       cwd: job.home,
       record: false,
     }).then((output) => output.split(/\s/)[0]),

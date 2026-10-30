@@ -1,0 +1,7 @@
+{
+  "title": "Recuperación confiable de proyectos con bases de datos",
+  "changes": [
+    "Los proyectos con volúmenes de base de datos pueden reconstruir y recuperar su runtime sin bloquearse al calcular el espacio utilizado.",
+    "Los datos persistentes del proyecto se conservan durante la recuperación de sus procesos publicados."
+  ]
+}
