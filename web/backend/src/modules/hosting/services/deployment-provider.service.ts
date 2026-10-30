@@ -119,6 +119,22 @@ export const deploymentJobSchema = z
     }).strict().optional(),
   })
   .strict();
+const deploymentHostname = z.string().trim().toLowerCase().max(253).refine(
+  (value) => /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(value),
+  "Dominio inválido",
+);
+export const deploymentProductionRoutesSchema = z.object({
+  requestId: uuid,
+  versionId: uuid,
+  versionNumber: z.number().int().positive(),
+  hosts: z.array(z.object({
+    hostname: deploymentHostname,
+    defaultComponent: name,
+  }).strict()).min(1).max(30).refine(
+    (rows) => new Set(rows.map((row) => row.hostname)).size === rows.length,
+    "Dominio duplicado",
+  ),
+}).strict();
 const hash = (value: string | Buffer) =>
   createHash("sha256").update(value).digest("hex");
 function canonicalJson(value: unknown): string {
@@ -235,6 +251,30 @@ export const deploymentProviderService = {
     return locked(c.id, async () => {
       if (await pathExists(c.executor, c.file)) await c.executor.unlink(c.file);
       return { removed: true };
+    });
+  },
+  async retainStaticArtifact(
+    provider: HostingProvider, account: string, project: string, job: string, component: string, bytes: unknown,
+  ) {
+    const c = await staticArtifact(provider, account, project, job, component);
+    if (!Buffer.isBuffer(bytes) || bytes.length !== c.meta.bytes || hash(bytes) !== c.meta.sha256)
+      throw new ConflictError("Artefacto estático inválido");
+    return locked(c.id, async () => {
+      const state = await readJson(c.executor, path.join(c.root, "jobs", job, "state.json")),
+        versionId = uuid.parse(state.versionId),
+        releaseRoot = path.join(c.root, "releases", versionId),
+        archive = path.join(releaseRoot, `${component}-${c.meta.sha256}.zip`);
+      await c.executor.mkdir(releaseRoot, { recursive: true });
+      if (await pathExists(c.executor, archive)) {
+        const current = await c.executor.readFile(archive);
+        if (!Buffer.isBuffer(current) || current.length !== c.meta.bytes || hash(current) !== c.meta.sha256)
+          throw new ConflictError("Artefacto estático retenido inválido");
+      } else {
+        await c.executor.writeFile(archive + ".next", bytes, { mode: 0o600 });
+        const moved = await c.executor.exec(`mv -f -- ${quoteArg(archive + ".next")} ${quoteArg(archive)}`, { timeoutMs: 5000 });
+        if (moved.exitCode !== 0) throw new ConflictError("No se pudo retener el artefacto estático");
+      }
+      return { retained: true, versionId, component, sha256: c.meta.sha256 };
     });
   },
   async register(provider: HostingProvider, account: string, project: string) {
@@ -443,9 +483,97 @@ export const deploymentProviderService = {
       throw new ConflictError("deployment_activation_failed");
     return { active: true };
   },
+  async replaceProductionRoutes(
+    provider: HostingProvider,
+    account: string,
+    project: string,
+    input: z.infer<typeof deploymentProductionRoutesSchema>,
+  ) {
+    const c = await context(provider, account, project);
+    return locked(c.id, async () => {
+      const jobRoot = path.join(c.root, "jobs", input.requestId),
+        state = await readJson(c.executor, path.join(jobRoot, "state.json"));
+      if (state.status !== "finished" || state.environment !== "production" ||
+          state.versionId !== input.versionId || state.result?.versionId !== input.versionId)
+        throw new ConflictError("Publicación no preparada");
+      const snapshot = deploymentSnapshotSchema.parse(await readJson(
+        c.executor,
+        path.join(c.root, "versions", input.versionId, "manifest.json"),
+      ));
+      const resultByName = new Map((state.result?.components ?? []).map((part: any) => [part.name, part]));
+      const components = [] as Array<Record<string, unknown>>;
+      for (const manifest of snapshot.manifest.components) {
+        const result = resultByName.get(manifest.name) as any;
+        const surface = manifest.surface === "mobile" ? "http" : manifest.surface;
+        if (!result || result.surface !== surface) throw new ConflictError("Componente publicado inválido");
+        if (surface === "http") {
+          if (!Number.isInteger(result.port) || result.port < 1024 || result.port > 65535)
+            throw new ConflictError("Puerto publicado inválido");
+          components.push({ name: manifest.name, surface, port: result.port, routePrefix: manifest.routePrefix ?? null });
+          continue;
+        }
+        if (surface !== "static") continue;
+        const meta = result.staticArchive;
+        if (result.port !== null || !/^[a-f0-9]{64}$/.test(meta?.sha256 ?? "") ||
+            !Number.isSafeInteger(meta?.bytes) || meta.bytes < 1 || meta.bytes > 32 * 1024 * 1024)
+          throw new ConflictError("Artefacto estático inválido");
+        const releaseRoot = path.join(c.root, "releases", input.versionId);
+        await c.executor.mkdir(releaseRoot, { recursive: true });
+        const archive = path.join(releaseRoot, `${manifest.name}-${meta.sha256}.zip`);
+        if (!(await pathExists(c.executor, archive))) {
+          const source = path.join(jobRoot, "static", manifest.name + ".zip"),
+            bytes = await c.executor.readFile(source);
+          if (!Buffer.isBuffer(bytes) || bytes.length !== meta.bytes || hash(bytes) !== meta.sha256)
+            throw new ConflictError("Artefacto estático inválido");
+          await c.executor.writeFile(archive, bytes, { mode: 0o600 });
+        } else {
+          const bytes = await c.executor.readFile(archive);
+          if (!Buffer.isBuffer(bytes) || bytes.length !== meta.bytes || hash(bytes) !== meta.sha256)
+            throw new ConflictError("Artefacto estático inválido");
+        }
+        components.push({
+          name: manifest.name,
+          surface,
+          port: null,
+          routePrefix: manifest.routePrefix ?? null,
+          staticArchive: { archive, sha256: meta.sha256, bytes: meta.bytes, spa: ["vite", "expo"].includes(manifest.stack) },
+        });
+      }
+      const publicNames = new Set(components.map((part) => String(part.name)));
+      for (const host of input.hosts)
+        if (!publicNames.has(host.defaultComponent)) throw new ConflictError("Componente principal inválido");
+      const record = {
+        schemaVersion: 1,
+        providerId: provider.id,
+        accountId: account,
+        projectId: project,
+        requestId: input.requestId,
+        versionId: input.versionId,
+        versionNumber: input.versionNumber,
+        updatedAt: new Date().toISOString(),
+        hosts: input.hosts,
+        components,
+      };
+      const file = path.join(c.root, "routes.json");
+      await c.executor.writeFile(file + ".next", JSON.stringify(record), { mode: 0o600 });
+      const moved = await c.executor.exec(`mv -f -- ${quoteArg(file + ".next")} ${quoteArg(file)}`, { timeoutMs: 5000 });
+      if (moved.exitCode !== 0) throw new ConflictError("No se pudo activar la ruta publicada");
+      return { revision: hash(canonicalJson(record)), versionId: input.versionId, hosts: input.hosts.length };
+    });
+  },
+  async removeProductionRoutes(provider: HostingProvider, account: string, project: string) {
+    const c = await context(provider, account, project);
+    return locked(c.id, async () => {
+      const file = path.join(c.root, "routes.json");
+      if (await pathExists(c.executor, file)) await c.executor.unlink(file);
+      return { removed: true };
+    });
+  },
   async retire(provider: HostingProvider, account: string, project: string) {
     const c = await context(provider, account, project),
       marker = path.join(c.root, "retire.json");
+    const routes = path.join(c.root, "routes.json");
+    if (await pathExists(c.executor, routes)) await c.executor.unlink(routes);
     await c.executor.writeFile(
       marker,
       JSON.stringify({

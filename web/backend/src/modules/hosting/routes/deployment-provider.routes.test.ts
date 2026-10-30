@@ -6,18 +6,30 @@ vi.mock("../../../shared/logger/index.js", () => ({ createModuleLogger: () => ({
 vi.mock("../../../config/paths.js", () => ({ panelConfigDir: () => "/test/config" }));
 vi.mock("../../../shared/executor/index.js", () => ({ quoteArg: (value: string) => JSON.stringify(value), pathExists: vi.fn() }));
 vi.mock("../../../shared/redis/index.js", () => ({ getRedis: vi.fn() }));
-const m = vi.hoisted(() => ({ authenticate: vi.fn(), assertOperation: vi.fn(), download: vi.fn(), remove: vi.fn() }));
+const m = vi.hoisted(() => ({ authenticate: vi.fn(), assertOperation: vi.fn(), download: vi.fn(), retain: vi.fn(), remove: vi.fn(), replaceRoutes: vi.fn(), removeRoutes: vi.fn() }));
 vi.mock("../services/provider.service.js", () => ({ providerService: { authenticate: m.authenticate, assertOperation: m.assertOperation } }));
 vi.mock("../services/deployment-data-provider.mjs", () => ({ deploymentDataRequest: vi.fn() }));
 vi.mock("../services/deployment-provider.service.js", async importOriginal => ({
   ...await importOriginal<typeof import("../services/deployment-provider.service.js")>(),
-  deploymentProviderService: { staticArtifact: m.download, deleteStaticArtifact: m.remove },
+  deploymentProviderService: {
+    staticArtifact: m.download,
+    retainStaticArtifact: m.retain,
+    deleteStaticArtifact: m.remove,
+    replaceProductionRoutes: m.replaceRoutes,
+    removeProductionRoutes: m.removeRoutes,
+  },
 }));
 import { deploymentProviderRouter } from "./deployment-provider.routes.js";
 const app = express(); app.use(express.json()); app.use(deploymentProviderRouter);
 app.use((_err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(403).json({ ok: false }); });
 const base = "/api/hosting/v1/accounts/account-a/deployments/project-a/jobs/job-a/static/forms";
-beforeEach(() => { vi.resetAllMocks(); m.authenticate.mockResolvedValue({ id: "provider-a" }); m.download.mockResolvedValue({ bytes: Buffer.from("ZIP"), sha256: "a".repeat(64) }); m.remove.mockResolvedValue({ removed: true }); });
+beforeEach(() => {
+  vi.resetAllMocks(); m.authenticate.mockResolvedValue({ id: "provider-a" });
+  m.download.mockResolvedValue({ bytes: Buffer.from("ZIP"), sha256: "a".repeat(64) });
+  m.retain.mockResolvedValue({ retained: true });
+  m.remove.mockResolvedValue({ removed: true }); m.replaceRoutes.mockResolvedValue({ revision: "a".repeat(64), hosts: 1 });
+  m.removeRoutes.mockResolvedValue({ removed: true });
+});
 it("serves private ZIP bytes through the existing provider authentication and read permission", async () => {
   const res = await request(app).get(base).set("Authorization", "Bearer lhp_fixture");
   expect(res.status).toBe(200); expect(res.headers["content-type"]).toContain("application/zip");
@@ -42,4 +54,26 @@ it("requires write permission to clean the staged artifact", async () => {
   m.assertOperation.mockImplementation(() => { throw new Error("forbidden"); }); m.remove.mockClear();
   expect((await request(app).delete(base).set("Authorization", "Bearer lhp_fixture")).status).toBe(403);
   expect(m.remove).not.toHaveBeenCalled();
+});
+it("accepts immutable recovery bytes only with publish permission", async () => {
+  const body = Buffer.from("ZIP");
+  const res = await request(app).put(base + "/retained").set("Authorization", "Bearer lhp_fixture")
+    .set("Content-Type", "application/octet-stream").send(body);
+  expect(res.status).toBe(200);
+  expect(m.assertOperation).toHaveBeenCalledWith({ id: "provider-a" }, "deployments.publish");
+  expect(m.retain).toHaveBeenCalledWith({ id: "provider-a" }, "account-a", "project-a", "job-a", "forms", body);
+});
+it("installs and removes production routes only with publish permission", async () => {
+  const route = "/api/hosting/v1/accounts/account-a/deployments/project-a/routes/production";
+  const body = {
+    requestId: "11111111-1111-4111-8111-111111111111",
+    versionId: "22222222-2222-4222-8222-222222222222",
+    versionNumber: 3,
+    hosts: [{ hostname: "demo.luxisoft.com", defaultComponent: "web" }],
+  };
+  expect((await request(app).put(route).set("Authorization", "Bearer lhp_fixture").send(body)).status).toBe(200);
+  expect(m.assertOperation).toHaveBeenCalledWith({ id: "provider-a" }, "deployments.publish");
+  expect(m.replaceRoutes).toHaveBeenCalledWith({ id: "provider-a" }, "account-a", "project-a", body);
+  expect((await request(app).delete(route).set("Authorization", "Bearer lhp_fixture")).status).toBe(200);
+  expect(m.removeRoutes).toHaveBeenCalledWith({ id: "provider-a" }, "account-a", "project-a");
 });
