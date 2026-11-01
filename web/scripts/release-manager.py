@@ -160,6 +160,30 @@ def preserve_previews(previous, release):
         shutil.copytree(source, destination, symlinks=True)
 
 
+def preserve_client_assets(previous, release):
+    """Keep one generation of hashed chunks for already-open browser tabs."""
+    source = application(previous) / "frontend/dist/client/_luxi"
+    destination = application(release) / "frontend/dist/client/_luxi"
+    inventory = release / ".client-assets.json"
+    if not inventory.exists():
+        names = sorted(str(path.relative_to(destination)) for path in destination.rglob("*")
+                       if path.is_file() and not path.is_symlink())
+        inventory.write_text(json.dumps(names) + "\n")
+    prior_inventory = previous / ".client-assets.json"
+    names = json.loads(prior_inventory.read_text()) if prior_inventory.is_file() else [
+        str(path.relative_to(source)) for path in source.rglob("*") if path.is_file()]
+    for name in names:
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise RuntimeError("Inventario de assets inválido")
+        origin, target = source / relative, destination / relative
+        if not origin.is_file() or origin.is_symlink() or not origin.resolve().is_relative_to(source.resolve()):
+            continue
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin, target)
+
+
 def switch_static(root, release, manager):
     previous = []
     try:
@@ -336,6 +360,7 @@ def main(root, tag, branch=None, expected_commit=None):
                 raise RuntimeError("El código local cambió durante la preparación; se ha conservado sin activar la actualización")
             state["operation"]["stage"] = "activating"
             write_state(state_path, state)
+            preserve_client_assets(previous_path, release)
             static_previous = switch_static(root, release, manager)
             switched = True
             activate(release)

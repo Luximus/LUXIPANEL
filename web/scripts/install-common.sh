@@ -313,10 +313,28 @@ EOF
 panel_nginx_extracted_block() {
   local root_dir="$1"
   cat <<EOF
+  # Public hashed client chunks are immutable and compressed independently
+  # from authenticated HTML, API responses and file-download streams.
+  location ^~ /_luxi/ {
+    root ${root_dir}/frontend/dist/client;
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/javascript application/javascript text/css;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files \$uri @node_frontend;
+  }
+
   # Short-lived public cache for static module scripts. HTML and API remain
   # uncached; a new versioned URL takes effect immediately after deployment.
   location ^~ /scripts/extracted/ {
     root ${root_dir}/frontend/dist/client;
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/javascript application/javascript text/css;
     add_header Cache-Control "public, max-age=60" always;
     access_log off;
     try_files \$uri @node_frontend;
