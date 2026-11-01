@@ -487,6 +487,23 @@ Los ajustes generales y el compositor de Codex admiten `max` como nivel independ
 
 ### Scroll continuo de Files
 
+Las descargas de Files leen la respuesta por bloques y muestran bytes y porcentaje
+cuando existe Content-Length. El límite de 60 segundos mide inactividad, no la
+duración total; un fallo o una respuesta incompleta nunca guarda un archivo parcial.
+Una barra persistente sobre la lista muestra nombre, porcentaje, bytes y velocidad;
+permite cancelar la transferencia y conserva el resultado o error hasta cerrarlo.
+Los reintentos tienen estado visible y la barra respeta los temas, móvil y movimiento
+reducido. La regresión DOM está en `files/download-progress.test.ts`.
+Cuando el target admite rangos, cada petición transfiere como máximo 512 KiB y
+un fallo de red reintenta solo ese bloque hasta tres veces. ETag e If-Range impiden
+mezclar archivos de distintas compilaciones. Los targets sin rangos conservan la
+transferencia completa. El APK completo se verifica por SHA-256 en la prueba HTTP
+local con un corte de conexión simulado.
+Se conservan las cabeceras de sesión por pestaña, se deduplican clics sobre la
+misma descarga y se descartan resultados de otro target. La URL del blob se libera
+con demora para permitir que el navegador inicie el guardado de archivos grandes.
+Regresiones: `files/download.test.ts` junto a los scripts extraídos.
+
 La tabla y cuadrícula de `FilesWorkspace` cargan bloques de 50 entradas mediante
 `/api/files/list` al acercarse al final de su contenedor. `file-pages.ts` conserva
 las filas cargadas al añadir otro bloque o reintentar un fallo y descarta respuestas

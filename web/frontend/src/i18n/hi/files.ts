@@ -551,6 +551,8 @@ const files = {
     "itemCountOne": "{n} आइटम",
     "itemCountMany": "{n} आइटम",
     "downloading": "{name} डाउनलोड हो रहा है...",
+    "downloadRetrying": "डाउनलोड फिर से आज़माया जा रहा है…",
+    "downloadCancelled": "डाउनलोड रद्द किया गया",
     "error": "त्रुटि",
     "downloaded": "{name} डाउनलोड हुआ",
     "extracting": "{name} निकाला जा रहा है...",

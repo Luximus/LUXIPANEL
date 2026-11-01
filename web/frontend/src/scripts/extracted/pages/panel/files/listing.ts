@@ -10,6 +10,8 @@ import { updateAiSelectionNotice } from "./ai-selection";
 import { patchFilesPreferences } from "./preferences";
 import { createFilePages, FILES_BATCH_SIZE } from "./file-pages";
 import { fetchFilesPage } from "./list-request";
+import { downloadFileBlob, saveDownload } from "./download";
+import { showDownloadProgress } from "./download-progress";
 import type { FilesViewMode } from "./state";
 import { setStatus, showToast } from "./toast";
 import { api, resolvePanelApiPath, scopeHeaders } from "/scripts/extracted/lib/api-client.js?v=20260506a";
@@ -23,6 +25,7 @@ let localEntries: any[] = [], localShown = 0;
 let scrollBinding: AbortController | undefined;
 let scrollResize: ResizeObserver | undefined;
 let checkScroll = () => {};
+let activeDownload: { key: string; controller: AbortController; promise: Promise<void> } | undefined;
 
 function listingContext() {
   return JSON.stringify([S.activeTargetScope, S.activeFilesManagerId, S.currentPath, S.sortKey, S.sortDir, S.showHidden && filesCan("files.hidden"), getSearchQuery(), S.isSearchMode]);
@@ -609,36 +612,68 @@ export function bindFileScroll() {
   (window as any).toggleRowSelect = (path: string, checked: boolean) => toggleSelect(path, checked);
 
   // ── Download ───────────────────────────────────────────────
-  (window as any).downloadEntry = async (path: string, name: string, isDir: boolean) => {
+  (window as any).downloadEntry = (path: string, name: string, isDir: boolean) => {
     const params = new URLSearchParams({ path });
     if (isDir) params.set("zip", "true");
-    setStatus(fmt(t("status.downloading", "Descargando {name}..."), { name }));
-    try {
-      // Raw fetch (blob download) must carry the per-tab isolation headers that
-      // `api.*` injects automatically, or the backend resolves the request
-      // against the panel host / a stale cookie instead of the connected server
-      // (→ 403 or wrong-server data). `scopeHeaders()` adds X-Bridge-Session-Id;
-      // GET is non-mutating so no CSRF is required.
-      const response = await fetch(resolvePanelApiPath(`/api/files/download?${params.toString()}`), {
-        credentials: "include",
-        headers: scopeHeaders(),
-        cache: "no-store",
-      });
-      if (!response.ok) { showToast(t("toasts.downloadError", "Error al descargar"), false); setStatus(t("status.error", "Error")); return; }
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = isDir ? `${name}.zip` : name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-      setStatus(fmt(t("status.downloaded", "{name} descargado"), { name }));
-    } catch {
-      showToast(t("toasts.downloadNetworkError", "Error de red al descargar"), false);
-      setStatus(t("status.error", "Error"));
-    }
+    const headers = scopeHeaders();
+    const scope = S.activeTargetScope;
+    const manager = S.activeFilesManagerId;
+    const key = JSON.stringify([scope, manager, headers, path, isDir]);
+    if (activeDownload?.key === key) return activeDownload.promise;
+    activeDownload?.controller.abort();
+    const controller = new AbortController();
+    const task = { key, controller, promise: undefined as unknown as Promise<void> };
+    activeDownload = task;
+    const isCurrent = () => activeDownload === task && scope === S.activeTargetScope && manager === S.activeFilesManagerId && JSON.stringify(headers) === JSON.stringify(scopeHeaders());
+    const cancelled = t("status.downloadCancelled", "Descarga cancelada");
+    const panel = showDownloadProgress({
+      name: isDir ? `${name}.zip` : name,
+      downloading: fmt(t("status.downloading", "Descargando {name}..."), { name }),
+      retrying: t("status.downloadRetrying", "Reintentando la descarga…"),
+      cancelled,
+      cancelLabel: t("actions.cancel", "Cancelar"),
+      closeLabel: t("actions.close", "Cerrar"),
+      onCancel: () => { controller.abort(); if (isCurrent()) setStatus(cancelled); },
+    });
+    task.promise = (async () => {
+      const label = fmt(t("status.downloading", "Descargando {name}..."), { name });
+      setStatus(label);
+      let lastProgress = 0;
+      try {
+        // Raw fetch (blob download) must carry the per-tab isolation headers that
+        // `api.*` injects automatically, or the backend resolves the request
+        // against the panel host / a stale cookie instead of the connected server
+        // (→ 403 or wrong-server data). `scopeHeaders()` adds X-Bridge-Session-Id;
+        // GET is non-mutating so no CSRF is required.
+        const blob = await downloadFileBlob(resolvePanelApiPath(`/api/files/download?${params.toString()}`), {
+          headers,
+          signal: controller.signal,
+          onRetry: () => { if (isCurrent()) panel.retry(); },
+          onProgress: ({ received, total }) => {
+            if (!isCurrent()) { controller.abort(); panel.remove(); return; }
+            const now = Date.now();
+            if (received && now - lastProgress < 250 && received !== total) return;
+            lastProgress = now;
+            panel.update({ received, total });
+            const progress = total ? `${fmtSize(received)} / ${fmtSize(total)} (${Math.floor(received / total * 100)}%)` : fmtSize(received);
+            setStatus(`${label} ${progress}`);
+          },
+        });
+        if (!isCurrent()) return;
+        saveDownload(blob, isDir ? `${name}.zip` : name);
+        const completed = fmt(t("status.downloaded", "{name} descargado"), { name });
+        panel.finish(completed, true);
+        setStatus(completed);
+      } catch {
+        if (!isCurrent() || controller.signal.aborted) return;
+        showToast(t("toasts.downloadNetworkError", "Error de red al descargar"), false);
+        panel.finish(t("toasts.downloadNetworkError", "Error de red al descargar"), false);
+        setStatus(t("status.error", "Error"));
+      } finally {
+        if (activeDownload === task) activeDownload = undefined;
+      }
+    })();
+    return task.promise;
   };
 
   (window as any).extractArchive = async (path: string, name: string) => {
