@@ -59,6 +59,10 @@ export function internalModuleControllers() {
             name: "scope-source",
             setup(b) {
               b.onResolve({ filter: /^\/scripts\// }, async (args) => {
+                // Keep public lazy assets lazy. Inlining Monaco here makes the
+                // Files controller wait for the entire editor before browsing.
+                if (args.kind === "dynamic-import")
+                  return { path: args.path, external: true };
                 const clean = args.path.split("?")[0];
                 let target =
                   imports.get(clean) ||

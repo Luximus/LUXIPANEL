@@ -245,6 +245,14 @@ Invariante: un namespace nuevo entra cambiando solo `locales/<lang>.ts`; el
 rebuild regenera chunks + JSON + hash. No edites a mano `namespaces/` ni
 `public/i18n/` (son generados).
 
+Los controladores internos conservan los `import()` públicos de `/scripts/`
+como cargas diferidas: Monaco se descarga al abrir el editor, nunca al iniciar
+el explorador de Archivos. Nginx comprime únicamente los JS/CSS públicos de
+`/_luxi/` y `/scripts/extracted/`; no cambia los streams de descarga ni las API.
+El instalador conserva además los chunks hasheados propios de la versión
+anterior para que las pestañas abiertas sigan cargando módulos tras actualizar,
+sin acumular generaciones antiguas.
+
 ## Asistente IA — contrato de comunicación
 
 El Asistente IA del panel se integra con el resto de módulos vía un **bus

@@ -65,6 +65,25 @@ class ReleaseTests(unittest.TestCase):
   with self.assertRaisesRegex(RuntimeError,'hash'):manager.verify_bundle(self.release,'v1.0.1')
   file.unlink();file.symlink_to(self.root/'source')
   with self.assertRaisesRegex(RuntimeError,'fuera'):manager.verify_bundle(self.release,'v1.0.1')
+ def test_open_tabs_keep_previous_chunks_without_accumulating_old_generations(self):
+  old=self.root/'frontend/dist/client/_luxi';old.mkdir(parents=True)
+  (old/'files.old.js').write_text('old controller');(old/'shared.js').write_text('old shared')
+  new=self.release/'frontend/dist/client/_luxi';new.mkdir(parents=True)
+  (new/'files.new.js').write_text('new controller');(new/'shared.js').write_text('new shared')
+  manager.preserve_client_assets(self.root,self.release)
+  self.assertEqual((new/'files.old.js').read_text(),'old controller')
+  self.assertEqual((new/'shared.js').read_text(),'new shared')
+  newest=self.base/'next';(newest/'frontend/dist/client/_luxi').mkdir(parents=True)
+  manager.preserve_client_assets(self.release,newest)
+  self.assertTrue((newest/'frontend/dist/client/_luxi/files.new.js').is_file())
+  self.assertFalse((newest/'frontend/dist/client/_luxi/files.old.js').exists())
+ def test_asset_carryover_ignores_symlinks_and_rejects_traversal(self):
+  old=self.root/'frontend/dist/client/_luxi';old.mkdir(parents=True)
+  (old/'linked.js').symlink_to(self.root/'source')
+  manager.preserve_client_assets(self.root,self.release)
+  self.assertFalse((self.release/'frontend/dist/client/_luxi/linked.js').exists())
+  (self.root/'.client-assets.json').write_text('["../private"]')
+  with self.assertRaisesRegex(RuntimeError,'inválido'):manager.preserve_client_assets(self.root,self.release)
 class RuntimeHealthTests(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
