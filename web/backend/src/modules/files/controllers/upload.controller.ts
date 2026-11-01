@@ -32,6 +32,7 @@ import { dirOf } from "../../../shared/utils/posix-path.js";
 import { snapshotService, archiveService } from "../services/index.js";
 import { filesConfigService } from "../services/files-config.service.js";
 import { assertCanonicalFilePathPermission } from "../middlewares/role-file-permissions.middleware.js";
+import { streamLocalDownload } from "./local-download.js";
 
 /** Hard cap on the bytes we buffer into memory on the in-memory DOWNLOAD path
  *  (executor.readFile fallback when no SFTP stream is available) — guards the
@@ -256,6 +257,10 @@ export const uploadController = {
     res.setHeader("Content-Disposition", contentDisposition(filename));
     res.setHeader("Content-Type", guessMime(filename));
     res.setHeader("Content-Length", info.size);
+    if (executor.target.id === "local") {
+      await streamLocalDownload(req, res, filePath);
+      return;
+    }
     await streamServerFile(req, res, executor, filePath, info.size);
   }),
 

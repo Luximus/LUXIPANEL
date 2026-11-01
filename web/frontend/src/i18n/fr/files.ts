@@ -551,6 +551,8 @@ const files = {
     "itemCountOne": "{n} élément",
     "itemCountMany": "{n} éléments",
     "downloading": "Téléchargement de {name}…",
+    "downloadRetrying": "Nouvelle tentative de téléchargement…",
+    "downloadCancelled": "Téléchargement annulé",
     "error": "Erreur",
     "downloaded": "{name} téléchargé",
     "extracting": "Extraction de {name}…",

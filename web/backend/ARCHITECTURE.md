@@ -30,6 +30,13 @@ Las familias incluyen administración y usuarios, archivos, correo, bases de dat
 
 ## Cachés y datos en vivo
 
+Las descargas locales de Files aceptan rangos HTTP simples y HEAD bajo los
+mismos guards de acción y ruta. El descriptor abierto fija los bytes y metadatos
+de la respuesta; ETag incorpora inode, tamaño y tiempos en nanosegundos, e If-Range
+devuelve el archivo completo si cambió la compilación. Los rangos inválidos reciben
+416. `no-transform` evita comprimir rangos binarios. Los ZIP generados y el
+transporte SFTP conservan su recorrido anterior.
+
 `shared/remote-cache`, `shared/data-store` y la política de colecciones determinan qué lectura puede usar caché. Los motores del target y su Redis dedicado son distintos del Redis del panel. Un fallo de caché no debe confundirse con pérdida de autorización ni habilitar un acceso que el usuario no posee. Operaciones volátiles y sesiones en vivo requieren sus propias rutas. Comprobar el ejecutor activo al leer o actualizar datos; no documentar el gateway LP eliminado como parte de ese recorrido.
 
 ## Verificación y despliegue

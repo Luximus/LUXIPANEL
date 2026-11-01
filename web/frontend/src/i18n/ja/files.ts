@@ -551,6 +551,8 @@ const files = {
     "itemCountOne": "{n} 件",
     "itemCountMany": "{n} 件",
     "downloading": "{name} をダウンロード中...",
+    "downloadRetrying": "ダウンロードを再試行中…",
+    "downloadCancelled": "ダウンロードをキャンセルしました",
     "error": "エラー",
     "downloaded": "{name} をダウンロードしました",
     "extracting": "{name} を展開中...",
