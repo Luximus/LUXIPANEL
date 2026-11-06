@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo 'Ejecuta el instalador como administrador.' >&2; exit 1; }
+if [[ -e /etc/luxisoft-development-runtime/policy.json ]]; then
+  echo 'La barrera de red está activa. Usa una actualización coordinada que conserve el wrapper; no se cambió el runtime.' >&2
+  exit 1
+fi
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 service_user=${LUXISOFT_DEPLOY_SERVICE_USER:-jmarin}
 config_root=${LUXIPANEL_CONFIG_DIR:-/etc/luxipanel}
