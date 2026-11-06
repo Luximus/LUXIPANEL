@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import http from "node:http";
 import net from "node:net";
+import { optionalDirectoryEntries } from "./runtime-policy.mjs";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const job = JSON.parse(input),
@@ -301,7 +302,7 @@ try {
       await fs.writeFile(path.join(root, "retired"), "retired", {
         mode: 0o600,
       });
-      for (const filename of await fs.readdir(quadlet))
+      for (const filename of await optionalDirectoryEntries(quadlet))
         if (
           filename.startsWith("luxi-" + project + "-") &&
           filename.endsWith(".container")
