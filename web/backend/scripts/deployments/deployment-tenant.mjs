@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import net from "node:net";
-import { optionalDirectoryEntries } from "./runtime-policy.mjs";
+import { optionalDirectoryEntries, finalizePreview, discardCandidate } from "./runtime-policy.mjs";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const job = JSON.parse(input),
@@ -186,6 +186,14 @@ async function stopUnit(unit) {
   }).catch(() => {});
   await fs.unlink(path.join(quadlet, unit + ".container")).catch(() => {});
 }
+const jobIo = {
+  read: id => json(path.join(root, "jobs", id + ".json"), null),
+  list: async () => (await optionalDirectoryEntries(path.join(root, "jobs"))).filter(name => name.endsWith(".json")).map(name => name.slice(0, -5)),
+  write: (id, value) => fs.writeFile(path.join(root, "jobs", id + ".json"), JSON.stringify(value), {mode: 0o600}),
+  remove: id => fs.unlink(path.join(root, "jobs", id + ".json")),
+  stop: stopUnit,
+  activeUnits: async () => [...(await json(path.join(root, "active.json"), {units:[]})).units, ...(await json(path.join(root, "pending.json"), {units:[]})).units],
+};
 try {
   await secureDir(root);
   await secureDir(path.join(root, "jobs"));
@@ -276,6 +284,12 @@ try {
       await fs.unlink(path.join(root, "retired")).catch((error) => {
         if (error.code !== "ENOENT") throw error;
       });
+    } else if (job.operation === "finalize-preview") {
+      const result = await finalizePreview(jobIo, job.requestId);
+      process.stdout.write(JSON.stringify({ ok: true, result }));
+      process.exit(0);
+    } else if (job.operation === "discard") {
+      await discardCandidate(jobIo, job.requestId);
     } else if (job.operation === "retire") {
       await fs.writeFile(path.join(root, "retired"), "retired", {
         mode: 0o600,
@@ -289,24 +303,13 @@ try {
       await fs.writeFile(activeFile, JSON.stringify({ units: [] }), {
         mode: 0o600,
       });
+    } else {
+      throw new Error("invalid_lifecycle_operation");
     }
     process.stdout.write(JSON.stringify({ ok: true }));
     process.exit(0);
   }
   const evictedVersionIds = [];
-  if (job.environment === "preview") {
-    for (const filename of await fs.readdir(path.join(root, "jobs"))) {
-      if (!filename.endsWith(".json") || filename === job.requestId + ".json")
-        continue;
-      const previous = await json(path.join(root, "jobs", filename), null);
-      if (previous?.environment === "preview") {
-        for (const unit of previous.units ?? []) await stopUnit(unit);
-        if (previous.result?.versionId)
-          evictedVersionIds.push(previous.result.versionId);
-        await fs.unlink(path.join(root, "jobs", filename));
-      }
-    }
-  }
   const environment =
       job.environment === "production" ? "production" : "preview",
     versionRoot = await secureDir(path.join(root, "versions", job.versionId)),
@@ -623,7 +626,7 @@ try {
   );
   process.stdout.write(JSON.stringify({ ok: true, result, logs: clean(logs) }));
 } catch (error) {
-  for (const unit of started) await stopUnit(unit).catch(() => {});
+  if (!job.operation) await discardCandidate(jobIo, job.requestId, started).catch(() => {});
   process.stdout.write(
     JSON.stringify({
       ok: false,
