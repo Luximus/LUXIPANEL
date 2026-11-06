@@ -4,7 +4,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import http from "node:http";
 import net from "node:net";
 import { optionalDirectoryEntries } from "./runtime-policy.mjs";
 let input = "";
@@ -178,27 +177,6 @@ async function startContainer(
   if (!match || Number(match[1]) !== hostPort)
     throw new Error("runtime_port_not_loopback");
   return Number(match[1]);
-}
-async function healthy(port, healthPath) {
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const ready = await new Promise((resolve) => {
-      const req = http.get(
-        { host: "127.0.0.1", port, path: healthPath, timeout: 3000 },
-        (response) => {
-          response.resume();
-          resolve(response.statusCode >= 200 && response.statusCode < 500);
-        },
-      );
-      req.on("timeout", () => {
-        req.destroy();
-        resolve(false);
-      });
-      req.on("error", () => resolve(false));
-    });
-    if (ready) return;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error("runtime_health_failed");
 }
 async function stopUnit(unit) {
   if (!/^luxi-[a-f0-9-]+-[a-z0-9-]+$/.test(unit) || !unit.includes(project))
@@ -619,8 +597,9 @@ try {
       ]),
       deferred: surface === "worker" && environment === "production",
     });
-    if (port) await healthy(port, part.healthPath);
-    else if (!workers.includes(unit)) {
+    // The root supervisor validates HTTP health before accepting this result.
+    // Tenant identities cannot initiate connections to host loopback.
+    if (!port && !workers.includes(unit)) {
       await new Promise((resolve) => setTimeout(resolve, 5000));
       const state = await command(
         "/usr/bin/podman",
