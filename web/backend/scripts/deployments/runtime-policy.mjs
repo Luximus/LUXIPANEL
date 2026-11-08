@@ -42,3 +42,11 @@ export async function discardCandidate(io, currentId, candidateUnits) {
   for (const unit of candidateUnits ?? current?.units ?? []) if (!kept.has(unit)) await io.stop(unit);
   if (current) await io.remove(currentId);
 }
+
+/** Admission uses measured usage plus bounded candidate/build budgets, never container count. */
+export function runtimeCapacity({ hostAvailableMib, accountUsedMib, accountMaxMib, buildMib = 1536, candidateMib = 512 }) {
+  const neededMib = buildMib + candidateMib + 512;
+  if (![hostAvailableMib, accountUsedMib, accountMaxMib, neededMib].every(Number.isFinite)
+    || hostAvailableMib < 0 || accountUsedMib < 0 || accountMaxMib <= 0) return false;
+  return hostAvailableMib >= neededMib && accountMaxMib - accountUsedMib >= neededMib;
+}

@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import net from "node:net";
-import { optionalDirectoryEntries, finalizePreview, discardCandidate } from "./runtime-policy.mjs";
+import { optionalDirectoryEntries, finalizePreview, discardCandidate, runtimeCapacity } from "./runtime-policy.mjs";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const job = JSON.parse(input),
@@ -351,31 +351,18 @@ try {
   );
   if (manifest.resources.length > job.limits.maxDatabases)
     throw new Error("database_quota_exceeded");
-  // Reserve against configured limits, so a candidate/build cannot exhaust the
-  // account slice and kill the current production services.
-  const running = (
-    await command("/usr/bin/podman", ["ps", "--format", "{{.Names}}"], {
-      record: false,
-    })
-  )
-    .split("\n")
-    .filter(Boolean);
-  const newResources = manifest.resources.filter(
-    (resource) =>
-      resource.engine !== "sqlite" &&
-      !running.includes(`luxi-${project}-${environment}-data-${resource.name}`),
-  ).length;
-  if (
-    (running.length + newResources + manifest.components.length) * 512 > 3584 ||
-    (running.length + newResources) * 512 + 1536 > 3584
-  )
-    throw new Error("runtime_memory_capacity");
-  const available = Number(
-    (await fs.readFile("/proc/meminfo", "utf8")).match(
-      /MemAvailable:\s+(\d+)/,
-    )?.[1] ?? 0,
-  );
-  if (available < 2 * 1024 * 1024) throw new Error("runtime_host_capacity");
+  // The hosting slice still enforces its hard limit. Reserve room for the
+  // bounded build and candidate without treating idle services as full RAM.
+  const accountCgroup = `/sys/fs/cgroup/user.slice/user-${process.getuid()}.slice`;
+  const [used, maximum, meminfo] = await Promise.all([
+    fs.readFile(accountCgroup + '/memory.current', 'utf8'),
+    fs.readFile(accountCgroup + '/memory.max', 'utf8'), fs.readFile('/proc/meminfo', 'utf8'),
+  ]);
+  const hostAvailableMib = Number(meminfo.match(/MemAvailable:\s+(\d+)/)?.[1] ?? 0) / 1024;
+  const accountMaxMib = maximum.trim() === 'max' ? hostAvailableMib : Number(maximum) / 1024 ** 2;
+  if (!runtimeCapacity({ hostAvailableMib, accountUsedMib: Number(used) / 1024 ** 2,
+    accountMaxMib, candidateMib: manifest.components.length * 512 + manifest.resources.length * 512 }))
+    throw new Error('runtime_memory_capacity');
   // Resources have stable names and volumes per environment. A new application
   // version never replaces the database or copies production data to previews.
   for (const resource of manifest.resources) {

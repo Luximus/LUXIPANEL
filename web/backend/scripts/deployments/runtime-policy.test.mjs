@@ -31,3 +31,11 @@ test('failed candidate discard preserves the previous preview and shared data',a
 test('unrecorded failed candidate cleanup preserves other receipts and active units',async()=>{
  const {jobs,stopped,io}=fixture();jobs.delete('new');io.activeUnits=async()=>['production'];await discardCandidate(io,'new',['candidate','database','production']);assert.deepEqual(stopped,['candidate']);assert.equal(jobs.has('old'),true);
 });
+
+test('capacity admits idle hosting services and rejects real pressure without lowering limits', async () => {
+  const {runtimeCapacity} = await import('./runtime-policy.mjs');
+  assert.equal(runtimeCapacity({hostAvailableMib:4500,accountUsedMib:110,accountMaxMib:4096}),true);
+  assert.equal(runtimeCapacity({hostAvailableMib:2000,accountUsedMib:110,accountMaxMib:4096}),false);
+  assert.equal(runtimeCapacity({hostAvailableMib:4500,accountUsedMib:3000,accountMaxMib:4096}),false);
+  assert.equal(runtimeCapacity({hostAvailableMib:NaN,accountUsedMib:110,accountMaxMib:4096}),false);
+});

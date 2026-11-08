@@ -49,3 +49,16 @@ ni sobrescribir el supervisor protegido por la barrera.
 
 Datos privados: ver el contrato /data y install-data.py; este instalador
 coordinado conserva la barrera de red y exige ambos checkouts publicados y limpios.
+
+
+### Recuperación por capacidad (2026-11-08)
+
+El runner efectivo había recuperado el rechazo teórico por número de
+contenedores y el umbral de disco. La admisión ahora mide memory.current/max
+de la cuenta y MemAvailable del host: reserva el build de 1536 MiB, los
+candidatos/recursos a 512 MiB y un margen de 512 MiB. Conserva el límite duro
+de 4 GiB y la exclusión global de builds. El control de disco efectivo sigue
+vigente. No se detienen servicios para conseguir espacio. Un rechazo no
+prueba un OOM ni debe provocar reintentos idénticos sin nuevo diagnóstico.
+Al instalar esta corrección se publican y sustituyen juntos deployment-tenant
+ y runtime-policy, conservando wrapper, supervisor y barrera de red.
