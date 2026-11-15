@@ -1,12 +1,37 @@
-# LUXIPANEL
+# LUXIPANEL — Self-hosted Linux & VPS Control Panel
 
-Self-hosted server administration for the web, desktop and mobile. This is the current public repository. The previous repository was renamed to [LUXIPANEL-OLD](https://github.com/Luxisoft/LUXIPANEL-OLD).
+**Panel autohospedado para servidores Linux, VPS y hosting web**
+
+LUXIPANEL is an open-source, self-hosted Linux server and VPS control panel for server administration and web hosting. Manage local resources and supported remote servers over SSH from web, desktop and mobile clients.
+
+LUXIPANEL es un panel de control de código abierto y autohospedado para administrar servidores Linux, VPS y hosting web. Gestiona recursos locales y servidores remotos compatibles mediante SSH desde clientes web, de escritorio y móviles.
+
+[Install / Instalar](#install-the-server) · [Español](web/translations/README.es.md) · [Website / Sitio web](https://luxipanel.com)
+
+## Features / Funciones
+
+| English | Español |
+| --- | --- |
+| **Linux & VPS administration:** manage local server resources and supported SSH targets. | **Administración Linux y VPS:** gestiona recursos locales y servidores remotos compatibles por SSH. |
+| **Web hosting & Nginx:** manage hosting accounts, websites and Nginx configuration. | **Hosting web y Nginx:** administra cuentas de hosting, sitios web y la configuración de Nginx. |
+| **Files, terminal & databases:** work with server files, terminal sessions and supported database engines. | **Archivos, terminal y bases de datos:** trabaja con archivos, sesiones de terminal y motores de bases de datos compatibles. |
+| **Monitoring & backups:** view system metrics and alerts, create backups and configure backup schedules. | **Monitoreo y copias de seguridad:** consulta métricas y alertas, crea respaldos y configura su programación. |
+| **AI assistant:** configure your chosen provider to help with server tasks using the panel's permissions and approvals. | **Asistente de IA:** configura tu proveedor para ayudarte con tareas del servidor bajo los permisos y aprobaciones del panel. |
+| **Web, desktop & mobile:** access your installed panel from a browser, the Electron desktop client or the native React Native / Expo mobile app. | **Web, escritorio y móvil:** accede al panel instalado desde un navegador, el cliente Electron o la app nativa React Native / Expo. |
+
+Available actions depend on enabled modules, server compatibility, user permissions and integration setup. Some marketplace modules require a subscription.
+
+Las acciones disponibles dependen de los módulos habilitados, la compatibilidad del servidor, los permisos del usuario y la configuración de las integraciones. Algunos módulos del marketplace requieren una suscripción.
+
+## Clients / Clientes
 
 | Application | Source | How it connects |
 | --- | --- | --- |
 | Web and server | `web/backend`, `web/frontend` | Runs on your Linux server |
 | Desktop | `desktop` | Opens your selected panel in an isolated Electron browser profile |
 | Mobile | `mobile` | Native React Native / Expo workspace connected directly to your panel |
+
+This is the current public repository. The previous repository was renamed to [LUXIPANEL-OLD](https://github.com/Luxisoft/LUXIPANEL-OLD).
 
 ## Install the server
 
