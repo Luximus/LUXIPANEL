@@ -21,6 +21,8 @@ jobs:
         working-directory: web/backend
         env:
           NODE_OPTIONS: --max-old-space-size=2560
+          # Synthetic CI fixture; never an installation credential.
+          JWT_SECRET: ci-only-synthetic-jwt-secret-for-release-checks-00000000
       - run: pnpm install --frozen-lockfile && pnpm exec vitest run src/components/module-dev/LogsPanel.test.ts && pnpm run build
         working-directory: web/frontend
         env:
