@@ -1,8 +1,8 @@
-# LUXIPANEL — Self-hosted Linux & VPS Control Panel
+# LUXIPANEL — Linux Server Management & VPS Control Panel
 
-**Panel autohospedado para servidores Linux, VPS y hosting web**
+**Panel de control para Linux, servidores VPS y hosting web**
 
-LUXIPANEL is an open-source, self-hosted Linux server and VPS control panel for server administration and web hosting. Manage local resources and supported remote servers over SSH from web, desktop and mobile clients.
+LUXIPANEL is an open-source, self-hosted Linux server and VPS control panel for Linux server management and web hosting. Manage local resources and supported remote servers over SSH from web, desktop and mobile clients.
 
 LUXIPANEL es un panel de control de código abierto y autohospedado para administrar servidores Linux, VPS y hosting web. Gestiona recursos locales y servidores remotos compatibles mediante SSH desde clientes web, de escritorio y móviles.
 
@@ -22,6 +22,14 @@ LUXIPANEL es un panel de control de código abierto y autohospedado para adminis
 Available actions depend on enabled modules, server compatibility, user permissions and integration setup. Some marketplace modules require a subscription.
 
 Las acciones disponibles dependen de los módulos habilitados, la compatibilidad del servidor, los permisos del usuario y la configuración de las integraciones. Algunos módulos del marketplace requieren una suscripción.
+
+## Workflows / Flujos de trabajo
+
+- **Your Linux server / Tu servidor Linux:** install on a supported Debian/Ubuntu host, sign in with its Linux account and manage Nginx, databases, backups and monitoring. / Instala en Debian/Ubuntu compatible, inicia sesión con su usuario Linux y administra Nginx, bases de datos, copias y monitoreo.
+- **Remote servers over SSH / Servidores remotos por SSH:** add a target in the installed panel, verify its identity and select it before acting. Supported actions depend on the target and your permissions. / Añade un destino en el panel instalado, verifica su identidad y selecciónalo antes de actuar. Las acciones dependen del destino y tus permisos.
+- **Developer projects / Proyectos de desarrollo:** use Files for editing and Git operations, Terminal for project commands and Nginx for websites and reverse proxies. Git deployment updates a selected branch with a fast-forward pull; configure builds, migrations and service restarts for your project. / Usa Archivos para editar y operar Git, Terminal para comandos del proyecto y Nginx para sitios y proxies inversos. El despliegue Git actualiza la rama con pull fast-forward; configura compilaciones, migraciones y reinicios según tu proyecto.
+
+[Server and SSH guide / Guía del servidor y SSH](web/README.md) · [Module SDK / SDK de módulos](web/MODULE-SDK-SPEC.md)
 
 ## Clients / Clientes
 
